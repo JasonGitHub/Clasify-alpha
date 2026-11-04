@@ -28,18 +28,18 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
 - Network calls go only to Spotify and to the GitHub Releases API for the update check. No analytics. No crash reporting in 1.0.
 - Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk. Run librespot with no credentials cache and no audio cache. Write no log files.
-- librespot streams the current track to a temp file in the system temp folder and deletes it after the track. This is the only exception to the disk rule.
 - The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
-- librespot is linked as a static Rust library over a C FFI, not run as a spotifyd helper process.
-- 1.0 ships only the built-in librespot engine. The Spotify-app engine is out of 1.0: don't build it or show its setting, but keep playback behind the `Player` protocol so it can be added later.
-- Two questions are still open. Don't settle them in code; ask Jason: whether library reads need a Web API fallback, and SwiftUI vs AppKit for the skinned window.
+- librespot is linked as a static Rust library over a C FFI, not run as a separate helper process.
+- 1.0 plays through the Spotify desktop app, controlled with Apple Events, behind the `Player` protocol. librespot is used only for login and library reads, not playback. Spotify refuses audio keys to librespot (librespot#1649).
+- Library reads use librespot, with no Web API fallback. The shared Web API client ID is quota-blocked.
+- One question is still open. Don't settle it in code; ask Jason: SwiftUI vs AppKit for the skinned window.
 
 ## Architecture
 
 - One store holds all app state. Only the reducer changes it. The reducer is plain Swift with no UI or engine imports.
 - Skins send input actions (wheel, select, menu, play, next, prev) and render state. No logic in skins.
 - All playback goes through the `Player` protocol. Code above it must not know which engine is playing. librespot is pinned to one version.
-- Audio out and EQ: AVAudioEngine + AVAudioUnitEQ. Spectrum: Accelerate vDSP. Media keys: MPRemoteCommandCenter. Update check: URLSession, not Sparkle.
+- EQ and spectrum are out of 1.0, because the audio does not pass through Clasify. Don't show the EQ setting. Media keys: MPRemoteCommandCenter. Update check: URLSession, not Sparkle.
 
 ## Testing
 
