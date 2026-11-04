@@ -15,20 +15,30 @@ public enum SpotifyAppDevice {
         case ambiguous
     }
 
-    /// Of the computer devices that are not in `excluding`: the one with this Mac's name, else
-    /// the only one. Names are compared without case, and with ’ and ' as the same letter.
+    /// Finds this Mac's Spotify app among the computer devices. Names are compared without
+    /// case, and with ’ and ' as the same letter. In order:
+    /// 1. a computer that is not in `excluding` and has this Mac's name,
+    /// 2. the only computer that is not in `excluding`,
+    /// 3. only when `allowExcluded` is true: a computer in `excluding` with this Mac's name.
     ///
     /// When Clasify launches Spotify here, it passes the devices that were there before the
     /// launch. Another machine, such as a work PC or a second Mac with the same name, is then
-    /// never taken for this Mac: only a computer that came after the launch can be this Mac's
-    /// Spotify app.
-    public static func pick(_ devices: [Candidate], computerName: String?, excluding: Set<String> = []) -> Pick {
-        let new = devices.filter { $0.type == "COMPUTER" && !excluding.contains($0.id) }
-        if let name = computerName.map(normalized), let match = new.first(where: { normalized($0.name) == name }) {
-            return .found(id: match.id)
-        }
+    /// not taken for this Mac while a new computer can still come. But Spotify keeps one device
+    /// ID per install, and this Mac's old entry can still be listed just after Spotify quit.
+    /// So after the registration wait the caller sets `allowExcluded`, and this Mac can come
+    /// back with its old ID.
+    public static func pick(
+        _ devices: [Candidate], computerName: String?, excluding: Set<String> = [], allowExcluded: Bool = false
+    ) -> Pick {
+        let computers = devices.filter { $0.type == "COMPUTER" }
+        let new = computers.filter { !excluding.contains($0.id) }
+        let name = computerName.map(normalized)
+        func named(_ list: [Candidate]) -> Candidate? { name.flatMap { n in list.first { normalized($0.name) == n } } }
+        if let match = named(new) { return .found(id: match.id) }
         switch new.count {
-        case 0: return .none
+        case 0:
+            if allowExcluded, let match = named(computers) { return .found(id: match.id) }
+            return .none
         case 1: return .found(id: new[0].id)
         default: return .ambiguous
         }

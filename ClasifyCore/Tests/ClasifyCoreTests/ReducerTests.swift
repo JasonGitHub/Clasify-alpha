@@ -487,10 +487,19 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(pick([phone, pc], nil) == .none)
         #expect(pick([pc, mac], "Jason’s Macbook Air 15") == .found(id: "a1"))
         #expect(pick([pc, mac], "Renamed Mac") == .found(id: "a1"))  // the only new computer
-        // A Mac from before the launch with this Mac's name is another Mac, so keep waiting.
+        #expect(pick([pc], "WORK-PC") == .none)  // an excluded name match waits for a new computer
+    }
+
+    @Test func sameNameMacFromBeforeTheLaunchIsTakenOnlyAfterTheWait() {
+        // A remote Mac with this Mac's name, or this Mac's own entry from before Spotify quit.
         let twin = D(id: "t1", name: "Jason’s Macbook Air 15", type: "COMPUTER")
-        let beforeTwin: Set = ["t1"]
-        #expect(SpotifyAppDevice.pick([twin], computerName: mac.name, excluding: beforeTwin) == .none)
-        #expect(SpotifyAppDevice.pick([twin, mac], computerName: mac.name, excluding: beforeTwin) == .found(id: "a1"))
+        let before: Set = ["t1"]
+        func pick(_ devices: [D], afterWait: Bool) -> SpotifyAppDevice.Pick {
+            SpotifyAppDevice.pick(devices, computerName: mac.name, excluding: before, allowExcluded: afterWait)
+        }
+        #expect(pick([twin, mac], afterWait: false) == .found(id: "a1"))  // the new device wins
+        #expect(pick([twin, mac], afterWait: true) == .found(id: "a1"))
+        #expect(pick([twin], afterWait: false) == .none)  // keep waiting for a new device
+        #expect(pick([twin], afterWait: true) == .found(id: "t1"))  // this Mac back with its old ID
     }
 }

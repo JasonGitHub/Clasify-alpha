@@ -314,12 +314,17 @@ final class SpotifyConnectPlayer: Player {
         }
         let name = SCDynamicStoreCopyComputerName(nil, nil) as String?
         let deadline = ContinuousClock.now + .seconds(15)
+        // After this wait with no new computer, this Mac's entry from before the launch counts:
+        // Spotify keeps one device ID per install.
+        let registered = ContinuousClock.now + .seconds(5)
         while ContinuousClock.now < deadline && wanted() {
             // Each call registers again (one connect-state PUT), so ask once a second.
             let devices = try await client.devices().map {
                 SpotifyAppDevice.Candidate(id: $0.id, name: $0.name, type: $0.type)
             }
-            switch SpotifyAppDevice.pick(devices, computerName: name, excluding: before) {
+            let pick = SpotifyAppDevice.pick(
+                devices, computerName: name, excluding: before, allowExcluded: ContinuousClock.now >= registered)
+            switch pick {
             case .found(let found): return found
             case .ambiguous: throw PlayerError(message: "Spotify runs on several computers. Quit it on the others")
             case .none: try await Task.sleep(for: .seconds(1))
