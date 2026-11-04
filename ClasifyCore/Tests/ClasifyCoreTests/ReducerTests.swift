@@ -8,6 +8,14 @@ func tracks(_ p: String, _ n: Int, _ d: Double) -> [Track] {
 let liked = Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: tracks("l", 2, 10))
 let focus = Playlist(id: "focus", name: "Focus", tracks: tracks("f", 8, 30))
 let library = [liked, focus]
+/// Focus as the playlist list has it: a name and a count, no tracks.
+let focusInfo = Playlist(id: "focus", name: "Focus", tracks: [], trackCount: 8)
+
+/// Opens Playlists, then Focus, with fresh reads that use tokens `first` and `first + 1`.
+func openFocus(_ first: Int) -> [Action] {
+    [.select, .playlistsLoaded(token: first, playlists: [focusInfo]),
+     .select, .tracksLoaded(token: first + 1, playlist: "focus", tracks: focus.tracks)]
+}
 
 @discardableResult
 func send(_ s: inout AppState, _ actions: Action..., now: Double = 100) -> [Effect] {
@@ -15,18 +23,24 @@ func send(_ s: inout AppState, _ actions: Action..., now: Double = 100) -> [Effe
     return actions.flatMap { reduce(&s, $0, e) }
 }
 
-/// Signed in on the main menu, library loaded.
+@discardableResult
+func send(_ s: inout AppState, _ actions: [Action]) -> [Effect] {
+    let e = Dependencies(now: { 100 }, random: { _ in 0 })
+    return actions.flatMap { reduce(&s, $0, e) }
+}
+
+/// Signed in on the main menu. Nothing of the library is read yet.
 func mainMenu() -> AppState {
     var s = AppState()
     send(&s, .select, .authDone(token: 1, ok: true))
-    s.library = library
     return s
 }
 
 /// Playing Focus track `i` on the Now Playing screen.
 func playing(_ i: Int = 0) -> AppState {
     var s = mainMenu()
-    send(&s, .select, .loaded(token: 1, library: library), .select, .loaded(token: 2, library: library), .wheel(i), .select)
+    send(&s, openFocus(1))
+    send(&s, .wheel(i), .select)
     return s
 }
 
@@ -49,7 +63,8 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func listKeepsTheSelectionInTheRowsThatShow() {
         var s = mainMenu()
-        send(&s, .select, .loaded(token: 1, library: library), .select, .loaded(token: 2, library: library), .wheel(5))
+        send(&s, openFocus(1))
+        send(&s, .wheel(5))
         #expect(s.shownRows == 6 && s.top.sel == 5 && s.top.off == 0)
         send(&s, .select, .menu)  // play track 5, then back: the bar now takes a row
         #expect(s.shownRows == 5 && s.top.sel == 5 && s.top.off == 1)
@@ -72,35 +87,42 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func selectTrackLoadsAndPlays() {
         var s = mainMenu()
-        send(&s, .select, .loaded(token: 1, library: library), .select, .loaded(token: 2, library: library), .wheel(3))
+        send(&s, openFocus(1))
+        send(&s, .wheel(3))
         let load: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(trackID: "f3", context: "focus", autoplay: true, generation: 1)]
         #expect(send(&s, .select) == load)
         #expect(s.top.screen == .now && s.isPlaying && s.current == TrackRef(playlist: "focus", track: "f3"))
     }
 
     @Test func shuffleSongsLoadsLikedSongsFirst() {
-        var s = mainMenu()
-        s.library = []  // fresh sign-in: nothing fetched yet
-        send(&s, .wheel(2), .select)
+        var s = mainMenu()  // fresh sign-in: nothing read yet
+        #expect(send(&s, .wheel(2), .select) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
         #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
         let load: [Effect] = [.setShuffle(true), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
-        #expect(send(&s, .loaded(token: 1, library: library)) == load)
+        #expect(send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == load)
         #expect(s.top.screen == .now && s.shuffle && s.shuffleToken == nil)
+        send(&s, .menu, .menu, .wheel(1))  // back to Shuffle Songs, one row lower under Now Playing
+        #expect(s.rows(for: s.top)[s.top.sel] == .shuffleSongs)
+        // Liked Songs is read now, so the next shuffle starts at once.
+        #expect(send(&s, .select).contains(.load(trackID: "l0", context: "liked", autoplay: true, generation: 2)))
 
-        s = mainMenu(); s.library = []
-        send(&s, .wheel(2), .select, .loaded(token: 1, library: nil))  // fetch fails
+        s = mainMenu()
+        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))  // read fails
         #expect(s.top.error)
-        send(&s, .select, .loaded(token: 2, library: library))  // retry succeeds and still shuffles
+        send(&s, .select, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks))  // retry succeeds and still shuffles
         #expect(s.top.screen == .now && s.shuffle && s.current?.track == "l0")
     }
 
     @Test func selectOnErrorRetriesWithNewToken() {
         var s = mainMenu()
-        #expect(send(&s, .select) == [.fetchLibrary(token: 1)])
-        send(&s, .loaded(token: 1, library: nil))
-        #expect(s.top.error)
-        #expect(send(&s, .select) == [.fetchLibrary(token: 2)])
+        #expect(send(&s, .select) == [.fetchPlaylists(token: 1)])
+        send(&s, .playlistsLoaded(token: 1, playlists: nil))
+        #expect(s.top.error && !s.playlistsLoaded)
+        #expect(send(&s, .select) == [.fetchPlaylists(token: 2)])
         #expect(s.top.loading && !s.top.error && s.top.token == 2)
+        send(&s, .playlistsLoaded(token: 2, playlists: [focusInfo]), .select)
+        send(&s, .tracksLoaded(token: 3, playlist: "focus", tracks: nil))
+        #expect(send(&s, .select) == [.fetchTracks(token: 4, playlist: "focus")])
     }
 
     @Test func menuPopsButNotFromRoot() {
@@ -202,20 +224,60 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(!s.isPlaying && s.toast == "Install Spotify to play music" && s.current?.track == "f0")
     }
 
-    @Test func loadedIgnoresStaleTokens() {
+    @Test func playlistsLoadedIgnoresStaleTokens() {
         var s = mainMenu()
-        send(&s, .select, .loaded(token: 99, library: library))
-        #expect(s.top.loading)
-        send(&s, .loaded(token: 1, library: library))
-        #expect(!s.top.loading && !s.top.error)
-        #expect(s.rows(for: s.top) == [.playlist("focus")])
+        send(&s, .select, .playlistsLoaded(token: 99, playlists: [focusInfo]))
+        #expect(s.top.loading && !s.playlistsLoaded)
+        send(&s, .playlistsLoaded(token: 1, playlists: [focusInfo]))
+        #expect(!s.top.loading && !s.top.error && s.playlistsLoaded)
+        #expect(s.rows(for: s.top) == [.playlist("focus")] && s.library[0].trackCount == 8)
     }
 
-    @Test func reloadThatReordersKeepsCurrentTrack() {
+    @Test func tracksLoadedIgnoresStaleTokensAndFillsThePlaylist() {
+        var s = mainMenu()
+        send(&s, .select, .playlistsLoaded(token: 1, playlists: [focusInfo]), .select)
+        #expect(s.top.loading && s.rows(for: s.top) == [])
+        send(&s, .tracksLoaded(token: 1, playlist: "focus", tracks: focus.tracks))  // stale
+        #expect(s.top.loading && !s.loadedTracks.contains("focus"))
+        send(&s, .tracksLoaded(token: 2, playlist: "focus", tracks: focus.tracks))
+        #expect(!s.top.loading && s.rows(for: s.top).count == 8 && s.loadedTracks == ["focus"])
+        send(&s, .menu, .menu, .wheel(1), .select, .tracksLoaded(token: 3, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        #expect(s.library.map(\.id) == [Playlist.likedSongsID, "focus"])  // Liked Songs goes first
+    }
+
+    @Test func listsReadOnceOpenAtOnce() {
+        var s = mainMenu()
+        send(&s, openFocus(1))
+        #expect(send(&s, .menu, .menu, .select) == [] && !s.top.loading && s.top.screen == .playlists)
+        #expect(send(&s, .select) == [] && !s.top.loading && s.rows(for: s.top).count == 8)
+    }
+
+    @Test func playlistsReloadKeepsTracksAlreadyRead() {
+        var s = mainMenu()
+        send(&s, openFocus(1))
+        let other = Playlist(id: "other", name: "Other", tracks: [], trackCount: 3)
+        s.playlistsLoaded = false  // as if the list must be read again
+        send(&s, .menu, .menu, .select, .playlistsLoaded(token: 3, playlists: [other, focusInfo]))
+        #expect(s.tracks(in: "focus") == focus.tracks && s.rows(for: s.top) == [.playlist("other"), .playlist("focus")])
+        s.playlistsLoaded = false
+        send(&s, .menu, .select, .playlistsLoaded(token: 4, playlists: [other]))  // Focus is gone
+        #expect(s.loadedTracks.isEmpty && s.library.map(\.id) == ["other"])
+    }
+
+    @Test func tracksReloadThatReordersKeepsCurrentTrack() {
         var s = playing(2)
-        let reordered = [Playlist(id: "focus", name: "Focus", tracks: focus.tracks.reversed()), liked]
-        send(&s, .menu, .menu, .select, .loaded(token: 3, library: reordered))
+        s.loadedTracks = []  // as if Focus must be read again
+        send(&s, .menu, .menu, .select, .tracksLoaded(token: 3, playlist: "focus", tracks: focus.tracks.reversed()))
         #expect(s.track(s.current!)?.id == "f2")
+    }
+
+    @Test func loginAndRestorePrefetchTheLibrary() {
+        var s = AppState()
+        #expect(send(&s, .select, .authDone(token: 1, ok: true)) == [.logIn(token: 1), .prefetch])
+        s = AppState()
+        #expect(send(&s, .launch, .restored(token: 1, ok: true)) == [.restoreSession(token: 1), .prefetch])
+        s = AppState()
+        #expect(send(&s, .launch, .restored(token: 1, ok: false)) == [.restoreSession(token: 1)])
     }
 
     @Test func authDoneSignsInOrFailsOffline() {
@@ -284,6 +346,7 @@ func playing(_ i: Int = 0) -> AppState {
         s = playing()
         #expect(send(&s, .expire) == [.stop, .logOut])
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.current == nil && s.library.isEmpty)
+        #expect(!s.playlistsLoaded && s.loadedTracks.isEmpty)
         #expect(s.toast == "Session expired. Log in again")
     }
 
@@ -293,7 +356,7 @@ func playing(_ i: Int = 0) -> AppState {
         var fresh = AppState()
         fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt
         #expect(s == fresh && s.tok == 2)
-        send(&s, .select, .authDone(token: 2, ok: true), .select, .loaded(token: 1, library: library))  // late load from before reset
+        send(&s, .select, .authDone(token: 2, ok: true), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
     }
 
@@ -337,11 +400,14 @@ func playing(_ i: Int = 0) -> AppState {
 }
 
 @MainActor final class FakeLibrary: Library {
-    var result: [Playlist]? = library
-    var fetches = 0
+    var fetches: [String] = []
     var loginResult = true
     var calls: [String] = []
-    func fetchLibrary() async -> [Playlist]? { fetches += 1; return result }
+    func playlists() async -> [Playlist]? { fetches.append("playlists"); return [focusInfo] }
+    func tracks(of playlist: String) async -> [Track]? {
+        fetches.append(playlist); return library.first { $0.id == playlist }?.tracks
+    }
+    func prefetch() async { calls.append("prefetch") }
     func logIn() async -> Bool { calls.append("logIn"); return loginResult }
     func cancelLogIn() async { calls.append("cancelLogIn") }
     func restoreSession() async -> Bool { calls.append("restoreSession"); return loginResult }
@@ -373,8 +439,19 @@ func playing(_ i: Int = 0) -> AppState {
     store.send(.select)  // Playlists
     #expect(store.state.top.loading)
     await store.settle()
-    #expect(lib.fetches == 1 && !store.state.top.loading && store.state.library == library)
+    #expect(lib.fetches == ["playlists"] && !store.state.top.loading && store.state.library == [focusInfo])
     #expect(store.state.rows(for: store.state.top) == [.playlist("focus")])
+    store.send(.select)  // Focus
+    await store.settle()
+    #expect(lib.fetches == ["playlists", "focus"] && store.state.tracks(in: "focus") == focus.tracks)
+}
+
+@MainActor @Test func storeRunsPrefetchAfterLogin() async {
+    let lib = FakeLibrary()
+    let store = Store(player: FakePlayer(), library: lib, env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    store.send(.launch)
+    while !lib.calls.contains("prefetch") { await Task.yield() }
+    #expect(lib.calls == ["restoreSession", "prefetch"] && lib.fetches.isEmpty)
 }
 
 @Suite struct SpotifyAppDeviceTests {
