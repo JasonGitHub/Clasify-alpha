@@ -1,0 +1,21 @@
+name: App
+on:
+  push: { branches: [main] }
+  pull_request:
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: xcodebuild -version
+      - name: Test ClasifyCore on macOS
+        working-directory: ClasifyCore
+        run: swift build -Xswiftc -warnings-as-errors && swift test
+      - name: Build the app with zero warnings
+        run: |
+          set -o pipefail
+          xcodebuild build -project Clasify.xcodeproj -scheme Clasify -configuration Debug \
+            -destination 'platform=macOS' -derivedDataPath DerivedData \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES GCC_TREAT_WARNINGS_AS_ERRORS=YES 2>&1 | tee build.log
+          # Some warnings come from Xcode tools, not the compiler, so the flags above don't catch them.
+          if grep -E '(^|: )warning: ' build.log; then echo "Build has warnings."; exit 1; fi
