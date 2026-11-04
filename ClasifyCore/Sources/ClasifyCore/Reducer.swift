@@ -148,7 +148,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard rows.indices.contains(s.top.sel) else { return }
             switch rows[s.top.sel] {
             case .logIn:
-                s.authAttempt += 1  // a restore that still runs goes stale
+                s.authAttempt += 1
                 s.stack.append(Frame(screen: .auth, token: s.authAttempt))
                 fx.append(.logIn(token: s.authAttempt))
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
@@ -223,14 +223,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             }
 
         case .launch:
-            guard !s.signedIn else { return }
-            s.authAttempt += 1
+            guard !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
+            s.authAttempt += 1; s.restoring = true
             fx.append(.restoreSession(token: s.authAttempt))
 
         case .restored(let token, let ok):
-            // Stale when the user started a login meanwhile.
-            guard ok, s.authAttempt == token, !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
-            s.stack = [Frame(screen: .main)]; s.signedIn = true
+            guard s.restoring, s.authAttempt == token else { return }  // from before a reset
+            s.restoring = false
+            if ok { s.stack = [Frame(screen: .main)]; s.signedIn = true }
 
         case .authDone(let token, let ok):
             guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt

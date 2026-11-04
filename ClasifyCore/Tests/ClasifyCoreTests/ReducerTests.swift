@@ -209,19 +209,25 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func launchRestoresTheStoredLogin() {
         var s = AppState()
         #expect(send(&s, .launch) == [.restoreSession(token: 1)])
-        send(&s, .restored(token: 1, ok: false))
-        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn)
-        send(&s, .launch, .restored(token: 2, ok: true))
-        #expect(s.stack == [Frame(screen: .main)] && s.signedIn && s.toast == "")
+        #expect(s.restoring && s.rows(for: s.top) == [])
+        send(&s, .restored(token: 1, ok: true))
+        #expect(s.stack == [Frame(screen: .main)] && s.signedIn && !s.restoring && s.toast == "")
         #expect(send(&s, .launch) == [])  // already signed in
     }
 
-    @Test func restoreGoesStaleWhenTheUserLogsIn() {
+    @Test func failedRestoreOffersLogIn() {
         var s = AppState()
-        send(&s, .launch, .select, .restored(token: 1, ok: true))
-        #expect(s.top.screen == .auth && !s.signedIn)
-        send(&s, .authDone(token: 2, ok: true))
-        #expect(s.stack == [Frame(screen: .main)] && s.signedIn)
+        send(&s, .launch, .restored(token: 1, ok: false))
+        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && !s.restoring)
+        #expect(s.rows(for: s.top) == [.logIn])
+    }
+
+    @Test func noLoginWhileRestoring() {
+        var s = AppState()
+        #expect(send(&s, .launch, .wheel(1), .select, .menu) == [.restoreSession(token: 1)])
+        #expect(s.stack == [Frame(screen: .login)] && s.restoring)
+        send(&s, .reset, .restored(token: 1, ok: true))  // from before the reset
+        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn)
     }
 
     @Test func offlinePausesPlayback() {
@@ -300,6 +306,7 @@ func playing(_ i: Int = 0) -> AppState {
     let store = Store(player: FakePlayer(), library: lib, env: Dependencies(now: { 0 }, random: { _ in 0 }))
     lib.loginResult = false
     store.send(.launch)
+    while store.state.restoring { await Task.yield() }
     store.send(.select)  // Log in
     while lib.calls.count < 2 { await Task.yield() }
     #expect(lib.calls == ["restoreSession", "logIn"])

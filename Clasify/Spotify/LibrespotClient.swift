@@ -87,18 +87,21 @@ final class LibrespotClient: @unchecked Sendable {
             }
             Task.detached { [self] in
                 try? await Task.sleep(for: Self.loginTimeout)
-                // Stop the bridge login too, so that it cannot publish a session later.
-                if finishLogin(id, throwing: .timedOut) { lsb_logout(handle) }
+                let mine = pendingLogin.withLock { pending -> CheckedContinuation<String, any Error>? in
+                    guard pending.id == id, let waiting = pending.take() else { return nil }
+                    // Stop the bridge login too, so that it cannot publish a session later. This runs
+                    // under the lock, so a newer login cannot start before it and be stopped by it.
+                    lsb_logout(self.handle)
+                    return waiting
+                }
+                mine?.resume(throwing: BridgeError.timedOut)
             }
         }
     }
 
-    /// Fails login `id` if it still waits. Returns false when it already ended.
-    @discardableResult
-    private func finishLogin(_ id: Int, throwing error: BridgeError) -> Bool {
-        let mine = pendingLogin.withLock { pending in pending.id == id ? pending.take() : nil }
-        mine?.resume(throwing: error)
-        return mine != nil
+    /// Fails login `id` if it still waits.
+    private func finishLogin(_ id: Int, throwing error: BridgeError) {
+        pendingLogin.withLock { pending in pending.id == id ? pending.take() : nil }?.resume(throwing: error)
     }
 
     /// Ends the bridge session. A login that still waits throws `BridgeError.cancelled`.
