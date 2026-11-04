@@ -13,6 +13,9 @@ public enum Action: Equatable, Sendable {
     /// The restore that `.launch` started finished.
     case restored(token: Int, ok: Bool)
     case offline(Bool)
+    /// Signs out and forgets the stored login. Send it only when Spotify refuses the refresh
+    /// token (it was revoked). Never send it when the hourly access token expires or the
+    /// network is down: a restore handles those, and this would delete a working login.
     case expire
     case reset
     /// Reported by the playback engine.

@@ -32,6 +32,7 @@ typedef struct LsbEvent {
     uint32_t kind;             // One of LSB_EVENT_*.
     const char *message;       // LOGGED_IN: the canonical username. ERROR: the error.
     // The message is valid only during the callback.
+    uint64_t login_id;         // The login_id that the lsb_login call for this result got.
 } LsbEvent;
 
 typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);
@@ -40,15 +41,17 @@ typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);
 LsbBridge *lsb_new(LsbEventCallback on_event, void *context);
 void lsb_free(LsbBridge *bridge);
 
-// Sends LSB_EVENT_LOGGED_IN or LSB_EVENT_ERROR. Stores no credentials on disk.
+// Sends LSB_EVENT_LOGGED_IN or LSB_EVENT_ERROR with this login_id. Stores no credentials on disk.
 // Calling it again replaces the session when the new login succeeds.
-// A superseded login sends no result, except in a narrow race: if lsb_login is
-// called again just as an earlier login succeeds, both can send LOGGED_IN.
+// A superseded login sends no result, except in a narrow race: if lsb_login or lsb_logout is
+// called just as an earlier login succeeds, that login can still send LOGGED_IN.
+// Use a new login_id for each call, and ignore events whose login_id is not the newest.
 // If the newer login succeeds, it still replaces the older one.
-int32_t lsb_login(LsbBridge *bridge, const char *access_token);
+int32_t lsb_login(LsbBridge *bridge, const char *access_token, uint64_t login_id);
 
 // Ends the session, so reads and Connect calls return LSB_ERR_NOT_LOGGED_IN.
-// A login that has not finished sends no event. Returns LSB_OK even with no session.
+// A login that has not finished sends no event, except in the race described at
+// lsb_login. Returns LSB_OK even with no session.
 int32_t lsb_logout(LsbBridge *bridge);
 
 // OAuth with PKCE through librespot-oauth, with librespot's own client ID and
