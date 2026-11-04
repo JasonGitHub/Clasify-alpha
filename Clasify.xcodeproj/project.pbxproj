@@ -185,6 +185,18 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/LibrespotBridge/target/universal";
+				OTHER_LDFLAGS = (
+					"-llibrespot_bridge",
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreFoundation,
+					"-liconv",
+				);
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/LibrespotBridge/include";
 			};
 			name = Debug;
 		};
@@ -207,6 +219,18 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/LibrespotBridge/target/universal";
+				OTHER_LDFLAGS = (
+					"-llibrespot_bridge",
+					"-framework",
+					Security,
+					"-framework",
+					SystemConfiguration,
+					"-framework",
+					CoreFoundation,
+					"-liconv",
+				);
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/LibrespotBridge/include";
 			};
 			name = Release;
 		};
