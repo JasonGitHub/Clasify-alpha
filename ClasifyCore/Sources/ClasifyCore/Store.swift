@@ -10,6 +10,11 @@ public protocol Player: AnyObject {
     func pause()
     func resume()
     func stop()
+    /// Skip within the playing context. The engine reports the new track with `.trackChanged`.
+    func next()
+    func prev()
+    func setShuffle(_ on: Bool)
+    func setRepeat(_ mode: RepeatMode)
     /// Report later `.position` and `.trackEnded` with this `generation`.
     func seek(to seconds: Double, generation: Int)
     func setVolume(_ percent: Int)
@@ -56,6 +61,10 @@ public final class Store {
             case .pause: player.pause()
             case .resume: player.resume()
             case .stop: player.stop()
+            case .next: player.next()
+            case .prev: player.prev()
+            case .setShuffle(let on): player.setShuffle(on)
+            case .setRepeat(let mode): player.setRepeat(mode)
             case .seek(let t, let gen): player.seek(to: t, generation: gen)
             case .setVolume(let v): player.setVolume(v)
             case .fetchLibrary(let token):
