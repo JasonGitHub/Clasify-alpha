@@ -21,3 +21,9 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 log = "0.4"
 # Already a librespot dependency. Named only to decode the rootlist protobuf.
 protobuf = "3.7"
+# Already a librespot dependency. Named only for http::Method in the spike Connect call.
+http = "=1.5.0"
+# Part of librespot (pinned like the others). Named only for the spike's Connect cluster protobufs.
+librespot-protocol = "=0.8.0"
+# Already a librespot dependency. Named only to read the dealer connection ID stream in the spike.
+futures-util = { version = "=0.3.34", default-features = false }

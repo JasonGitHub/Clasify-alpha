@@ -31,6 +31,7 @@ pub const LSB_EVENT_PLAY_REQUEST: u32 = 8;
 pub const LSB_EVENT_LOG: u32 = 9;
 pub const LSB_EVENT_LIBRARY: u32 = 10;
 pub const LSB_EVENT_CONTEXT: u32 = 11;
+pub const LSB_EVENT_CONNECT: u32 = 12;
 
 /// Matches `LsbEvent` in the header. The strings are valid only during the callback.
 #[repr(C)]
@@ -542,6 +543,179 @@ pub unsafe extern "C" fn lsb_read_context(
         callbacks.emit(&read_context(&session, &uri).await);
     });
     LSB_OK
+}
+
+/// Spike: sends a POST to a Spotify Connect endpoint through spclient. Only paths under
+/// `/connect-state/v1/` are allowed, so it cannot reach any library endpoint.
+/// Sends one LSB_EVENT_CONNECT: `track_uri` is the path, `message` is
+/// "OK <body>" or "ERROR <text>", plus this session's device ID.
+///
+/// # Safety
+/// `bridge` must come from `lsb_new`. `path` and `json_body` must be valid C strings
+/// or null (`json_body` only).
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_post(
+    bridge: *mut LsbBridge,
+    path: *const c_char,
+    json_body: *const c_char,
+) -> i32 {
+    let (Some(bridge_ref), Some(path)) = (bridge.as_ref(), read_str(path)) else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    if !path.starts_with("/connect-state/v1/") {
+        return LSB_ERR_INVALID_ARGUMENT;
+    }
+    let path = path.to_owned();
+    let body = read_str(json_body).map(str::to_owned);
+    let mut session = None;
+    let status = with_player(bridge, |c| session = Some(c.session.clone()));
+    let Some(session) = session else {
+        return status;
+    };
+    let callbacks = bridge_ref.callbacks;
+    bridge_ref.runtime.spawn(async move {
+        let path = path.replace("{self}", session.device_id());
+        let mut headers = http::HeaderMap::new();
+        headers.insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+        let result = session
+            .spclient()
+            .request(
+                &http::Method::POST,
+                &path,
+                Some(headers),
+                body.as_deref().map(str::as_bytes),
+            )
+            .await;
+        let text = match result {
+            Ok(bytes) => {
+                let body = String::from_utf8_lossy(&bytes);
+                format!("OK {}", body.chars().take(500).collect::<String>())
+            }
+            Err(error) => format!("ERROR {error}"),
+        };
+        callbacks.emit(&Event {
+            track_uri: Some(path),
+            message: Some(format!("{text} (session device {})", session.device_id())),
+            ..Event::new(LSB_EVENT_CONNECT)
+        });
+    });
+    LSB_OK
+}
+
+/// Spike: registers this session as a Connect device (dealer + connect-state PUT) and
+/// lists the devices in the returned cluster. Sends one LSB_EVENT_CONNECT with
+/// `track_uri` = "devices" and `message` = one "id|name|type|software|active" line per
+/// device, or "ERROR <text>".
+///
+/// # Safety
+/// `bridge` must come from `lsb_new`.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_devices(bridge: *mut LsbBridge) -> i32 {
+    let Some(bridge_ref) = bridge.as_ref() else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    let mut session = None;
+    let status = with_player(bridge, |c| session = Some(c.session.clone()));
+    let Some(session) = session else {
+        return status;
+    };
+    let callbacks = bridge_ref.callbacks;
+    bridge_ref.runtime.spawn(async move {
+        let message = match connect_devices(&session).await {
+            Ok(lines) => lines,
+            Err(error) => format!("ERROR {error}"),
+        };
+        callbacks.emit(&Event {
+            track_uri: Some("devices".to_owned()),
+            message: Some(message),
+            ..Event::new(LSB_EVENT_CONNECT)
+        });
+    });
+    LSB_OK
+}
+
+async fn connect_devices(session: &Session) -> Result<String, String> {
+    use futures_util::StreamExt;
+    use librespot_protocol::connect::{
+        Capabilities, Cluster, Device, DeviceInfo, MemberType, PutStateReason, PutStateRequest,
+    };
+    use librespot_protocol::devices::DeviceType;
+    use protobuf::Message;
+
+    if session.connection_id().is_empty() {
+        let mut ids = session
+            .dealer()
+            .listen_for("hm://pusher/v1/connections/", |message| {
+                Ok(message
+                    .headers
+                    .get("Spotify-Connection-Id")
+                    .cloned()
+                    .unwrap_or_default())
+            })
+            .map_err(|e| format!("dealer listen: {e}"))?;
+        session
+            .dealer()
+            .start()
+            .await
+            .map_err(|e| format!("dealer start: {e}"))?;
+        let id = tokio::time::timeout(std::time::Duration::from_secs(10), ids.next())
+            .await
+            .map_err(|_| "no connection ID within 10 s".to_owned())?
+            .ok_or("dealer closed".to_owned())?
+            .map_err(|e| format!("connection ID: {e}"))?;
+        session.set_connection_id(&id);
+    }
+
+    let info = DeviceInfo {
+        can_play: true,
+        volume: 65535,
+        name: "Clasify spike".to_owned(),
+        device_id: session.device_id().to_owned(),
+        device_type: DeviceType::COMPUTER.into(),
+        device_software_version: "Clasify spike".to_owned(),
+        spirc_version: "3.2.6".to_owned(),
+        client_id: session.client_id(),
+        capabilities: protobuf::MessageField::some(Capabilities {
+            can_be_player: false,
+            is_observable: true,
+            volume_steps: 64,
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let request = PutStateRequest {
+        member_type: MemberType::CONNECT_STATE.into(),
+        put_state_reason: PutStateReason::NEW_DEVICE.into(),
+        device: protobuf::MessageField::some(Device {
+            device_info: protobuf::MessageField::some(info),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+    let bytes = session
+        .spclient()
+        .put_connect_state_request(&request)
+        .await
+        .map_err(|e| format!("put state: {e}"))?;
+    let cluster = Cluster::parse_from_bytes(&bytes).map_err(|e| format!("cluster decode: {e}"))?;
+    let lines: Vec<String> = cluster
+        .device
+        .values()
+        .map(|d| {
+            format!(
+                "{}|{}|{:?}|{}|{}",
+                d.device_id,
+                d.name,
+                d.device_type.enum_value_or_default(),
+                d.device_software_version,
+                d.device_id == cluster.active_device_id
+            )
+        })
+        .collect();
+    Ok(lines.join("\n"))
 }
 
 /// `track_uri` is the context URI. `message` is the track URIs of the loaded pages,

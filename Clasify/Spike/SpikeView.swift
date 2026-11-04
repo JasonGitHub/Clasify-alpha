@@ -19,6 +19,8 @@ struct SpikeView: View {
                 Divider()
                 goLibrespotSection
                 Divider()
+                webPlayerSection
+                Divider()
                 HStack {
                     Button("4. Copy report") {
                         model.copyReport()
@@ -167,6 +169,33 @@ struct SpikeView: View {
                 }
                 .disabled(probe.isBusy)
                 Text(probe.status).foregroundStyle(.secondary)
+            }
+            ForEach(probe.results) { line in detail("\(line.name): \(line.value)") }
+        }
+    }
+
+    private var webPlayerSection: some View {
+        let probe = model.webPlayer
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Build 7: Web Playback SDK and Spotify Connect").font(.headline)
+            Text("Run 1 and 3a first.").font(.caption).foregroundStyle(.secondary)
+            Text("A. Web Playback SDK in a hidden web view").font(.subheadline)
+            HStack {
+                Button("Load web player") { probe.loadSDK(model: model) }
+                Button("Transfer to web player") { probe.transferToSDK() }
+                Button("Play playlist on web player") { probe.playOnSDK() }
+                Button("Try Web API play") { Task { await probe.playOnSDKWithWebAPI() } }
+            }
+            HStack {
+                Text("Heard audio from the web player?")
+                Button("Yes") { probe.heard("yes") }
+                Button("No") { probe.heard("no") }
+                Button("Measure memory") { probe.memory() }
+            }
+            Text("B. Spotify app started by a Connect command (no AppleScript play)").font(.subheadline)
+            HStack {
+                Button("Connect play: playlist") { probe.playOnSpotifyApp(model: model, liked: false) }
+                Button("Connect play: Liked Songs") { probe.playOnSpotifyApp(model: model, liked: true) }
             }
             ForEach(probe.results) { line in detail("\(line.name): \(line.value)") }
         }

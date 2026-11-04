@@ -45,7 +45,7 @@ struct TrackAttempt: Identifiable {
 @MainActor
 @Observable
 final class SpikeModel {
-    static let build = 6
+    static let build = 7
     /// Access point port filters to try. 0 means librespot's default (no filter).
     static let accessPointPorts: [UInt16] = [0, 4070, 443, 80]
     /// Three tracks from different major labels, so one label's rights cannot explain a failure.
@@ -86,6 +86,8 @@ final class SpikeModel {
     /// The Spotify app engine test (build 4).
     let spotifyApp = SpotifyAppProbe()
     let goLibrespot = GoLibrespotProbe()
+    /// Build 7: Web Playback SDK and Spotify Connect commands.
+    let webPlayer = WebPlayerProbe()
 
     @ObservationIgnored private var audio: AudioOutput?
     @ObservationIgnored private var bridge: Bridge?
@@ -243,6 +245,8 @@ final class SpikeModel {
                     likedViaLibrespot = uri
                 }
             }
+        case LSB_EVENT_CONNECT:
+            webPlayer.connectResult(path: event.trackURI ?? "", message: event.message ?? "")
         case LSB_EVENT_CONTEXT:
             if let uri = event.trackURI, let message = event.message {
                 if message.hasPrefix("ERROR") {
@@ -289,6 +293,19 @@ final class SpikeModel {
         log.append(LogLine(id: nextID, text: "+\(elapsedMs) ms \(text)"))
         nextID += 1
         if log.count > 600 { log.removeFirst(log.count - 600) }
+    }
+
+    // MARK: Build 7, Spotify Connect through the bridge
+
+    /// The OAuth token, for the web player test. In memory only.
+    var accessToken: String? { token }
+
+    func connectDevices() {
+        withBridge { [self] bridge in append("lsb_connect_devices -> \(bridge.connectDevices())") }
+    }
+
+    func connectPost(_ path: String, body: String?) {
+        withBridge { [self] bridge in append("lsb_connect_post \(path) -> \(bridge.connectPost(path, body: body))") }
     }
 
     // MARK: Step 3a, library through librespot
@@ -425,6 +442,8 @@ final class SpikeModel {
         lines += spotifyApp.reportLines
         lines += ["", "5. go-librespot:"]
         lines += goLibrespot.reportLines
+        lines += ["", "6. Web Playback SDK and Spotify Connect:"]
+        lines += webPlayer.reportLines
         lines += ["", "Event and librespot log:"]
         lines += log.map { "   \($0.text)" }
         return lines.joined(separator: "\n")
