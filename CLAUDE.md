@@ -83,3 +83,5 @@ A thread squash-merges its own PR only when all of these are true. Otherwise it 
 - The CTO thread has approved the PR.
 - No question for Jason is open, such as a new dependency, a product choice, or a step that needs his Mac.
 - Every PR it depends on has merged.
+
+The CTO thread can escalate any PR to Jason. An escalated PR waits for Jason to merge it.
