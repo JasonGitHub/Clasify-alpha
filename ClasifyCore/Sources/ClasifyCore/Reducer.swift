@@ -22,6 +22,8 @@ public enum Effect: Equatable, Sendable {
     case pause, resume, stop
     case seek(Double, generation: Int)  // a seek starts a new generation too
     case setVolume(Int)
+    /// Fetch the library; the result comes back as `.loaded(token:library:)` with this token.
+    case fetchLibrary(token: Int)
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -47,7 +49,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let now = env.now()
     var fx: [Effect] = []
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
-    func load(_ screen: Screen) { s.tok += 1; s.stack.append(Frame(screen: screen, loading: true, token: s.tok)) }
+    func load(_ screen: Screen) {
+        s.tok += 1
+        s.stack.append(Frame(screen: screen, loading: true, token: s.tok))
+        fx.append(.fetchLibrary(token: s.tok))
+    }
     func loadTrack(_ id: String, autoplay: Bool) { s.playGen += 1; fx.append(.load(trackID: id, autoplay: autoplay, generation: s.playGen)) }
     func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
     func play(_ pl: String, _ id: String) {
@@ -123,6 +129,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.tok += 1
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }  // a pending shuffle follows the retry
                 s.top.loading = true; s.top.error = false; s.top.token = s.tok
+                fx.append(.fetchLibrary(token: s.tok))
                 return
             }
             guard s.top.screen.isList, !s.top.loading else { return }
