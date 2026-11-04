@@ -165,7 +165,7 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func playbackFailedPausesAndShowsToast() {
         var s = playing()
         send(&s, .playbackFailed("Old", generation: 0))  // stale load
-        #expect(s.isPlaying && s.toast == "")
+        #expect(s.isPlaying && s.toast == "Signed in")  // unchanged
         #expect(send(&s, .playbackFailed("Install Spotify to play music", generation: 1)) == [])
         #expect(!s.isPlaying && s.toast == "Install Spotify to play music" && s.current?.track == "f0")
     }
