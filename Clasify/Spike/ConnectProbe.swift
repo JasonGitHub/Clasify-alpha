@@ -2,23 +2,40 @@ import AppKit
 import Foundation
 import Observation
 
-/// Build 8: drives the Spotify app only through Spotify Connect commands (no AppleScript)
+/// Drives the Spotify app only through Spotify Connect commands (no AppleScript)
 /// and watches its windows every 50 ms. State comes from the Connect cluster updates.
 /// Spike only.
 @MainActor
 @Observable
 final class ConnectProbe {
-    private(set) var results: [SpotifyAppProbe.ResultLine] = []
+    private(set) var results: [ResultLine] = []
     private(set) var isBusy = false
 
     @ObservationIgnored private weak var model: SpikeModel?
     @ObservationIgnored private var log: [String] = []
     @ObservationIgnored private var start = Date()
-    @ObservationIgnored private var devices: [WebPlayerProbe.ConnectDevice] = []
+    @ObservationIgnored private var devices: [ConnectDevice] = []
     @ObservationIgnored private var devicesAt = Date.distantPast
     @ObservationIgnored private var state: ClusterState?
     @ObservationIgnored private var stateAt = Date.distantPast
     @ObservationIgnored private var clusterCount = 0
+
+    static let bundleID = "com.spotify.client"
+
+    struct ResultLine: Identifiable {
+        var id: String { name }
+        let name: String
+        var value: String
+    }
+
+    /// One device from the Connect cluster.
+    struct ConnectDevice {
+        let id: String
+        let name: String
+        let type: String
+        let software: String
+        let active: Bool
+    }
 
     struct ClusterState {
         let reason: String
@@ -49,7 +66,7 @@ final class ConnectProbe {
         if let index = results.firstIndex(where: { $0.name == name }) {
             results[index].value = value
         } else {
-            results.append(SpotifyAppProbe.ResultLine(name: name, value: value))
+            results.append(ResultLine(name: name, value: value))
         }
         append("RESULT \(name): \(value)")
     }
@@ -64,12 +81,12 @@ final class ConnectProbe {
     private static func ms(since date: Date) -> Int { Int(Date().timeIntervalSince(date) * 1000) }
 
     private var spotify: NSRunningApplication? {
-        NSRunningApplication.runningApplications(withBundleIdentifier: SpotifyAppProbe.bundleID).first
+        NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first
     }
 
     /// The Spotify app's Connect device: a computer that runs the desktop app.
-    private var appDevice: WebPlayerProbe.ConnectDevice? {
-        let others = devices.filter { $0.name != "Clasify spike" && $0.name != "Clasify spike web player" }
+    private var appDevice: ConnectDevice? {
+        let others = devices.filter { $0.name != "Clasify spike" }
         return others.first { $0.type == "COMPUTER" && $0.software.lowercased().contains("osx") }
             ?? others.first { $0.type == "COMPUTER" }
     }
@@ -84,7 +101,7 @@ final class ConnectProbe {
         devices = message.split(separator: "\n").compactMap { line in
             let parts = line.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
             guard parts.count == 5 else { return nil }
-            return WebPlayerProbe.ConnectDevice(
+            return ConnectDevice(
                 id: parts[0], name: parts[1], type: parts[2], software: parts[3], active: parts[4] == "true"
             )
         }
@@ -111,7 +128,7 @@ final class ConnectProbe {
     // MARK: Helpers
 
     /// Registers this session, then waits for a device list with the Spotify app in it.
-    private func findAppDevice(timeout: Int) async -> WebPlayerProbe.ConnectDevice? {
+    private func findAppDevice(timeout: Int) async -> ConnectDevice? {
         let deadline = Date().addingTimeInterval(TimeInterval(timeout))
         while Date() < deadline {
             let asked = Date()
@@ -174,9 +191,9 @@ final class ConnectProbe {
     func coldStart(model: SpikeModel, useOpenCommand: Bool) async {
         self.model = model
         let name = useOpenCommand ? "Cold start (open -g -j)" : "Cold start (NSWorkspace hides)"
-        guard let context = model.firstPlaylistURI else { return set(name, "no playlist. Run 1 and 3a first.") }
+        guard let context = model.firstPlaylistURI else { return set(name, "no playlist. Run 1 and 2 first.") }
         guard spotify == nil else { return set(name, "Spotify is running. Quit it first.") }
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: SpotifyAppProbe.bundleID) else {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) else {
             return set(name, "Spotify is not installed")
         }
         isBusy = true
@@ -189,7 +206,7 @@ final class ConnectProbe {
             if useOpenCommand {
                 let open = Process()
                 open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                open.arguments = ["-g", "-j", "-b", SpotifyAppProbe.bundleID]
+                open.arguments = ["-g", "-j", "-b", Self.bundleID]
                 try? open.run()
             } else {
                 let configuration = NSWorkspace.OpenConfiguration()
@@ -220,7 +237,7 @@ final class ConnectProbe {
         self.model = model
         let name = "Behind Clasify"
         guard let playlist = model.firstPlaylistURI, let liked = model.likedContextURI else {
-            return set(name, "no contexts. Run 1 and 3a first.")
+            return set(name, "no contexts. Run 1 and 2 first.")
         }
         guard let app = spotify else { return set(name, "Spotify is not running") }
         isBusy = true

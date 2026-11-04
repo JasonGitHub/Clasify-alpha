@@ -43,11 +43,9 @@ struct OAuthResult: Sendable {
 
 /// Context for the bridge callbacks. The bridge keeps it for the app's lifetime.
 private final class BridgeContext: Sendable {
-    let ring: AudioRing
     let onEvent: @Sendable (BridgeEvent) -> Void
 
-    init(ring: AudioRing, onEvent: @escaping @Sendable (BridgeEvent) -> Void) {
-        self.ring = ring
+    init(onEvent: @escaping @Sendable (BridgeEvent) -> Void) {
         self.onEvent = onEvent
     }
 }
@@ -71,8 +69,8 @@ final class Bridge {
     private let handle: OpaquePointer
 
     /// `onEvent` runs on a bridge thread.
-    init?(ring: AudioRing, onEvent: @escaping @Sendable (BridgeEvent) -> Void) {
-        let context = Unmanaged.passRetained(BridgeContext(ring: ring, onEvent: onEvent)).toOpaque()
+    init?(onEvent: @escaping @Sendable (BridgeEvent) -> Void) {
+        let context = Unmanaged.passRetained(BridgeContext(onEvent: onEvent)).toOpaque()
         let handle = lsb_new(bridgeEventCallback, bridgeAudioCallback, context)
         guard let handle else {
             Unmanaged<BridgeContext>.fromOpaque(context).release()
@@ -82,14 +80,9 @@ final class Bridge {
     }
 
     func login(accessToken: String) -> Int32 { lsb_login(handle, accessToken) }
-    func load(_ trackURI: String) -> Int32 { lsb_load(handle, trackURI, true, 0) }
-    func play() -> Int32 { lsb_play(handle) }
-    func pause() -> Int32 { lsb_pause(handle) }
     func readLibrary() -> Int32 { lsb_read_library(handle) }
     func readContext(_ uri: String) -> Int32 { lsb_read_context(handle, uri) }
-    func setAccessPointPort(_ port: UInt16) -> Int32 { lsb_set_ap_port(handle, port) }
     func connectDevices() -> Int32 { lsb_connect_devices(handle) }
-    func connectPost(_ path: String, body: String?) -> Int32 { lsb_connect_post(handle, path, body) }
     func connectRequest(_ method: String, _ path: String, body: String?) -> Int32 {
         lsb_connect_request(handle, method, path, body)
     }
@@ -122,10 +115,8 @@ private func bridgeEventCallback(_ context: UnsafeMutableRawPointer?, _ event: U
     ))
 }
 
-private func bridgeAudioCallback(_ context: UnsafeMutableRawPointer?, _ samples: UnsafePointer<Float>?, _ count: Int) {
-    guard let context, let samples else { return }
-    Unmanaged<BridgeContext>.fromOpaque(context).takeUnretainedValue().ring.write(samples, count: count)
-}
+/// The spike plays no audio through librespot, so it drops any samples.
+private func bridgeAudioCallback(_ context: UnsafeMutableRawPointer?, _ samples: UnsafePointer<Float>?, _ count: Int) {}
 
 private func oauthResultCallback(_ context: UnsafeMutableRawPointer?, _ result: UnsafePointer<LsbOAuthResult>?) {
     guard let context, let result else { return }

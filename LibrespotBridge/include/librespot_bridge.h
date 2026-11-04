@@ -35,7 +35,7 @@
 // Spike: the tracks of a context. `track_uri` is the context URI, `message` holds
 // the track URIs one per line, or "ERROR <text>".
 #define LSB_EVENT_CONTEXT 11
-// Spike: the result of lsb_connect_post. `track_uri` is the path, `message` is
+// Spike: the result of lsb_connect_request or lsb_connect_devices. `track_uri` is the path, `message` is
 // "OK <body>" or "ERROR <text>" and the session device ID.
 #define LSB_EVENT_CONNECT 12
 // Spike: a Connect cluster update, after lsb_connect_devices. `message` is
@@ -86,9 +86,6 @@ int32_t lsb_play(LsbBridge *bridge);
 int32_t lsb_pause(LsbBridge *bridge);
 int32_t lsb_seek(LsbBridge *bridge, uint32_t position_ms);
 int32_t lsb_set_volume(LsbBridge *bridge, uint16_t volume);
-// Spike: only access points with this port (for example 4070, 443 or 80) are used
-// from the next lsb_login on. 0 removes the filter.
-int32_t lsb_set_ap_port(LsbBridge *bridge, uint16_t port);
 // Reads the playlists (rootlist) and Liked Songs through librespot, not the Web API.
 // Sends two LSB_EVENT_LIBRARY events. Needs a login.
 int32_t lsb_read_library(LsbBridge *bridge);
@@ -96,13 +93,12 @@ int32_t lsb_read_library(LsbBridge *bridge);
 // lsb_read_library also sends one for Liked Songs, after its two LIBRARY events.
 // The rootlist LIBRARY event sets `track_uri` to the first playlist URI.
 int32_t lsb_read_context(LsbBridge *bridge, const char *context_uri);
-// Spike: POSTs `json_body` (may be NULL) to a /connect-state/v1/ path through spclient.
-// "{self}" in the path becomes this session's device ID. Sends one LSB_EVENT_CONNECT.
-int32_t lsb_connect_post(LsbBridge *bridge, const char *path, const char *json_body);
 // Spike: registers this session as a Connect device and lists the cluster's devices.
 // Sends one LSB_EVENT_CONNECT with `track_uri` "devices".
 int32_t lsb_connect_devices(LsbBridge *bridge);
-// Spike: as lsb_connect_post, with `method` "POST" or "PUT".
+// Spike: sends `json_body` (may be NULL) with `method` "POST" or "PUT" to a
+// /connect-state/v1/ path through spclient. "{self}" in the path becomes this
+// session's device ID. Sends one LSB_EVENT_CONNECT.
 int32_t lsb_connect_request(LsbBridge *bridge, const char *method, const char *path, const char *json_body);
 
 // OAuth login with PKCE through librespot-oauth, with librespot's own client ID.

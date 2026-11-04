@@ -106,7 +106,7 @@ fn playback_before_login_returns_not_logged_in() {
         );
         let connect = c"/connect-state/v1/connect/transfer/from/a/to/a";
         assert_eq!(
-            lsb_connect_post(bridge, connect.as_ptr(), std::ptr::null()),
+            lsb_connect_request(bridge, c"POST".as_ptr(), connect.as_ptr(), std::ptr::null()),
             LSB_ERR_NOT_LOGGED_IN
         );
         assert_eq!(lsb_connect_devices(bridge), LSB_ERR_NOT_LOGGED_IN);
@@ -121,7 +121,7 @@ fn playback_before_login_returns_not_logged_in() {
         );
         let library = c"/playlist/v2/user/x/rootlist";
         assert_eq!(
-            lsb_connect_post(bridge, library.as_ptr(), std::ptr::null()),
+            lsb_connect_request(bridge, c"POST".as_ptr(), library.as_ptr(), std::ptr::null()),
             LSB_ERR_INVALID_ARGUMENT
         );
         lsb_free(bridge);

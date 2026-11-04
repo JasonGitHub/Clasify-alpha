@@ -32,48 +32,6 @@ jobs:
           # Warnings from librespot objects are OK. Warnings in our own code are not.
           grep -E '(^|: )warning: ' build.log || true
           if grep -E '/Clasify/[^ ]*\.swift:[0-9]+:[0-9]+: warning: ' build.log; then echo "Our code has warnings."; exit 1; fi
-      # Build 6 only: go-librespot as a test helper inside the spike app. Not a product dependency.
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.25', cache: false }
-      - name: Build go-librespot (darwin/arm64)
-        env: { GOLIBRESPOT_TAG: v0.10.5 }
-        run: |
-          brew install libogg libvorbis flac mpg123
-          git clone --depth 1 --branch "$GOLIBRESPOT_TAG" https://github.com/devgianlu/go-librespot golib
-          cd golib
-          # The release ships only the PlayPlay stub. The spike keeps it that way.
-          grep -q 'return false' playplay/impl/impl.go
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -trimpath \
-            -ldflags "-s -w -X github.com/devgianlu/go-librespot.version=$GOLIBRESPOT_TAG" \
-            -o ../go-librespot ./cmd/daemon
-      - name: Put go-librespot and its Homebrew libraries in the app
-        run: |
-          app=DerivedData/Build/Products/Release/Clasify.app
-          helpers="$app/Contents/Helpers"
-          mkdir -p "$helpers/lib"
-          cp go-librespot "$helpers/go-librespot"
-          # Copy each Homebrew dylib next to the helper and point the load commands at it.
-          bundle() {
-            local file="$1" prefix="$2" dep name
-            for dep in $(otool -L "$file" | awk 'NR>1 {print $1}' | grep -E '^/(opt/homebrew|usr/local)/'); do
-              name=$(basename "$dep")
-              if [ ! -f "$helpers/lib/$name" ]; then
-                cp -L "$dep" "$helpers/lib/$name"
-                chmod u+w "$helpers/lib/$name"
-                install_name_tool -id "@loader_path/$name" "$helpers/lib/$name"
-                bundle "$helpers/lib/$name" "@loader_path"
-              fi
-              install_name_tool -change "$dep" "$prefix/$name" "$file"
-            done
-          }
-          bundle "$helpers/go-librespot" "@loader_path/lib"
-          otool -L "$helpers/go-librespot" "$helpers"/lib/*.dylib
-          if otool -L "$helpers/go-librespot" "$helpers"/lib/*.dylib | grep -E '^\s+/(opt/homebrew|usr/local)/'; then
-            echo "A Homebrew path is left."; exit 1
-          fi
-          for lib in "$helpers"/lib/*.dylib; do codesign --force --sign - "$lib"; done
-          codesign --force --sign - "$helpers/go-librespot"
-          file "$helpers/go-librespot"
       - name: Ad-hoc sign and make the DMG
         run: |
           app=DerivedData/Build/Products/Release/Clasify.app

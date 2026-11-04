@@ -272,8 +272,6 @@ pub struct LsbBridge {
     connected: Arc<Mutex<Option<Connected>>>,
     /// Counts `lsb_login` calls. Only the newest login may publish its result.
     latest_login: Arc<AtomicU64>,
-    /// `SessionConfig::ap_port` for the next login. 0 means librespot's default.
-    ap_port: std::sync::atomic::AtomicU16,
 }
 
 #[no_mangle]
@@ -303,7 +301,6 @@ pub extern "C" fn lsb_new(
         callbacks,
         connected,
         latest_login: Arc::new(AtomicU64::new(0)),
-        ap_port: std::sync::atomic::AtomicU16::new(0),
     }))
 }
 
@@ -345,12 +342,7 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
     let login_id = latest_login.fetch_add(1, Ordering::SeqCst) + 1;
     let is_latest = move || latest_login.load(Ordering::SeqCst) == login_id;
     let _guard = bridge.runtime.enter();
-    let ap_port = bridge.ap_port.load(Ordering::SeqCst);
-    let config = SessionConfig {
-        ap_port: (ap_port != 0).then_some(ap_port),
-        ..SessionConfig::default()
-    };
-    let session = Session::new(config, None);
+    let session = Session::new(SessionConfig::default(), None);
     bridge.runtime.spawn(async move {
         if let Err(error) = session.connect(credentials, false).await {
             if is_latest() {
@@ -473,20 +465,6 @@ pub unsafe extern "C" fn lsb_set_volume(bridge: *mut LsbBridge, volume: u16) -> 
     })
 }
 
-/// Sets the access point port filter for the next `lsb_login`. 0 means no filter.
-/// librespot then only uses access points from apresolve with that port.
-///
-/// # Safety
-/// `bridge` must be valid.
-#[no_mangle]
-pub unsafe extern "C" fn lsb_set_ap_port(bridge: *mut LsbBridge, port: u16) -> i32 {
-    let Some(bridge) = bridge.as_ref() else {
-        return LSB_ERR_INVALID_ARGUMENT;
-    };
-    bridge.ap_port.store(port, Ordering::SeqCst);
-    LSB_OK
-}
-
 /// Reads the library through librespot's own session (spclient), not the Web API.
 /// Results come as LSB_EVENT_LIBRARY events: one for the rootlist, one for Liked Songs.
 ///
@@ -546,28 +524,15 @@ pub unsafe extern "C" fn lsb_read_context(
     LSB_OK
 }
 
-/// Spike: sends a POST to a Spotify Connect endpoint through spclient. Only paths under
-/// `/connect-state/v1/` are allowed, so it cannot reach any library endpoint.
-/// Sends one LSB_EVENT_CONNECT: `track_uri` is the path, `message` is
-/// "OK <body>" or "ERROR <text>", plus this session's device ID.
+/// Spike: sends a POST or PUT (PUT is for the Connect volume endpoint) to a Spotify
+/// Connect endpoint through spclient. Only paths under `/connect-state/v1/` are
+/// allowed, so it cannot reach any library endpoint. "{self}" in the path becomes this
+/// session's device ID. Sends one LSB_EVENT_CONNECT: `track_uri` is the path,
+/// `message` is "OK <body>" or "ERROR <text>", plus this session's device ID.
 ///
 /// # Safety
-/// `bridge` must come from `lsb_new`. `path` and `json_body` must be valid C strings
-/// or null (`json_body` only).
-#[no_mangle]
-pub unsafe extern "C" fn lsb_connect_post(
-    bridge: *mut LsbBridge,
-    path: *const c_char,
-    json_body: *const c_char,
-) -> i32 {
-    lsb_connect_request(bridge, c"POST".as_ptr(), path, json_body)
-}
-
-/// Spike: like `lsb_connect_post`, with `method` "POST" or "PUT" (PUT is for the
-/// Connect volume endpoint).
-///
-/// # Safety
-/// As for `lsb_connect_post`. `method` must be a valid C string.
+/// `bridge` must come from `lsb_new`. `method` and `path` must be valid C strings.
+/// `json_body` must be a valid C string or null.
 #[no_mangle]
 pub unsafe extern "C" fn lsb_connect_request(
     bridge: *mut LsbBridge,
