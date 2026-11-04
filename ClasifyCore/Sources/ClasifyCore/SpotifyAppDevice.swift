@@ -15,20 +15,22 @@ public enum SpotifyAppDevice {
         case ambiguous
     }
 
-    /// A computer device with this Mac's name, else the only computer device when
-    /// `allowOnlyComputer` is true. Names are compared without case, and with ’ and ' as the
-    /// same letter. Right after Clasify launched Spotify, this Mac's device is not in the list
-    /// yet, and the only computer can be another one, such as a work PC. So the caller allows
-    /// the fallback only when Spotify already ran here, or after some seconds with no name match.
-    public static func pick(_ devices: [Candidate], computerName: String?, allowOnlyComputer: Bool) -> Pick {
+    /// A computer device with this Mac's name, else the only computer device that is not in
+    /// `excluding`. Names are compared without case, and with ’ and ' as the same letter.
+    ///
+    /// When Clasify launches Spotify here, it passes the devices that were there before the
+    /// launch. Another machine, such as a work PC, is then never taken for this Mac: only a
+    /// computer that came after the launch can be this Mac's Spotify app.
+    public static func pick(_ devices: [Candidate], computerName: String?, excluding: Set<String> = []) -> Pick {
         let computers = devices.filter { $0.type == "COMPUTER" }
         if let name = computerName.map(normalized), let match = computers.first(where: { normalized($0.name) == name }) {
             return .found(id: match.id)
         }
-        switch computers.count {
+        let new = computers.filter { !excluding.contains($0.id) }
+        switch new.count {
         case 0: return .none
-        case 1: return allowOnlyComputer ? .found(id: computers[0].id) : .none
-        default: return allowOnlyComputer ? .ambiguous : .none
+        case 1: return .found(id: new[0].id)
+        default: return .ambiguous
         }
     }
 
