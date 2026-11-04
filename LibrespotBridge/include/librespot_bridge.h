@@ -89,9 +89,12 @@ typedef struct LsbToken {
 typedef void (*LsbTokenCallback)(void *context, const LsbToken *result);
 // Opens the Spotify login page in the browser and waits for the redirect to
 // http://127.0.0.1:8898/login. The result comes once, on a bridge thread.
-// Only one login can wait at a time. Stop a waiting login with lsb_oauth_cancel.
+// A login that still runs is stopped first, as with lsb_oauth_cancel.
 int32_t lsb_oauth_login(LsbTokenCallback on_result, void *context);
-// The waiting lsb_oauth_login then sends LSB_ERR_OAUTH. Does nothing if none waits.
+// Stops the running lsb_oauth_login. Its callback sends LSB_ERR_OAUTH before this
+// returns, and port 8898 is free again. Does nothing if no login runs.
+// lsb_oauth_login and lsb_oauth_cancel wait for the old login's callback. So that
+// callback must not wait for the thread that calls them (no sync hop to it).
 int32_t lsb_oauth_cancel(void);
 // Gets a new access token. The result comes once, on a bridge thread. Its
 // refresh_token is NULL when Spotify keeps the old one.

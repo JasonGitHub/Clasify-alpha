@@ -4,7 +4,9 @@
 
 use std::ffi::{c_char, c_void, CString};
 use std::io::Write;
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
+use std::sync::Mutex;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use librespot_core::SessionConfig;
@@ -118,15 +120,41 @@ fn deliver(target: Target, result: TokenResult) {
     (target.callback)(target.context, &raw);
 }
 
-fn run(target: Target, work: impl FnOnce() -> Result<OAuthToken, String> + Send + 'static) {
+fn run(
+    target: Target,
+    work: impl FnOnce() -> Result<OAuthToken, String> + Send + 'static,
+) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let result = work();
         deliver(target, TokenResult::new(result, Instant::now()));
-    });
+    })
+}
+
+/// The thread of the newest `lsb_oauth_login`. The lock also keeps a login from
+/// starting while an older one is being stopped.
+static LOGIN: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+
+/// Stops a login thread and waits until it has sent its result, so that port 8898
+/// is free again. librespot-oauth cannot be stopped directly, so this sends its
+/// listener a request without a code. It sends it again until the thread ends,
+/// because the thread may not listen yet, or may still swap tokens with Spotify.
+pub(crate) fn stop_login(handle: JoinHandle<()>, address: SocketAddr) {
+    while !handle.is_finished() {
+        if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_secs(1)) {
+            let _ = stream.write_all(b"GET /login?error=cancelled HTTP/1.1\r\n\r\n");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let _ = handle.join();
+}
+
+fn listen_address() -> SocketAddr {
+    OAUTH_LISTEN_ADDRESS.parse().expect("valid address")
 }
 
 /// Opens the Spotify login page in the browser and waits on the loopback redirect,
-/// on a new thread. The result comes once through `on_result`.
+/// on a new thread. The result comes once through `on_result`. A login that still
+/// runs is stopped first, as with `lsb_oauth_cancel`.
 ///
 /// # Safety
 /// `context` and `on_result` must be safe to call from any thread.
@@ -138,20 +166,23 @@ pub extern "C" fn lsb_oauth_login(
     let Some(callback) = on_result else {
         return LSB_ERR_INVALID_ARGUMENT;
     };
-    run(Target { callback, context }, || {
+    let mut login = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(older) = login.take() {
+        stop_login(older, listen_address());
+    }
+    *login = Some(run(Target { callback, context }, || {
         client()?.get_access_token().map_err(|e| e.to_string())
-    });
+    }));
     LSB_OK
 }
 
-/// Stops a login that waits for the browser. Its callback then gets LSB_ERR_OAUTH.
-/// librespot-oauth cannot be stopped directly, so this sends the waiting listener a
-/// request without a code. If no login waits, it does nothing.
+/// Stops a login that waits for the browser. Its callback then gets LSB_ERR_OAUTH,
+/// before this returns. If no login runs, it does nothing.
 #[no_mangle]
 pub extern "C" fn lsb_oauth_cancel() -> i32 {
-    let address = OAUTH_LISTEN_ADDRESS.parse().expect("valid address");
-    if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_secs(1)) {
-        let _ = stream.write_all(b"GET /login?error=cancelled HTTP/1.1\r\n\r\n");
+    let mut login = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(handle) = login.take() {
+        stop_login(handle, listen_address());
     }
     LSB_OK
 }

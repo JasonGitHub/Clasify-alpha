@@ -726,4 +726,29 @@ mod library_tests {
         assert_eq!(lsb_oauth_login(None, ctx), LSB_ERR_INVALID_ARGUMENT);
         assert!(recorder.events.lock().unwrap().is_empty());
     }
+
+    #[test]
+    fn stop_login_waits_for_a_listener_that_binds_late() {
+        // A free port: bind, read it, and let it go.
+        let address = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(100));
+            let listener = std::net::TcpListener::bind(address).unwrap();
+            let (stream, _) = listener.accept().unwrap();
+            let mut line = String::new();
+            std::io::BufRead::read_line(&mut std::io::BufReader::new(stream), &mut line).unwrap();
+            assert!(line.starts_with("GET /login?error=cancelled "), "{line}");
+        });
+        crate::oauth::stop_login(handle, address);
+        // The port is free again.
+        std::net::TcpListener::bind(address).unwrap();
+    }
+
+    #[test]
+    fn cancel_without_a_login_does_nothing() {
+        assert_eq!(lsb_oauth_cancel(), LSB_OK);
+    }
 }
