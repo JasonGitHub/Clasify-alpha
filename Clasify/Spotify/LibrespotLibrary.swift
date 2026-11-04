@@ -72,6 +72,7 @@ final class LibrespotLibrary: Library {
         session += 1
         username = nil
         cache = nil
+        client.logout()  // a bridge login that already started must not leave a session
         await LibrespotClient.oauthCancel()
     }
 

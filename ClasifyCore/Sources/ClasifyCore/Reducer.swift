@@ -234,7 +234,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .authDone(let token, let ok):
             guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
-            if s.offline || !ok { s.stack.removeLast(); return toast("Can’t reach Spotify") }
+            // A login that worked counts even if the app went offline since: its token is saved.
+            if !ok { s.stack.removeLast(); return toast("Can’t reach Spotify") }
             s.stack = [Frame(screen: .main)]; s.signedIn = true
             toast("Signed in")
 

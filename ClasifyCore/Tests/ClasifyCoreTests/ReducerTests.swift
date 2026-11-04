@@ -181,13 +181,13 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func authDoneSignsInOrFailsOffline() {
         var s = AppState()
         #expect(send(&s, .select) == [.logIn(token: 1)])
-        send(&s, .offline(true), .authDone(token: 1, ok: true))
+        send(&s, .offline(true), .authDone(token: 1, ok: false))  // offline, the login fails
         #expect(s.top.screen == .login && !s.signedIn && s.toast == "Can’t reach Spotify")
         send(&s, .offline(false), .select, .authDone(token: 1, ok: true))  // late, from the first attempt
         #expect(s.top.screen == .auth && !s.signedIn)
         send(&s, .reset, .select, .authDone(token: 2, ok: true))  // from before the reset
         #expect(s.top.screen == .auth && !s.signedIn)
-        send(&s, .authDone(token: 3, ok: true))
+        send(&s, .offline(true), .authDone(token: 3, ok: true))  // a login that worked counts offline too
         #expect(s.stack == [Frame(screen: .main)] && s.signedIn)
     }
 
