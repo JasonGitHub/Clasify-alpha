@@ -371,10 +371,11 @@ pub(crate) enum Job {
 pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender<Job> {
     let (jobs, mut queue) = unbounded_channel::<Job>();
     runtime.spawn(async move {
-        // The dealer of the newest session that called, and whether that session is
-        // registered. A new login makes a new session, which registers at its first call.
+        // The dealer of the newest session that called, and the connection ID that it
+        // last registered with. A new login makes a new session, and a dealer reconnect
+        // makes a new connection ID. Either one registers again at the next command.
         let mut dealer: Option<Dealer> = None;
-        let mut registered = false;
+        let mut registered: Option<String> = None;
         while let Some(job) = queue.recv().await {
             match job {
                 Job::Devices {
@@ -383,7 +384,7 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     context,
                 } => {
                     let result = register(&session, &mut dealer).await;
-                    registered = result.is_ok();
+                    registered = result.is_ok().then(|| session.connection_id());
                     let result = result.map(|cluster| devices(&cluster, session.device_id()));
                     deliver_devices(callback, context.0, result);
                 }
@@ -394,9 +395,12 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     callback,
                     context,
                 } => {
-                    let same = dealer.as_ref().map(|d| d.device_id.as_str());
+                    let current = dealer.as_ref().is_some_and(|d| {
+                        d.device_id == session.device_id()
+                            && registered.as_deref() == Some(d.connection_id.borrow().as_str())
+                    });
                     let mut result = Ok(());
-                    if !registered || same != Some(session.device_id()) {
+                    if !current {
                         result = register(&session, &mut dealer).await.map(|_| ());
                     }
                     if result.is_ok() {
@@ -412,7 +416,7 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                             result = send(&session, &command, &to).await;
                         }
                     }
-                    registered = result.is_ok();
+                    registered = result.is_ok().then(|| session.connection_id());
                     deliver_status(callback, context.0, result);
                 }
             }
