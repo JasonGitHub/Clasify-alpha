@@ -269,6 +269,8 @@ pub struct LsbBridge {
     connected: Arc<Mutex<Option<Connected>>>,
     /// Counts `lsb_login` calls. Only the newest login may publish its result.
     latest_login: Arc<AtomicU64>,
+    /// `SessionConfig::ap_port` for the next login. 0 means librespot's default.
+    ap_port: std::sync::atomic::AtomicU16,
 }
 
 #[no_mangle]
@@ -298,6 +300,7 @@ pub extern "C" fn lsb_new(
         callbacks,
         connected,
         latest_login: Arc::new(AtomicU64::new(0)),
+        ap_port: std::sync::atomic::AtomicU16::new(0),
     }))
 }
 
@@ -339,7 +342,12 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
     let login_id = latest_login.fetch_add(1, Ordering::SeqCst) + 1;
     let is_latest = move || latest_login.load(Ordering::SeqCst) == login_id;
     let _guard = bridge.runtime.enter();
-    let session = Session::new(SessionConfig::default(), None);
+    let ap_port = bridge.ap_port.load(Ordering::SeqCst);
+    let config = SessionConfig {
+        ap_port: (ap_port != 0).then_some(ap_port),
+        ..SessionConfig::default()
+    };
+    let session = Session::new(config, None);
     bridge.runtime.spawn(async move {
         if let Err(error) = session.connect(credentials, false).await {
             if is_latest() {
@@ -462,6 +470,20 @@ pub unsafe extern "C" fn lsb_set_volume(bridge: *mut LsbBridge, volume: u16) -> 
     })
 }
 
+/// Sets the access point port filter for the next `lsb_login`. 0 means no filter.
+/// librespot then only uses access points from apresolve with that port.
+///
+/// # Safety
+/// `bridge` must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_set_ap_port(bridge: *mut LsbBridge, port: u16) -> i32 {
+    let Some(bridge) = bridge.as_ref() else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    bridge.ap_port.store(port, Ordering::SeqCst);
+    LSB_OK
+}
+
 /// Reads the library through librespot's own session (spclient), not the Web API.
 /// Results come as LSB_EVENT_LIBRARY events: one for the rootlist, one for Liked Songs.
 ///
@@ -492,34 +514,47 @@ pub unsafe extern "C" fn lsb_read_library(bridge: *mut LsbBridge) -> i32 {
 }
 
 async fn read_rootlist(session: &Session) -> String {
-    use librespot_metadata::playlist::list::SelectedListContent;
     use protobuf::Message;
     type ListMessage = <librespot_metadata::Playlist as librespot_metadata::Metadata>::Message;
     let bytes = match session.spclient().get_rootlist(0, Some(1000)).await {
         Ok(bytes) => bytes,
         Err(error) => return format!("FAIL rootlist: {error}"),
     };
-    let list = ListMessage::parse_from_bytes(&bytes)
-        .map_err(|e| e.to_string())
-        .and_then(|m| SelectedListContent::try_from(&m).map_err(|e| e.to_string()));
-    match list {
-        Ok(list) => {
-            let items = &list.contents.items;
-            let playlists = items
-                .iter()
-                .filter(|item| matches!(item.id, SpotifyUri::Playlist { .. }))
-                .count();
-            format!(
-                "PASS rootlist: {} items, {playlists} playlists, length {}",
-                items.len(),
-                list.length
+    // Decode the protobuf directly. librespot-metadata's conversion fails on items whose
+    // URI is not a Spotify ID, such as folder markers.
+    let list = match ListMessage::parse_from_bytes(&bytes) {
+        Ok(list) => list,
+        Err(error) => {
+            return format!(
+                "FAIL rootlist: {} bytes, cannot decode: {error}",
+                bytes.len()
             )
         }
-        Err(error) => format!(
-            "FAIL rootlist: {} bytes, cannot decode: {error}",
-            bytes.len()
-        ),
-    }
+    };
+    let uris: Vec<&str> = list.contents.items.iter().map(|i| i.uri()).collect();
+    let count = |prefix: &str| uris.iter().filter(|u| u.starts_with(prefix)).count();
+    let (playlists, folders) = (count("spotify:playlist:"), count("spotify:start-group:"));
+    let ends = count("spotify:end-group:");
+    let other: Vec<&str> = uris
+        .iter()
+        .filter(|u| {
+            ![
+                "spotify:playlist:",
+                "spotify:start-group:",
+                "spotify:end-group:",
+            ]
+            .iter()
+            .any(|p| u.starts_with(p))
+        })
+        .map(|u| u.split(':').take(2).last().unwrap_or(""))
+        .collect();
+    format!(
+        "PASS rootlist: {} items: {playlists} playlists, {folders} folder starts, {ends} folder ends, {} other {:?}, length {}",
+        uris.len(),
+        other.len(),
+        other.iter().take(5).collect::<Vec<_>>(),
+        list.length()
+    )
 }
 
 async fn read_liked_songs(session: &Session) -> (String, Option<String>) {

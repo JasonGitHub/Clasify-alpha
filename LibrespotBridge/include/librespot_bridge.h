@@ -76,6 +76,9 @@ int32_t lsb_play(LsbBridge *bridge);
 int32_t lsb_pause(LsbBridge *bridge);
 int32_t lsb_seek(LsbBridge *bridge, uint32_t position_ms);
 int32_t lsb_set_volume(LsbBridge *bridge, uint16_t volume);
+// Spike: only access points with this port (for example 4070, 443 or 80) are used
+// from the next lsb_login on. 0 removes the filter.
+int32_t lsb_set_ap_port(LsbBridge *bridge, uint16_t port);
 // Reads the playlists (rootlist) and Liked Songs through librespot, not the Web API.
 // Sends two LSB_EVENT_LIBRARY events. Needs a login.
 int32_t lsb_read_library(LsbBridge *bridge);

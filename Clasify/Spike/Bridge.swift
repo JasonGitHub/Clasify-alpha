@@ -83,6 +83,7 @@ final class Bridge {
     func play() -> Int32 { lsb_play(handle) }
     func pause() -> Int32 { lsb_pause(handle) }
     func readLibrary() -> Int32 { lsb_read_library(handle) }
+    func setAccessPointPort(_ port: UInt16) -> Int32 { lsb_set_ap_port(handle, port) }
 
     /// Starts OAuth in the browser. `onResult` runs once, on a bridge thread.
     nonisolated static func oauthLogin(onResult: @escaping @Sendable (OAuthResult) -> Void) -> Int32 {

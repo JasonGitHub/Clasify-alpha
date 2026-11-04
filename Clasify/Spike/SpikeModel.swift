@@ -45,7 +45,9 @@ struct TrackAttempt: Identifiable {
 @MainActor
 @Observable
 final class SpikeModel {
-    static let build = 2
+    static let build = 3
+    /// Access point port filters to try. 0 means librespot's default (no filter).
+    static let accessPointPorts: [UInt16] = [0, 4070, 443, 80]
     /// Three tracks from different major labels, so one label's rights cannot explain a failure.
     static let fixedTracks = [
         TestTrack(label: "Rick Astley, Never Gonna Give You Up (Sony)", uri: "spotify:track:4uLU6hMCjMI75M1A2tKUQC"),
@@ -65,6 +67,12 @@ final class SpikeModel {
     private(set) var log: [LogLine] = []
     var selectedTrack = fixedTracks[0]
     var typedURI = ""
+    /// Port filter for the next bridge login. Changing it forces a new login.
+    var accessPointPort: UInt16 = 0 {
+        didSet { if accessPointPort != oldValue { isBridgeLoggedIn = false } }
+    }
+    /// The access point the current session connected to, read from the librespot log.
+    private(set) var accessPoint = "unknown"
     var heardAudio: Bool?
 
     private(set) var library: [LibraryResult] = []
@@ -153,6 +161,8 @@ final class SpikeModel {
         afterLogin.append(action)
         if afterLogin.count == 1 {
             bridgeStatus = "Logging in…"
+            accessPoint = "unknown"
+            append("lsb_set_ap_port \(accessPointPort) -> \(bridge.setAccessPointPort(accessPointPort))")
             append("lsb_login -> \(bridge.login(accessToken: token))")
         }
     }
@@ -162,7 +172,8 @@ final class SpikeModel {
     func playTestTrack() {
         let typed = typedURI.trimmingCharacters(in: .whitespaces)
         let track = typed.isEmpty ? selectedTrack : TestTrack(label: "Typed URI", uri: typed)
-        attempts.append(TrackAttempt(id: nextID, label: track.label, uri: track.uri))
+        let port = accessPointPort == 0 ? "default" : String(accessPointPort)
+        attempts.append(TrackAttempt(id: nextID, label: "\(track.label) [AP port \(port)]", uri: track.uri))
         nextID += 1
         withBridge { [self] bridge in
             audio?.ring.clear()
@@ -205,12 +216,16 @@ final class SpikeModel {
             }
         case LSB_EVENT_PLAYING:
             isPlaying = true
-            record("PLAYING", for: event.trackURI)
+            record("PLAYING on \(accessPoint)", for: event.trackURI)
         case LSB_EVENT_PAUSED, LSB_EVENT_TRACK_ENDED:
             isPlaying = false
         case LSB_EVENT_UNAVAILABLE:
             isPlaying = false
-            record("UNAVAILABLE", for: event.trackURI)
+            record("UNAVAILABLE on \(accessPoint)", for: event.trackURI)
+        case LSB_EVENT_LOG:
+            if let message = event.message, let range = message.range(of: "Connecting to AP ") {
+                accessPoint = String(message[range.upperBound...]).replacingOccurrences(of: "\"", with: "")
+            }
         case LSB_EVENT_LIBRARY:
             librespotLibrary.append(event.message ?? "")
             if let uri = event.trackURI { likedViaLibrespot = uri }
@@ -330,7 +345,7 @@ final class SpikeModel {
 
     var playbackStatus: String {
         if attempts.isEmpty { return "Not run" }
-        let played = attempts.filter { $0.result == "PLAYING" }.count
+        let played = attempts.filter { $0.result.hasPrefix("PLAYING") }.count
         return played > 0 ? "PASS (\(played) of \(attempts.count) played)" : "FAIL (0 of \(attempts.count) played)"
     }
 

@@ -57,6 +57,14 @@ struct SpikeView: View {
             .frame(maxWidth: 480)
             TextField("Or type a track URI, like spotify:track:…", text: $model.typedURI)
                 .frame(maxWidth: 480)
+            Picker("Access point port", selection: $model.accessPointPort) {
+                ForEach(SpikeModel.accessPointPorts, id: \.self) { port in
+                    Text(port == 0 ? "Default" : String(port)).tag(port)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 420)
+            detail("Access point: \(model.accessPoint). A new port logs in again on the next Play.")
             HStack {
                 Button("2. Play test track") { model.playTestTrack() }
                     .disabled(!model.hasToken)
