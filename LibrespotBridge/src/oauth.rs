@@ -200,7 +200,8 @@ fn start_login(target: Target) -> Login {
     let state = LoginState::new();
     let thread_state = state.clone();
     let handle = run(target, move || {
-        let result = client()?.get_access_token().map_err(|e| e.to_string());
+        // `finish` must run on every path, so that the login stops counting as listening.
+        let result = client().and_then(|c| c.get_access_token().map_err(|e| e.to_string()));
         thread_state.finish(result)
     });
     Login { handle, state }

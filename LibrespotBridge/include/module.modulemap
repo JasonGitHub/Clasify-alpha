@@ -1,0 +1,4 @@
+module LibrespotBridge {
+    header "librespot_bridge.h"
+    export *
+}
