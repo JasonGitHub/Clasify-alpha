@@ -20,7 +20,11 @@ public enum Action: Equatable, Sendable {
     case reset
     /// Reported by the playback engine.
     /// Each carries the `generation` of the `.load` it is about, so a late callback from an earlier load is ignored.
+    /// `.trackEnded` means the engine stopped at the end of the context.
     case position(Double, generation: Int), trackEnded(generation: Int)
+    /// The engine moved on to another track in the same context (its own next, prev or auto-advance).
+    /// `playing` is the engine's play state after the change.
+    case trackChanged(String, playing: Bool, generation: Int)
     /// The engine can't play the load with this `generation`. The message is shown as a toast.
     case playbackFailed(String, generation: Int)
 }
@@ -30,6 +34,10 @@ public enum Effect: Equatable, Sendable {
     /// `context` is the playlist ID the track plays from. The engine uses it as the Spotify play context.
     case load(trackID: String, context: String?, autoplay: Bool, generation: Int)
     case pause, resume, stop
+    /// The engine owns the play order of a context: it picks the next and previous track.
+    case next(generation: Int), prev(generation: Int)  // a skip starts a new generation too
+    /// Sent when the setting changes and before each load, so the engine's order follows Clasify's settings.
+    case setShuffle(Bool), setRepeat(RepeatMode)
     case seek(Double, generation: Int)  // a seek starts a new generation too
     case setVolume(Int)
     /// Fetch the library; the result comes back as `.loaded(token:library:)` with this token.
@@ -76,10 +84,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         fx.append(.load(trackID: id, context: s.current?.playlist, autoplay: autoplay, generation: s.playGen))
     }
     func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
+    func skip(_ forward: Bool) { s.playGen += 1; fx.append(forward ? .next(generation: s.playGen) : .prev(generation: s.playGen)) }  // and from before the skip
     func play(_ pl: String, _ id: String) {
         s.current = TrackRef(playlist: pl, track: id)
         s.t = 0; s.isPlaying = true; s.nowMode = .volume
         s.stack.append(Frame(screen: .now))
+        fx.append(.setShuffle(s.shuffle)); fx.append(.setRepeat(s.repeatMode))
         loadTrack(id, autoplay: true)
     }
     func stop() {
@@ -91,28 +101,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.stack = [Frame(screen: .login)]; s.signedIn = false; s.library = []  // library belongs to that account
         toast(msg)
     }
-    func advance(_ d: Int) {
-        guard let c = s.current else { return }
-        let list = s.tracks(in: c.playlist)
-        guard let at = list.firstIndex(where: { $0.id == c.track }) else { return stop() }  // gone after a reload
-        s.t = 0
-        var i = at + d
-        if s.shuffle && list.count > 1 {
-            i = env.random(list.count - 1)  // any track but the current one
-            if i >= at { i += 1 }
-        } else if i >= list.count {
-            guard s.repeatMode == .all else { s.isPlaying = false; fx.append(.pause); seek(0); return }
-            i = 0
-        } else if i < 0 {
-            i = s.repeatMode == .all ? list.count - 1 : 0
-        }
-        s.current?.track = list[i].id
-        loadTrack(list[i].id, autoplay: s.isPlaying)
-    }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)
         guard !liked.isEmpty else { return }
-        play(Playlist.likedSongsID, liked[env.random(liked.count)].id); s.shuffle = true
+        s.shuffle = true  // before play, so the engine gets shuffle on with the load
+        play(Playlist.likedSongsID, liked[env.random(liked.count)].id)
     }
     let offlineStart = "Offline. Can’t start playback"
 
@@ -122,7 +115,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .now {
                 guard let c = s.current else { return }
                 if s.nowMode == .scrub {
-                    s.t = clamp(s.t + Double(d * 5), 0, max((s.track(c)?.duration ?? 0) - 1, 0))
+                    let end = s.track(c).map { max($0.duration - 1, 0) } ?? .infinity  // unknown track: the engine clamps
+                    s.t = clamp(s.t + Double(d * 5), 0, end)
                     s.overlayUntil = now + 2.5
                     seek(s.t)
                 } else {
@@ -175,8 +169,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
                 if case .tracks(let pl) = s.top.screen { play(pl, id) }
-            case .shuffle: s.shuffle.toggle()
-            case .repeatMode: s.repeatMode = s.repeatMode.next
+            case .shuffle: s.shuffle.toggle(); fx.append(.setShuffle(s.shuffle))
+            case .repeatMode: s.repeatMode = s.repeatMode.next; fx.append(.setRepeat(s.repeatMode))
             case .skin:
                 s.skin = s.skin.next
                 toast(s.skin == .pocket ? "Pocket skin" : "Window switches to \(s.skin.rawValue) skin")
@@ -203,12 +197,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .next:
             guard s.current != nil else { return }
-            if s.offline { return toast(offlineStart) }  // a load offline would leave UI and player on different tracks
-            advance(1)
+            if s.offline { return toast(offlineStart) }  // a skip offline would leave UI and player on different tracks
+            skip(true)  // `current` follows when the engine reports `.trackChanged`
 
         case .prev:
             guard s.current != nil else { return }
-            if s.t > 3 { s.t = 0; seek(0) } else if s.offline { toast(offlineStart) } else { advance(-1) }
+            if s.t > 3 { s.t = 0; seek(0) } else if s.offline { toast(offlineStart) } else { skip(false) }
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
@@ -217,9 +211,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .position(let t, let gen):
             if s.current != nil && gen == s.playGen { s.t = t }
 
-        case .trackEnded(let gen):
-            guard s.isPlaying, let c = s.current, gen == s.playGen else { return }
-            if s.repeatMode == .one { s.t = 0; loadTrack(c.track, autoplay: true) } else { advance(1) }
+        case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end
+            guard s.isPlaying, s.current != nil, gen == s.playGen else { return }
+            s.isPlaying = false; s.t = 0
+
+        case .trackChanged(let id, let playing, let gen):
+            // Same playlist. A track that is not in our copy of it still shows as current, by ID.
+            guard s.current != nil, gen == s.playGen else { return }
+            s.isPlaying = playing
+            if s.current?.track != id { s.current?.track = id; s.t = 0 }
 
         case .playbackFailed(let msg, let gen):
             guard s.current != nil, gen == s.playGen else { return }

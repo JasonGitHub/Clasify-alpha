@@ -61,7 +61,8 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func selectTrackLoadsAndPlays() {
         var s = mainMenu()
         send(&s, .select, .loaded(token: 1, library: library), .select, .loaded(token: 2, library: library), .wheel(3))
-        #expect(send(&s, .select) == [.load(trackID: "f3", context: "focus", autoplay: true, generation: 1)])
+        let load: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(trackID: "f3", context: "focus", autoplay: true, generation: 1)]
+        #expect(send(&s, .select) == load)
         #expect(s.top.screen == .now && s.isPlaying && s.current == TrackRef(playlist: "focus", track: "f3"))
     }
 
@@ -70,7 +71,8 @@ func playing(_ i: Int = 0) -> AppState {
         s.library = []  // fresh sign-in: nothing fetched yet
         send(&s, .wheel(2), .select)
         #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
-        #expect(send(&s, .loaded(token: 1, library: library)) == [.load(trackID: "l0", context: "liked", autoplay: true, generation: 1)])
+        let load: [Effect] = [.setShuffle(true), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
+        #expect(send(&s, .loaded(token: 1, library: library)) == load)
         #expect(s.top.screen == .now && s.shuffle && s.shuffleToken == nil)
 
         s = mainMenu(); s.library = []
@@ -111,22 +113,27 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .play) == [] && s.toast == "Offline. Can’t resume")
     }
 
-    @Test func nextAdvancesAndStopsAtEndUnlessRepeatAll() {
+    @Test func nextAndPrevSkipInTheEngine() {
         var s = playing(6)
-        #expect(send(&s, .next) == [.load(trackID: "f7", context: "focus", autoplay: true, generation: 2)])
-        #expect(send(&s, .next) == [.pause, .seek(0, generation: 3)])
-        #expect(s.current?.track == "f7" && !s.isPlaying)
-        s = playing(7); s.repeatMode = .all
-        send(&s, .next)
-        #expect(s.current?.track == "f0")
-        send(&s, .prev)  // wraps back under Repeat All
-        #expect(s.current?.track == "f7")
-        s = playing(3); s.shuffle = true
-        send(&s, .next)
-        #expect(s.current?.track == "f0")  // random 0, skips current
+        #expect(send(&s, .next) == [.next(generation: 2)] && s.current?.track == "f6")  // moves on `.trackChanged`
+        send(&s, .position(130, generation: 1))  // from before the skip
+        send(&s, .trackChanged("f7", playing: true, generation: 2))
+        #expect(s.current?.track == "f7" && s.t == 0)
+        #expect(send(&s, .prev) == [.prev(generation: 3)])
+        s.repeatMode = .all; s.shuffle = true
+        #expect(send(&s, .next) == [.next(generation: 4)])  // the engine applies shuffle and repeat
         s = playing(3)
         send(&s, .offline(true))
         #expect(send(&s, .next, .prev) == [] && s.current?.track == "f3" && s.toast == "Offline. Can’t start playback")
+    }
+
+    @Test func shuffleAndRepeatSettingsGoToEngine() {
+        var s = mainMenu()
+        send(&s, .wheel(3), .select)  // Settings
+        #expect(send(&s, .select) == [.setShuffle(true)])
+        #expect(send(&s, .wheel(1), .select) == [.setRepeat(.all)])
+        #expect(send(&s, .select) == [.setRepeat(.one)])
+        #expect(send(&s, .select) == [.setRepeat(.off)])
     }
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {
@@ -134,8 +141,7 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .position(5, generation: 1))
         #expect(send(&s, .prev) == [.seek(0, generation: 2)] && s.current?.track == "f2")
         #expect(send(&s, .trackEnded(generation: 1)) == [])  // queued before the restart
-        send(&s, .prev)
-        #expect(s.current?.track == "f1")
+        #expect(send(&s, .prev) == [.prev(generation: 3)] && s.current?.track == "f2")
     }
 
     @Test func tickExpiresToastAndOverlay() {
@@ -151,13 +157,29 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         send(&s, .position(12.5, generation: 1))
         #expect(s.t == 12.5)
-        #expect(send(&s, .trackEnded(generation: 1)) == [.load(trackID: "f1", context: "focus", autoplay: true, generation: 2)])
-        // late callbacks from the first load are ignored
-        #expect(send(&s, .position(20, generation: 1), .trackEnded(generation: 1)) == [] && s.t == 0)
-        s.repeatMode = .one
-        #expect(send(&s, .trackEnded(generation: 2)) == [.load(trackID: "f1", context: "focus", autoplay: true, generation: 3)])
-        #expect(send(&s, .trackEnded(generation: 2)) == [])  // same track reloaded, old callback still stale
-        #expect(s.current?.track == "f1" && s.t == 0)
+        #expect(send(&s, .position(20, generation: 0)) == [] && s.t == 12.5)  // from an earlier load
+        #expect(send(&s, .trackEnded(generation: 0)) == [] && s.isPlaying)
+        #expect(send(&s, .trackEnded(generation: 1)) == [])  // the engine stopped at the end of the context
+        #expect(!s.isPlaying && s.t == 0 && s.current?.track == "f0")
+        #expect(send(&s, .trackEnded(generation: 1)) == [] && !s.isPlaying)
+    }
+
+    @Test func trackChangedMovesCurrentWithoutLoading() {
+        var s = playing()
+        send(&s, .position(12.5, generation: 1))
+        #expect(send(&s, .trackChanged("f1", playing: true, generation: 1)) == [])
+        #expect(s.current == TrackRef(playlist: "focus", track: "f1") && s.t == 0 && s.isPlaying)
+        send(&s, .trackChanged("f5", playing: false, generation: 0))  // from an earlier load
+        #expect(s.current?.track == "f1" && s.isPlaying)
+        send(&s, .trackChanged("zz", playing: false, generation: 1))  // not in our copy of the playlist
+        #expect(s.current == TrackRef(playlist: "focus", track: "zz") && s.track(s.current!) == nil && !s.isPlaying)
+        #expect(send(&s, .select, .wheel(1)) == [.seek(5, generation: 2)])  // scrub with no known duration
+        s = playing()
+        send(&s, .trackEnded(generation: 1))
+        send(&s, .next, .trackChanged("f1", playing: true, generation: 2))  // Next after the end plays again
+        #expect(s.isPlaying && s.current?.track == "f1")
+        s = mainMenu()
+        #expect(send(&s, .trackChanged("f1", playing: true, generation: 0)) == [] && s.current == nil)
     }
 
     @Test func playbackFailedPausesAndShowsToast() {
@@ -182,8 +204,6 @@ func playing(_ i: Int = 0) -> AppState {
         let reordered = [Playlist(id: "focus", name: "Focus", tracks: focus.tracks.reversed()), liked]
         send(&s, .menu, .menu, .select, .loaded(token: 3, library: reordered))
         #expect(s.track(s.current!)?.id == "f2")
-        send(&s, .next)
-        #expect(s.current?.track == "f1")  // next in the new order
     }
 
     @Test func authDoneSignsInOrFailsOffline() {
@@ -284,6 +304,10 @@ func playing(_ i: Int = 0) -> AppState {
     func pause() { calls.append("pause") }
     func resume() { calls.append("resume") }
     func stop() { calls.append("stop") }
+    func next(generation: Int) { calls.append("next") }
+    func prev(generation: Int) { calls.append("prev") }
+    func setShuffle(_ on: Bool) { calls.append("shuffle \(on)") }
+    func setRepeat(_ mode: RepeatMode) { calls.append("repeat \(mode.rawValue)") }
     func seek(to seconds: Double, generation: Int) { calls.append("seek \(seconds)") }
     func setVolume(_ percent: Int) { calls.append("volume \(percent)") }
 }
@@ -296,7 +320,8 @@ func playing(_ i: Int = 0) -> AppState {
     store.send(.play)
     store.send(.wheel(1))
     store.send(.next)
-    #expect(player.calls == ["pause", "volume 65", "load f1 focus false"])
+    store.send(.prev)
+    #expect(player.calls == ["pause", "volume 65", "next", "prev"])
 }
 
 @MainActor final class FakeLibrary: Library {
@@ -338,4 +363,22 @@ func playing(_ i: Int = 0) -> AppState {
     await store.settle()
     #expect(lib.fetches == 1 && !store.state.top.loading && store.state.library == library)
     #expect(store.state.rows(for: store.state.top) == [.playlist("focus")])
+}
+
+@Suite struct SpotifyAppDeviceTests {
+    typealias D = SpotifyAppDevice.Candidate
+
+    // From the spike build 9 log: the Spotify app's software string has no "osx".
+    let mac = D(id: "a1", name: "Jason’s Macbook Air 15", type: "COMPUTER")
+    let phone = D(id: "p1", name: "iPhone", type: "SMARTPHONE")
+
+    @Test func picksThisMacByNameOrTheOnlyComputer() {
+        #expect(SpotifyAppDevice.pick([phone, mac], computerName: "jason's macbook air 15") == .found(id: "a1"))
+        #expect(SpotifyAppDevice.pick([phone, mac], computerName: "Other Mac") == .found(id: "a1"))
+        #expect(SpotifyAppDevice.pick([phone, mac], computerName: nil) == .found(id: "a1"))
+        #expect(SpotifyAppDevice.pick([phone], computerName: "Jason’s Macbook Air 15") == .none)
+        let second = D(id: "a2", name: "Studio", type: "COMPUTER")
+        #expect(SpotifyAppDevice.pick([mac, second], computerName: "Studio") == .found(id: "a2"))
+        #expect(SpotifyAppDevice.pick([mac, second], computerName: "Laptop") == .ambiguous)
+    }
 }
