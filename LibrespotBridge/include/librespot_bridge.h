@@ -120,6 +120,10 @@ int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
 #define LSB_COMMAND_NEXT 2
 #define LSB_COMMAND_PREV 3
 
+#define LSB_OPTION_SHUFFLE 0
+#define LSB_OPTION_REPEAT_CONTEXT 1
+#define LSB_OPTION_REPEAT_TRACK 2
+
 typedef struct LsbDevice {
     const char *id;
     const char *name;
@@ -147,5 +151,36 @@ int32_t lsb_connect_seek(LsbBridge *bridge, const char *device_id, uint32_t posi
 // volume is 0 to 65535.
 int32_t lsb_connect_volume(LsbBridge *bridge, const char *device_id, uint16_t volume,
                            LsbCommandCallback on_result, void *context);
+
+// Turns Spotify's shuffle, repeat of the context, or repeat of one track on or off.
+// option is one of LSB_OPTION_*.
+int32_t lsb_connect_set_option(LsbBridge *bridge, const char *device_id, uint32_t option,
+                               bool on, LsbCommandCallback on_result, void *context);
+
+// The Spotify app's player, from the account's Connect cluster. The strings are ""
+// when there is no value. The context of Liked Songs can come back as a playlist
+// URI, so match the playing track, not the context.
+typedef struct LsbPlayerState {
+    const char *active_device_id; // The device that plays now.
+    const char *track_uri;
+    const char *context_uri;
+    uint32_t position_ms;         // At the time of the callback.
+    uint32_t duration_ms;
+    bool is_playing;              // A track is loaded. It can be paused.
+    bool is_paused;
+    bool shuffle;
+    bool repeat_context;
+    bool repeat_track;
+    // The strings are valid only during the callback.
+} LsbPlayerState;
+
+typedef void (*LsbStateCallback)(void *context, const LsbPlayerState *state);
+// Sets the callback for player state, or clears it when on_state is NULL. The state
+// comes after each registration and each cluster update, on a bridge thread. Updates
+// start with the first Connect call of a login. When lsb_connect_watch or lsb_free
+// returns, the old callback is not running and does not run again, so the caller can
+// then free the old context. Do not call lsb_connect_watch or lsb_free from inside
+// the callback: they wait for it to return. Keep the callback short.
+int32_t lsb_connect_watch(LsbBridge *bridge, LsbStateCallback on_state, void *context);
 
 #endif

@@ -14,8 +14,10 @@ mod library;
 mod oauth;
 pub use connect::{
     lsb_connect_command, lsb_connect_devices, lsb_connect_play, lsb_connect_seek,
-    lsb_connect_volume, LsbCommandCallback, LsbDevice, LsbDevicesCallback, LSB_COMMAND_NEXT,
-    LSB_COMMAND_PAUSE, LSB_COMMAND_PREV, LSB_COMMAND_RESUME,
+    lsb_connect_set_option, lsb_connect_volume, lsb_connect_watch, LsbCommandCallback, LsbDevice,
+    LsbDevicesCallback, LsbPlayerState, LsbStateCallback, LSB_COMMAND_NEXT, LSB_COMMAND_PAUSE,
+    LSB_COMMAND_PREV, LSB_COMMAND_RESUME, LSB_OPTION_REPEAT_CONTEXT, LSB_OPTION_REPEAT_TRACK,
+    LSB_OPTION_SHUFFLE,
 };
 pub use library::{
     lsb_read_playlists, lsb_read_tracks, LsbPlaylist, LsbPlaylistsCallback, LsbTrack,
@@ -89,6 +91,8 @@ pub struct LsbBridge {
     latest_login: Arc<AtomicU64>,
     /// Spotify Connect calls, run one at a time in call order.
     connect: tokio::sync::mpsc::UnboundedSender<connect::Job>,
+    /// The callback for the Spotify app's player state.
+    state_sink: connect::SharedSink,
 }
 
 #[no_mangle]
@@ -104,13 +108,15 @@ pub extern "C" fn lsb_new(
     };
     let callbacks = Callbacks { on_event, context };
     let connected = Arc::new(Mutex::new(None));
-    let connect = connect::spawn_worker(&runtime);
+    let state_sink = connect::SharedSink::default();
+    let connect = connect::spawn_worker(&runtime, state_sink.clone());
     Box::into_raw(Box::new(LsbBridge {
         runtime,
         callbacks,
         connected,
         latest_login: Arc::new(AtomicU64::new(0)),
         connect,
+        state_sink,
     }))
 }
 
@@ -119,6 +125,9 @@ pub extern "C" fn lsb_new(
 #[no_mangle]
 pub unsafe extern "C" fn lsb_free(bridge: *mut LsbBridge) {
     if !bridge.is_null() {
+        // Wait for a running state callback, and stop new ones, before the caller
+        // frees the watch context.
+        connect::set_sink(&(*bridge).state_sink, None);
         drop(Box::from_raw(bridge));
     }
 }

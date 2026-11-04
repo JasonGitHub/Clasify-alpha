@@ -4,13 +4,17 @@
 //! cannot pass an endpoint path.
 
 use std::ffi::{c_char, c_void};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, RwLock};
 
 use futures_util::StreamExt;
 use http::header::{HeaderValue, CONTENT_TYPE};
 use http::{HeaderMap, Method};
+use librespot_core::dealer::protocol::Message as DealerMessage;
 use librespot_core::Session;
 use librespot_protocol::connect::{
-    Capabilities, Cluster, Device, DeviceInfo, MemberType, PutStateReason, PutStateRequest,
+    Capabilities, Cluster, ClusterUpdate, Device, DeviceInfo, MemberType, PutStateReason,
+    PutStateRequest,
 };
 use librespot_protocol::devices::DeviceType;
 use protobuf::Message;
@@ -24,6 +28,10 @@ pub const LSB_COMMAND_PAUSE: u32 = 0;
 pub const LSB_COMMAND_RESUME: u32 = 1;
 pub const LSB_COMMAND_NEXT: u32 = 2;
 pub const LSB_COMMAND_PREV: u32 = 3;
+
+pub const LSB_OPTION_SHUFFLE: u32 = 0;
+pub const LSB_OPTION_REPEAT_CONTEXT: u32 = 1;
+pub const LSB_OPTION_REPEAT_TRACK: u32 = 2;
 
 const DEVICE_NAME: &str = "Clasify";
 
@@ -40,6 +48,9 @@ pub(crate) enum Command {
     Seek(u32),
     /// 0 to 65535.
     Volume(u16),
+    Shuffle(bool),
+    RepeatContext(bool),
+    RepeatTrack(bool),
 }
 
 impl Command {
@@ -115,6 +126,9 @@ pub(crate) fn request(
     }
     let logging = format!(r#""logging_params":{{"command_id":{}}}"#, json(command_id));
     let simple = |endpoint: &str| format!(r#"{{"command":{{{logging},"endpoint":"{endpoint}"}}}}"#);
+    let option = |endpoint: &str, on: bool| {
+        format!(r#"{{"command":{{"value":{on},{logging},"endpoint":"{endpoint}"}}}}"#)
+    };
     let body = match command {
         Command::Play { context, track } => {
             let skip_to = match track {
@@ -137,6 +151,9 @@ pub(crate) fn request(
         Command::Resume => simple("resume"),
         Command::Next => simple("skip_next"),
         Command::Prev => simple("skip_prev"),
+        Command::Shuffle(on) => option("set_shuffling_context", *on),
+        Command::RepeatContext(on) => option("set_repeating_context", *on),
+        Command::RepeatTrack(on) => option("set_repeating_track", *on),
         Command::Seek(ms) => {
             format!(r#"{{"command":{{"value":{ms},{logging},"endpoint":"seek_to"}}}}"#)
         }
@@ -164,6 +181,127 @@ pub(crate) fn devices(cluster: &Cluster, own_id: &str) -> Vec<ConnectDevice> {
     list
 }
 
+/// The Spotify app's player, as a cluster reports it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct SpotifyState {
+    pub active_device_id: String,
+    pub track_uri: String,
+    pub context_uri: String,
+    pub position_ms: u32,
+    pub duration_ms: u32,
+    pub is_playing: bool,
+    pub is_paused: bool,
+    pub shuffle: bool,
+    pub repeat_context: bool,
+    pub repeat_track: bool,
+}
+
+/// The player state of a cluster at `now_ms` (Spotify's clock, Unix time in ms). Spotify
+/// gives the position at its own timestamp, so a running track's position moves on
+/// by the time since then, up to the track's duration.
+pub(crate) fn spotify_state(cluster: &Cluster, now_ms: i64) -> SpotifyState {
+    let player = &*cluster.player_state;
+    let running = player.is_playing && !player.is_paused;
+    let duration = player.duration.max(0);
+    let mut position = player.position_as_of_timestamp.max(0);
+    if running && player.timestamp > 0 {
+        position += (now_ms - player.timestamp).max(0);
+    }
+    if duration > 0 {
+        position = position.min(duration);
+    }
+    let ms = |value: i64| u32::try_from(value).unwrap_or(u32::MAX);
+    SpotifyState {
+        active_device_id: cluster.active_device_id.clone(),
+        track_uri: player.track.uri.clone(),
+        context_uri: player.context_uri.clone(),
+        position_ms: ms(position),
+        duration_ms: ms(duration),
+        is_playing: player.is_playing,
+        is_paused: player.is_paused,
+        shuffle: player.options.shuffling_context,
+        repeat_context: player.options.repeating_context,
+        repeat_track: player.options.repeating_track,
+    }
+}
+
+/// Now on Spotify's clock. `time_delta_s` is `Session::time_delta()`: Spotify's time
+/// minus the Mac's time, in seconds. Spotify's player timestamps use Spotify's clock.
+pub(crate) fn spotify_now_ms(time_delta_s: i64) -> i64 {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+    let local = now.map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+    local.saturating_add(time_delta_s.saturating_mul(1000))
+}
+
+/// Matches `LsbPlayerState` in the header.
+#[repr(C)]
+pub struct LsbPlayerState {
+    pub active_device_id: *const c_char,
+    pub track_uri: *const c_char,
+    pub context_uri: *const c_char,
+    pub position_ms: u32,
+    pub duration_ms: u32,
+    pub is_playing: bool,
+    pub is_paused: bool,
+    pub shuffle: bool,
+    pub repeat_context: bool,
+    pub repeat_track: bool,
+}
+
+pub type LsbStateCallback = extern "C" fn(context: *mut c_void, state: *const LsbPlayerState);
+
+#[derive(Clone, Copy)]
+pub(crate) struct StateSink {
+    pub(crate) callback: LsbStateCallback,
+    pub(crate) context: *mut c_void,
+}
+
+// SAFETY: the header requires that `context` and the callback are safe to call
+// from any thread. The bridge never reads through `context` itself.
+unsafe impl Send for StateSink {}
+// SAFETY: the bridge only copies the two values and never reads through `context`.
+// Two deliveries can run at once on two bridge threads; the header requires that the
+// callback is safe to call from any thread at once. It should copy the state and return.
+unsafe impl Sync for StateSink {}
+
+/// The state callback that `lsb_connect_watch` set, if any. A delivery holds the read
+/// lock while the callback runs. `lsb_connect_watch` and `lsb_free` take the write lock,
+/// so they wait for a running callback, and the old context is not used after they return.
+pub(crate) type SharedSink = Arc<RwLock<Option<StateSink>>>;
+
+/// Sets or clears the callback. It waits until no callback runs.
+pub(crate) fn set_sink(sink: &SharedSink, value: Option<StateSink>) {
+    // A poisoned lock still holds a valid Option. A panic here would abort the app.
+    *sink.write().unwrap_or_else(|e| e.into_inner()) = value;
+}
+
+pub(crate) fn deliver_state(sink: &SharedSink, state: &SpotifyState) {
+    let guard = sink.read().unwrap_or_else(|e| e.into_inner());
+    let Some(sink) = *guard else {
+        return;
+    };
+    let texts = [
+        &state.active_device_id,
+        &state.track_uri,
+        &state.context_uri,
+    ]
+    .map(|t| c_text(t));
+    let raw = LsbPlayerState {
+        active_device_id: texts[0].as_ptr(),
+        track_uri: texts[1].as_ptr(),
+        context_uri: texts[2].as_ptr(),
+        position_ms: state.position_ms,
+        duration_ms: state.duration_ms,
+        is_playing: state.is_playing,
+        is_paused: state.is_paused,
+        shuffle: state.shuffle,
+        repeat_context: state.repeat_context,
+        repeat_track: state.repeat_track,
+    };
+    (sink.callback)(sink.context, &raw);
+    drop(guard);
+}
+
 /// A random ID for the command's logging parameters. It is not a secret.
 fn command_id() -> String {
     use std::hash::{BuildHasher, Hasher};
@@ -179,12 +317,21 @@ fn command_id() -> String {
 pub(crate) struct Dealer {
     device_id: String,
     connection_id: watch::Receiver<String>,
+    /// The session's newest `time_delta()`, for the cluster task, which holds no session.
+    time_delta: Arc<AtomicI64>,
 }
 
 /// Starts the session's dealer. A task keeps reading the dealer's connection IDs: the
 /// dealer reconnects after sleep or a network change and then sends a new ID. The task
 /// holds no `Session`, and it ends when the dealer closes or the worker drops `Dealer`.
-async fn start_dealer(session: &Session) -> Result<Dealer, String> {
+async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, String> {
+    let mut updates = session
+        .dealer()
+        .listen_for(
+            "hm://connect-state/v1/cluster",
+            DealerMessage::from_raw::<ClusterUpdate>,
+        )
+        .map_err(|e| format!("cannot listen to Spotify Connect: {e}"))?;
     let mut ids = session
         .dealer()
         .listen_for("hm://pusher/v1/connections/", |message| {
@@ -200,6 +347,18 @@ async fn start_dealer(session: &Session) -> Result<Dealer, String> {
         .start()
         .await
         .map_err(|e| format!("cannot start Spotify Connect: {e}"))?;
+    let sink = sink.clone();
+    let time_delta = Arc::new(AtomicI64::new(session.time_delta()));
+    let delta = time_delta.clone();
+    tokio::spawn(async move {
+        while let Some(update) = updates.next().await {
+            // A message that does not decode is skipped. The next one has the full state.
+            if let Ok(update) = update {
+                let now = spotify_now_ms(delta.load(Ordering::Relaxed));
+                deliver_state(&sink, &spotify_state(&update.cluster, now));
+            }
+        }
+    });
     let (sender, connection_id) = watch::channel(String::new());
     tokio::spawn(async move {
         while let Some(id) = ids.next().await {
@@ -212,14 +371,19 @@ async fn start_dealer(session: &Session) -> Result<Dealer, String> {
     Ok(Dealer {
         device_id: session.device_id().to_owned(),
         connection_id,
+        time_delta,
     })
 }
 
 /// Starts the dealer once per session, then sends a NEW_DEVICE state with the newest
 /// connection ID. The reply is the account's cluster, with all its devices.
-async fn register(session: &Session, dealer: &mut Option<Dealer>) -> Result<Cluster, String> {
+async fn register(
+    session: &Session,
+    dealer: &mut Option<Dealer>,
+    sink: &SharedSink,
+) -> Result<Cluster, String> {
     if dealer.as_ref().map(|d| d.device_id.as_str()) != Some(session.device_id()) {
-        *dealer = Some(start_dealer(session).await?);
+        *dealer = Some(start_dealer(session, sink).await?);
     }
     let ids = &mut dealer.as_mut().expect("set above").connection_id;
     let wait = ids.wait_for(|id| !id.is_empty());
@@ -264,7 +428,13 @@ async fn register(session: &Session, dealer: &mut Option<Dealer>) -> Result<Clus
         .put_connect_state_request(&request)
         .await
         .map_err(|e| format!("cannot register with Spotify Connect: {e}"))?;
-    Cluster::parse_from_bytes(&bytes).map_err(|e| format!("cannot decode the device list: {e}"))
+    let cluster = Cluster::parse_from_bytes(&bytes)
+        .map_err(|e| format!("cannot decode the device list: {e}"))?;
+    deliver_state(
+        sink,
+        &spotify_state(&cluster, spotify_now_ms(session.time_delta())),
+    );
+    Ok(cluster)
 }
 
 async fn send(session: &Session, command: &Command, to: &str) -> Result<(), String> {
@@ -368,7 +538,10 @@ pub(crate) enum Job {
 }
 
 /// Starts the worker that runs Connect calls in order, so a pause can't overtake a play.
-pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender<Job> {
+pub(crate) fn spawn_worker(
+    runtime: &tokio::runtime::Runtime,
+    sink: SharedSink,
+) -> UnboundedSender<Job> {
     let (jobs, mut queue) = unbounded_channel::<Job>();
     runtime.spawn(async move {
         // The dealer of the newest session that called, and the connection ID that it
@@ -383,7 +556,7 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     callback,
                     context,
                 } => {
-                    let result = register(&session, &mut dealer).await;
+                    let result = register(&session, &mut dealer, &sink).await;
                     registered = result.is_ok().then(|| session.connection_id());
                     let result = result.map(|cluster| devices(&cluster, session.device_id()));
                     deliver_devices(callback, context.0, result);
@@ -395,13 +568,17 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     callback,
                     context,
                 } => {
+                    if let Some(d) = &dealer {
+                        // The session updates its time delta at each keep-alive ping.
+                        d.time_delta.store(session.time_delta(), Ordering::Relaxed);
+                    }
                     let current = dealer.as_ref().is_some_and(|d| {
                         d.device_id == session.device_id()
                             && registered.as_deref() == Some(d.connection_id.borrow().as_str())
                     });
                     let mut result = Ok(());
                     if !current {
-                        result = register(&session, &mut dealer).await.map(|_| ());
+                        result = register(&session, &mut dealer, &sink).await.map(|_| ());
                     }
                     if result.is_ok() {
                         result = send(&session, &command, &to).await;
@@ -411,7 +588,7 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     // send the command once more. Next and prev are not retried: if the
                     // first one did arrive, the retry skips twice.
                     if result.is_err() && command.can_retry() {
-                        result = register(&session, &mut dealer).await.map(|_| ());
+                        result = register(&session, &mut dealer, &sink).await.map(|_| ());
                         if result.is_ok() {
                             result = send(&session, &command, &to).await;
                         }
@@ -559,4 +736,46 @@ pub unsafe extern "C" fn lsb_connect_volume(
 ) -> i32 {
     let command = Some(Command::Volume(volume));
     queue_command(bridge, device_id, command, on_result, context)
+}
+
+/// Turns Spotify's shuffle or one of its repeat modes on or off on a device.
+/// `option` is one of `LSB_OPTION_*`.
+///
+/// # Safety
+/// As for `lsb_connect_command`.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_set_option(
+    bridge: *mut crate::LsbBridge,
+    device_id: *const c_char,
+    option: u32,
+    on: bool,
+    on_result: Option<LsbCommandCallback>,
+    context: *mut c_void,
+) -> i32 {
+    let command = match option {
+        LSB_OPTION_SHUFFLE => Some(Command::Shuffle(on)),
+        LSB_OPTION_REPEAT_CONTEXT => Some(Command::RepeatContext(on)),
+        LSB_OPTION_REPEAT_TRACK => Some(Command::RepeatTrack(on)),
+        _ => None,
+    };
+    queue_command(bridge, device_id, command, on_result, context)
+}
+
+/// Sets the callback for the Spotify app's player state, or clears it when
+/// `on_state` is NULL. It runs for each cluster update after the first Connect call.
+///
+/// # Safety
+/// `bridge` must be valid. `context` and `on_state` must be safe to call from any thread.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_watch(
+    bridge: *mut crate::LsbBridge,
+    on_state: Option<LsbStateCallback>,
+    context: *mut c_void,
+) -> i32 {
+    let Some(bridge) = bridge.as_ref() else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    let sink = on_state.map(|callback| StateSink { callback, context });
+    set_sink(&bridge.state_sink, sink);
+    LSB_OK
 }
