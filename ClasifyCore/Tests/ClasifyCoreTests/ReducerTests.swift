@@ -65,6 +65,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.screen == .settings)
         send(&s, .select, .wheel(1), .select, .select)
         #expect(s.shuffle && s.repeatMode == .one)
+        s.toast = ""  // the "Signed in" toast from mainMenu()
         send(&s, .wheel(1), .select)
         #expect(!s.showArt && s.skin == .pocket && s.toast.isEmpty)
         #expect(!s.rows(for: s.top).contains(.skin))  // only the Pocket skin in 1.0
