@@ -15,9 +15,10 @@ Design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjo
 
 ## Build and test
 
-No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo.
+No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Minimum macOS is 14.
 
-Cloud sessions run on Linux and cannot run `xcodebuild`. Verify Swift changes through CI on GitHub Actions macOS runners, and say so in the PR when a change was not built or tested locally.
+- `ClasifyCore/` (store and reducer) is plain Swift with no Apple UI frameworks. It builds and tests on Linux: `cd ClasifyCore && swift build -Xswiftc -warnings-as-errors && swift test`. CI runs the same on Linux (`.github/workflows/core.yml`).
+- The app itself builds on GitHub Actions macOS runners. Cloud sessions run on Linux and cannot run `xcodebuild`, so say in the PR when an app change was not built or tested locally.
 
 ## Hard constraints
 
@@ -26,13 +27,15 @@ Cloud sessions run on Linux and cannot run `xcodebuild`. Verify Swift changes th
 - Network calls go only to Spotify and to the GitHub Releases API for the update check. No analytics. Crash reporting is opt-in.
 - Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk.
 - The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
-- Don't resolve the design doc's open questions (librespot linking, Web API fallback, minimum macOS, SwiftUI vs AppKit) in code. Ask Jason.
+- librespot is linked as a static Rust library over a C FFI, not run as a spotifyd helper process.
+- 1.0 ships only the built-in librespot engine. The Spotify-app engine is out of 1.0: don't build it or show its setting, but keep playback behind the `Player` protocol so it can be added later.
+- Two questions are still open. Don't settle them in code; ask Jason: whether library reads need a Web API fallback, and SwiftUI vs AppKit for the skinned window.
 
 ## Architecture
 
 - One store holds all app state. Only the reducer changes it. The reducer is plain Swift with no UI or engine imports.
 - Skins send input actions (wheel, select, menu, play, next, prev) and render state. No logic in skins.
-- All playback goes through the `Player` protocol. Code above it must not know which engine (librespot or the Spotify app) is playing. librespot is pinned to one version.
+- All playback goes through the `Player` protocol. Code above it must not know which engine is playing. librespot is pinned to one version.
 - Audio out and EQ: AVAudioEngine + AVAudioUnitEQ. Spectrum: Accelerate vDSP. Media keys: MPRemoteCommandCenter. Update check: URLSession, not Sparkle.
 
 ## Testing
