@@ -3,7 +3,7 @@ on:
   push: { branches: [main] }
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["ClasifyCore/**", "Clasify/**", "Clasify.xcodeproj/**", ".github/workflows/app.yml"]
+    paths: ["ClasifyCore/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/workflows/app.yml"]
 # macOS minutes cost more, so a new push cancels the older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: xcodebuild -version
+      - name: Cache the Rust build of the bridge
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            LibrespotBridge/target
+          key: bridge-${{ runner.os }}-${{ hashFiles('LibrespotBridge/Cargo.lock') }}
+      - name: Build the bridge library that the app links
+        run: scripts/build-bridge.sh
       - name: Test ClasifyCore on macOS
         working-directory: ClasifyCore
         run: swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors
