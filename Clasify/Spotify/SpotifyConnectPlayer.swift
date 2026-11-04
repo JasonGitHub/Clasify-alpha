@@ -358,10 +358,11 @@ final class SpotifyConnectPlayer: Player {
     // MARK: State from the cluster
 
     /// The load's track, or after queued skips any track of the load's playlist.
-    /// Liked Songs can come back as a playlist URI, so its context is not compared.
+    /// Liked Songs can come back as a playlist URI, so its context is not compared. An empty
+    /// context does not conflict, as in `handle`.
     private func isLoaded(_ state: SpotifyPlayerState, track: String?) -> Bool {
         if let track { return state.trackURI == track }
-        return context.hasSuffix(":collection") || state.contextURI == context
+        return context.hasSuffix(":collection") || state.contextURI.isEmpty || state.contextURI == context
     }
 
     private func handle(_ state: SpotifyPlayerState) {
