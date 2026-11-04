@@ -61,7 +61,7 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func selectTrackLoadsAndPlays() {
         var s = mainMenu()
         send(&s, .select, .loaded(token: 1, library: library), .select, .loaded(token: 2, library: library), .wheel(3))
-        #expect(send(&s, .select) == [.load(trackID: "f3", autoplay: true, generation: 1)])
+        #expect(send(&s, .select) == [.load(trackID: "f3", context: "focus", autoplay: true, generation: 1)])
         #expect(s.top.screen == .now && s.isPlaying && s.current == TrackRef(playlist: "focus", track: "f3"))
     }
 
@@ -70,7 +70,7 @@ func playing(_ i: Int = 0) -> AppState {
         s.library = []  // fresh sign-in: nothing fetched yet
         send(&s, .wheel(2), .select)
         #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
-        #expect(send(&s, .loaded(token: 1, library: library)) == [.load(trackID: "l0", autoplay: true, generation: 1)])
+        #expect(send(&s, .loaded(token: 1, library: library)) == [.load(trackID: "l0", context: "liked", autoplay: true, generation: 1)])
         #expect(s.top.screen == .now && s.shuffle && s.shuffleToken == nil)
 
         s = mainMenu(); s.library = []
@@ -113,7 +113,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func nextAdvancesAndStopsAtEndUnlessRepeatAll() {
         var s = playing(6)
-        #expect(send(&s, .next) == [.load(trackID: "f7", autoplay: true, generation: 2)])
+        #expect(send(&s, .next) == [.load(trackID: "f7", context: "focus", autoplay: true, generation: 2)])
         #expect(send(&s, .next) == [.pause, .seek(0, generation: 3)])
         #expect(s.current?.track == "f7" && !s.isPlaying)
         s = playing(7); s.repeatMode = .all
@@ -151,13 +151,21 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         send(&s, .position(12.5, generation: 1))
         #expect(s.t == 12.5)
-        #expect(send(&s, .trackEnded(generation: 1)) == [.load(trackID: "f1", autoplay: true, generation: 2)])
+        #expect(send(&s, .trackEnded(generation: 1)) == [.load(trackID: "f1", context: "focus", autoplay: true, generation: 2)])
         // late callbacks from the first load are ignored
         #expect(send(&s, .position(20, generation: 1), .trackEnded(generation: 1)) == [] && s.t == 0)
         s.repeatMode = .one
-        #expect(send(&s, .trackEnded(generation: 2)) == [.load(trackID: "f1", autoplay: true, generation: 3)])
+        #expect(send(&s, .trackEnded(generation: 2)) == [.load(trackID: "f1", context: "focus", autoplay: true, generation: 3)])
         #expect(send(&s, .trackEnded(generation: 2)) == [])  // same track reloaded, old callback still stale
         #expect(s.current?.track == "f1" && s.t == 0)
+    }
+
+    @Test func playbackFailedPausesAndShowsToast() {
+        var s = playing()
+        send(&s, .playbackFailed("Old", generation: 0))  // stale load
+        #expect(s.isPlaying && s.toast == "Signed in")  // unchanged
+        #expect(send(&s, .playbackFailed("Install Spotify to play music", generation: 1)) == [])
+        #expect(!s.isPlaying && s.toast == "Install Spotify to play music" && s.current?.track == "f0")
     }
 
     @Test func loadedIgnoresStaleTokens() {
@@ -270,7 +278,9 @@ func playing(_ i: Int = 0) -> AppState {
 
 @MainActor final class FakePlayer: Player {
     var calls: [String] = []
-    func load(trackID: String, autoplay: Bool, generation: Int) { calls.append("load \(trackID) \(autoplay)") }
+    func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
+        calls.append("load \(trackID) \(context ?? "-") \(autoplay)")
+    }
     func pause() { calls.append("pause") }
     func resume() { calls.append("resume") }
     func stop() { calls.append("stop") }
@@ -286,7 +296,7 @@ func playing(_ i: Int = 0) -> AppState {
     store.send(.play)
     store.send(.wheel(1))
     store.send(.next)
-    #expect(player.calls == ["pause", "volume 65", "load f1 false"])
+    #expect(player.calls == ["pause", "volume 65", "load f1 focus false"])
 }
 
 @MainActor final class FakeLibrary: Library {

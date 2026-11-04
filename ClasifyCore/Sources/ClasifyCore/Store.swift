@@ -1,10 +1,12 @@
 import Observation
 
 /// Playback engine (the Spotify desktop app, controlled through Spotify Connect, in 1.0). Code above it doesn't know which engine is playing.
+/// The engine reports `.position`, `.trackEnded` and `.playbackFailed` back to the store.
 @MainActor
 public protocol Player: AnyObject {
     /// Report `.position` and `.trackEnded` for this load with the same `generation`.
-    func load(trackID: String, autoplay: Bool, generation: Int)
+    /// `context` is the playlist ID (a Spotify URI, or `Playlist.likedSongsID`), or nil.
+    func load(trackID: String, context: String?, autoplay: Bool, generation: Int)
     func pause()
     func resume()
     func stop()
@@ -49,7 +51,8 @@ public final class Store {
     public func send(_ action: Action) {
         for effect in reduce(&state, action, env) {
             switch effect {
-            case .load(let id, let autoplay, let gen): player.load(trackID: id, autoplay: autoplay, generation: gen)
+            case .load(let id, let context, let autoplay, let gen):
+                player.load(trackID: id, context: context, autoplay: autoplay, generation: gen)
             case .pause: player.pause()
             case .resume: player.resume()
             case .stop: player.stop()
