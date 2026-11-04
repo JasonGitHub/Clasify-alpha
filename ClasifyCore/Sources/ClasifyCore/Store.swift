@@ -13,15 +13,28 @@ public protocol Player: AnyObject {
     func setVolume(_ percent: Int)
 }
 
+/// Spotify library source (playlists and Liked Songs). Returns nil when the fetch fails.
+@MainActor
+public protocol Library: AnyObject {
+    func fetchLibrary() async -> [Playlist]?
+}
+
 /// Holds all app state. Only `send` changes it, and only through `reduce`.
 @MainActor @Observable
 public final class Store {
     public private(set) var state: AppState
     @ObservationIgnored private let player: any Player
+    @ObservationIgnored private let library: any Library
     @ObservationIgnored private let env: Dependencies
+    @ObservationIgnored private var fetches: [Int: Task<Void, Never>] = [:]  // in flight, by token
 
-    public init(player: any Player, state: AppState = AppState(), env: Dependencies = .live) {
-        self.player = player; self.state = state; self.env = env
+    public init(player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live) {
+        self.player = player; self.library = library; self.state = state; self.env = env
+    }
+
+    /// Waits for in-flight library fetches to deliver `.loaded`. For tests.
+    func settle() async {
+        while let task = fetches.values.first { await task.value }
     }
 
     public func send(_ action: Action) {
@@ -33,6 +46,13 @@ public final class Store {
             case .stop: player.stop()
             case .seek(let t, let gen): player.seek(to: t, generation: gen)
             case .setVolume(let v): player.setVolume(v)
+            case .fetchLibrary(let token):
+                let library = self.library
+                fetches[token] = Task { [weak self] in
+                    let result = await library.fetchLibrary()
+                    self?.fetches[token] = nil
+                    self?.send(.loaded(token: token, library: result))  // a stale token is ignored by the reducer
+                }
             }
         }
     }

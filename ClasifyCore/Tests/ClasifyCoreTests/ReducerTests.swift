@@ -82,9 +82,10 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func selectOnErrorRetriesWithNewToken() {
         var s = mainMenu()
-        send(&s, .select, .loaded(token: 1, library: nil))
+        #expect(send(&s, .select) == [.fetchLibrary(token: 1)])
+        send(&s, .loaded(token: 1, library: nil))
         #expect(s.top.error)
-        send(&s, .select)
+        #expect(send(&s, .select) == [.fetchLibrary(token: 2)])
         #expect(s.top.loading && !s.top.error && s.top.token == 2)
     }
 
@@ -243,9 +244,27 @@ func playing(_ i: Int = 0) -> AppState {
     let player = FakePlayer()
     var s = playing()
     s.isPlaying = true
-    let store = Store(player: player, state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    let store = Store(player: player, library: FakeLibrary(), state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
     store.send(.play)
     store.send(.wheel(1))
     store.send(.next)
     #expect(player.calls == ["pause", "volume 65", "load f1 false"])
+}
+
+@MainActor final class FakeLibrary: Library {
+    var result: [Playlist]? = library
+    var fetches = 0
+    func fetchLibrary() async -> [Playlist]? { fetches += 1; return result }
+}
+
+@MainActor @Test func storeFetchesLibraryAndDeliversLoaded() async {
+    let lib = FakeLibrary()
+    var s = AppState()
+    send(&s, .select, .authDone(token: 1))
+    let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    store.send(.select)  // Playlists
+    #expect(store.state.top.loading)
+    await store.settle()
+    #expect(lib.fetches == 1 && !store.state.top.loading && store.state.library == library)
+    #expect(store.state.rows(for: store.state.top) == [.playlist("focus")])
 }
