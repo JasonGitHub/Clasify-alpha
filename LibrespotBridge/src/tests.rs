@@ -29,6 +29,9 @@ fn header_matches_rust() {
         ("LSB_COMMAND_RESUME", LSB_COMMAND_RESUME),
         ("LSB_COMMAND_NEXT", LSB_COMMAND_NEXT),
         ("LSB_COMMAND_PREV", LSB_COMMAND_PREV),
+        ("LSB_OPTION_SHUFFLE", LSB_OPTION_SHUFFLE),
+        ("LSB_OPTION_REPEAT_CONTEXT", LSB_OPTION_REPEAT_CONTEXT),
+        ("LSB_OPTION_REPEAT_TRACK", LSB_OPTION_REPEAT_TRACK),
         ("LSB_EVENT_LOGGED_IN", LSB_EVENT_LOGGED_IN),
         ("LSB_EVENT_ERROR", LSB_EVENT_ERROR),
     ];
@@ -915,5 +918,135 @@ mod connect_tests {
             lsb_free(bridge);
         }
         assert!(recorder.events.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn cluster_gives_the_player_state() {
+        use librespot_protocol::player::{ContextPlayerOptions, PlayerState, ProvidedTrack};
+        let state = |is_paused: bool, now_ms: i64| {
+            let player = PlayerState {
+                timestamp: 1_000_000,
+                context_uri: PLAYLIST.to_owned(),
+                track: protobuf::MessageField::some(ProvidedTrack {
+                    uri: TRACK.to_owned(),
+                    ..Default::default()
+                }),
+                position_as_of_timestamp: 10_000,
+                duration: 200_000,
+                is_playing: true,
+                is_paused,
+                options: protobuf::MessageField::some(ContextPlayerOptions {
+                    shuffling_context: true,
+                    repeating_track: true,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            };
+            let cluster = Cluster {
+                active_device_id: "mac".to_owned(),
+                player_state: protobuf::MessageField::some(player),
+                ..Default::default()
+            };
+            spotify_state(&cluster, now_ms)
+        };
+        let playing = state(false, 1_002_500);
+        let expected = SpotifyState {
+            active_device_id: "mac".to_owned(),
+            track_uri: TRACK.to_owned(),
+            context_uri: PLAYLIST.to_owned(),
+            position_ms: 12_500,
+            duration_ms: 200_000,
+            is_playing: true,
+            is_paused: false,
+            shuffle: true,
+            repeat_context: false,
+            repeat_track: true,
+        };
+        assert_eq!(playing, expected);
+        assert_eq!(state(true, 1_002_500).position_ms, 10_000); // paused: no move
+        assert_eq!(state(false, 9_000_000).position_ms, 200_000); // not past the end
+        assert_eq!(state(false, 0).position_ms, 10_000); // clock behind Spotify's
+        assert_eq!(
+            spotify_state(&Cluster::default(), 5),
+            SpotifyState::default()
+        );
+    }
+
+    #[derive(Default)]
+    struct States(Mutex<Vec<(String, u32, bool)>>);
+
+    extern "C" fn record_state(context: *mut c_void, state: *const LsbPlayerState) {
+        let (states, state) = unsafe { (&*(context as *const States), &*state) };
+        let track = unsafe { read_str(state.track_uri) }
+            .unwrap_or("?")
+            .to_owned();
+        let entry = (track, state.position_ms, state.repeat_track);
+        states.0.lock().unwrap().push(entry);
+    }
+
+    #[test]
+    fn state_reaches_the_watch_callback() {
+        let states = States::default();
+        let context = &states as *const States as *mut c_void;
+        let state = SpotifyState {
+            track_uri: TRACK.to_owned(),
+            position_ms: 7,
+            repeat_track: true,
+            ..Default::default()
+        };
+        let recorder = Recorder::default();
+        let events = &recorder as *const Recorder as *mut c_void;
+        let bridge = lsb_new(Some(record_event), events);
+        unsafe {
+            assert_eq!(
+                lsb_connect_watch(bridge, Some(record_state), context),
+                LSB_OK
+            );
+            deliver_state(&(*bridge).state_sink, &state);
+            assert_eq!(lsb_connect_watch(bridge, None, context), LSB_OK);
+            deliver_state(&(*bridge).state_sink, &state); // cleared: no call
+            let null = std::ptr::null_mut();
+            assert_eq!(
+                lsb_connect_watch(null, Some(record_state), context),
+                LSB_ERR_INVALID_ARGUMENT
+            );
+            lsb_free(bridge);
+        }
+        assert_eq!(*states.0.lock().unwrap(), vec![(TRACK.to_owned(), 7, true)]);
+    }
+
+    #[test]
+    fn player_state_layout_matches_c() {
+        use std::mem::{offset_of, size_of};
+        assert_eq!(size_of::<LsbPlayerState>(), 40);
+        let offsets = [
+            offset_of!(LsbPlayerState, track_uri),
+            offset_of!(LsbPlayerState, context_uri),
+            offset_of!(LsbPlayerState, position_ms),
+            offset_of!(LsbPlayerState, duration_ms),
+            offset_of!(LsbPlayerState, is_playing),
+            offset_of!(LsbPlayerState, repeat_track),
+        ];
+        assert_eq!(offsets, [8, 16, 24, 28, 32, 36]);
+    }
+
+    #[test]
+    fn set_option_checks_its_arguments() {
+        let recorder = Recorder::default();
+        let context = &recorder as *const Recorder as *mut c_void;
+        let bridge = lsb_new(Some(record_event), context);
+        let (app, ctx) = (c"app".as_ptr(), std::ptr::null_mut());
+        let status = Some(record_status as LsbCommandCallback);
+        unsafe {
+            let shuffle =
+                lsb_connect_set_option(bridge, app, LSB_OPTION_SHUFFLE, true, status, ctx);
+            assert_eq!(shuffle, LSB_ERR_NOT_LOGGED_IN);
+            let bad = lsb_connect_set_option(bridge, app, 3, true, status, ctx);
+            assert_eq!(bad, LSB_ERR_INVALID_ARGUMENT);
+            let none =
+                lsb_connect_set_option(bridge, app, LSB_OPTION_REPEAT_TRACK, false, None, ctx);
+            assert_eq!(none, LSB_ERR_INVALID_ARGUMENT);
+            lsb_free(bridge);
+        }
     }
 }
