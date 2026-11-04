@@ -51,6 +51,8 @@ final class SpotifyConnectPlayer: Player {
     private var ticker: Task<Void, Never>?
     /// The pre-warm in flight: it finds this Mac's device before the first load needs it.
     private var warming: Task<String?, Never>?
+    /// Bumped by each pre-warm and by `reset`, so a pre-warm from before a sign-out changes nothing.
+    private var warmID = 0
 
     init(client: LibrespotClient, library: LibrespotLibrary) {
         self.client = client
@@ -150,11 +152,14 @@ final class SpotifyConnectPlayer: Player {
     /// changes what Spotify plays. A failure stays quiet: the first load tries again and shows it.
     func prewarm() {
         guard device == nil, warming == nil else { return }
+        warmID += 1
+        let id = warmID
         warming = Task {
             let start = ContinuousClock.now
-            defer { warming = nil }
+            defer { if id == warmID { warming = nil } }
             do {
-                let found = try await appDevice { true }
+                let found = try await appDevice { id == warmID }
+                guard id == warmID else { return nil }
                 Self.logTime("prewarm: device found", since: start)
                 if device == nil { device = found }
                 return found
@@ -163,6 +168,16 @@ final class SpotifyConnectPlayer: Player {
                 return nil
             }
         }
+    }
+
+    /// Call it when the session signs out. The device ID and its options belong to that
+    /// account, so the next account looks them up again.
+    func reset() {
+        warmID += 1
+        warming?.cancel()
+        warming = nil
+        device = nil
+        deviceOptions = [:]
     }
 
     private func fire(_ command: Int32) {

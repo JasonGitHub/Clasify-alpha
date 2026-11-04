@@ -98,13 +98,15 @@ final class AppModel {
         store.send(.launch)  // restores the stored login
         // The reducer's toast and overlay timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out. The overlay never runs out while scrubbing.
-        // The same loop starts the player's pre-warm when a sign-in or a restore succeeds.
+        // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
+        // and resets the player when the session signs out.
         ticker = Task { [weak store, weak player] in
             var signedIn = false
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let state = store?.state else { return }
                 if state.signedIn && !signedIn { player?.prewarm() }
+                if !state.signedIn && signedIn { player?.reset() }
                 signedIn = state.signedIn
                 let now = Dependencies.live.now()
                 let toastDone = state.toastUntil > 0 && now > state.toastUntil
