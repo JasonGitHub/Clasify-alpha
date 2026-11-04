@@ -3,7 +3,7 @@ import Darwin
 import Foundation
 import Observation
 
-/// Build 4: tests the "Spotify app plays, Clasify controls it" route with Apple Events.
+/// Builds 4 and 5: test the "Spotify app plays, Clasify controls it" route with Apple Events.
 /// Spike only. Not the 1.0 engine.
 @MainActor
 @Observable
@@ -36,6 +36,7 @@ final class SpotifyAppProbe {
     @ObservationIgnored private var lastNotificationAt = Date.distantPast
     @ObservationIgnored private var lastNotifiedTrack = ""
     @ObservationIgnored private var lastPollLine = ""
+    @ObservationIgnored private var lastPayload: Payload?
 
     static let bundleID = "com.spotify.client"
 
@@ -164,12 +165,16 @@ final class SpotifyAppProbe {
             set(name, "Spotify not running")
             return
         }
-        let windows = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+        let dock = app.activationPolicy == .regular ? "in Dock" : "not in Dock"
+        set(name, "\(onScreenWindows(of: app)) windows on screen, isHidden \(app.isHidden), isActive \(app.isActive), \(dock)")
+    }
+
+    private func onScreenWindows(of app: NSRunningApplication) -> Int {
+        (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
             as? [[String: Any]] ?? [])
             .filter { ($0[kCGWindowOwnerPID as String] as? pid_t) == app.processIdentifier }
             .filter { ($0[kCGWindowLayer as String] as? Int) == 0 }
-        let dock = app.activationPolicy == .regular ? "in Dock" : "not in Dock"
-        set(name, "\(windows.count) windows on screen, isHidden \(app.isHidden), isActive \(app.isActive), \(dock)")
+            .count
     }
 
     // MARK: 4. Events
@@ -220,10 +225,11 @@ final class SpotifyAppProbe {
 
     private func notified(_ payload: Payload) {
         lastNotificationAt = Date()
+        lastPayload = payload
         let trackChanged = !lastNotifiedTrack.isEmpty && payload.trackID != lastNotifiedTrack
         // A new track with no command in the last 3 s means the old track ended.
         if trackChanged, Date().timeIntervalSince(lastCommandAt) > 3 {
-            set("Track end produces a notification", "yes (new track \(payload.trackID) with no command)")
+            append("NOTE new track \(payload.trackID) with no command in the last 3 s (a track ended)")
         }
         lastNotifiedTrack = payload.trackID
         append("NOTIFY state=\(payload.state) track=\(payload.trackID) pos=\(payload.position) \"\(payload.name)\"")
@@ -255,8 +261,10 @@ final class SpotifyAppProbe {
             now.trackID == first && now.state == "playing"
         }
         visibility("Hidden after play")
+        await refocus(name)
         guard let before = readState() else { return }
         await command(name + ": next track", "next track") { old, now in now.trackID != old.trackID }
+        visibility(name + ": visible after next track")
         guard let after = readState() else { return }
         let index = tracks.firstIndex(of: after.trackID)
         let verdict: String
@@ -267,6 +275,31 @@ final class SpotifyAppProbe {
         }
         set(name + ": context kept", "\(verdict) (shuffling \(before.shuffling))")
         memory()
+    }
+
+    /// Build 5: hides Spotify and brings Clasify back after a play command.
+    /// Reports whether Spotify stays hidden, whether focus returns, and whether playback goes on.
+    private func refocus(_ name: String) async {
+        guard let app else {
+            set(name + ": refocus", "Spotify not running")
+            return
+        }
+        let start = Date()
+        let hid = app.hide()
+        NSApp.activate()
+        let callMs = Int(Date().timeIntervalSince(start) * 1000)
+        var samples: [String] = []
+        for delay in [100, 500, 2000] {
+            let waited = Int(Date().timeIntervalSince(start) * 1000)
+            if delay > waited { try? await Task.sleep(for: .milliseconds(delay - waited)) }
+            let playing = readState()?.state ?? "unknown"
+            let windows = onScreenWindows(of: app)
+            samples.append(
+                "at \(delay) ms: \(windows) windows, isHidden \(app.isHidden), Spotify active \(app.isActive), "
+                    + "Clasify active \(NSApp.isActive), state \(playing)"
+            )
+        }
+        set(name + ": refocus", "hide() \(hid), took \(callMs) ms; " + samples.joined(separator: "; "))
     }
 
     // MARK: 3. Controls
@@ -284,12 +317,19 @@ final class SpotifyAppProbe {
             now.position >= old.position + 25
         }
     }
-    func volume50() async { await command("Volume 50", "set sound volume to 50") { _, now in now.volume == 50 } }
+    func volume50() async {
+        await command("Volume 50", "set sound volume to 50") { _, now in
+            // Spotify rounds the volume, so 50 often reads back as 49.
+            abs(now.volume - 50) <= 2
+        }
+    }
 
-    /// Seeks to 5 s before the end, then waits up to 20 s for a notification with a new track.
+    /// Seeks to 5 s before the end. Then polls every 100 ms for up to 20 s and reports
+    /// what the poll and the notification show when the track changes.
     func trackEnd() async {
+        let name = "Wait for track end"
         guard let state = readState(), state.durationMs > 10_000 else {
-            set("Track end produces a notification", "no track playing")
+            set(name, "no track playing")
             return
         }
         isBusy = true
@@ -297,17 +337,40 @@ final class SpotifyAppProbe {
         let target = Double(state.durationMs) / 1000 - 5
         lastCommandAt = Date()
         _ = tell("set player position to \(target)")
-        append("SEND seek to \(String(format: "%.1f", target)) s, 5 s before the end")
+        append("SEND seek to \(String(format: "%.1f", target)) s, 5 s before the end of \(state.trackID)")
         let since = Date()
+        var last = state
+        var change: (before: State, after: State, ms: Int)?
         for _ in 0..<200 {
             try? await Task.sleep(for: .milliseconds(100))
-            if lastNotificationAt > since, lastNotifiedTrack != state.trackID {
-                return // notified() has set the result.
+            guard let now = readState() else { continue }
+            if now.trackID != state.trackID || (now.state != "playing" && now.state != last.state) {
+                change = (last, now, Int(Date().timeIntervalSince(since) * 1000))
+                break
             }
+            last = now
         }
-        let now = readState()
-        let changed = now.map { $0.trackID != state.trackID } ?? false
-        set("Track end produces a notification", changed ? "no notification, but the track changed" : "no, and the track did not change")
+        guard let change else {
+            set(name, "no change within 20 s (last poll state=\(last.state) pos=\(String(format: "%.1f", last.position)))")
+            return
+        }
+        // Give the notification up to 1 s to arrive.
+        let changedAt = Date()
+        for _ in 0..<10 where lastNotificationAt < changedAt.addingTimeInterval(-0.5) {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        let before = change.before, after = change.after
+        let pollText = "poll before: state=\(before.state) pos=\(String(format: "%.1f", before.position)) of "
+            + "\(before.durationMs / 1000) s; poll after (\(change.ms) ms after the seek): state=\(after.state) "
+            + "track=\(after.trackID) pos=\(String(format: "%.1f", after.position))"
+        let noteText: String
+        if lastNotificationAt > since, let payload = lastPayload {
+            let ms = Int(lastNotificationAt.timeIntervalSince(since) * 1000)
+            noteText = "notification yes at \(ms) ms: state=\(payload.state) track=\(payload.trackID) pos=\(payload.position)"
+        } else {
+            noteText = "notification: none"
+        }
+        set(name, pollText + "; " + noteText)
     }
 
     /// Sends one command and measures the time until the polled state shows the change.

@@ -45,7 +45,7 @@ struct TrackAttempt: Identifiable {
 @MainActor
 @Observable
 final class SpikeModel {
-    static let build = 4
+    static let build = 5
     /// Access point port filters to try. 0 means librespot's default (no filter).
     static let accessPointPorts: [UInt16] = [0, 4070, 443, 80]
     /// Three tracks from different major labels, so one label's rights cannot explain a failure.

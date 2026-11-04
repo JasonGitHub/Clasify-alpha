@@ -145,7 +145,7 @@ struct SpikeView: View {
             }
             .disabled(!app.isConnected || app.isBusy)
             HStack {
-                Button("Test track end") { Task { await app.trackEnd() } }
+                Button("Wait for track end") { Task { await app.trackEnd() } }
                 Button("Measure memory") { app.memory() }
             }
             .disabled(!app.isConnected || app.isBusy)
