@@ -28,8 +28,8 @@ final class LibrespotLibrary: Library {
     /// The running `restoreSession`. Two refreshes with one refresh token can fail,
     /// because Spotify can replace the token, so callers share one.
     private var restoring: Task<Bool, Never>?
-    /// The newest bridge login (it may be done). Bridge logins run one at a time: when two overlap, the
-    /// bridge can send LOGGED_IN for both, and the client could not tell them apart.
+    /// The newest bridge login (it may be done). Bridge logins run one at a time. Each event also
+    /// carries its login id, so a late event of an older login is ignored.
     private var bridgeLogin: Task<Void, Never>?
 
     init(client: LibrespotClient) {

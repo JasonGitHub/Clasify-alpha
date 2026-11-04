@@ -43,6 +43,7 @@ pub const LSB_EVENT_ERROR: u32 = 1;
 pub struct LsbEvent {
     pub kind: u32,
     pub message: *const c_char,
+    pub login_id: u64,
 }
 pub type LsbEventCallback = extern "C" fn(context: *mut c_void, event: *const LsbEvent);
 
@@ -62,6 +63,7 @@ unsafe impl Sync for Callbacks {}
 struct Event {
     kind: u32,
     message: Option<String>,
+    login_id: u64,
 }
 
 impl Callbacks {
@@ -73,6 +75,7 @@ impl Callbacks {
         let raw = LsbEvent {
             kind: event.kind,
             message: message.as_ref().map_or(std::ptr::null(), |t| t.as_ptr()),
+            login_id: event.login_id,
         };
         (self.on_event)(self.context, &raw);
     }
@@ -139,13 +142,17 @@ unsafe fn read_str<'a>(text: *const c_char) -> Option<&'a str> {
     CStr::from_ptr(text).to_str().ok()
 }
 
-/// Starts login with a Spotify access token. The result comes as an event.
-/// No credentials are cached on disk.
+/// Starts login with a Spotify access token. The result comes as an event that
+/// carries `caller_id`. No credentials are cached on disk.
 ///
 /// # Safety
 /// `bridge` must be valid. `access_token` must be a NUL-terminated string.
 #[no_mangle]
-pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const c_char) -> i32 {
+pub unsafe extern "C" fn lsb_login(
+    bridge: *mut LsbBridge,
+    access_token: *const c_char,
+    caller_id: u64,
+) -> i32 {
     let (Some(bridge), Some(token)) = (bridge.as_ref(), read_str(access_token)) else {
         return LSB_ERR_INVALID_ARGUMENT;
     };
@@ -153,8 +160,9 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
     let callbacks = bridge.callbacks;
     let connected = bridge.connected.clone();
     let latest_login = bridge.latest_login.clone();
-    let login_id = latest_login.fetch_add(1, Ordering::SeqCst) + 1;
-    let is_latest = move || latest_login.load(Ordering::SeqCst) == login_id;
+    // The bridge's own count, separate from the caller's `caller_id` that events carry.
+    let attempt = latest_login.fetch_add(1, Ordering::SeqCst) + 1;
+    let is_latest = move || latest_login.load(Ordering::SeqCst) == attempt;
     let _guard = bridge.runtime.enter();
     let session = Session::new(SessionConfig::default(), None);
     bridge.runtime.spawn(async move {
@@ -163,6 +171,7 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
                 callbacks.emit(&Event {
                     kind: LSB_EVENT_ERROR,
                     message: Some(error.to_string()),
+                    login_id: caller_id,
                 });
             }
             return;
@@ -184,13 +193,15 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
             callbacks.emit(&Event {
                 kind: LSB_EVENT_LOGGED_IN,
                 message: Some(session.username()),
+                login_id: caller_id,
             });
         }
     });
     LSB_OK
 }
 
-/// Ends the session, if there is one. A login that has not finished sends no event.
+/// Ends the session, if there is one. A login that has not finished sends no event,
+/// except in the narrow race that `lsb_login` documents.
 ///
 /// # Safety
 /// `bridge` must be valid or NULL.

@@ -16,7 +16,8 @@ struct BridgeError: Error, Sendable, Equatable {
 
 /// The login that waits for LOGGED_IN or ERROR. `id` tells a timeout which login it is for.
 struct PendingLogin: Sendable {
-    var id = 0
+    /// Also goes to `lsb_login`, which echoes it in the event, so a late event of an older login is ignored.
+    var id: UInt64 = 0
     var continuation: CheckedContinuation<String, any Error>?
 
     /// Takes the continuation, so that only one caller resumes it.
@@ -85,7 +86,7 @@ final class LibrespotClient: @unchecked Sendable {
                 return (pending.id, older)
             }
             older?.resume(throwing: BridgeError.cancelled)
-            let status = lsb_login(handle, accessToken)
+            let status = lsb_login(handle, accessToken, id)
             if status != LSB_OK {
                 finishLogin(id, throwing: BridgeError(status: status, message: "login did not start"))
                 return
@@ -105,7 +106,7 @@ final class LibrespotClient: @unchecked Sendable {
     }
 
     /// Fails login `id` if it still waits.
-    private func finishLogin(_ id: Int, throwing error: BridgeError) {
+    private func finishLogin(_ id: UInt64, throwing error: BridgeError) {
         pendingLogin.withLock { pending in pending.id == id ? pending.take() : nil }?.resume(throwing: error)
     }
 
@@ -217,7 +218,8 @@ private func eventCallback(_ context: UnsafeMutableRawPointer?, _ event: UnsafeP
     case LSB_EVENT_ERROR: result = .failure(BridgeError(status: LSB_ERR_NOT_LOGGED_IN, message: string(raw.message) ?? "login failed"))
     default: return
     }
-    let pending = box.pendingLogin.withLock { $0.take() }
+    let loginID = raw.login_id
+    let pending = box.pendingLogin.withLock { pending in pending.id == loginID ? pending.take() : nil }
     pending?.resume(with: result.mapError { $0 as any Error })
 }
 
