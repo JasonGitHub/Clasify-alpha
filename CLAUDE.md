@@ -24,8 +24,8 @@ No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) b
 
 - IMPORTANT: no dependencies beyond Apple frameworks and librespot. Don't add a Swift package, CocoaPod or Rust crate without asking first.
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
-- Network calls go only to Spotify and to the GitHub Releases API for the update check. No analytics. Crash reporting is opt-in.
-- Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk.
+- Network calls go only to Spotify and to the GitHub Releases API for the update check. No analytics. No crash reporting in 1.0.
+- Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk. Run librespot with no credentials cache and no audio cache. Write no log files.
 - The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
 - librespot is linked as a static Rust library over a C FFI, not run as a spotifyd helper process.
 - 1.0 ships only the built-in librespot engine. The Spotify-app engine is out of 1.0: don't build it or show its setting, but keep playback behind the `Player` protocol so it can be added later.
@@ -41,9 +41,9 @@ No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) b
 ## Testing
 
 - Swift Testing, not XCTest.
-- Every reducer action gets a unit test: wheel, select, menu, play, next, prev, tick, offline, expire.
+- Every `Action` case gets a unit test.
 - Tests use a fake `Player`. They never touch Spotify or the network.
-- Skins get snapshot tests of their main screens.
+- Skins get snapshot tests of their main screens, made with `ImageRenderer`. No snapshot-testing package. These run on macOS CI only.
 
 ## Pocket skin mockup
 
