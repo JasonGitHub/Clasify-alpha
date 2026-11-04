@@ -49,12 +49,25 @@ import Testing
         return Snapshot(bitmap: bitmap)
     }
 
+    /// One flat color drawn by ImageRenderer and read back the same way as the snapshots.
+    /// The color read back can differ a little from the hex value, so the tests compare against this.
+    func reference(_ hex: UInt32) throws -> (r: Int, g: Int, b: Int) {
+        let renderer = ImageRenderer(content: Color(hex: hex).frame(width: 10, height: 10))
+        renderer.scale = CGFloat(Snapshot.scale)
+        let image = try #require(renderer.cgImage)
+        return Snapshot(bitmap: NSBitmapImageRep(cgImage: image)).rgb(5, 5)
+    }
+
+    func near(_ a: (r: Int, g: Int, b: Int), _ b: (r: Int, g: Int, b: Int)) -> Bool {
+        abs(a.r - b.r) < 12 && abs(a.g - b.g) < 12 && abs(a.b - b.b) < 12
+    }
+
     @Test func login() throws {
         var s = AppState()
         s.restoring = false
         let shot = try render(s, "login")
         #expect(shot.isBlue(150, Self.rowCenter(0)))  // "Log in with Spotify" is selected
-        #expect(shot.isLight(150, 36))  // the header
+        #expect(shot.isLight(50, 36))  // the header, left of the title
     }
 
     @Test func mainMenuWithTheBar() throws {
@@ -73,7 +86,8 @@ import Testing
         let shot = try render(s, "tracks")
         #expect(shot.isBlue(100, Self.rowCenter(0)))
         let thumbX: Int = Self.screenLeft + 248, thumbY: Int = Self.listTop + 8
-        #expect(shot.isDark(thumbX, thumbY))  // the scroll thumb
+        let thumb = shot.rgb(thumbX, thumbY), want = try reference(0x5d6772)
+        #expect(near(thumb, want), "thumb \(thumb), want \(want)")
     }
 
     @Test func settings() throws {
@@ -91,13 +105,9 @@ import Testing
         s.t = 61
         s.stack.append(Frame(screen: .now))
         let shot = try render(s, "now")
-        let cover = Color(hex: Labels.cover(for: "OutKast"))
-        let want = NSColor(cover).usingColorSpace(.sRGB)!
+        let want = try reference(Labels.cover(for: "OutKast"))
         let got = shot.rgb(Self.screenLeft + 12 + 8, 130)  // left part of the cover, beside the note
-        let wantR = Int(want.redComponent * 255), wantG = Int(want.greenComponent * 255)
-        let wantB = Int(want.blueComponent * 255)
-        let near = abs(got.r - wantR) < 12 && abs(got.g - wantG) < 12 && abs(got.b - wantB) < 12
-        #expect(near, "cover \(got), want \((wantR, wantG, wantB))")
+        #expect(near(got, want), "cover \(got), want \(want)")
     }
 
     @Test func nowPlayingVolumeAndScrub() throws {
