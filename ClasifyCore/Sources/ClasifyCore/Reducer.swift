@@ -80,8 +80,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.playGen += 1
         fx.append(.load(trackID: id, context: s.current?.playlist, autoplay: autoplay, generation: s.playGen))
     }
-    func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }
-    func skip(_ forward: Bool) { s.playGen += 1; fx.append(forward ? .next(generation: s.playGen) : .prev(generation: s.playGen)) }  // callbacks from before the seek go stale
+    func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
+    func skip(_ forward: Bool) { s.playGen += 1; fx.append(forward ? .next(generation: s.playGen) : .prev(generation: s.playGen)) }  // and from before the skip
     func play(_ pl: String, _ id: String) {
         s.current = TrackRef(playlist: pl, track: id)
         s.t = 0; s.isPlaying = true; s.nowMode = .volume
