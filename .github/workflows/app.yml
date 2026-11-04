@@ -16,6 +16,14 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: xcodebuild -version
+      - name: Cache the Rust build of the bridge
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            LibrespotBridge/target
+          key: bridge-${{ runner.os }}-${{ hashFiles('LibrespotBridge/Cargo.lock') }}
       - name: Build the bridge library that the app links
         run: scripts/build-bridge.sh
       - name: Test ClasifyCore on macOS

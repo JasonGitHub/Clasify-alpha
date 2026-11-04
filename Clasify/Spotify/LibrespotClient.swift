@@ -10,6 +10,7 @@ struct BridgeError: Error, Sendable, Equatable {
 
     static let cancelled = BridgeError(status: -1, message: "cancelled")
     static let keychain = BridgeError(status: -2, message: "cannot keep the login in the Keychain")
+    static let noRefreshToken = BridgeError(status: -3, message: "Spotify sent no refresh token")
 }
 
 /// Tokens from OAuth. Keep the access token in memory only. Only the refresh token
