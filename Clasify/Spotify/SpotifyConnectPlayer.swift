@@ -31,8 +31,9 @@ final class SpotifyConnectPlayer: Player {
     private var loading = false
     /// Pause or Play pressed while loading: the play state to set once the load plays.
     private var wantsRunning = true
-    /// Next (+1) and Prev (-1) pressed while loading, sent once the load plays.
-    private var pendingSkips = 0
+    /// Next and Prev pressed while loading, in order, sent once the load plays. They are not
+    /// summed, because at a list's start or with shuffle, Prev then Next is not "no move".
+    private var pendingSkips: [Int32] = []
     /// The Spotify app's device on this Mac, once a load found it.
     private var device: String?
     /// The context of the newest load, as Spotify knows it.
@@ -88,7 +89,7 @@ final class SpotifyConnectPlayer: Player {
         ours = false
         loading = true
         wantsRunning = autoplay
-        pendingSkips = 0
+        pendingSkips = []
         loaded = nil
         lastTrack = ""
         ticker?.cancel()
@@ -124,12 +125,12 @@ final class SpotifyConnectPlayer: Player {
 
     func next(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips += 1 } else { fire(LSB_COMMAND_NEXT) }
+        if loading { pendingSkips.append(LSB_COMMAND_NEXT) } else { fire(LSB_COMMAND_NEXT) }
     }
 
     func prev(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips -= 1 } else { fire(LSB_COMMAND_PREV) }
+        if loading { pendingSkips.append(LSB_COMMAND_PREV) } else { fire(LSB_COMMAND_PREV) }
     }
 
     func seek(to seconds: Double, generation: Int) {
@@ -225,13 +226,11 @@ final class SpotifyConnectPlayer: Player {
             }
             guard id == loadID, let found = device else { return }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
-            for _ in 0..<abs(pendingSkips) {
-                client.fire(pendingSkips > 0 ? LSB_COMMAND_NEXT : LSB_COMMAND_PREV, to: found)
-            }
+            for command in pendingSkips { client.fire(command, to: found) }
             client.fireVolume(device: found, percent: volume)
             context = contextURI
-            loaded = (pendingSkips == 0 ? trackID : nil, ContinuousClock.now)
-            pendingSkips = 0
+            loaded = (pendingSkips.isEmpty ? trackID : nil, ContinuousClock.now)
+            pendingSkips = []
             loading = false
             ours = true
         } catch let error as PlayerError {
