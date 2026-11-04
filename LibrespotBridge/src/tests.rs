@@ -727,13 +727,19 @@ mod library_tests {
         assert!(recorder.events.lock().unwrap().is_empty());
     }
 
-    #[test]
-    fn stop_login_waits_for_a_listener_that_binds_late() {
-        // A free port: bind, read it, and let it go.
-        let address = std::net::TcpListener::bind("127.0.0.1:0")
+    use crate::oauth::{stop_login, Login, LoginState, Phase};
+
+    fn free_address() -> std::net::SocketAddr {
+        // Bind, read the port, and let it go.
+        std::net::TcpListener::bind("127.0.0.1:0")
             .unwrap()
             .local_addr()
-            .unwrap();
+            .unwrap()
+    }
+
+    #[test]
+    fn stop_login_waits_for_a_listener_that_binds_late() {
+        let address = free_address();
         let handle = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(100));
             let listener = std::net::TcpListener::bind(address).unwrap();
@@ -742,7 +748,15 @@ mod library_tests {
             std::io::BufRead::read_line(&mut std::io::BufReader::new(stream), &mut line).unwrap();
             assert!(line.starts_with("GET /login?error=cancelled "), "{line}");
         });
-        crate::oauth::stop_login(handle, address);
+        let state = LoginState::new();
+        stop_login(
+            Login {
+                handle,
+                state: state.clone(),
+            },
+            address,
+        );
+        assert_eq!(state.phase(), Phase::Cancelled);
         // The port is free again.
         std::net::TcpListener::bind(address).unwrap();
     }
@@ -754,39 +768,30 @@ mod library_tests {
 
     #[test]
     fn stop_login_from_the_login_thread_returns_at_once() {
-        let address = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap();
-        let (send_handle, get_handle) = std::sync::mpsc::channel();
+        let address = free_address();
+        let (send_login, get_login) = std::sync::mpsc::channel::<Login>();
         let (send_done, done) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
             // As a token callback that calls lsb_oauth_cancel or lsb_oauth_login.
-            let own: std::thread::JoinHandle<()> = get_handle.recv().unwrap();
-            crate::oauth::stop_login(own, address);
+            stop_login(get_login.recv().unwrap(), address);
             send_done.send(()).unwrap();
         });
         // The thread gets a handle to itself. Keep none here: it is detached.
-        send_handle.send(handle).unwrap();
+        let state = LoginState::new();
+        send_login.send(Login { handle, state }).unwrap();
         done.recv_timeout(Duration::from_secs(5))
             .expect("stop_login must not wait for its own thread");
     }
 
     #[test]
-    fn stop_login_stops_sending_once_the_old_listener_answers() {
-        let address = std::net::TcpListener::bind("127.0.0.1:0")
-            .unwrap()
-            .local_addr()
-            .unwrap();
+    fn stop_login_sends_nothing_once_the_login_stops_listening() {
+        let address = free_address();
+        let state = LoginState::new();
+        let thread_state = state.clone();
         let handle = std::thread::spawn(move || {
-            // The old login: read the stop request, answer it, stop listening.
-            let old = std::net::TcpListener::bind(address).unwrap();
-            let (mut stream, _) = old.accept().unwrap();
-            let mut line = String::new();
-            std::io::BufRead::read_line(&mut std::io::BufReader::new(&stream), &mut line).unwrap();
-            std::io::Write::write_all(&mut stream, b"HTTP/1.1 200 OK\r\n\r\n").unwrap();
-            drop((stream, old));
-            // A new login on the same port, while the old thread still runs its callback.
+            // The old login: it got the browser's code, so it no longer listens.
+            let _ = thread_state.finish(Err("code consumed".to_owned()));
+            // Its callback starts a new login on the same port and runs for a while.
             let new = std::net::TcpListener::bind(address).unwrap();
             new.set_nonblocking(true).unwrap();
             let end = Instant::now() + Duration::from_millis(300);
@@ -795,31 +800,41 @@ mod library_tests {
                 std::thread::sleep(Duration::from_millis(10));
             }
         });
-        crate::oauth::stop_login(handle, address);
+        // Let the old login stop listening first, as when the browser already sent the code.
+        while state.is_listening() {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        stop_login(Login { handle, state }, address);
     }
 
-    #[test]
-    fn a_cancelled_login_sends_no_token() {
-        let token = || librespot_oauth::OAuthToken {
+    fn token() -> librespot_oauth::OAuthToken {
+        librespot_oauth::OAuthToken {
             access_token: "access".to_owned(),
             refresh_token: "refresh".to_owned(),
             expires_at: Instant::now(),
             token_type: "Bearer".to_owned(),
             scopes: vec![],
-        };
-        use crate::oauth::login_outcome;
-        assert!(login_outcome(Ok(token()), 7, 7).is_ok());
-        assert_eq!(
-            login_outcome(Ok(token()), 7, 0).unwrap_err(),
-            "login cancelled"
-        );
-        assert_eq!(
-            login_outcome(Ok(token()), 7, 8).unwrap_err(),
-            "login cancelled"
-        );
-        assert_eq!(
-            login_outcome(Err("denied".to_owned()), 7, 7).unwrap_err(),
-            "denied"
-        );
+        }
+    }
+
+    #[test]
+    fn a_login_cancelled_before_it_finishes_sends_no_token() {
+        let state = LoginState::new();
+        assert!(state.is_listening());
+        state.cancel();
+        let result = state.finish(Ok(token()));
+        assert_eq!(result.unwrap_err(), "login cancelled");
+        assert!(!state.is_listening());
+        assert_eq!(state.phase(), Phase::Cancelled);
+    }
+
+    #[test]
+    fn a_cancel_after_the_result_is_fixed_changes_nothing() {
+        let state = LoginState::new();
+        assert!(state.finish(Ok(token())).is_ok());
+        state.cancel();
+        assert_eq!(state.phase(), Phase::Decided);
+        let failed = LoginState::new().finish(Err("denied".to_owned()));
+        assert_eq!(failed.unwrap_err(), "denied");
     }
 }

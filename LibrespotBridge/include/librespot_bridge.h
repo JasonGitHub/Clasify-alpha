@@ -92,7 +92,8 @@ typedef void (*LsbTokenCallback)(void *context, const LsbToken *result);
 // A login that still runs is stopped first, as with lsb_oauth_cancel.
 int32_t lsb_oauth_login(LsbTokenCallback on_result, void *context);
 // Stops the running lsb_oauth_login. Its callback sends LSB_ERR_OAUTH before this
-// returns, also when the browser already sent the code, and port 8898 is free again. Does nothing if no login runs.
+// returns, also when the browser already sent the code, and port 8898 is free again.
+// Only a login whose token exchange had already finished still sends its token. Does nothing if no login runs.
 // lsb_oauth_login and lsb_oauth_cancel wait for the old login's callback, so they
 // can block. Call them off the main thread. The token callback may call them, but
 // it must not wait for the thread that calls them (no sync hop to it).

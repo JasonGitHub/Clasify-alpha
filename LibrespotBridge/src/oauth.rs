@@ -5,8 +5,8 @@
 use std::ffi::{c_char, c_void, CString};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -131,69 +131,118 @@ fn run(
     })
 }
 
-/// The id of the login that may still send a token. 0 when none may: a cancelled
-/// login that already got the code from the browser must not send a token.
-static ACTIVE_LOGIN: AtomicU64 = AtomicU64::new(0);
-static NEXT_LOGIN: AtomicU64 = AtomicU64::new(1);
+/// Where one login is. Only the login thread moves it to `Decided`, and only a stop
+/// moves it to `Cancelled`. One lock makes the two choices exclusive.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum Phase {
+    Running,
+    Cancelled,
+    /// The result is fixed and goes to the callback. A stop no longer changes it.
+    Decided,
+}
 
-/// A login's result, or a failure if it was cancelled after it started.
-pub(crate) fn login_outcome(
-    result: Result<OAuthToken, String>,
-    login: u64,
-    active: u64,
-) -> Result<OAuthToken, String> {
-    if login == active {
+/// The shared state of one login.
+#[derive(Debug)]
+pub(crate) struct LoginState {
+    /// True once the login stopped listening on port 8898: it got a request, or failed.
+    listening_done: AtomicBool,
+    phase: Mutex<Phase>,
+}
+
+impl LoginState {
+    pub(crate) fn new() -> Arc<Self> {
+        Arc::new(LoginState {
+            listening_done: AtomicBool::new(false),
+            phase: Mutex::new(Phase::Running),
+        })
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Phase> {
+        self.phase.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Called by the login thread when librespot-oauth returns. A cancelled login
+    /// sends no token.
+    pub(crate) fn finish(&self, result: Result<OAuthToken, String>) -> Result<OAuthToken, String> {
+        self.listening_done.store(true, Ordering::SeqCst);
+        let mut phase = self.lock();
+        if *phase == Phase::Cancelled {
+            return Err("login cancelled".to_owned());
+        }
+        *phase = Phase::Decided;
         result
-    } else {
-        Err("login cancelled".to_owned())
+    }
+
+    /// Marks the login cancelled, unless its result is already fixed.
+    pub(crate) fn cancel(&self) {
+        let mut phase = self.lock();
+        if *phase == Phase::Running {
+            *phase = Phase::Cancelled;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn phase(&self) -> Phase {
+        *self.lock()
+    }
+
+    pub(crate) fn is_listening(&self) -> bool {
+        !self.listening_done.load(Ordering::SeqCst)
     }
 }
 
-fn start_login(target: Target) -> JoinHandle<()> {
-    let login = NEXT_LOGIN.fetch_add(1, Ordering::SeqCst);
-    ACTIVE_LOGIN.store(login, Ordering::SeqCst);
-    run(target, move || {
-        let result = client()?.get_access_token().map_err(|e| e.to_string());
-        login_outcome(result, login, ACTIVE_LOGIN.load(Ordering::SeqCst))
-    })
+pub(crate) struct Login {
+    pub handle: JoinHandle<()>,
+    pub state: Arc<LoginState>,
 }
 
-/// The thread of the newest `lsb_oauth_login`. The lock is never held while a
-/// thread is stopped, so a token callback can call `lsb_oauth_login` or
-/// `lsb_oauth_cancel` again.
-static LOGIN: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
+fn start_login(target: Target) -> Login {
+    let state = LoginState::new();
+    let thread_state = state.clone();
+    let handle = run(target, move || {
+        let result = client()?.get_access_token().map_err(|e| e.to_string());
+        thread_state.finish(result)
+    });
+    Login { handle, state }
+}
 
-/// Stops a login thread and waits until it has sent its result, so that port 8898
-/// is free again. librespot-oauth cannot be stopped directly, so this sends its
-/// listener a request without a code. It sends it again until a listener answers,
-/// because the thread may not listen yet. After an answer it sends no more, so that
-/// a new login that listens on the same port is not stopped too. A thread that
-/// already got the code from the browser does not listen; then this only waits.
+/// The newest `lsb_oauth_login`. The lock is never held while a login is stopped,
+/// so a token callback can call `lsb_oauth_login` or `lsb_oauth_cancel` again.
+static LOGIN: Mutex<Option<Login>> = Mutex::new(None);
+
+/// Stops a login and waits until it has sent its result, so that port 8898 is free
+/// again. librespot-oauth cannot be stopped directly, so this sends its listener a
+/// request without a code. It sends it again while that login still listens,
+/// because the thread may not listen yet. It stops sending as soon as the login no
+/// longer listens, before its callback runs, so a new login that the callback starts
+/// on the same port gets no stop request.
 /// Called from the login thread itself (from its callback), it returns at once:
 /// that thread no longer listens, and it ends when the callback returns.
-pub(crate) fn stop_login(handle: JoinHandle<()>, address: SocketAddr) {
-    if handle.thread().id() == std::thread::current().id() {
+pub(crate) fn stop_login(login: Login, address: SocketAddr) {
+    login.state.cancel();
+    if login.handle.thread().id() == std::thread::current().id() {
         return;
     }
-    let mut answered = false;
-    while !handle.is_finished() {
-        if !answered {
-            answered = send_stop(address);
+    while !login.handle.is_finished() {
+        if login.state.is_listening() {
+            send_stop(address);
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    let _ = handle.join();
+    let _ = login.handle.join();
 }
 
-/// True when a listener read the stop request and answered it.
-fn send_stop(address: SocketAddr) -> bool {
-    let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_secs(1)) else {
-        return false;
-    };
-    let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
-    let sent = stream.write_all(b"GET /login?error=cancelled HTTP/1.1\r\n\r\n");
-    let mut answer = [0u8; 1];
-    sent.is_ok() && matches!(stream.read(&mut answer), Ok(n) if n > 0)
+fn send_stop(address: SocketAddr) {
+    if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_secs(1)) {
+        let _ = stream.set_read_timeout(Some(Duration::from_secs(1)));
+        if stream
+            .write_all(b"GET /login?error=cancelled HTTP/1.1\r\n\r\n")
+            .is_ok()
+        {
+            // Wait for the answer, so that the listener has read the request.
+            let _ = stream.read(&mut [0u8; 1]);
+        }
+    }
 }
 
 fn listen_address() -> SocketAddr {
@@ -215,7 +264,6 @@ pub extern "C" fn lsb_oauth_login(
         return LSB_ERR_INVALID_ARGUMENT;
     };
     loop {
-        ACTIVE_LOGIN.store(0, Ordering::SeqCst);
         if let Some(older) = take_login() {
             stop_login(older, listen_address());
         }
@@ -228,21 +276,20 @@ pub extern "C" fn lsb_oauth_login(
     }
 }
 
-fn lock_login() -> std::sync::MutexGuard<'static, Option<JoinHandle<()>>> {
+fn lock_login() -> std::sync::MutexGuard<'static, Option<Login>> {
     LOGIN.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-fn take_login() -> Option<JoinHandle<()>> {
+fn take_login() -> Option<Login> {
     lock_login().take()
 }
 
-/// Stops a login that waits for the browser. Its callback then gets LSB_ERR_OAUTH,
-/// before this returns. If no login runs, it does nothing.
+/// Stops the running login. Its callback gets LSB_ERR_OAUTH before this returns,
+/// unless its result was already fixed. If no login runs, it does nothing.
 #[no_mangle]
 pub extern "C" fn lsb_oauth_cancel() -> i32 {
-    ACTIVE_LOGIN.store(0, Ordering::SeqCst);
-    if let Some(handle) = take_login() {
-        stop_login(handle, listen_address());
+    if let Some(login) = take_login() {
+        stop_login(login, listen_address());
     }
     LSB_OK
 }
