@@ -105,6 +105,8 @@ func playing(_ i: Int = 0) -> AppState {
         s = playing(7); s.repeatMode = .all
         send(&s, .next)
         #expect(s.current?.track == "f0")
+        send(&s, .prev)  // wraps back under Repeat All
+        #expect(s.current?.track == "f7")
         s = playing(3); s.shuffle = true
         send(&s, .next)
         #expect(s.current?.track == "f0")  // random 0, skips current
@@ -186,7 +188,11 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func resetRestoresInitialState() {
         var s = playing()
         #expect(send(&s, .reset) == [.stop])
-        #expect(s == AppState())
+        var fresh = AppState()
+        fresh.tok = s.tok
+        #expect(s == fresh && s.tok == 2)
+        send(&s, .select, .authDone, .select, .loaded(token: 1, library: library))  // late load from before reset
+        #expect(s.top.loading && s.top.token == 3)
     }
 
     @Test func logOutGoesThroughConfirm() {

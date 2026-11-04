@@ -73,8 +73,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         } else if i >= list.count {
             guard s.repeatMode == .all else { s.isPlaying = false; fx += [.pause, .seek(0)]; return }
             i = 0
+        } else if i < 0 {
+            i = s.repeatMode == .all ? list.count - 1 : 0
         }
-        i = max(i, 0)
         s.current?.track = list[i].id
         fx.append(.load(trackID: list[i].id, autoplay: s.isPlaying))
     }
@@ -198,7 +199,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .reset:
             stop()
+            let tok = s.tok  // keep tokens unique so a load from before the reset stays stale
             s = AppState()
+            s.tok = tok
         }
     }
     apply()
