@@ -26,14 +26,22 @@
 #define LSB_EVENT_UNAVAILABLE 5
 #define LSB_EVENT_VOLUME 6
 #define LSB_EVENT_ERROR 7
+#define LSB_EVENT_PLAY_REQUEST 8
 
 typedef struct LsbBridge LsbBridge;
 
 typedef struct LsbEvent {
-    uint32_t kind;          // One of LSB_EVENT_*.
-    uint32_t position_ms;   // PLAYING, PAUSED, POSITION.
-    uint16_t volume;        // VOLUME. 0 to 65535.
-    const char *message;    // ERROR only, else NULL. Valid only during the callback.
+    uint32_t kind;             // One of LSB_EVENT_*.
+    uint32_t position_ms;      // PLAYING, PAUSED, POSITION.
+    uint64_t play_request_id;  // PLAY_REQUEST and track events, else 0.
+    uint16_t volume;           // VOLUME. 0 to 65535.
+    const char *track_uri;     // Track events, else NULL. Like "spotify:track:<id>".
+    const char *message;       // ERROR only, else NULL.
+    // The strings are valid only during the callback.
+    // Track events: PLAYING, PAUSED, POSITION, TRACK_ENDED, UNAVAILABLE.
+    // PLAY_REQUEST comes once for each lsb_load, in call order, with only the
+    // play_request_id that later track events for that load carry. Match it to
+    // your loads in order, not by URI: the same URI can be loaded twice.
 } LsbEvent;
 
 typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);

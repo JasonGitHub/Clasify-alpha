@@ -1,19 +1,23 @@
 use super::*;
 
-/// kind, position_ms, volume, message
-type Recorded = (u32, u32, u16, Option<String>);
-
 /// Test context: records what the callbacks receive.
 #[derive(Default)]
 struct Recorder {
-    events: Mutex<Vec<Recorded>>,
+    events: Mutex<Vec<Event>>,
     samples: Mutex<Vec<f32>>,
 }
 
 extern "C" fn record_event(context: *mut c_void, event: *const LsbEvent) {
     let (recorder, event) = unsafe { (&*(context as *const Recorder), &*event) };
-    let message = unsafe { read_str(event.message) }.map(str::to_owned);
-    let entry = (event.kind, event.position_ms, event.volume, message);
+    let read = |text| unsafe { read_str(text) }.map(str::to_owned);
+    let entry = Event {
+        kind: event.kind,
+        position_ms: event.position_ms,
+        play_request_id: event.play_request_id,
+        volume: event.volume,
+        track_uri: read(event.track_uri),
+        message: read(event.message),
+    };
     recorder.events.lock().unwrap().push(entry);
 }
 
@@ -32,8 +36,22 @@ fn callbacks(recorder: &Recorder) -> Callbacks {
     }
 }
 
+const URI: &str = "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
+
 fn track() -> SpotifyUri {
-    SpotifyUri::from_uri("spotify:track:4uLU6hMCjMI75M1A2tKUQC").unwrap()
+    SpotifyUri::from_uri(URI).unwrap()
+}
+
+/// The bridge event expected for a track event.
+fn expected(kind: u32, play_request_id: u64, position_ms: u32) -> Option<Event> {
+    let track_uri = Some(URI.to_owned());
+    Some(Event {
+        kind,
+        play_request_id,
+        position_ms,
+        track_uri,
+        ..Event::default()
+    })
 }
 
 #[test]
@@ -51,6 +69,7 @@ fn header_matches_rust() {
         ("LSB_EVENT_UNAVAILABLE", LSB_EVENT_UNAVAILABLE),
         ("LSB_EVENT_VOLUME", LSB_EVENT_VOLUME),
         ("LSB_EVENT_ERROR", LSB_EVENT_ERROR),
+        ("LSB_EVENT_PLAY_REQUEST", LSB_EVENT_PLAY_REQUEST),
     ];
     for (name, value) in constants {
         let line = format!("#define {name} {value}\n");
@@ -109,59 +128,70 @@ fn bad_arguments_return_invalid_argument() {
 
 #[test]
 fn player_events_map_to_bridge_events() {
-    let id = 1;
+    use PlayerEvent::*;
+    let (id, t) = (7, track);
+    let volume = Some(Event {
+        volume: 300,
+        ..Event::new(LSB_EVENT_VOLUME)
+    });
     let cases = [
         (
-            PlayerEvent::Playing {
+            PlayRequestIdChanged {
                 play_request_id: id,
-                track_id: track(),
+            },
+            Some(Event {
+                play_request_id: id,
+                ..Event::new(LSB_EVENT_PLAY_REQUEST)
+            }),
+        ),
+        (
+            Playing {
+                play_request_id: id,
+                track_id: t(),
                 position_ms: 5,
             },
-            Some((LSB_EVENT_PLAYING, 5, 0)),
+            expected(LSB_EVENT_PLAYING, id, 5),
         ),
         (
-            PlayerEvent::Paused {
+            Paused {
                 play_request_id: id,
-                track_id: track(),
+                track_id: t(),
                 position_ms: 6,
             },
-            Some((LSB_EVENT_PAUSED, 6, 0)),
+            expected(LSB_EVENT_PAUSED, id, 6),
         ),
         (
-            PlayerEvent::PositionChanged {
+            PositionChanged {
                 play_request_id: id,
-                track_id: track(),
+                track_id: t(),
                 position_ms: 7,
             },
-            Some((LSB_EVENT_POSITION, 7, 0)),
+            expected(LSB_EVENT_POSITION, id, 7),
         ),
         (
-            PlayerEvent::Seeked {
+            Seeked {
                 play_request_id: id,
-                track_id: track(),
+                track_id: t(),
                 position_ms: 8,
             },
-            Some((LSB_EVENT_POSITION, 8, 0)),
+            expected(LSB_EVENT_POSITION, id, 8),
         ),
         (
-            PlayerEvent::EndOfTrack {
+            EndOfTrack {
                 play_request_id: id,
-                track_id: track(),
+                track_id: t(),
             },
-            Some((LSB_EVENT_TRACK_ENDED, 0, 0)),
+            expected(LSB_EVENT_TRACK_ENDED, id, 0),
         ),
         (
-            PlayerEvent::Unavailable {
+            Unavailable {
                 play_request_id: id,
-                track_id: track(),
+                track_id: t(),
             },
-            Some((LSB_EVENT_UNAVAILABLE, 0, 0)),
+            expected(LSB_EVENT_UNAVAILABLE, id, 0),
         ),
-        (
-            PlayerEvent::VolumeChanged { volume: 300 },
-            Some((LSB_EVENT_VOLUME, 0, 300)),
-        ),
-        (PlayerEvent::Preloading { track_id: track() }, None),
+        (VolumeChanged { volume: 300 }, volume),
+        (Preloading { track_id: t() }, None),
     ];
     for (event, expected) in cases {
         assert_eq!(map_event(&event), expected, "{event:?}");
@@ -169,17 +199,20 @@ fn player_events_map_to_bridge_events() {
 }
 
 #[test]
-fn emit_passes_message_to_callback() {
+fn emit_passes_all_fields_to_callback() {
     let recorder = Recorder::default();
     let callbacks = callbacks(&recorder);
-    callbacks.emit(LSB_EVENT_ERROR, 0, 0, Some("bad\0token"));
-    callbacks.emit(LSB_EVENT_LOGGED_IN, 0, 0, None);
+    let track_event = Event {
+        volume: 9,
+        ..expected(LSB_EVENT_PAUSED, 42, 1234).unwrap()
+    };
+    callbacks.emit(&Event::error("bad\0token"));
+    callbacks.emit(&Event::new(LSB_EVENT_LOGGED_IN));
+    callbacks.emit(&track_event);
     let events = recorder.events.lock().unwrap();
-    assert_eq!(
-        events[0],
-        (LSB_EVENT_ERROR, 0, 0, Some("bad token".to_owned()))
-    );
-    assert_eq!(events[1], (LSB_EVENT_LOGGED_IN, 0, 0, None));
+    assert_eq!(events[0], Event::error("bad token"));
+    assert_eq!(events[1], Event::new(LSB_EVENT_LOGGED_IN));
+    assert_eq!(events[2], track_event);
 }
 
 #[test]
@@ -190,4 +223,33 @@ fn sink_forwards_samples_as_f32() {
     let packet = AudioPacket::Samples(vec![0.5, -0.25, 1.0]);
     sink.write(packet, &mut converter).unwrap();
     assert_eq!(*recorder.samples.lock().unwrap(), vec![0.5f32, -0.25, 1.0]);
+}
+
+#[test]
+fn event_layout_matches_c() {
+    // Sizes and offsets that a C compiler gives the header's LsbEvent on 64-bit targets.
+    use std::mem::{offset_of, size_of};
+    assert_eq!(size_of::<LsbEvent>(), 40);
+    let offsets = [
+        offset_of!(LsbEvent, position_ms),
+        offset_of!(LsbEvent, play_request_id),
+        offset_of!(LsbEvent, volume),
+        offset_of!(LsbEvent, track_uri),
+        offset_of!(LsbEvent, message),
+    ];
+    assert_eq!(offsets, [4, 8, 16, 24, 32]);
+}
+
+#[test]
+fn repeated_play_request_is_sent_once() {
+    let request = |id| Event {
+        play_request_id: id,
+        ..Event::new(LSB_EVENT_PLAY_REQUEST)
+    };
+    let mut last = None;
+    assert!(is_new(&request(1), &mut last));
+    assert!(!is_new(&request(1), &mut last));
+    assert!(is_new(&Event::new(LSB_EVENT_PLAYING), &mut last));
+    assert!(!is_new(&request(1), &mut last));
+    assert!(is_new(&request(2), &mut last));
 }
