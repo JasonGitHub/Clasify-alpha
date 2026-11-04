@@ -115,11 +115,13 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func nextAndPrevSkipInTheEngine() {
         var s = playing(6)
-        #expect(send(&s, .next) == [.next] && s.current?.track == "f6")  // moves on `.trackChanged`
-        send(&s, .trackChanged("f7", generation: 1))
-        #expect(send(&s, .prev) == [.prev])
+        #expect(send(&s, .next) == [.next(generation: 2)] && s.current?.track == "f6")  // moves on `.trackChanged`
+        send(&s, .position(130, generation: 1))  // from before the skip
+        send(&s, .trackChanged("f7", playing: true, generation: 2))
+        #expect(s.current?.track == "f7" && s.t == 0)
+        #expect(send(&s, .prev) == [.prev(generation: 3)])
         s.repeatMode = .all; s.shuffle = true
-        #expect(send(&s, .next) == [.next])  // the engine applies shuffle and repeat
+        #expect(send(&s, .next) == [.next(generation: 4)])  // the engine applies shuffle and repeat
         s = playing(3)
         send(&s, .offline(true))
         #expect(send(&s, .next, .prev) == [] && s.current?.track == "f3" && s.toast == "Offline. Can’t start playback")
@@ -139,7 +141,7 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .position(5, generation: 1))
         #expect(send(&s, .prev) == [.seek(0, generation: 2)] && s.current?.track == "f2")
         #expect(send(&s, .trackEnded(generation: 1)) == [])  // queued before the restart
-        #expect(send(&s, .prev) == [.prev] && s.current?.track == "f2")
+        #expect(send(&s, .prev) == [.prev(generation: 3)] && s.current?.track == "f2")
     }
 
     @Test func tickExpiresToastAndOverlay() {
@@ -165,14 +167,19 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func trackChangedMovesCurrentWithoutLoading() {
         var s = playing()
         send(&s, .position(12.5, generation: 1))
-        #expect(send(&s, .trackChanged("f1", generation: 1)) == [])
-        #expect(s.current == TrackRef(playlist: "focus", track: "f1") && s.t == 0)
-        send(&s, .trackChanged("f5", generation: 0))  // from an earlier load
-        #expect(s.current?.track == "f1")
-        send(&s, .trackChanged("zz", generation: 1))  // not in our copy of the playlist
-        #expect(s.current == TrackRef(playlist: "focus", track: "zz") && s.track(s.current!) == nil)
+        #expect(send(&s, .trackChanged("f1", playing: true, generation: 1)) == [])
+        #expect(s.current == TrackRef(playlist: "focus", track: "f1") && s.t == 0 && s.isPlaying)
+        send(&s, .trackChanged("f5", playing: false, generation: 0))  // from an earlier load
+        #expect(s.current?.track == "f1" && s.isPlaying)
+        send(&s, .trackChanged("zz", playing: false, generation: 1))  // not in our copy of the playlist
+        #expect(s.current == TrackRef(playlist: "focus", track: "zz") && s.track(s.current!) == nil && !s.isPlaying)
+        #expect(send(&s, .select, .wheel(1)) == [.seek(5, generation: 2)])  // scrub with no known duration
+        s = playing()
+        send(&s, .trackEnded(generation: 1))
+        send(&s, .next, .trackChanged("f1", playing: true, generation: 2))  // Next after the end plays again
+        #expect(s.isPlaying && s.current?.track == "f1")
         s = mainMenu()
-        #expect(send(&s, .trackChanged("f1", generation: 0)) == [] && s.current == nil)
+        #expect(send(&s, .trackChanged("f1", playing: true, generation: 0)) == [] && s.current == nil)
     }
 
     @Test func playbackFailedPausesAndShowsToast() {
@@ -297,8 +304,8 @@ func playing(_ i: Int = 0) -> AppState {
     func pause() { calls.append("pause") }
     func resume() { calls.append("resume") }
     func stop() { calls.append("stop") }
-    func next() { calls.append("next") }
-    func prev() { calls.append("prev") }
+    func next(generation: Int) { calls.append("next") }
+    func prev(generation: Int) { calls.append("prev") }
     func setShuffle(_ on: Bool) { calls.append("shuffle \(on)") }
     func setRepeat(_ mode: RepeatMode) { calls.append("repeat \(mode.rawValue)") }
     func seek(to seconds: Double, generation: Int) { calls.append("seek \(seconds)") }

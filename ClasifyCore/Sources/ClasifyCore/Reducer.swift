@@ -20,7 +20,8 @@ public enum Action: Equatable, Sendable {
     /// `.trackEnded` means the engine stopped at the end of the context.
     case position(Double, generation: Int), trackEnded(generation: Int)
     /// The engine moved on to another track in the same context (its own next, prev or auto-advance).
-    case trackChanged(String, generation: Int)
+    /// `playing` is the engine's play state after the change.
+    case trackChanged(String, playing: Bool, generation: Int)
     /// The engine can't play the load with this `generation`. The message is shown as a toast.
     case playbackFailed(String, generation: Int)
 }
@@ -31,7 +32,7 @@ public enum Effect: Equatable, Sendable {
     case load(trackID: String, context: String?, autoplay: Bool, generation: Int)
     case pause, resume, stop
     /// The engine owns the play order of a context: it picks the next and previous track.
-    case next, prev
+    case next(generation: Int), prev(generation: Int)  // a skip starts a new generation too
     /// Sent when the setting changes and before each load, so the engine's order follows Clasify's settings.
     case setShuffle(Bool), setRepeat(RepeatMode)
     case seek(Double, generation: Int)  // a seek starts a new generation too
@@ -79,7 +80,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.playGen += 1
         fx.append(.load(trackID: id, context: s.current?.playlist, autoplay: autoplay, generation: s.playGen))
     }
-    func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
+    func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }
+    func skip(_ forward: Bool) { s.playGen += 1; fx.append(forward ? .next(generation: s.playGen) : .prev(generation: s.playGen)) }  // callbacks from before the seek go stale
     func play(_ pl: String, _ id: String) {
         s.current = TrackRef(playlist: pl, track: id)
         s.t = 0; s.isPlaying = true; s.nowMode = .volume
@@ -110,7 +112,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .now {
                 guard let c = s.current else { return }
                 if s.nowMode == .scrub {
-                    s.t = clamp(s.t + Double(d * 5), 0, max((s.track(c)?.duration ?? 0) - 1, 0))
+                    let end = s.track(c).map { max($0.duration - 1, 0) } ?? .infinity  // unknown track: the engine clamps
+                    s.t = clamp(s.t + Double(d * 5), 0, end)
                     s.overlayUntil = now + 2.5
                     seek(s.t)
                 } else {
@@ -192,11 +195,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .next:
             guard s.current != nil else { return }
             if s.offline { return toast(offlineStart) }  // a skip offline would leave UI and player on different tracks
-            fx.append(.next)  // `current` follows when the engine reports `.trackChanged`
+            skip(true)  // `current` follows when the engine reports `.trackChanged`
 
         case .prev:
             guard s.current != nil else { return }
-            if s.t > 3 { s.t = 0; seek(0) } else if s.offline { toast(offlineStart) } else { fx.append(.prev) }
+            if s.t > 3 { s.t = 0; seek(0) } else if s.offline { toast(offlineStart) } else { skip(false) }
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
@@ -209,10 +212,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.isPlaying, s.current != nil, gen == s.playGen else { return }
             s.isPlaying = false; s.t = 0
 
-        case .trackChanged(let id, let gen):
+        case .trackChanged(let id, let playing, let gen):
             // Same playlist. A track that is not in our copy of it still shows as current, by ID.
-            guard s.current != nil, gen == s.playGen, s.current?.track != id else { return }
-            s.current?.track = id; s.t = 0
+            guard s.current != nil, gen == s.playGen else { return }
+            s.isPlaying = playing
+            if s.current?.track != id { s.current?.track = id; s.t = 0 }
 
         case .playbackFailed(let msg, let gen):
             guard s.current != nil, gen == s.playGen else { return }

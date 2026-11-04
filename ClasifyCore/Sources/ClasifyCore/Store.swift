@@ -1,7 +1,9 @@
 import Observation
 
 /// Playback engine (the Spotify desktop app, controlled through Spotify Connect, in 1.0). Code above it doesn't know which engine is playing.
-/// The engine reports `.position`, `.trackEnded` and `.playbackFailed` back to the store.
+/// The engine reports `.position`, `.trackEnded`, `.trackChanged` and `.playbackFailed` back to the store,
+/// each with the generation of the newest `load`, `seek`, `next` or `prev`.
+/// It reports only the state of its own device and context, so playback that the user moves elsewhere is not followed.
 @MainActor
 public protocol Player: AnyObject {
     /// Report `.position` and `.trackEnded` for this load with the same `generation`.
@@ -10,9 +12,11 @@ public protocol Player: AnyObject {
     func pause()
     func resume()
     func stop()
-    /// Skip within the playing context. The engine reports the new track with `.trackChanged`.
-    func next()
-    func prev()
+    /// Skip within the playing context. Report the new track with `.trackChanged` and this `generation`.
+    func next(generation: Int)
+    func prev(generation: Int)
+    /// The engine keeps the newest value and applies it to its own device before it plays.
+    /// It may skip a value that it already applied, and it never changes another device.
     func setShuffle(_ on: Bool)
     func setRepeat(_ mode: RepeatMode)
     /// Report later `.position` and `.trackEnded` with this `generation`.
@@ -61,8 +65,8 @@ public final class Store {
             case .pause: player.pause()
             case .resume: player.resume()
             case .stop: player.stop()
-            case .next: player.next()
-            case .prev: player.prev()
+            case .next(let gen): player.next(generation: gen)
+            case .prev(let gen): player.prev(generation: gen)
             case .setShuffle(let on): player.setShuffle(on)
             case .setRepeat(let mode): player.setRepeat(mode)
             case .seek(let t, let gen): player.seek(to: t, generation: gen)
