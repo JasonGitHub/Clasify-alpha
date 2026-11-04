@@ -73,3 +73,13 @@ When a PR is ready to merge, comment `@codex review` on it. Then work through wh
 - If you decline a finding, say why in its thread.
 - After a fix, push and comment `@codex review` again. Stop when a review has no significant findings.
 - After 3 rounds that still have significant findings, stop and ask Jason.
+
+## Merging
+
+A thread squash-merges its own PR only when all of these are true. Otherwise it asks Jason.
+
+- CI is green on the latest commit.
+- The Codex loop has ended with no significant findings on the latest commit.
+- The CTO thread has approved the PR.
+- No question for Jason is open, such as a new dependency, a product choice, or a step that needs his Mac.
+- Every PR it depends on has merged.
