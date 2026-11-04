@@ -49,6 +49,15 @@ No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) b
 
 `Pocket-Full.dc.html` (from Clasify.zip in the project files) is the spec for 1.0 screens, actions and edge cases: login, browse, play, settings, offline, expired session. Copy its colors, fonts, sizes, spacing and radii from the inline styles into native views; don't port its HTML or JS. Its strings say "Mixtape", the old name. Use "Clasify".
 
+## Communication
+
+When you reply to Jason or explain something, make readability the first priority. Follow ASD-STE100 Simplified Technical English about 80% of the way:
+
+- Keep sentences short: about 20 words for instructions and 25 for descriptions.
+- Use active voice. Give one instruction per sentence.
+- Use common words, and use one term for one thing. Avoid idioms and long noun stacks.
+- Use exact code names, commands and technical terms as they are. Don't simplify them away.
+
 ## Pull requests
 
 - One fix or feature per PR, ideally under 200 changed lines, with a description of what changed and why.
