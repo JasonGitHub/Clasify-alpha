@@ -42,6 +42,8 @@ typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);
 // bounded ring buffer that AVAudioEngine drains. librespot paces playback by this
 // blocking. If the callback returns at once, librespot decodes the whole track in
 // seconds, and the position and track-ended events come too early.
+// lsb_free joins the playback thread. Before you call it, make the audio
+// callback stop blocking (keep draining, or return at once), or lsb_free hangs.
 typedef void (*LsbAudioCallback)(void *context, const float *samples, size_t count);
 
 // Returns NULL if a callback is NULL or the bridge cannot start.
