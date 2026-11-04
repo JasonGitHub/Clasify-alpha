@@ -1,0 +1,17 @@
+[package]
+name = "librespot-bridge"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "MIT"
+description = "C FFI over librespot for the Clasify macOS app"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+# librespot is pinned to one exact version. tokio is already a librespot
+# dependency; we name it only to create the runtime that librespot needs.
+[dependencies]
+librespot-core = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
