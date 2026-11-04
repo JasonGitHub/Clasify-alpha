@@ -49,6 +49,8 @@ final class SpotifyConnectPlayer: Player {
     private var deviceOptions: [Int32: Bool] = [:]
     /// Moves the position on once a second while a track plays. Cluster updates come only on changes.
     private var ticker: Task<Void, Never>?
+    /// The pre-warm in flight: it finds this Mac's device before the first load needs it.
+    private var warming: Task<String?, Never>?
 
     init(client: LibrespotClient, library: LibrespotLibrary) {
         self.client = client
@@ -143,6 +145,26 @@ final class SpotifyConnectPlayer: Player {
         if ours { Task { await applyOptions() } }
     }
 
+    /// Call it after sign-in. It starts Spotify hidden if it does not run and finds this Mac's
+    /// device, so the first play does not wait for them. It sends no command, so it never
+    /// changes what Spotify plays. A failure stays quiet: the first load tries again and shows it.
+    func prewarm() {
+        guard device == nil, warming == nil else { return }
+        warming = Task {
+            let start = ContinuousClock.now
+            defer { warming = nil }
+            do {
+                let found = try await appDevice { true }
+                Self.logTime("prewarm: device found", since: start)
+                if device == nil { device = found }
+                return found
+            } catch {
+                Self.logFailure("prewarm", error)
+                return nil
+            }
+        }
+    }
+
     private func fire(_ command: Int32) {
         guard ours, let device else { return }
         client.fire(command, to: device)
@@ -152,19 +174,27 @@ final class SpotifyConnectPlayer: Player {
 
     private func play(_ trackID: String, context playlist: String?, id: Int) async {
         guard let contextURI = contextURI(for: playlist) else { return fail("Can’t play this list", id) }
+        let start = ContinuousClock.now
         do {
-            // Reuse the known device. Look it up again once if the play fails, for example
-            // after Spotify restarted.
+            // Reuse the known device, or the one that the pre-warm finds. Look it up again once
+            // if the play fails, for example after Spotify restarted.
             var known = device
+            if known == nil, let warming {
+                known = await warming.value
+                guard id == loadID else { return }
+            }
             for attempt in 0..<2 {
                 let found: String
-                if let known { found = known } else { found = try await appDevice(id) }
+                if let known { found = known } else { found = try await appDevice { id == loadID } }
                 guard id == loadID else { return }
+                Self.logTime("load: device found", since: start)
                 device = found
                 await applyOptions()
+                Self.logTime("load: options set", since: start)
                 guard id == loadID else { return }
                 do {
                     try await client.play(device: found, context: contextURI, track: trackID)
+                    Self.logTime("load: play acknowledged", since: start)
                     break
                 } catch where attempt == 0 && known != nil {
                     known = nil
@@ -218,6 +248,12 @@ final class SpotifyConnectPlayer: Player {
         }
     }
 
+    /// Milliseconds since `start`, for finding where the first song waits.
+    private nonisolated static func logTime(_ step: String, since start: ContinuousClock.Instant) {
+        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
+        log.notice("\(step, privacy: .public): \(ms, privacy: .public) ms")
+    }
+
     private nonisolated static func logFailure(_ step: String, _ error: any Error) {
         let status = (error as? BridgeError)?.status ?? 0
         log.error("\(step, privacy: .public) failed: status \(status, privacy: .public)")
@@ -230,7 +266,8 @@ final class SpotifyConnectPlayer: Player {
     }
 
     /// Launches Spotify hidden if it does not run, then waits until its device is in the cluster.
-    private func appDevice(_ id: Int) async throws -> String {
+    /// It stops waiting when `wanted` turns false, for example when a newer load starts.
+    private func appDevice(while wanted: () -> Bool) async throws -> String {
         // Devices from before a launch here are other machines, so they are never this Mac.
         var before: Set<String> = []
         if NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).isEmpty {
@@ -240,7 +277,7 @@ final class SpotifyConnectPlayer: Player {
         }
         let name = SCDynamicStoreCopyComputerName(nil, nil) as String?
         let deadline = ContinuousClock.now + .seconds(15)
-        while ContinuousClock.now < deadline && id == loadID {
+        while ContinuousClock.now < deadline && wanted() {
             // Each call registers again (one connect-state PUT), so ask once a second.
             let devices = try await client.devices().map {
                 SpotifyAppDevice.Candidate(id: $0.id, name: $0.name, type: $0.type)
@@ -259,7 +296,9 @@ final class SpotifyConnectPlayer: Player {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) else {
             throw PlayerError(message: "Install the Spotify app to play music")
         }
+        let start = ContinuousClock.now
         try await Self.open(url)
+        Self.logTime("Spotify launched", since: start)
         // Safety net: Spotify must never come to the front.
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first,
            app.isActive || !app.isHidden {
