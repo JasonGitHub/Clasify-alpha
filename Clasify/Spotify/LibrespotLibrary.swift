@@ -147,6 +147,8 @@ final class LibrespotLibrary: Library {
         let (client, previous) = (self.client, bridgeLogin)
         let attempt = Task {
             await previous?.value
+            // A cancel or logout while this login waited in line: do not start it.
+            guard self.session == mine else { throw BridgeError.cancelled }
             return try await client.login(accessToken: token)
         }
         bridgeLogin = Task { _ = await attempt.result }

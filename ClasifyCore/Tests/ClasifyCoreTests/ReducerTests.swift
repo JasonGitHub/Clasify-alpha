@@ -242,7 +242,7 @@ func playing(_ i: Int = 0) -> AppState {
         var s = AppState()
         #expect(send(&s, .expire) == [] && s.toast == "")
         s = playing()
-        #expect(send(&s, .expire) == [.stop])
+        #expect(send(&s, .expire) == [.stop, .logOut])
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.current == nil && s.library.isEmpty)
         #expect(s.toast == "Session expired. Log in again")
     }

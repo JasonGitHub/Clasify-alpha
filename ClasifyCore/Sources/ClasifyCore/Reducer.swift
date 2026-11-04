@@ -244,7 +244,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.offline = on
 
         case .expire:
-            if s.signedIn { signOut("Session expired. Log in again") }
+            // Forget the stored login too, so that a later .launch does not restore it.
+            if s.signedIn { signOut("Session expired. Log in again"); fx.append(.logOut) }
 
         case .reset:
             stop()
