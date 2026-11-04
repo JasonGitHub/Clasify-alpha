@@ -40,7 +40,10 @@ final class LibrespotLibrary: Library {
 
     /// Logs in through the browser. Throws when the user cancels or Spotify refuses.
     func logIn() async throws {
+        let mine = session
         let tokens = try await LibrespotClient.oauthLogin()
+        // A logout or another login came while the browser was open. Do not undo it.
+        guard session == mine else { throw BridgeError.cancelled }
         guard let refresh = tokens.refreshToken else { throw BridgeError.noRefreshToken }
         try await startSession(tokens.accessToken)
         // Keep the login only after it worked.
@@ -71,8 +74,12 @@ final class LibrespotLibrary: Library {
 
     private func refreshAndStart() async -> Bool {
         guard let refresh = RefreshTokenStore.read() else { return false }
+        let mine = session
         do {
             let tokens = try await LibrespotClient.oauthRefresh(refresh)
+            // A logout or a login came while the refresh ran. Do not save a token or
+            // start a session, because that would undo it.
+            guard session == mine else { return false }
             // Spotify can replace the refresh token, and then the old one stops working.
             // Keep the new one at once. If the Keychain refuses it, report no session,
             // so the app does not look logged in with a login that cannot come back.
@@ -91,6 +98,8 @@ final class LibrespotLibrary: Library {
         session += 1
         username = nil
         cache = nil
+        // A restore that still runs sees the new session and stops. A later restore must not join it.
+        restoring = nil
     }
 
     func fetchLibrary() async -> [Playlist]? {
