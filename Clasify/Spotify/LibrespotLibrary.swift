@@ -62,6 +62,7 @@ final class LibrespotLibrary: Library {
         guard RefreshTokenStore.save(refresh) else {
             session += 1
             username = nil
+            client.logout()  // the UI shows the login screen, so no session may stay
             throw BridgeError.keychain
         }
     }
