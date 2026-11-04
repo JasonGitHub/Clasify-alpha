@@ -8,7 +8,8 @@ public protocol Player: AnyObject {
     func pause()
     func resume()
     func stop()
-    func seek(to seconds: Double)
+    /// Report later `.position` and `.trackEnded` with this `generation`.
+    func seek(to seconds: Double, generation: Int)
     func setVolume(_ percent: Int)
 }
 
@@ -30,7 +31,7 @@ public final class Store {
             case .pause: player.pause()
             case .resume: player.resume()
             case .stop: player.stop()
-            case .seek(let t): player.seek(to: t)
+            case .seek(let t, let gen): player.seek(to: t, generation: gen)
             case .setVolume(let v): player.setVolume(v)
             }
         }
