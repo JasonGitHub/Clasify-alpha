@@ -17,6 +17,7 @@
 #define LSB_OK 0
 #define LSB_ERR_INVALID_ARGUMENT 1
 #define LSB_ERR_NOT_LOGGED_IN 2
+#define LSB_ERR_OAUTH 3
 
 #define LSB_EVENT_LOGGED_IN 0
 #define LSB_EVENT_PLAYING 1
@@ -71,5 +72,24 @@ int32_t lsb_play(LsbBridge *bridge);
 int32_t lsb_pause(LsbBridge *bridge);
 int32_t lsb_seek(LsbBridge *bridge, uint32_t position_ms);
 int32_t lsb_set_volume(LsbBridge *bridge, uint16_t volume);
+
+// OAuth login with PKCE through librespot-oauth, with librespot's own client ID.
+// Opens the Spotify login page in the browser and listens on the loopback
+// redirect http://127.0.0.1:8898/login. The result comes once, on a bridge thread.
+// Asks only for read-only scopes. The bridge stores no token.
+typedef struct LsbOAuthResult {
+    int32_t status;             // LSB_OK or LSB_ERR_OAUTH.
+    uint32_t expires_in_s;      // Seconds until the access token expires.
+    bool has_refresh_token;
+    const char *access_token;   // LSB_OK only, else NULL. Never log or store it.
+    const char *scopes;         // Granted scopes, space-separated.
+    const char *client_id;
+    const char *redirect_uri;
+    const char *message;        // LSB_ERR_OAUTH only, else NULL.
+    // The strings are valid only during the callback.
+} LsbOAuthResult;
+
+typedef void (*LsbOAuthCallback)(void *context, const LsbOAuthResult *result);
+int32_t lsb_oauth_login(LsbOAuthCallback on_result, void *context);
 
 #endif

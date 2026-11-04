@@ -61,6 +61,7 @@ fn header_matches_rust() {
         ("LSB_OK", LSB_OK as u32),
         ("LSB_ERR_INVALID_ARGUMENT", LSB_ERR_INVALID_ARGUMENT as u32),
         ("LSB_ERR_NOT_LOGGED_IN", LSB_ERR_NOT_LOGGED_IN as u32),
+        ("LSB_ERR_OAUTH", LSB_ERR_OAUTH as u32),
         ("LSB_EVENT_LOGGED_IN", LSB_EVENT_LOGGED_IN),
         ("LSB_EVENT_PLAYING", LSB_EVENT_PLAYING),
         ("LSB_EVENT_PAUSED", LSB_EVENT_PAUSED),

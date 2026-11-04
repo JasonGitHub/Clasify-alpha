@@ -14,4 +14,5 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 librespot-core = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-oauth = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }

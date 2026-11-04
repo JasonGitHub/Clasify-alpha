@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use librespot_core::{authentication::Credentials, Session, SessionConfig, SpotifyUri};
+use librespot_oauth::OAuthClientBuilder;
 use librespot_playback::audio_backend::{Sink, SinkResult};
 use librespot_playback::config::PlayerConfig;
 use librespot_playback::convert::Converter;
@@ -16,6 +17,7 @@ use librespot_playback::player::{Player, PlayerEvent};
 pub const LSB_OK: i32 = 0;
 pub const LSB_ERR_INVALID_ARGUMENT: i32 = 1;
 pub const LSB_ERR_NOT_LOGGED_IN: i32 = 2;
+pub const LSB_ERR_OAUTH: i32 = 3;
 
 pub const LSB_EVENT_LOGGED_IN: u32 = 0;
 pub const LSB_EVENT_PLAYING: u32 = 1;
@@ -380,6 +382,109 @@ pub unsafe extern "C" fn lsb_set_volume(bridge: *mut LsbBridge, volume: u16) -> 
         c.mixer.set_volume(volume);
         c.player.emit_volume_changed_event(volume);
     })
+}
+
+/// The redirect URI for `lsb_oauth_login`. librespot 0.8.0's CLI uses
+/// `http://127.0.0.1:<--oauth-port>/login`; 8898 is the port of librespot-oauth's example.
+pub const OAUTH_REDIRECT_URI: &str = "http://127.0.0.1:8898/login";
+
+/// Read-only scopes. librespot's CLI asks for more, including scopes that modify
+/// the library, which Clasify must never do.
+pub const OAUTH_SCOPES: &[&str] = &[
+    "streaming",
+    "user-read-private",
+    "playlist-read-private",
+    "playlist-read-collaborative",
+    "user-library-read",
+];
+
+const OAUTH_PAGE: &str =
+    "<!doctype html><html><body><h1>Logged in. Go back to Clasify.</h1></body></html>";
+
+/// Matches `LsbOAuthResult` in the header. The strings are valid only during the callback.
+#[repr(C)]
+pub struct LsbOAuthResult {
+    pub status: i32,
+    pub expires_in_s: u32,
+    pub has_refresh_token: bool,
+    pub access_token: *const c_char,
+    pub scopes: *const c_char,
+    pub client_id: *const c_char,
+    pub redirect_uri: *const c_char,
+    pub message: *const c_char,
+}
+pub type LsbOAuthCallback = extern "C" fn(context: *mut c_void, result: *const LsbOAuthResult);
+
+struct OAuthCallback {
+    callback: LsbOAuthCallback,
+    context: *mut c_void,
+}
+
+// SAFETY: the header requires that `context` and the callback are safe to call
+// from any thread. The bridge never reads through `context` itself.
+unsafe impl Send for OAuthCallback {}
+
+fn run_oauth(client_id: &str) -> Result<librespot_oauth::OAuthToken, String> {
+    OAuthClientBuilder::new(client_id, OAUTH_REDIRECT_URI, OAUTH_SCOPES.to_vec())
+        .open_in_browser()
+        .with_custom_message(OAUTH_PAGE)
+        .build()
+        .and_then(|client| client.get_access_token())
+        .map_err(|error| error.to_string())
+}
+
+/// Opens the Spotify login page in the browser and waits on the loopback redirect
+/// on a new thread. The result comes once through `on_result`. The token is not
+/// stored anywhere by the bridge.
+///
+/// # Safety
+/// `context` and `on_result` must be safe to call from any thread.
+#[no_mangle]
+pub extern "C" fn lsb_oauth_login(
+    on_result: Option<LsbOAuthCallback>,
+    context: *mut c_void,
+) -> i32 {
+    let Some(callback) = on_result else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    let target = OAuthCallback { callback, context };
+    std::thread::spawn(move || {
+        let target = target;
+        // librespot's CLI uses the session's default client ID for OAuth.
+        let client_id = SessionConfig::default().client_id;
+        let result = run_oauth(&client_id);
+        let text = |t: &str| CString::new(t.replace('\0', " ")).unwrap_or_default();
+        let (client_id, redirect_uri) = (text(&client_id), text(OAUTH_REDIRECT_URI));
+        let (token, scopes, message, expires_in_s, has_refresh_token, status) = match &result {
+            Ok(t) => (
+                text(&t.access_token),
+                text(&t.scopes.join(" ")),
+                None,
+                t.expires_at
+                    .saturating_duration_since(std::time::Instant::now())
+                    .as_secs() as u32,
+                !t.refresh_token.is_empty(),
+                LSB_OK,
+            ),
+            Err(e) => (text(""), text(""), Some(text(e)), 0, false, LSB_ERR_OAUTH),
+        };
+        let raw = LsbOAuthResult {
+            status,
+            expires_in_s,
+            has_refresh_token,
+            access_token: if status == LSB_OK {
+                token.as_ptr()
+            } else {
+                std::ptr::null()
+            },
+            scopes: scopes.as_ptr(),
+            client_id: client_id.as_ptr(),
+            redirect_uri: redirect_uri.as_ptr(),
+            message: message.as_ref().map_or(std::ptr::null(), |m| m.as_ptr()),
+        };
+        (target.callback)(target.context, &raw);
+    });
+    LSB_OK
 }
 
 #[cfg(test)]

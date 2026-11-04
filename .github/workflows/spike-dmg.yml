@@ -1,0 +1,47 @@
+name: Spike DMG
+# Builds an unsigned (ad-hoc signed) test DMG for the librespot spike on Jason's Mac.
+on:
+  workflow_dispatch:
+  push: { branches: [claude/project-thread-a5201z] }
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            LibrespotBridge/target
+          key: spike-bridge-${{ hashFiles('LibrespotBridge/Cargo.lock') }}
+      - name: Build the universal bridge library
+        run: scripts/build-bridge.sh
+      - name: Show the native libraries the bridge needs
+        working-directory: LibrespotBridge
+        run: cargo rustc --locked --release --lib --crate-type staticlib --target aarch64-apple-darwin -- --print native-static-libs 2>&1 | grep -i native-static-libs || true
+      - name: Stamp the commit into the app
+        run: sed -i '' "s/\"local\"/\"${GITHUB_SHA::12}\"/" Clasify/Spike/BuildInfo.swift
+      - name: Build the app (Release, universal)
+        run: |
+          set -o pipefail
+          xcodebuild build -project Clasify.xcodeproj -scheme Clasify -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath DerivedData 2>&1 | tee build.log
+          # Warnings from librespot objects are OK. Warnings in our own code are not.
+          grep -E '(^|: )warning: ' build.log || true
+          if grep -E '/Clasify/[^ ]*\.swift:[0-9]+:[0-9]+: warning: ' build.log; then echo "Our code has warnings."; exit 1; fi
+      - name: Ad-hoc sign and make the DMG
+        run: |
+          app=DerivedData/Build/Products/Release/Clasify.app
+          lipo -info "$app/Contents/MacOS/Clasify"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --verbose "$app"
+          mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname Clasify -srcfolder dmg -ov -format UDZO Clasify-spike.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clasify-spike.dmg
+          path: Clasify-spike.dmg
+          retention-days: 14
