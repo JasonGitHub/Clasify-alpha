@@ -1,0 +1,18 @@
+name: LibrespotBridge
+on:
+  push: { branches: [main] }
+  pull_request: { paths: ["LibrespotBridge/**", ".github/workflows/bridge.yml"] }
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: LibrespotBridge } }
+    env: { RUSTFLAGS: "-D warnings" }
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets
+      - run: cargo test --locked
+      - run: cc -std=c11 -Wall -Wextra -Werror -fsyntax-only -x c include/librespot_bridge.h
