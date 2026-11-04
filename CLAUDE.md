@@ -19,6 +19,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 
 - `ClasifyCore/` (store and reducer) is plain Swift with no Apple UI frameworks. It builds and tests on Linux: `cd ClasifyCore && swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors`. CI runs the same on Linux (`.github/workflows/core.yml`).
 - `LibrespotBridge/` is the librespot static library with its C header: `cd LibrespotBridge && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked`. CI: `.github/workflows/bridge.yml`.
+- `ClasifySkins/` holds the SwiftUI skins. They depend on ClasifyCore only, never on the player or the library. It builds and tests on macOS only: `cd ClasifySkins && swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors`. Set `SNAPSHOT_DIR` to save the snapshot PNGs. CI: `.github/workflows/app.yml`, which uploads them as the `skin-snapshots` artifact.
 - `Clasify.xcodeproj` builds the app from the `Clasify/` folder. New Swift files there need no project edits. CI: `.github/workflows/app.yml` on macOS runners.
 - The app builds only on macOS. Cloud sessions run on Linux and cannot run `xcodebuild`, so say in the PR when an app change was not built or tested locally.
 

@@ -3,7 +3,7 @@ on:
   push: { branches: [main] }
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["ClasifyCore/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/workflows/app.yml"]
+    paths: ["ClasifyCore/**", "ClasifySkins/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/workflows/app.yml"]
 # macOS minutes cost more, so a new push cancels the older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,6 +29,19 @@ jobs:
       - name: Test ClasifyCore on macOS
         working-directory: ClasifyCore
         run: swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors
+      - name: Test ClasifySkins on macOS, with snapshots of the Pocket screens
+        working-directory: ClasifySkins
+        run: |
+          mkdir -p "$RUNNER_TEMP/snapshots"
+          swift build -Xswiftc -warnings-as-errors
+          SNAPSHOT_DIR="$RUNNER_TEMP/snapshots" swift test -Xswiftc -warnings-as-errors
+      - name: Upload the snapshots so a person can compare them with the mockup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: skin-snapshots
+          path: ${{ runner.temp }}/snapshots
+          if-no-files-found: ignore
       - name: Build the app with zero warnings
         run: |
           set -o pipefail
