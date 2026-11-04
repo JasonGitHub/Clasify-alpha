@@ -507,16 +507,17 @@ mod library_tests {
             name: "Mix\0tape".to_owned(),
             track_count: 7,
         };
-        deliver_playlists(record_playlists, context, Ok(vec![playlist]));
-        deliver_playlists(record_playlists, context, Err("offline".to_owned()));
+        deliver_playlists(record_playlists, context, Ok(vec![playlist]), false);
+        deliver_playlists(record_playlists, context, Err("offline".to_owned()), false);
         let track = Track {
             uri: "spotify:track:1".to_owned(),
             title: "One".to_owned(),
             artist: "A".to_owned(),
             duration_ms: 1000,
         };
-        deliver_tracks(record_tracks, context, Ok(vec![track]));
-        deliver_tracks(record_tracks, context, Err("offline".to_owned()));
+        deliver_tracks(record_tracks, context, Ok(vec![track]), false);
+        deliver_tracks(record_tracks, context, Err("offline".to_owned()), false);
+        deliver_tracks(record_tracks, context, Err("dropped".to_owned()), true);
         let row = |items: &[&str]| items.iter().map(|i| i.to_string()).collect::<Vec<_>>();
         assert_eq!(
             *delivered.lock().unwrap(),
@@ -533,6 +534,7 @@ mod library_tests {
                     vec![row(&["spotify:track:1", "One", "A", "1000"])]
                 ),
                 (LSB_ERR_READ, Some("offline".to_owned()), vec![]),
+                (LSB_ERR_NOT_LOGGED_IN, Some("dropped".to_owned()), vec![]),
             ]
         );
     }

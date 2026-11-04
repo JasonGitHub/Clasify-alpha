@@ -83,8 +83,10 @@ int32_t lsb_oauth_cancel(void);
 int32_t lsb_oauth_refresh(const char *refresh_token, LsbTokenCallback on_result, void *context);
 
 // Library reads through librespot's session, not the Web API. They only read.
-// Each needs a login (else LSB_ERR_NOT_LOGGED_IN) and sends its result once, on a
-// bridge thread: LSB_OK with the items, or LSB_ERR_READ with a message and no items.
+// Each needs a login (else LSB_ERR_NOT_LOGGED_IN, also when the session dropped) and
+// sends its result once, on a bridge thread: LSB_OK with the items, or an error with a
+// message and no items. The error is LSB_ERR_NOT_LOGGED_IN when the session dropped
+// during the read (log in again), else LSB_ERR_READ (do not log in again).
 // lsb_free drops reads that have not finished, and their callbacks never come.
 // The strings and arrays are valid only during the callback.
 typedef struct LsbPlaylist {
