@@ -63,6 +63,11 @@ fn header_matches_rust() {
         ("LSB_ERR_NOT_LOGGED_IN", LSB_ERR_NOT_LOGGED_IN as u32),
         ("LSB_ERR_OAUTH", LSB_ERR_OAUTH as u32),
         ("LSB_ERR_READ", LSB_ERR_READ as u32),
+        ("LSB_ERR_CONNECT", LSB_ERR_CONNECT as u32),
+        ("LSB_COMMAND_PAUSE", LSB_COMMAND_PAUSE),
+        ("LSB_COMMAND_RESUME", LSB_COMMAND_RESUME),
+        ("LSB_COMMAND_NEXT", LSB_COMMAND_NEXT),
+        ("LSB_COMMAND_PREV", LSB_COMMAND_PREV),
         ("LSB_EVENT_LOGGED_IN", LSB_EVENT_LOGGED_IN),
         ("LSB_EVENT_PLAYING", LSB_EVENT_PLAYING),
         ("LSB_EVENT_PAUSED", LSB_EVENT_PAUSED),
@@ -836,5 +841,249 @@ mod library_tests {
         assert_eq!(state.phase(), Phase::Decided);
         let failed = LoginState::new().finish(Err("denied".to_owned()));
         assert_eq!(failed.unwrap_err(), "denied");
+    }
+}
+
+mod connect_tests {
+    use super::*;
+    use crate::connect::*;
+    use librespot_protocol::connect::{Cluster, DeviceInfo};
+    use librespot_protocol::devices::DeviceType;
+
+    const PLAYLIST: &str = "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M";
+    const TRACK: &str = "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
+
+    fn body(command: Command) -> (String, String, String) {
+        let (method, path, body) = request(&command, "me", "app", "c1");
+        (method.to_string(), path, body)
+    }
+
+    #[test]
+    fn commands_build_spotify_requests() {
+        let command = "/connect-state/v1/player/command/from/me/to/app";
+        let simple = |endpoint: &str| {
+            let body = format!(
+                r#"{{"command":{{"logging_params":{{"command_id":"c1"}},"endpoint":"{endpoint}"}}}}"#
+            );
+            ("POST".to_owned(), command.to_owned(), body)
+        };
+        assert_eq!(body(Command::Pause), simple("pause"));
+        assert_eq!(body(Command::Resume), simple("resume"));
+        assert_eq!(body(Command::Next), simple("skip_next"));
+        assert_eq!(body(Command::Prev), simple("skip_prev"));
+        let seek = r#"{"command":{"value":61000,"logging_params":{"command_id":"c1"},"endpoint":"seek_to"}}"#;
+        assert_eq!(body(Command::Seek(61000)).2, seek);
+        let volume = body(Command::Volume(32768));
+        let path = "/connect-state/v1/connect/volume/from/me/to/app";
+        assert_eq!(
+            volume,
+            (
+                "PUT".to_owned(),
+                path.to_owned(),
+                r#"{"volume":32768}"#.to_owned()
+            )
+        );
+    }
+
+    #[test]
+    fn play_sends_the_context_and_the_start_track() {
+        let play = |track: Option<&str>| {
+            let context = PLAYLIST.to_owned();
+            let track = track.map(str::to_owned);
+            body(Command::Play { context, track }).2
+        };
+        let expected = |skip_to: &str| {
+            format!(
+                concat!(
+                    r#"{{"command":{{"context":{{"uri":"{0}","url":"context://{0}","metadata":{{}}}},"#,
+                    r#""play_origin":{{"feature_identifier":"harmony","feature_version":"4.11.0"}},"#,
+                    r#""options":{{"license":"on-demand","skip_to":{1},"player_options_override":{{}}}},"#,
+                    r#""logging_params":{{"command_id":"c1"}},"endpoint":"play"}}}}"#
+                ),
+                PLAYLIST, skip_to
+            )
+        };
+        assert_eq!(play(None), expected("{}"));
+        assert_eq!(
+            play(Some(TRACK)),
+            expected(&format!(r#"{{"track_uri":"{TRACK}"}}"#))
+        );
+        let liked = Command::Play {
+            context: "spotify:user:a\"b:collection".to_owned(),
+            track: None,
+        };
+        assert!(body(liked)
+            .2
+            .contains(r#""uri":"spotify:user:a\"b:collection""#));
+    }
+
+    #[test]
+    fn only_safe_ids_and_uris_pass() {
+        assert!(valid_device_id("a1B2-c_3"));
+        for bad in ["", "a/b", "a?b", "../x", "a b", &"a".repeat(129)] {
+            assert!(!valid_device_id(bad), "{bad}");
+        }
+        assert!(valid_context(PLAYLIST));
+        assert!(valid_context("spotify:user:jason.w:collection"));
+        for bad in [
+            "spotify:playlist:",
+            "spotify:playlist:a/b",
+            "spotify:album:1",
+            "spotify:user::collection",
+            "spotify:user:a:b:collection",
+            "spotify:user:a\nb:collection",
+            TRACK,
+        ] {
+            assert!(!valid_context(bad), "{bad}");
+        }
+        assert!(valid_track(TRACK));
+        assert!(!valid_track("spotify:track:a\"b") && !valid_track(PLAYLIST));
+    }
+
+    #[test]
+    fn devices_leave_out_this_device() {
+        let device = |id: &str, name: &str| DeviceInfo {
+            device_id: id.to_owned(),
+            name: name.to_owned(),
+            device_type: DeviceType::COMPUTER.into(),
+            device_software_version: "osx".to_owned(),
+            ..Default::default()
+        };
+        let mut cluster = Cluster {
+            active_device_id: "mac".to_owned(),
+            ..Default::default()
+        };
+        for (id, name) in [("me", "Clasify"), ("phone", "Phone"), ("mac", "Mac")] {
+            cluster.device.insert(id.to_owned(), device(id, name));
+        }
+        let found = devices(&cluster, "me");
+        let names: Vec<_> = found.iter().map(|d| (d.id.as_str(), d.is_active)).collect();
+        assert_eq!(names, [("mac", true), ("phone", false)]);
+        assert_eq!(found[0].device_type, "COMPUTER");
+        assert_eq!(found[0].software, "osx");
+    }
+
+    type Row = (i32, Option<String>, Vec<[String; 5]>);
+
+    #[derive(Default)]
+    struct Got(Mutex<Vec<Row>>);
+
+    extern "C" fn record_devices(
+        context: *mut c_void,
+        status: i32,
+        message: *const c_char,
+        devices: *const LsbDevice,
+        count: usize,
+    ) {
+        let got = unsafe { &*(context as *const Got) };
+        let read = |text| unsafe { read_str(text) }.unwrap_or("").to_owned();
+        let rows = if devices.is_null() {
+            vec![]
+        } else {
+            unsafe { std::slice::from_raw_parts(devices, count) }
+                .iter()
+                .map(|d| {
+                    let active = d.is_active.to_string();
+                    [
+                        read(d.id),
+                        read(d.name),
+                        read(d.device_type),
+                        read(d.software),
+                        active,
+                    ]
+                })
+                .collect()
+        };
+        let message = unsafe { read_str(message) }.map(str::to_owned);
+        got.0.lock().unwrap().push((status, message, rows));
+    }
+
+    extern "C" fn record_status(context: *mut c_void, status: i32, message: *const c_char) {
+        let got = unsafe { &*(context as *const Got) };
+        let message = unsafe { read_str(message) }.map(str::to_owned);
+        got.0.lock().unwrap().push((status, message, vec![]));
+    }
+
+    #[test]
+    fn connect_results_cross_the_ffi() {
+        let got = Got::default();
+        let context = &got as *const Got as *mut c_void;
+        let device = ConnectDevice {
+            id: "mac".to_owned(),
+            name: "Mac\0Book".to_owned(),
+            device_type: "COMPUTER".to_owned(),
+            software: "osx".to_owned(),
+            is_active: true,
+        };
+        deliver_devices(record_devices, context, Ok(vec![device]));
+        deliver_devices(record_devices, context, Err("offline".to_owned()));
+        deliver_status(record_status, context, Ok(()));
+        deliver_status(record_status, context, Err("refused".to_owned()));
+        let row = ["mac", "Mac Book", "COMPUTER", "osx", "true"].map(str::to_owned);
+        let failed = |m: &str| (LSB_ERR_CONNECT, Some(m.to_owned()), vec![]);
+        assert_eq!(
+            *got.0.lock().unwrap(),
+            vec![
+                (LSB_OK, None, vec![row]),
+                failed("offline"),
+                (LSB_OK, None, vec![]),
+                failed("refused"),
+            ]
+        );
+    }
+
+    #[test]
+    fn device_layout_matches_c() {
+        use std::mem::{offset_of, size_of};
+        assert_eq!(size_of::<LsbDevice>(), 40);
+        let offsets = [
+            offset_of!(LsbDevice, name),
+            offset_of!(LsbDevice, device_type),
+            offset_of!(LsbDevice, software),
+            offset_of!(LsbDevice, is_active),
+        ];
+        assert_eq!(offsets, [8, 16, 24, 32]);
+    }
+
+    #[test]
+    fn connect_calls_check_arguments_and_login() {
+        let recorder = Recorder::default();
+        let context = &recorder as *const Recorder as *mut c_void;
+        let bridge = lsb_new(Some(record_event), Some(record_audio), context);
+        let (ctx, none) = (std::ptr::null_mut(), std::ptr::null());
+        let (app, playlist, track) = (
+            c"app".as_ptr(),
+            c"spotify:playlist:1".as_ptr(),
+            c"spotify:track:1".as_ptr(),
+        );
+        let status = Some(record_status as LsbCommandCallback);
+        unsafe {
+            let not_logged_in = [
+                lsb_connect_devices(bridge, Some(record_devices), ctx),
+                lsb_connect_play(bridge, app, playlist, none, status, ctx),
+                lsb_connect_play(bridge, app, playlist, track, status, ctx),
+                lsb_connect_command(bridge, app, LSB_COMMAND_PREV, status, ctx),
+                lsb_connect_seek(bridge, app, 1000, status, ctx),
+                lsb_connect_volume(bridge, app, 100, status, ctx),
+            ];
+            assert_eq!(not_logged_in, [LSB_ERR_NOT_LOGGED_IN; 6]);
+            let invalid = [
+                lsb_connect_devices(bridge, None, ctx),
+                lsb_connect_devices(std::ptr::null_mut(), Some(record_devices), ctx),
+                lsb_connect_play(bridge, c"a/b".as_ptr(), playlist, none, status, ctx),
+                lsb_connect_play(bridge, none, playlist, none, status, ctx),
+                lsb_connect_play(bridge, app, none, none, status, ctx),
+                lsb_connect_play(bridge, app, track, none, status, ctx),
+                lsb_connect_play(bridge, app, playlist, playlist, status, ctx),
+                lsb_connect_play(bridge, app, playlist, none, None, ctx),
+                lsb_connect_command(bridge, app, 4, status, ctx),
+                lsb_connect_command(bridge, app, LSB_COMMAND_PAUSE, None, ctx),
+                lsb_connect_seek(std::ptr::null_mut(), app, 0, status, ctx),
+                lsb_connect_volume(bridge, c"".as_ptr(), 0, status, ctx),
+            ];
+            assert_eq!(invalid, [LSB_ERR_INVALID_ARGUMENT; 12]);
+            lsb_free(bridge);
+        }
+        assert!(recorder.events.lock().unwrap().is_empty());
     }
 }

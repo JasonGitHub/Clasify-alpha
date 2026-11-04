@@ -1029,6 +1029,8 @@ dependencies = [
 name = "librespot-bridge"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
+ "http",
  "librespot-core",
  "librespot-oauth",
  "librespot-playback",

@@ -272,13 +272,13 @@ pub type LsbTracksCallback = extern "C" fn(
     count: usize,
 );
 
-struct Context(*mut c_void);
+pub(crate) struct Context(pub *mut c_void);
 
 // SAFETY: the header requires that `context` and the callback are safe to call
 // from any thread. The bridge never reads through `context` itself.
 unsafe impl Send for Context {}
 
-fn c_text(text: &str) -> CString {
+pub(crate) fn c_text(text: &str) -> CString {
     CString::new(text.replace('\0', " ")).unwrap_or_default()
 }
 
@@ -341,7 +341,7 @@ pub(crate) fn deliver_tracks(
     }
 }
 
-unsafe fn session(bridge: *mut crate::LsbBridge) -> Result<Session, i32> {
+pub(crate) unsafe fn session(bridge: *mut crate::LsbBridge) -> Result<Session, i32> {
     let mut session = None;
     let status = with_player(bridge, |c| session = Some(c.session.clone()));
     session.ok_or(status)
