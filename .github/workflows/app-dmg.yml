@@ -1,0 +1,45 @@
+name: App DMG
+# Builds an ad-hoc signed test DMG of the app from main, for Jason's Mac.
+# Not part of PR CI: it runs on a push to main or by hand.
+on:
+  workflow_dispatch:
+  push: { branches: [main] }
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  dmg:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - run: xcodebuild -version
+      - name: Cache the Rust build of the bridge
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            LibrespotBridge/target
+          key: bridge-${{ runner.os }}-${{ hashFiles('LibrespotBridge/Cargo.lock') }}
+      - name: Build the universal bridge library
+        run: scripts/build-bridge.sh
+      - name: Build the app (Release, universal)
+        run: |
+          set -o pipefail
+          xcodebuild build -project Clasify.xcodeproj -scheme Clasify -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath DerivedData 2>&1 | tee build.log
+          # Warnings from librespot objects are OK. Warnings in our own code are not.
+          if grep -E '/Clasify/[^ ]*\.swift:[0-9]+:[0-9]+: warning: ' build.log; then echo "Our code has warnings."; exit 1; fi
+      - name: Ad-hoc sign and make the DMG
+        run: |
+          app=DerivedData/Build/Products/Release/Clasify.app
+          lipo -info "$app/Contents/MacOS/Clasify"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --verbose "$app"
+          mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
+          hdiutil create -volname Clasify -srcfolder dmg -ov -format UDZO Clasify.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Clasify.dmg
+          path: Clasify.dmg
+          retention-days: 14
