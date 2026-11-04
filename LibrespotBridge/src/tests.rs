@@ -771,4 +771,55 @@ mod library_tests {
         done.recv_timeout(Duration::from_secs(5))
             .expect("stop_login must not wait for its own thread");
     }
+
+    #[test]
+    fn stop_login_stops_sending_once_the_old_listener_answers() {
+        let address = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap();
+        let handle = std::thread::spawn(move || {
+            // The old login: read the stop request, answer it, stop listening.
+            let old = std::net::TcpListener::bind(address).unwrap();
+            let (mut stream, _) = old.accept().unwrap();
+            let mut line = String::new();
+            std::io::BufRead::read_line(&mut std::io::BufReader::new(&stream), &mut line).unwrap();
+            std::io::Write::write_all(&mut stream, b"HTTP/1.1 200 OK\r\n\r\n").unwrap();
+            drop((stream, old));
+            // A new login on the same port, while the old thread still runs its callback.
+            let new = std::net::TcpListener::bind(address).unwrap();
+            new.set_nonblocking(true).unwrap();
+            let end = Instant::now() + Duration::from_millis(300);
+            while Instant::now() < end {
+                assert!(new.accept().is_err(), "the new login got a stop request");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+        crate::oauth::stop_login(handle, address);
+    }
+
+    #[test]
+    fn a_cancelled_login_sends_no_token() {
+        let token = || librespot_oauth::OAuthToken {
+            access_token: "access".to_owned(),
+            refresh_token: "refresh".to_owned(),
+            expires_at: Instant::now(),
+            token_type: "Bearer".to_owned(),
+            scopes: vec![],
+        };
+        use crate::oauth::login_outcome;
+        assert!(login_outcome(Ok(token()), 7, 7).is_ok());
+        assert_eq!(
+            login_outcome(Ok(token()), 7, 0).unwrap_err(),
+            "login cancelled"
+        );
+        assert_eq!(
+            login_outcome(Ok(token()), 7, 8).unwrap_err(),
+            "login cancelled"
+        );
+        assert_eq!(
+            login_outcome(Err("denied".to_owned()), 7, 7).unwrap_err(),
+            "denied"
+        );
+    }
 }
