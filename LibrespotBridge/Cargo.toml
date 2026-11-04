@@ -14,5 +14,10 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 librespot-core = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-metadata = { version = "=0.8.0", default-features = false }
 librespot-oauth = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
+# Already a librespot dependency. Named only to forward librespot's messages to the app as events.
+log = "0.4"
+# Already a librespot dependency. Named only to decode the rootlist protobuf.
+protobuf = "3.7"

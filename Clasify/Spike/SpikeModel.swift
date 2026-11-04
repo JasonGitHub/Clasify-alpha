@@ -16,6 +16,8 @@ struct LibraryResult: Sendable, Identifiable {
     var error: String?
     /// The first item's playlist ID or track URI, for the next step.
     var firstID: String?
+    /// Summary of the first attempt when it got 429 and the call was retried.
+    var firstAttempt: String?
 
     var passed: Bool { status == 200 }
 }
@@ -25,12 +27,31 @@ struct LogLine: Identifiable {
     var text: String
 }
 
+struct TestTrack: Hashable {
+    let label: String
+    let uri: String
+}
+
+/// One Play press and its outcome.
+struct TrackAttempt: Identifiable {
+    let id: Int
+    let label: String
+    let uri: String
+    var result = "no result yet"
+}
+
 /// State and steps of the librespot spike window.
 /// The access token lives only in memory, in `token`. It is never shown, logged or copied.
 @MainActor
 @Observable
 final class SpikeModel {
-    static let fixedTrackURI = "spotify:track:4uLU6hMCjMI75M1A2tKUQC"
+    static let build = 2
+    /// Three tracks from different major labels, so one label's rights cannot explain a failure.
+    static let fixedTracks = [
+        TestTrack(label: "Rick Astley, Never Gonna Give You Up (Sony)", uri: "spotify:track:4uLU6hMCjMI75M1A2tKUQC"),
+        TestTrack(label: "Queen, Bohemian Rhapsody (Universal)", uri: "spotify:track:4u7EnebtmKWzUH433cf5Qv"),
+        TestTrack(label: "Ed Sheeran, Shape of You (Warner)", uri: "spotify:track:7qiZfU4dY1lWllzX7mPBI3"),
+    ]
 
     private(set) var oauth: OAuthResult?
     private(set) var oauthStatus = "Not run"
@@ -40,25 +61,38 @@ final class SpikeModel {
     private(set) var bridgeStatus = "Not run"
     private(set) var isBridgeLoggedIn = false
     private(set) var isPlaying = false
-    private(set) var sawPlaying = false
-    private(set) var sawFailure = false
-    private(set) var trackURI: String?
-    private(set) var trackSource = ""
+    private(set) var attempts: [TrackAttempt] = []
     private(set) var log: [LogLine] = []
+    var selectedTrack = fixedTracks[0]
+    var typedURI = ""
     var heardAudio: Bool?
 
     private(set) var library: [LibraryResult] = []
     private(set) var isReadingLibrary = false
+    private(set) var librespotLibrary: [String] = []
+    private(set) var likedViaLibrespot: String?
 
     @ObservationIgnored private var audio: AudioOutput?
     @ObservationIgnored private var bridge: Bridge?
-    @ObservationIgnored private var pendingTrack: String?
-    @ObservationIgnored private var playStart = Date()
-    @ObservationIgnored private var nextLogID = 0
+    @ObservationIgnored private var afterLogin: [(Bridge) -> Void] = []
+    @ObservationIgnored private var start = Date()
+    @ObservationIgnored private var nextID = 0
     @ObservationIgnored private var lastLogWasPosition = false
     @ObservationIgnored private var positionCount = 0
 
     var hasToken: Bool { token != nil }
+
+    /// Fixed tracks plus the first Liked Songs track, when a library read found one.
+    var trackChoices: [TestTrack] {
+        var choices = Self.fixedTracks
+        if let uri = likedViaLibrespot {
+            choices.append(TestTrack(label: "First Liked Songs track (librespot)", uri: uri))
+        }
+        if let uri = library.first(where: { $0.path.hasPrefix("/v1/me/tracks") })?.firstID {
+            choices.append(TestTrack(label: "First Liked Songs track (Web API)", uri: uri))
+        }
+        return choices
+    }
 
     /// Wraps a main-actor handler for a bridge thread. Built in a nonisolated function, so
     /// the returned closure has no actor isolation and may run on any thread. It hops to
@@ -89,20 +123,20 @@ final class SpikeModel {
         isLoggingIn = false
         oauth = result
         token = result.accessToken
-        // A new token needs a new bridge login before the next Play.
+        // A new token needs a new bridge login before the next bridge call.
         isBridgeLoggedIn = false
         oauthStatus = result.accessToken != nil ? "PASS" : "FAIL: \(result.message ?? "no token")"
     }
 
-    // MARK: Step 2, playback
+    // MARK: Bridge login
 
-    func playTestTrack() {
+    /// Runs `action` once the bridge is logged in with the current token.
+    private func withBridge(_ action: @escaping (Bridge) -> Void) {
         guard let token else { return }
         if bridge == nil {
             let audio = AudioOutput()
             if let error = audio.start() {
                 append("AVAudioEngine did not start: \(error)")
-                sawFailure = true
             }
             self.audio = audio
             bridge = Bridge(ring: audio.ring, onEvent: Self.onMain { [self] event in receive(event) })
@@ -112,19 +146,27 @@ final class SpikeModel {
             }
         }
         guard let bridge else { return }
-        let liked = library.first { $0.path.hasPrefix("/v1/me/tracks") }?.firstID
-        let uri = liked ?? Self.fixedTrackURI
-        trackURI = uri
-        trackSource = liked != nil ? "first Liked Songs track" : "fixed URI"
-        playStart = Date()
-        lastLogWasPosition = false
         if isBridgeLoggedIn {
-            load(uri, on: bridge)
-        } else {
-            pendingTrack = uri
+            action(bridge)
+            return
+        }
+        afterLogin.append(action)
+        if afterLogin.count == 1 {
             bridgeStatus = "Logging in…"
-            let status = bridge.login(accessToken: token)
-            append("lsb_login -> \(status)")
+            append("lsb_login -> \(bridge.login(accessToken: token))")
+        }
+    }
+
+    // MARK: Step 2, playback
+
+    func playTestTrack() {
+        let typed = typedURI.trimmingCharacters(in: .whitespaces)
+        let track = typed.isEmpty ? selectedTrack : TestTrack(label: "Typed URI", uri: typed)
+        attempts.append(TrackAttempt(id: nextID, label: track.label, uri: track.uri))
+        nextID += 1
+        withBridge { [self] bridge in
+            audio?.ring.clear()
+            append("lsb_load \(track.uri) -> \(bridge.load(track.uri))")
         }
     }
 
@@ -138,8 +180,12 @@ final class SpikeModel {
         }
     }
 
-    private func load(_ uri: String, on bridge: Bridge) {
-        append("lsb_load \(uri) -> \(bridge.load(uri))")
+    /// Sets the result of the newest attempt for `uri` that has no result yet.
+    private func record(_ result: String, for uri: String?) {
+        guard let uri,
+              let index = attempts.lastIndex(where: { $0.uri == uri && $0.result == "no result yet" })
+        else { return }
+        attempts[index].result = result
     }
 
     private func receive(_ event: BridgeEvent) {
@@ -147,21 +193,27 @@ final class SpikeModel {
         case LSB_EVENT_LOGGED_IN:
             isBridgeLoggedIn = true
             bridgeStatus = "PASS: LOGGED_IN after \(elapsedMs) ms"
-            if let pendingTrack, let bridge {
-                self.pendingTrack = nil
-                load(pendingTrack, on: bridge)
+            if let bridge {
+                let actions = afterLogin
+                afterLogin = []
+                actions.forEach { $0(bridge) }
             }
         case LSB_EVENT_ERROR:
-            sawFailure = true
-            if !isBridgeLoggedIn { bridgeStatus = "FAIL: \(event.message ?? "")" }
+            if !isBridgeLoggedIn {
+                bridgeStatus = "FAIL: \(event.message ?? "")"
+                afterLogin = []
+            }
         case LSB_EVENT_PLAYING:
             isPlaying = true
-            sawPlaying = true
+            record("PLAYING", for: event.trackURI)
         case LSB_EVENT_PAUSED, LSB_EVENT_TRACK_ENDED:
             isPlaying = false
         case LSB_EVENT_UNAVAILABLE:
             isPlaying = false
-            sawFailure = true
+            record("UNAVAILABLE", for: event.trackURI)
+        case LSB_EVENT_LIBRARY:
+            librespotLibrary.append(event.message ?? "")
+            if let uri = event.trackURI { likedViaLibrespot = uri }
         default:
             break
         }
@@ -187,33 +239,54 @@ final class SpikeModel {
         append(text)
     }
 
-    private var elapsedMs: Int { Int(Date().timeIntervalSince(playStart) * 1000) }
+    /// Milliseconds since the window opened, so all lines share one clock.
+    private var elapsedMs: Int { Int(Date().timeIntervalSince(start) * 1000) }
 
     private func append(_ text: String) {
         lastLogWasPosition = false
-        log.append(LogLine(id: nextLogID, text: "+\(elapsedMs) ms \(text)"))
-        nextLogID += 1
-        if log.count > 300 { log.removeFirst(log.count - 300) }
+        log.append(LogLine(id: nextID, text: "+\(elapsedMs) ms \(text)"))
+        nextID += 1
+        if log.count > 600 { log.removeFirst(log.count - 600) }
     }
 
-    // MARK: Step 3, library
+    // MARK: Step 3a, library through librespot
+
+    func readLibraryWithLibrespot() {
+        librespotLibrary = []
+        withBridge { [self] bridge in
+            append("lsb_read_library -> \(bridge.readLibrary())")
+        }
+    }
+
+    // MARK: Step 3b, library through the Web API
 
     func readLibrary() async {
         guard let token else { return }
         isReadingLibrary = true
         defer { isReadingLibrary = false }
         library = []
-        let playlists = await Self.get("/v1/me/playlists?limit=50", token: token, kind: .playlists)
+        let playlists = await Self.getWithRetry("/v1/me/playlists?limit=50", token: token, kind: .playlists)
         library.append(playlists)
         if let first = playlists.firstID {
-            library.append(await Self.get("/v1/playlists/\(first)/tracks?limit=50", token: token, kind: .tracks))
+            library.append(await Self.getWithRetry("/v1/playlists/\(first)/tracks?limit=50", token: token, kind: .tracks))
         } else {
             library.append(LibraryResult(path: "/v1/playlists/{first}/tracks", error: "Skipped: no playlist ID"))
         }
-        library.append(await Self.get("/v1/me/tracks?limit=50", token: token, kind: .tracks))
+        library.append(await Self.getWithRetry("/v1/me/tracks?limit=50", token: token, kind: .tracks))
     }
 
     enum ItemKind { case playlists, tracks }
+
+    /// On 429, waits for Retry-After (at most 60 s) and tries once more.
+    nonisolated private static func getWithRetry(_ path: String, token: String, kind: ItemKind) async -> LibraryResult {
+        let first = await get(path, token: token, kind: kind)
+        guard first.status == 429 else { return first }
+        let wait = min(first.retryAfter ?? 5, 60)
+        try? await Task.sleep(for: .seconds(wait))
+        var second = await get(path, token: token, kind: kind)
+        second.firstAttempt = "status 429, Retry-After \(first.retryAfter.map(String.init) ?? "none"), waited \(wait) s"
+        return second
+    }
 
     nonisolated private static func get(_ path: String, token: String, kind: ItemKind) async -> LibraryResult {
         var result = LibraryResult(path: path)
@@ -256,10 +329,9 @@ final class SpikeModel {
     }
 
     var playbackStatus: String {
-        if trackURI == nil { return "Not run" }
-        if sawPlaying && !sawFailure { return "PASS" }
-        if sawFailure { return "FAIL" }
-        return "No PLAYING event yet"
+        if attempts.isEmpty { return "Not run" }
+        let played = attempts.filter { $0.result == "PLAYING" }.count
+        return played > 0 ? "PASS (\(played) of \(attempts.count) played)" : "FAIL (0 of \(attempts.count) played)"
     }
 
     /// Plain text for Jason to paste back. It has no token.
@@ -270,7 +342,7 @@ final class SpikeModel {
         let arch = "x86_64"
         #endif
         var lines = [
-            "Clasify librespot spike report",
+            "Clasify librespot spike report, build \(Self.build)",
             "App commit: \(BuildInfo.commit)",
             "macOS: \(ProcessInfo.processInfo.operatingSystemVersionString), \(arch)",
             "librespot: 0.8.0",
@@ -290,15 +362,16 @@ final class SpikeModel {
             "",
             "2. Playback: \(playbackStatus)",
             "   Bridge login: \(bridgeStatus)",
-            "   Track: \(trackURI ?? "none") (\(trackSource))",
             "   Heard audio: \(heardAudio.map { $0 ? "yes" : "no" } ?? "not answered")",
-            "   Events:",
         ]
-        lines += log.map { "     \($0.text)" }
-        lines += ["", "3. Library:"]
+        lines += attempts.map { "   \($0.result): \($0.label) \($0.uri)" }
+        lines += ["", "3a. Library through librespot:"]
+        lines += librespotLibrary.isEmpty ? ["   Not run"] : librespotLibrary.map { "   \($0)" }
+        lines += ["", "3b. Library through the Web API:"]
         if library.isEmpty { lines.append("   Not run") }
         for result in library {
             let verdict = result.passed ? "PASS" : "FAIL"
+            if let first = result.firstAttempt { lines.append("   First attempt GET \(result.path): \(first)") }
             var line = "   \(verdict) GET \(result.path): status \(result.status.map(String.init) ?? "none")"
             if let count = result.count { line += ", \(count) items" }
             if let total = result.total { line += " (total \(total))" }
@@ -306,6 +379,16 @@ final class SpikeModel {
             lines.append(line)
             if let body = result.body { lines.append("     Body: \(body)") }
         }
+        lines += ["", "Event and librespot log:"]
+        lines += log.map { "   \($0.text)" }
         return lines.joined(separator: "\n")
+    }
+}
+
+extension LibraryResult {
+    /// Seconds from the Retry-After header, read back from `body`.
+    var retryAfter: Int? {
+        guard let body, let range = body.range(of: "Retry-After: ") else { return nil }
+        return Int(body[range.upperBound...].prefix { $0.isNumber })
     }
 }

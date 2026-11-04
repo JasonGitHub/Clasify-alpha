@@ -8,7 +8,7 @@ struct SpikeView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Clasify librespot spike").font(.title2.bold())
+                Text("Clasify librespot spike, build \(SpikeModel.build)").font(.title2.bold())
                 step1
                 Divider()
                 step2
@@ -22,6 +22,8 @@ struct SpikeView: View {
                     }
                     if copied { Text("Copied. Paste it in the project chat.").foregroundStyle(.secondary) }
                 }
+                Divider()
+                eventLog
             }
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -47,15 +49,25 @@ struct SpikeView: View {
 
     private var step2: some View {
         VStack(alignment: .leading, spacing: 6) {
+            Picker("Test track", selection: $model.selectedTrack) {
+                ForEach(model.trackChoices, id: \.self) { track in
+                    Text(track.label).tag(track)
+                }
+            }
+            .frame(maxWidth: 480)
+            TextField("Or type a track URI, like spotify:track:…", text: $model.typedURI)
+                .frame(maxWidth: 480)
             HStack {
                 Button("2. Play test track") { model.playTestTrack() }
                     .disabled(!model.hasToken)
                 Button(model.isPlaying ? "Pause" : "Resume") { model.togglePause() }
-                    .disabled(model.trackURI == nil)
+                    .disabled(model.attempts.isEmpty)
             }
             Text("Result: \(model.playbackStatus)")
             detail("Bridge login: \(model.bridgeStatus)")
-            if let uri = model.trackURI { detail("Track: \(uri) (\(model.trackSource))") }
+            ForEach(model.attempts) { attempt in
+                detail("\(attempt.result): \(attempt.label)")
+            }
             Picker("Do you hear audio?", selection: $model.heardAudio) {
                 Text("Not answered").tag(Bool?.none)
                 Text("Yes").tag(Bool?.some(true))
@@ -63,30 +75,40 @@ struct SpikeView: View {
             }
             .pickerStyle(.segmented)
             .frame(maxWidth: 420)
-            Text("Event log").font(.headline)
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(model.log) { line in
-                    Text(line.text).font(.system(.caption, design: .monospaced))
-                }
-            }
         }
     }
 
     private var step3: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button("3. Read library") { Task { await model.readLibrary() } }
-                .disabled(!model.hasToken || model.isReadingLibrary)
+            HStack {
+                Button("3a. Read library (librespot)") { model.readLibraryWithLibrespot() }
+                    .disabled(!model.hasToken)
+                Button("3b. Read library (Web API)") { Task { await model.readLibrary() } }
+                    .disabled(!model.hasToken || model.isReadingLibrary)
+                if model.isReadingLibrary { ProgressView().controlSize(.small) }
+            }
+            ForEach(model.librespotLibrary, id: \.self) { line in detail(line) }
             ForEach(model.library) { result in
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(result.passed ? "PASS" : "FAIL") GET \(result.path)")
+                    if let first = result.firstAttempt { detail("First attempt: \(first)") }
                     detail("Status: \(result.status.map(String.init) ?? "none"), items: \(result.count.map(String.init) ?? "-"), total: \(result.total.map(String.init) ?? "-")")
                     if let error = result.error { detail(error) }
                     if let body = result.body { detail("Body: \(body)") }
                     if !result.names.isEmpty { detail(result.names.prefix(10).joined(separator: " · ")) }
                 }
             }
-            Text("Tip: run step 3 before step 2 to play your first Liked Songs track.")
+            Text("Tip: run 3a before 2, then pick \"First Liked Songs track\" in the track list.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var eventLog: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Event and librespot log").font(.headline)
+            ForEach(model.log) { line in
+                Text(line.text).font(.system(.caption, design: .monospaced))
+            }
         }
     }
 

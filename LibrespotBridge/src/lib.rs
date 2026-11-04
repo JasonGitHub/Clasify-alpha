@@ -28,6 +28,8 @@ pub const LSB_EVENT_UNAVAILABLE: u32 = 5;
 pub const LSB_EVENT_VOLUME: u32 = 6;
 pub const LSB_EVENT_ERROR: u32 = 7;
 pub const LSB_EVENT_PLAY_REQUEST: u32 = 8;
+pub const LSB_EVENT_LOG: u32 = 9;
+pub const LSB_EVENT_LIBRARY: u32 = 10;
 
 /// Matches `LsbEvent` in the header. The strings are valid only during the callback.
 #[repr(C)]
@@ -188,9 +190,75 @@ impl Sink for CallbackSink {
     }
 }
 
+/// Forwards librespot's log messages (info and above) to the newest bridge as
+/// LSB_EVENT_LOG events. Nothing is written to disk. librespot_oauth is left out,
+/// because its trace output holds the token, and other crates are left out as noise.
+struct EventLogger;
+
+static LOG_SINK: Mutex<Option<Callbacks>> = Mutex::new(None);
+
+impl log::Log for EventLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        let target = metadata.target();
+        if !target.starts_with("librespot") || target.starts_with("librespot_oauth") {
+            return false;
+        }
+        let verbose =
+            target.starts_with("librespot_playback") || target.starts_with("librespot_core");
+        metadata.level()
+            <= if verbose {
+                log::Level::Debug
+            } else {
+                log::Level::Warn
+            }
+    }
+
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let sink = *LOG_SINK.lock().unwrap();
+        if let Some(callbacks) = sink {
+            let text = scrub(&format!(
+                "{} {}: {}",
+                record.level(),
+                record.target(),
+                record.args()
+            ));
+            callbacks.emit(&Event {
+                message: Some(text),
+                ..Event::new(LSB_EVENT_LOG)
+            });
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+/// Hides any log line that might carry a credential.
+fn scrub(text: &str) -> String {
+    let lower = text.to_lowercase();
+    let secret = [
+        "bearer",
+        "access_token",
+        "token=",
+        "authorization",
+        "password",
+        "auth_data",
+    ];
+    if secret.iter().any(|word| lower.contains(word)) {
+        let head = text.split_once(": ").map_or("", |(head, _)| head);
+        return format!("{head}: [hidden: may hold a credential]");
+    }
+    text.to_owned()
+}
+
+static LOGGER: EventLogger = EventLogger;
+
 struct Connected {
     /// The `lsb_login` call that made this player. Its event loop stops when replaced.
     login_id: u64,
+    session: Session,
     player: Arc<Player>,
     mixer: Arc<SoftMixer>,
 }
@@ -221,6 +289,10 @@ pub extern "C" fn lsb_new(
         context,
     };
     let connected = Arc::new(Mutex::new(None));
+    if log::set_logger(&LOGGER).is_ok() {
+        log::set_max_level(log::LevelFilter::Debug);
+    }
+    *LOG_SINK.lock().unwrap() = Some(callbacks);
     Box::into_raw(Box::new(LsbBridge {
         runtime,
         callbacks,
@@ -234,6 +306,11 @@ pub extern "C" fn lsb_new(
 #[no_mangle]
 pub unsafe extern "C" fn lsb_free(bridge: *mut LsbBridge) {
     if !bridge.is_null() {
+        let mut sink = LOG_SINK.lock().unwrap();
+        if sink.map(|c| c.context) == Some((*bridge).callbacks.context) {
+            *sink = None;
+        }
+        drop(sink);
         drop(Box::from_raw(bridge));
     }
 }
@@ -282,7 +359,7 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
             ..PlayerConfig::default()
         };
         let sink = move || Box::new(CallbackSink(callbacks)) as Box<dyn Sink>;
-        let player = Player::new(config, session, mixer.get_soft_volume(), sink);
+        let player = Player::new(config, session.clone(), mixer.get_soft_volume(), sink);
         let mut events = player.get_player_event_channel();
         let replaced = {
             let mut slot = connected.lock().unwrap();
@@ -291,6 +368,7 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
             }
             slot.replace(Connected {
                 login_id,
+                session,
                 player,
                 mixer,
             })
@@ -382,6 +460,84 @@ pub unsafe extern "C" fn lsb_set_volume(bridge: *mut LsbBridge, volume: u16) -> 
         c.mixer.set_volume(volume);
         c.player.emit_volume_changed_event(volume);
     })
+}
+
+/// Reads the library through librespot's own session (spclient), not the Web API.
+/// Results come as LSB_EVENT_LIBRARY events: one for the rootlist, one for Liked Songs.
+///
+/// # Safety
+/// `bridge` must be valid.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_read_library(bridge: *mut LsbBridge) -> i32 {
+    let Some(bridge_ref) = bridge.as_ref() else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    let mut session = None;
+    let status = with_player(bridge, |c| session = Some(c.session.clone()));
+    let Some(session) = session else {
+        return status;
+    };
+    let callbacks = bridge_ref.callbacks;
+    bridge_ref.runtime.spawn(async move {
+        let library = |message: String, track_uri: Option<String>| Event {
+            message: Some(message),
+            track_uri,
+            ..Event::new(LSB_EVENT_LIBRARY)
+        };
+        callbacks.emit(&library(read_rootlist(&session).await, None));
+        let (message, first) = read_liked_songs(&session).await;
+        callbacks.emit(&library(message, first));
+    });
+    LSB_OK
+}
+
+async fn read_rootlist(session: &Session) -> String {
+    use librespot_metadata::playlist::list::SelectedListContent;
+    use protobuf::Message;
+    type ListMessage = <librespot_metadata::Playlist as librespot_metadata::Metadata>::Message;
+    let bytes = match session.spclient().get_rootlist(0, Some(1000)).await {
+        Ok(bytes) => bytes,
+        Err(error) => return format!("FAIL rootlist: {error}"),
+    };
+    let list = ListMessage::parse_from_bytes(&bytes)
+        .map_err(|e| e.to_string())
+        .and_then(|m| SelectedListContent::try_from(&m).map_err(|e| e.to_string()));
+    match list {
+        Ok(list) => {
+            let items = &list.contents.items;
+            let playlists = items
+                .iter()
+                .filter(|item| matches!(item.id, SpotifyUri::Playlist { .. }))
+                .count();
+            format!(
+                "PASS rootlist: {} items, {playlists} playlists, length {}",
+                items.len(),
+                list.length
+            )
+        }
+        Err(error) => format!(
+            "FAIL rootlist: {} bytes, cannot decode: {error}",
+            bytes.len()
+        ),
+    }
+}
+
+async fn read_liked_songs(session: &Session) -> (String, Option<String>) {
+    let uri = format!("spotify:user:{}:collection", session.username());
+    match session.spclient().get_context(&uri).await {
+        Ok(context) => {
+            let tracks: Vec<_> = context.pages.iter().flat_map(|p| p.tracks.iter()).collect();
+            let more = context.pages.iter().any(|p| p.next_page_url.is_some());
+            let first = tracks.iter().find_map(|t| t.uri.clone());
+            let message = format!(
+                "PASS liked songs: {} pages, {} tracks in loaded pages, more pages: {more}",
+                context.pages.len(),
+                tracks.len()
+            );
+            (message, first)
+        }
+        Err(error) => (format!("FAIL liked songs: {error}"), None),
+    }
 }
 
 /// The redirect URI for `lsb_oauth_login`. librespot 0.8.0's CLI uses

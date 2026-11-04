@@ -71,6 +71,8 @@ fn header_matches_rust() {
         ("LSB_EVENT_VOLUME", LSB_EVENT_VOLUME),
         ("LSB_EVENT_ERROR", LSB_EVENT_ERROR),
         ("LSB_EVENT_PLAY_REQUEST", LSB_EVENT_PLAY_REQUEST),
+        ("LSB_EVENT_LOG", LSB_EVENT_LOG),
+        ("LSB_EVENT_LIBRARY", LSB_EVENT_LIBRARY),
     ];
     for (name, value) in constants {
         let line = format!("#define {name} {value}\n");
@@ -94,6 +96,7 @@ fn playback_before_login_returns_not_logged_in() {
         assert_eq!(lsb_pause(bridge), LSB_ERR_NOT_LOGGED_IN);
         assert_eq!(lsb_seek(bridge, 1000), LSB_ERR_NOT_LOGGED_IN);
         assert_eq!(lsb_set_volume(bridge, 100), LSB_ERR_NOT_LOGGED_IN);
+        assert_eq!(lsb_read_library(bridge), LSB_ERR_NOT_LOGGED_IN);
         lsb_free(bridge);
     }
     assert!(recorder.events.lock().unwrap().is_empty());
@@ -253,4 +256,16 @@ fn repeated_play_request_is_sent_once() {
     assert!(is_new(&Event::new(LSB_EVENT_PLAYING), &mut last));
     assert!(!is_new(&request(1), &mut last));
     assert!(is_new(&request(2), &mut last));
+}
+
+#[test]
+fn scrub_hides_credentials() {
+    assert_eq!(
+        scrub("DEBUG librespot_core::x: Authorization: Bearer abc"),
+        "DEBUG librespot_core::x: [hidden: may hold a credential]"
+    );
+    assert_eq!(
+        scrub("WARN librespot_playback: track gone"),
+        "WARN librespot_playback: track gone"
+    );
 }
