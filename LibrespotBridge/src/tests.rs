@@ -751,4 +751,24 @@ mod library_tests {
     fn cancel_without_a_login_does_nothing() {
         assert_eq!(lsb_oauth_cancel(), LSB_OK);
     }
+
+    #[test]
+    fn stop_login_from_the_login_thread_returns_at_once() {
+        let address = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap();
+        let (send_handle, get_handle) = std::sync::mpsc::channel();
+        let (send_done, done) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            // As a token callback that calls lsb_oauth_cancel or lsb_oauth_login.
+            let own: std::thread::JoinHandle<()> = get_handle.recv().unwrap();
+            crate::oauth::stop_login(own, address);
+            send_done.send(()).unwrap();
+        });
+        // The thread gets a handle to itself. Keep none here: it is detached.
+        send_handle.send(handle).unwrap();
+        done.recv_timeout(Duration::from_secs(5))
+            .expect("stop_login must not wait for its own thread");
+    }
 }

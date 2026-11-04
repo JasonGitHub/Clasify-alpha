@@ -130,15 +130,21 @@ fn run(
     })
 }
 
-/// The thread of the newest `lsb_oauth_login`. The lock also keeps a login from
-/// starting while an older one is being stopped.
+/// The thread of the newest `lsb_oauth_login`. The lock is never held while a
+/// thread is stopped, so a token callback can call `lsb_oauth_login` or
+/// `lsb_oauth_cancel` again.
 static LOGIN: Mutex<Option<JoinHandle<()>>> = Mutex::new(None);
 
 /// Stops a login thread and waits until it has sent its result, so that port 8898
 /// is free again. librespot-oauth cannot be stopped directly, so this sends its
 /// listener a request without a code. It sends it again until the thread ends,
 /// because the thread may not listen yet, or may still swap tokens with Spotify.
+/// Called from the login thread itself (from its callback), it returns at once:
+/// that thread no longer listens, and it ends when the callback returns.
 pub(crate) fn stop_login(handle: JoinHandle<()>, address: SocketAddr) {
+    if handle.thread().id() == std::thread::current().id() {
+        return;
+    }
     while !handle.is_finished() {
         if let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_secs(1)) {
             let _ = stream.write_all(b"GET /login?error=cancelled HTTP/1.1\r\n\r\n");
@@ -166,22 +172,34 @@ pub extern "C" fn lsb_oauth_login(
     let Some(callback) = on_result else {
         return LSB_ERR_INVALID_ARGUMENT;
     };
-    let mut login = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(older) = login.take() {
-        stop_login(older, listen_address());
+    loop {
+        if let Some(older) = take_login() {
+            stop_login(older, listen_address());
+        }
+        let mut login = lock_login();
+        // Another call can start a login while the older one stops. Then stop that too.
+        if login.is_none() {
+            *login = Some(run(Target { callback, context }, || {
+                client()?.get_access_token().map_err(|e| e.to_string())
+            }));
+            return LSB_OK;
+        }
     }
-    *login = Some(run(Target { callback, context }, || {
-        client()?.get_access_token().map_err(|e| e.to_string())
-    }));
-    LSB_OK
+}
+
+fn lock_login() -> std::sync::MutexGuard<'static, Option<JoinHandle<()>>> {
+    LOGIN.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+fn take_login() -> Option<JoinHandle<()>> {
+    lock_login().take()
 }
 
 /// Stops a login that waits for the browser. Its callback then gets LSB_ERR_OAUTH,
 /// before this returns. If no login runs, it does nothing.
 #[no_mangle]
 pub extern "C" fn lsb_oauth_cancel() -> i32 {
-    let mut login = LOGIN.lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(handle) = login.take() {
+    if let Some(handle) = take_login() {
         stop_login(handle, listen_address());
     }
     LSB_OK

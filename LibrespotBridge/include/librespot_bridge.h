@@ -93,8 +93,9 @@ typedef void (*LsbTokenCallback)(void *context, const LsbToken *result);
 int32_t lsb_oauth_login(LsbTokenCallback on_result, void *context);
 // Stops the running lsb_oauth_login. Its callback sends LSB_ERR_OAUTH before this
 // returns, and port 8898 is free again. Does nothing if no login runs.
-// lsb_oauth_login and lsb_oauth_cancel wait for the old login's callback. So that
-// callback must not wait for the thread that calls them (no sync hop to it).
+// lsb_oauth_login and lsb_oauth_cancel wait for the old login's callback, so they
+// can block. Call them off the main thread. The token callback may call them, but
+// it must not wait for the thread that calls them (no sync hop to it).
 int32_t lsb_oauth_cancel(void);
 // Gets a new access token. The result comes once, on a bridge thread. Its
 // refresh_token is NULL when Spotify keeps the old one.
