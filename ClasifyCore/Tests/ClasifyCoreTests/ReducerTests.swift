@@ -117,7 +117,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {
         var s = playing(2)
-        send(&s, .position(5))
+        send(&s, .position(5, trackID: "f2"))
         #expect(send(&s, .prev) == [.seek(0)] && s.current?.track == "f2")
         send(&s, .prev)
         #expect(s.current?.track == "f1")
@@ -134,11 +134,13 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func positionAndTrackEndedComeFromEngine() {
         var s = playing()
-        send(&s, .position(12.5))
+        send(&s, .position(12.5, trackID: "f0"))
         #expect(s.t == 12.5)
-        #expect(send(&s, .trackEnded) == [.load(trackID: "f1", autoplay: true)])
+        #expect(send(&s, .trackEnded(trackID: "f0")) == [.load(trackID: "f1", autoplay: true)])
+        // late callbacks for f0 are ignored now that f1 is loaded
+        #expect(send(&s, .position(20, trackID: "f0"), .trackEnded(trackID: "f0")) == [] && s.t == 0)
         s.repeatMode = .one
-        #expect(send(&s, .trackEnded) == [.load(trackID: "f1", autoplay: true)])
+        #expect(send(&s, .trackEnded(trackID: "f1")) == [.load(trackID: "f1", autoplay: true)])
         #expect(s.current?.track == "f1" && s.t == 0)
     }
 

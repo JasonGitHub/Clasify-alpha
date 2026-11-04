@@ -11,7 +11,8 @@ public enum Action: Equatable, Sendable {
     case expire
     case reset
     /// Reported by the playback engine.
-    case position(Double), trackEnded
+    /// Each names the track it is about, so a late callback for a previous track is ignored.
+    case position(Double, trackID: String), trackEnded(trackID: String)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -171,11 +172,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
             if s.overlayUntil > 0 && now > s.overlayUntil && s.nowMode != .scrub { s.overlayUntil = 0 }
 
-        case .position(let t):
-            if s.current != nil { s.t = t }
+        case .position(let t, let id):
+            if s.current?.track == id { s.t = t }
 
-        case .trackEnded:
-            guard s.isPlaying, let c = s.current else { return }
+        case .trackEnded(let id):
+            guard s.isPlaying, let c = s.current, c.track == id else { return }
             if s.repeatMode == .one { s.t = 0; fx.append(.load(trackID: c.track, autoplay: true)) } else { advance(1) }
 
         case .loaded(let token, let library):
