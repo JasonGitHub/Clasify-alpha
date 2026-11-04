@@ -11,6 +11,7 @@ extern "C" fn record_event(context: *mut c_void, event: *const LsbEvent) {
     let entry = Event {
         kind: event.kind,
         message: unsafe { read_str(event.message) }.map(str::to_owned),
+        login_id: event.login_id,
     };
     recorder.events.lock().unwrap().push(entry);
 }
@@ -55,11 +56,14 @@ fn bad_arguments_return_invalid_argument() {
     let context = &recorder as *const Recorder as *mut c_void;
     let null = std::ptr::null_mut();
     unsafe {
-        assert_eq!(lsb_login(null, c"token".as_ptr()), LSB_ERR_INVALID_ARGUMENT);
+        assert_eq!(
+            lsb_login(null, c"token".as_ptr(), 1),
+            LSB_ERR_INVALID_ARGUMENT
+        );
         let bridge = lsb_new(Some(record_event), context);
         assert!(!bridge.is_null());
         assert_eq!(
-            lsb_login(bridge, std::ptr::null()),
+            lsb_login(bridge, std::ptr::null(), 1),
             LSB_ERR_INVALID_ARGUMENT
         );
         lsb_free(bridge);
@@ -98,19 +102,22 @@ fn emit_passes_the_event_to_the_callback() {
     let logged_in = Event {
         kind: LSB_EVENT_LOGGED_IN,
         message: Some("ja\0son".to_owned()),
+        login_id: 7,
     };
     callbacks.emit(&logged_in);
     callbacks.emit(&Event::default());
     let events = recorder.events.lock().unwrap();
     assert_eq!(events[0].message.as_deref(), Some("ja son"));
+    assert_eq!(events[0].login_id, 7);
     assert_eq!(events[1], Event::default());
 }
 
 #[test]
 fn event_layout_matches_c() {
     // Size and offset that a C compiler gives LsbEvent on 64-bit targets.
-    assert_eq!(std::mem::size_of::<LsbEvent>(), 16);
+    assert_eq!(std::mem::size_of::<LsbEvent>(), 24);
     assert_eq!(std::mem::offset_of!(LsbEvent, message), 8);
+    assert_eq!(std::mem::offset_of!(LsbEvent, login_id), 16);
 }
 
 #[test]
