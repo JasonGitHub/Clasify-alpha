@@ -15,6 +15,7 @@ use librespot_protocol::connect::{
 use librespot_protocol::devices::DeviceType;
 use protobuf::Message;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::watch;
 
 use crate::library::{c_text, session, Context};
 use crate::{read_str, LSB_ERR_CONNECT, LSB_ERR_INVALID_ARGUMENT, LSB_OK};
@@ -174,32 +175,60 @@ fn command_id() -> String {
     format!("{:016x}{:016x}", half(), half())
 }
 
-/// Starts the dealer once per session, then sends a NEW_DEVICE state. The reply is
-/// the account's cluster, with all its devices.
-async fn register(session: &Session) -> Result<Cluster, String> {
-    if session.connection_id().is_empty() {
-        let mut ids = session
-            .dealer()
-            .listen_for("hm://pusher/v1/connections/", |message| {
-                Ok(message
-                    .headers
-                    .get("Spotify-Connection-Id")
-                    .cloned()
-                    .unwrap_or_default())
-            })
-            .map_err(|e| format!("cannot listen to Spotify Connect: {e}"))?;
-        session
-            .dealer()
-            .start()
-            .await
-            .map_err(|e| format!("cannot start Spotify Connect: {e}"))?;
-        let id = tokio::time::timeout(std::time::Duration::from_secs(10), ids.next())
-            .await
-            .map_err(|_| "no Spotify Connect connection ID within 10 s".to_owned())?
-            .ok_or("Spotify Connect closed".to_owned())?
-            .map_err(|e| format!("bad Spotify Connect connection ID: {e}"))?;
-        session.set_connection_id(&id);
+/// The dealer of one session, and the newest connection ID it sent.
+pub(crate) struct Dealer {
+    device_id: String,
+    connection_id: watch::Receiver<String>,
+}
+
+/// Starts the session's dealer. A task keeps reading the dealer's connection IDs: the
+/// dealer reconnects after sleep or a network change and then sends a new ID. The task
+/// holds no `Session`, and it ends when the dealer closes or the worker drops `Dealer`.
+async fn start_dealer(session: &Session) -> Result<Dealer, String> {
+    let mut ids = session
+        .dealer()
+        .listen_for("hm://pusher/v1/connections/", |message| {
+            Ok(message
+                .headers
+                .get("Spotify-Connection-Id")
+                .cloned()
+                .unwrap_or_default())
+        })
+        .map_err(|e| format!("cannot listen to Spotify Connect: {e}"))?;
+    session
+        .dealer()
+        .start()
+        .await
+        .map_err(|e| format!("cannot start Spotify Connect: {e}"))?;
+    let (sender, connection_id) = watch::channel(String::new());
+    tokio::spawn(async move {
+        while let Some(id) = ids.next().await {
+            let id = id.unwrap_or_default();
+            if !id.is_empty() && sender.send(id).is_err() {
+                return; // The worker dropped this dealer.
+            }
+        }
+    });
+    Ok(Dealer {
+        device_id: session.device_id().to_owned(),
+        connection_id,
+    })
+}
+
+/// Starts the dealer once per session, then sends a NEW_DEVICE state with the newest
+/// connection ID. The reply is the account's cluster, with all its devices.
+async fn register(session: &Session, dealer: &mut Option<Dealer>) -> Result<Cluster, String> {
+    if dealer.as_ref().map(|d| d.device_id.as_str()) != Some(session.device_id()) {
+        *dealer = Some(start_dealer(session).await?);
     }
+    let ids = &mut dealer.as_mut().expect("set above").connection_id;
+    let wait = ids.wait_for(|id| !id.is_empty());
+    let id = tokio::time::timeout(std::time::Duration::from_secs(10), wait)
+        .await
+        .map_err(|_| "no Spotify Connect connection ID within 10 s".to_owned())?
+        .map_err(|_| "Spotify Connect closed".to_owned())?
+        .clone();
+    session.set_connection_id(&id);
     // `can_play: true` with `can_be_player: false` is the registration that spike
     // build 7 proved: Spotify accepted it and the commands reached the Spotify app.
     // Clasify still never plays: no player listens for audio. Try `can_play: false`
@@ -342,9 +371,10 @@ pub(crate) enum Job {
 pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender<Job> {
     let (jobs, mut queue) = unbounded_channel::<Job>();
     runtime.spawn(async move {
-        // The device ID of the session that is registered. A new login makes a new
-        // session with a new device ID, which registers again at its first call.
-        let mut registered: Option<String> = None;
+        // The dealer of the newest session that called, and whether that session is
+        // registered. A new login makes a new session, which registers at its first call.
+        let mut dealer: Option<Dealer> = None;
+        let mut registered = false;
         while let Some(job) = queue.recv().await {
             match job {
                 Job::Devices {
@@ -352,10 +382,8 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     callback,
                     context,
                 } => {
-                    let result = register(&session).await;
-                    if result.is_ok() {
-                        registered = Some(session.device_id().to_owned());
-                    }
+                    let result = register(&session, &mut dealer).await;
+                    registered = result.is_ok();
                     let result = result.map(|cluster| devices(&cluster, session.device_id()));
                     deliver_devices(callback, context.0, result);
                 }
@@ -366,22 +394,25 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     callback,
                     context,
                 } => {
-                    let fresh = registered.as_deref() != Some(session.device_id());
+                    let same = dealer.as_ref().map(|d| d.device_id.as_str());
                     let mut result = Ok(());
-                    if fresh {
-                        result = register(&session).await.map(|_| ());
+                    if !registered || same != Some(session.device_id()) {
+                        result = register(&session, &mut dealer).await.map(|_| ());
                     }
                     if result.is_ok() {
                         result = send(&session, &command, &to).await;
                     }
                     // The registration can go stale, for example after sleep or a network
-                    // change. Then register again once and send the command once more. Next and
-                    // prev are not retried: if the first one did arrive, the retry skips twice.
-                    let retry = result.is_err() && !fresh && command.can_retry();
-                    if retry && register(&session).await.is_ok() {
-                        result = send(&session, &command, &to).await;
+                    // change. Then register again once, with the newest connection ID, and
+                    // send the command once more. Next and prev are not retried: if the
+                    // first one did arrive, the retry skips twice.
+                    if result.is_err() && command.can_retry() {
+                        result = register(&session, &mut dealer).await.map(|_| ());
+                        if result.is_ok() {
+                            result = send(&session, &command, &to).await;
+                        }
                     }
-                    registered = result.is_ok().then(|| session.device_id().to_owned());
+                    registered = result.is_ok();
                     deliver_status(callback, context.0, result);
                 }
             }
