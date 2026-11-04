@@ -30,6 +30,7 @@ pub const LSB_EVENT_ERROR: u32 = 7;
 pub const LSB_EVENT_PLAY_REQUEST: u32 = 8;
 pub const LSB_EVENT_LOG: u32 = 9;
 pub const LSB_EVENT_LIBRARY: u32 = 10;
+pub const LSB_EVENT_CONTEXT: u32 = 11;
 
 /// Matches `LsbEvent` in the header. The strings are valid only during the callback.
 #[repr(C)]
@@ -506,29 +507,80 @@ pub unsafe extern "C" fn lsb_read_library(bridge: *mut LsbBridge) -> i32 {
             track_uri,
             ..Event::new(LSB_EVENT_LIBRARY)
         };
-        callbacks.emit(&library(read_rootlist(&session).await, None));
+        let (message, first_playlist) = read_rootlist(&session).await;
+        callbacks.emit(&library(message, first_playlist));
         let (message, first) = read_liked_songs(&session).await;
         callbacks.emit(&library(message, first));
+        let liked = format!("spotify:user:{}:collection", session.username());
+        callbacks.emit(&read_context(&session, &liked).await);
     });
     LSB_OK
 }
 
-async fn read_rootlist(session: &Session) -> String {
+/// Spike: reads the tracks of a context (a playlist, or Liked Songs as
+/// `spotify:user:<name>:collection`) through librespot. The result comes as one
+/// LSB_EVENT_CONTEXT event.
+///
+/// # Safety
+/// `bridge` must be valid. `context_uri` must be a NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_read_context(
+    bridge: *mut LsbBridge,
+    context_uri: *const c_char,
+) -> i32 {
+    let (Some(bridge_ref), Some(uri)) = (bridge.as_ref(), read_str(context_uri)) else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    let uri = uri.to_owned();
+    let mut session = None;
+    let status = with_player(bridge, |c| session = Some(c.session.clone()));
+    let Some(session) = session else {
+        return status;
+    };
+    let callbacks = bridge_ref.callbacks;
+    bridge_ref.runtime.spawn(async move {
+        callbacks.emit(&read_context(&session, &uri).await);
+    });
+    LSB_OK
+}
+
+/// `track_uri` is the context URI. `message` is the track URIs of the loaded pages,
+/// one per line, or "ERROR <text>".
+async fn read_context(session: &Session, uri: &str) -> Event {
+    let message = match session.spclient().get_context(uri).await {
+        Ok(context) => context
+            .pages
+            .iter()
+            .flat_map(|p| p.tracks.iter())
+            .filter_map(|t| t.uri.clone())
+            .collect::<Vec<_>>()
+            .join("\n"),
+        Err(error) => format!("ERROR {error}"),
+    };
+    Event {
+        track_uri: Some(uri.to_owned()),
+        message: Some(message),
+        ..Event::new(LSB_EVENT_CONTEXT)
+    }
+}
+
+async fn read_rootlist(session: &Session) -> (String, Option<String>) {
     use protobuf::Message;
     type ListMessage = <librespot_metadata::Playlist as librespot_metadata::Metadata>::Message;
     let bytes = match session.spclient().get_rootlist(0, Some(1000)).await {
         Ok(bytes) => bytes,
-        Err(error) => return format!("FAIL rootlist: {error}"),
+        Err(error) => return (format!("FAIL rootlist: {error}"), None),
     };
     // Decode the protobuf directly. librespot-metadata's conversion fails on items whose
     // URI is not a Spotify ID, such as folder markers.
     let list = match ListMessage::parse_from_bytes(&bytes) {
         Ok(list) => list,
         Err(error) => {
-            return format!(
+            let message = format!(
                 "FAIL rootlist: {} bytes, cannot decode: {error}",
                 bytes.len()
-            )
+            );
+            return (message, None);
         }
     };
     let uris: Vec<&str> = list.contents.items.iter().map(|i| i.uri()).collect();
@@ -548,13 +600,18 @@ async fn read_rootlist(session: &Session) -> String {
         })
         .map(|u| u.split(':').take(2).last().unwrap_or(""))
         .collect();
-    format!(
+    let first_playlist = uris
+        .iter()
+        .find(|u| u.starts_with("spotify:playlist:"))
+        .map(|u| u.to_string());
+    let message = format!(
         "PASS rootlist: {} items: {playlists} playlists, {folders} folder starts, {ends} folder ends, {} other {:?}, length {}",
         uris.len(),
         other.len(),
         other.iter().take(5).collect::<Vec<_>>(),
         list.length()
-    )
+    );
+    (message, first_playlist)
 }
 
 async fn read_liked_songs(session: &Session) -> (String, Option<String>) {

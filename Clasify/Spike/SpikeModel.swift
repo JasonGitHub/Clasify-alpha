@@ -45,7 +45,7 @@ struct TrackAttempt: Identifiable {
 @MainActor
 @Observable
 final class SpikeModel {
-    static let build = 3
+    static let build = 4
     /// Access point port filters to try. 0 means librespot's default (no filter).
     static let accessPointPorts: [UInt16] = [0, 4070, 443, 80]
     /// Three tracks from different major labels, so one label's rights cannot explain a failure.
@@ -79,6 +79,12 @@ final class SpikeModel {
     private(set) var isReadingLibrary = false
     private(set) var librespotLibrary: [String] = []
     private(set) var likedViaLibrespot: String?
+    /// Track URIs of contexts read through librespot, by context URI.
+    private(set) var contexts: [String: [String]] = [:]
+    private(set) var firstPlaylistURI: String?
+    private(set) var likedContextURI: String?
+    /// The Spotify app engine test (build 4).
+    let spotifyApp = SpotifyAppProbe()
 
     @ObservationIgnored private var audio: AudioOutput?
     @ObservationIgnored private var bridge: Bridge?
@@ -228,7 +234,27 @@ final class SpikeModel {
             }
         case LSB_EVENT_LIBRARY:
             librespotLibrary.append(event.message ?? "")
-            if let uri = event.trackURI { likedViaLibrespot = uri }
+            if let uri = event.trackURI {
+                if uri.hasPrefix("spotify:playlist:") {
+                    firstPlaylistURI = uri
+                    if let bridge { append("lsb_read_context \(uri) -> \(bridge.readContext(uri))") }
+                } else {
+                    likedViaLibrespot = uri
+                }
+            }
+        case LSB_EVENT_CONTEXT:
+            if let uri = event.trackURI, let message = event.message {
+                if message.hasPrefix("ERROR") {
+                    librespotLibrary.append("FAIL context \(uri): \(message)")
+                } else {
+                    let tracks = message.split(separator: "\n").map(String.init)
+                    contexts[uri] = tracks
+                    if uri.hasSuffix(":collection") { likedContextURI = uri }
+                    librespotLibrary.append("PASS context \(uri): \(tracks.count) tracks")
+                }
+            }
+            // The track list is long. Log only the summary line above.
+            return
         default:
             break
         }
@@ -394,6 +420,8 @@ final class SpikeModel {
             lines.append(line)
             if let body = result.body { lines.append("     Body: \(body)") }
         }
+        lines += ["", "4. Spotify app engine:"]
+        lines += spotifyApp.reportLines
         lines += ["", "Event and librespot log:"]
         lines += log.map { "   \($0.text)" }
         return lines.joined(separator: "\n")

@@ -32,6 +32,9 @@
 #define LSB_EVENT_LOG 9
 // A library read result in `message`. Liked Songs also sets `track_uri` to its first track.
 #define LSB_EVENT_LIBRARY 10
+// Spike: the tracks of a context. `track_uri` is the context URI, `message` holds
+// the track URIs one per line, or "ERROR <text>".
+#define LSB_EVENT_CONTEXT 11
 
 typedef struct LsbBridge LsbBridge;
 
@@ -41,7 +44,7 @@ typedef struct LsbEvent {
     uint64_t play_request_id;  // PLAY_REQUEST and track events, else 0.
     uint16_t volume;           // VOLUME. 0 to 65535.
     const char *track_uri;     // Track events, else NULL. Like "spotify:track:<id>".
-    const char *message;       // ERROR, LOG and LIBRARY only, else NULL.
+    const char *message;       // ERROR, LOG, LIBRARY and CONTEXT only, else NULL.
     // The strings are valid only during the callback.
     // Track events: PLAYING, PAUSED, POSITION, TRACK_ENDED, UNAVAILABLE.
     // PLAY_REQUEST comes once for each lsb_load, in call order, with only the
@@ -82,6 +85,10 @@ int32_t lsb_set_ap_port(LsbBridge *bridge, uint16_t port);
 // Reads the playlists (rootlist) and Liked Songs through librespot, not the Web API.
 // Sends two LSB_EVENT_LIBRARY events. Needs a login.
 int32_t lsb_read_library(LsbBridge *bridge);
+// Spike: reads a context's tracks through librespot. Sends one LSB_EVENT_CONTEXT.
+// lsb_read_library also sends one for Liked Songs, after its two LIBRARY events.
+// The rootlist LIBRARY event sets `track_uri` to the first playlist URI.
+int32_t lsb_read_context(LsbBridge *bridge, const char *context_uri);
 
 // OAuth login with PKCE through librespot-oauth, with librespot's own client ID.
 // Opens the Spotify login page in the browser and listens on the loopback

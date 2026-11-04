@@ -73,6 +73,7 @@ fn header_matches_rust() {
         ("LSB_EVENT_PLAY_REQUEST", LSB_EVENT_PLAY_REQUEST),
         ("LSB_EVENT_LOG", LSB_EVENT_LOG),
         ("LSB_EVENT_LIBRARY", LSB_EVENT_LIBRARY),
+        ("LSB_EVENT_CONTEXT", LSB_EVENT_CONTEXT),
     ];
     for (name, value) in constants {
         let line = format!("#define {name} {value}\n");
@@ -97,6 +98,10 @@ fn playback_before_login_returns_not_logged_in() {
         assert_eq!(lsb_seek(bridge, 1000), LSB_ERR_NOT_LOGGED_IN);
         assert_eq!(lsb_set_volume(bridge, 100), LSB_ERR_NOT_LOGGED_IN);
         assert_eq!(lsb_read_library(bridge), LSB_ERR_NOT_LOGGED_IN);
+        assert_eq!(
+            lsb_read_context(bridge, uri.as_ptr()),
+            LSB_ERR_NOT_LOGGED_IN
+        );
         lsb_free(bridge);
     }
     assert!(recorder.events.lock().unwrap().is_empty());

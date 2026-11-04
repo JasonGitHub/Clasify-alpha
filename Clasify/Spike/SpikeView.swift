@@ -15,6 +15,8 @@ struct SpikeView: View {
                 Divider()
                 step3
                 Divider()
+                spotifyAppSection
+                Divider()
                 HStack {
                     Button("4. Copy report") {
                         model.copyReport()
@@ -108,6 +110,46 @@ struct SpikeView: View {
             }
             Text("Tip: run 3a before 2, then pick \"First Liked Songs track\" in the track list.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    private var spotifyAppSection: some View {
+        let app = model.spotifyApp
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Spotify app engine (build 4)").font(.headline)
+            Text("Run 1 and 3a first. They give the playlist and Liked Songs to play.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Connect to Spotify app") { Task { await app.connect() } }
+                Button("Play playlist") {
+                    Task {
+                        let uri = model.firstPlaylistURI
+                        await app.play(context: uri, tracks: uri.flatMap { model.contexts[$0] }, name: "Playlist")
+                    }
+                }
+                Button("Play Liked Songs") {
+                    Task {
+                        let uri = model.likedContextURI
+                        await app.play(context: uri, tracks: uri.flatMap { model.contexts[$0] }, name: "Liked Songs")
+                    }
+                }
+            }
+            .disabled(app.isBusy)
+            HStack {
+                Button("Pause") { Task { await app.pause() } }
+                Button("Resume") { Task { await app.resume() } }
+                Button("Next") { Task { await app.next() } }
+                Button("Prev") { Task { await app.previous() } }
+                Button("Seek +30 s") { Task { await app.seekForward() } }
+                Button("Volume 50") { Task { await app.volume50() } }
+            }
+            .disabled(!app.isConnected || app.isBusy)
+            HStack {
+                Button("Test track end") { Task { await app.trackEnd() } }
+                Button("Measure memory") { app.memory() }
+            }
+            .disabled(!app.isConnected || app.isBusy)
+            ForEach(app.results) { line in detail("\(line.name): \(line.value)") }
         }
     }
 

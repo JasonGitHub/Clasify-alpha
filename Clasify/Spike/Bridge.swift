@@ -22,6 +22,7 @@ struct BridgeEvent: Sendable {
         case LSB_EVENT_PLAY_REQUEST: "PLAY_REQUEST"
         case LSB_EVENT_LOG: "LOG"
         case LSB_EVENT_LIBRARY: "LIBRARY"
+        case LSB_EVENT_CONTEXT: "CONTEXT"
         default: "KIND_\(kind)"
         }
     }
@@ -83,6 +84,7 @@ final class Bridge {
     func play() -> Int32 { lsb_play(handle) }
     func pause() -> Int32 { lsb_pause(handle) }
     func readLibrary() -> Int32 { lsb_read_library(handle) }
+    func readContext(_ uri: String) -> Int32 { lsb_read_context(handle, uri) }
     func setAccessPointPort(_ port: UInt16) -> Int32 { lsb_set_ap_port(handle, port) }
 
     /// Starts OAuth in the browser. `onResult` runs once, on a bridge thread.
