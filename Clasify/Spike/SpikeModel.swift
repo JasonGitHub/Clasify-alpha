@@ -45,7 +45,7 @@ struct TrackAttempt: Identifiable {
 @MainActor
 @Observable
 final class SpikeModel {
-    static let build = 5
+    static let build = 6
     /// Access point port filters to try. 0 means librespot's default (no filter).
     static let accessPointPorts: [UInt16] = [0, 4070, 443, 80]
     /// Three tracks from different major labels, so one label's rights cannot explain a failure.
@@ -85,6 +85,7 @@ final class SpikeModel {
     private(set) var likedContextURI: String?
     /// The Spotify app engine test (build 4).
     let spotifyApp = SpotifyAppProbe()
+    let goLibrespot = GoLibrespotProbe()
 
     @ObservationIgnored private var audio: AudioOutput?
     @ObservationIgnored private var bridge: Bridge?
@@ -422,6 +423,8 @@ final class SpikeModel {
         }
         lines += ["", "4. Spotify app engine:"]
         lines += spotifyApp.reportLines
+        lines += ["", "5. go-librespot:"]
+        lines += goLibrespot.reportLines
         lines += ["", "Event and librespot log:"]
         lines += log.map { "   \($0.text)" }
         return lines.joined(separator: "\n")

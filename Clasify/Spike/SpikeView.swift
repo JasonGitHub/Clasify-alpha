@@ -17,6 +17,8 @@ struct SpikeView: View {
                 Divider()
                 spotifyAppSection
                 Divider()
+                goLibrespotSection
+                Divider()
                 HStack {
                     Button("4. Copy report") {
                         model.copyReport()
@@ -150,6 +152,23 @@ struct SpikeView: View {
             }
             .disabled(!app.isConnected || app.isBusy)
             ForEach(app.results) { line in detail("\(line.name): \(line.value)") }
+        }
+    }
+
+    private var goLibrespotSection: some View {
+        let probe = model.goLibrespot
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("go-librespot (build 6)").font(.headline)
+            Text("Logs in through the browser, then plays the 3 test tracks. It runs alone and needs no other step.")
+                .font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button("Test go-librespot") {
+                    Task { await probe.run(tracks: SpikeModel.fixedTracks.map { (name: $0.label, uri: $0.uri) }) }
+                }
+                .disabled(probe.isBusy)
+                Text(probe.status).foregroundStyle(.secondary)
+            }
+            ForEach(probe.results) { line in detail("\(line.name): \(line.value)") }
         }
     }
 
