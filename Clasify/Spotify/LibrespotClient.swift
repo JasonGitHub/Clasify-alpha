@@ -43,7 +43,7 @@ final class LibrespotClient: @unchecked Sendable {
     init?() {
         let pending = OSAllocatedUnfairLock<CheckedContinuation<String, any Error>?>(initialState: nil)
         let box = Unmanaged.passRetained(EventBox(pendingLogin: pending)).toOpaque()
-        guard let handle = lsb_new(eventCallback, audioCallback, box) else {
+        guard let handle = lsb_new(eventCallback, box) else {
             Unmanaged<EventBox>.fromOpaque(box).release()
             return nil
         }
@@ -171,7 +171,7 @@ private func eventCallback(_ context: UnsafeMutableRawPointer?, _ event: UnsafeP
     switch Int32(raw.kind) {
     case LSB_EVENT_LOGGED_IN: result = .success(string(raw.message) ?? "")
     case LSB_EVENT_ERROR: result = .failure(BridgeError(status: LSB_ERR_NOT_LOGGED_IN, message: string(raw.message) ?? "login failed"))
-    default: return  // Playback events. 1.0 plays through the Spotify app.
+    default: return
     }
     let pending = box.pendingLogin.withLock { pending in
         defer { pending = nil }
@@ -179,9 +179,6 @@ private func eventCallback(_ context: UnsafeMutableRawPointer?, _ event: UnsafeP
     }
     pending?.resume(with: result.mapError { $0 as any Error })
 }
-
-/// The bridge never plays audio here, so the samples are dropped at once.
-private func audioCallback(_ context: UnsafeMutableRawPointer?, _ samples: UnsafePointer<Float>?, _ count: Int) {}
 
 private func failure(_ status: Int32, _ message: UnsafePointer<CChar>?) -> BridgeError {
     BridgeError(status: status, message: string(message) ?? "read failed")

@@ -1,9 +1,11 @@
 // C interface to the librespot bridge (Rust static library).
 // Keep in sync with src/lib.rs. The `header_matches_rust` test checks the constants.
+// The bridge plays no audio. It logs in, reads the library, and sends Spotify
+// Connect commands to the Spotify app.
 //
 // Threads: callbacks run on bridge threads, not the main thread. `context`
-// and both callbacks must be safe to call from any thread.
-// Login, load, play, pause, seek and volume return at once. Results come as events.
+// and the callbacks must be safe to call from any thread.
+// The calls return at once. Results come through callbacks.
 // Do not call lsb_free from inside a callback. That drops the bridge's tokio
 // runtime on its own thread, which panics, and a panic in an extern "C" function aborts.
 
@@ -22,58 +24,28 @@
 #define LSB_ERR_CONNECT 5
 
 #define LSB_EVENT_LOGGED_IN 0
-#define LSB_EVENT_PLAYING 1
-#define LSB_EVENT_PAUSED 2
-#define LSB_EVENT_POSITION 3
-#define LSB_EVENT_TRACK_ENDED 4
-#define LSB_EVENT_UNAVAILABLE 5
-#define LSB_EVENT_VOLUME 6
-#define LSB_EVENT_ERROR 7
-#define LSB_EVENT_PLAY_REQUEST 8
+#define LSB_EVENT_ERROR 1
 
 typedef struct LsbBridge LsbBridge;
 
 typedef struct LsbEvent {
     uint32_t kind;             // One of LSB_EVENT_*.
-    uint32_t position_ms;      // PLAYING, PAUSED, POSITION.
-    uint64_t play_request_id;  // PLAY_REQUEST and track events, else 0.
-    uint16_t volume;           // VOLUME. 0 to 65535.
-    const char *track_uri;     // Track events, else NULL. Like "spotify:track:<id>".
-    const char *message;       // ERROR: the error. LOGGED_IN: the canonical username. Else NULL.
-    // The strings are valid only during the callback.
-    // Track events: PLAYING, PAUSED, POSITION, TRACK_ENDED, UNAVAILABLE.
-    // PLAY_REQUEST comes once for each lsb_load, in call order, with only the
-    // play_request_id that later track events for that load carry. Match it to
-    // your loads in order, not by URI: the same URI can be loaded twice.
+    const char *message;       // LOGGED_IN: the canonical username. ERROR: the error.
+    // The message is valid only during the callback.
 } LsbEvent;
 
 typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);
-// Interleaved stereo float samples at 44.1 kHz. `count` is the number of floats.
-// The callback must block until it has room for the samples, for example in a
-// bounded ring buffer that AVAudioEngine drains. librespot paces playback by this
-// blocking. If the callback returns at once, librespot decodes the whole track in
-// seconds, and the position and track-ended events come too early.
-// lsb_free joins the playback thread. Before you call it, make the audio
-// callback stop blocking (keep draining, or return at once), or lsb_free hangs.
-typedef void (*LsbAudioCallback)(void *context, const float *samples, size_t count);
 
-// Returns NULL if a callback is NULL or the bridge cannot start.
-LsbBridge *lsb_new(LsbEventCallback on_event, LsbAudioCallback on_audio, void *context);
+// Returns NULL if on_event is NULL or the bridge cannot start.
+LsbBridge *lsb_new(LsbEventCallback on_event, void *context);
 void lsb_free(LsbBridge *bridge);
 
 // Sends LSB_EVENT_LOGGED_IN or LSB_EVENT_ERROR. Stores no credentials on disk.
-// Calling it again replaces the session and player when the new login succeeds.
+// Calling it again replaces the session when the new login succeeds.
 // A superseded login sends no result, except in a narrow race: if lsb_login is
 // called again just as an earlier login succeeds, both can send LOGGED_IN.
 // If the newer login succeeds, it still replaces the older one.
-// A replaced player sends no more events.
 int32_t lsb_login(LsbBridge *bridge, const char *access_token);
-// `track_uri` is like "spotify:track:<id>".
-int32_t lsb_load(LsbBridge *bridge, const char *track_uri, bool start_playing, uint32_t position_ms);
-int32_t lsb_play(LsbBridge *bridge);
-int32_t lsb_pause(LsbBridge *bridge);
-int32_t lsb_seek(LsbBridge *bridge, uint32_t position_ms);
-int32_t lsb_set_volume(LsbBridge *bridge, uint16_t volume);
 
 // OAuth with PKCE through librespot-oauth, with librespot's own client ID and
 // read-only scopes. The bridge stores no token: keep the refresh token in the Keychain.
