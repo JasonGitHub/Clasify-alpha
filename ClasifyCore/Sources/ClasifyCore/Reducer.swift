@@ -6,8 +6,12 @@ public enum Action: Equatable, Sendable {
     case tick  // drives toast and overlay timers
     /// A load finished. `library` is nil when the fetch failed.
     case loaded(token: Int, library: [Playlist]?)
-    /// Login finished for the attempt whose token is on the `.auth` frame.
-    case authDone(token: Int)
+    /// The app started. It tries to log in again with the stored login.
+    case launch
+    /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
+    case authDone(token: Int, ok: Bool)
+    /// The restore that `.launch` started finished.
+    case restored(token: Int, ok: Bool)
     case offline(Bool)
     case expire
     case reset
@@ -24,6 +28,13 @@ public enum Effect: Equatable, Sendable {
     case setVolume(Int)
     /// Fetch the library; the result comes back as `.loaded(token:library:)` with this token.
     case fetchLibrary(token: Int)
+    /// Log in through the browser; the result comes back as `.authDone` with this token.
+    case logIn(token: Int)
+    case cancelLogIn
+    /// Log in with the stored login; the result comes back as `.restored` with this token.
+    case restoreSession(token: Int)
+    /// Forget the stored login.
+    case logOut
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -136,7 +147,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let rows = s.rows(for: s.top)
             guard rows.indices.contains(s.top.sel) else { return }
             switch rows[s.top.sel] {
-            case .logIn: s.authAttempt += 1; s.stack.append(Frame(screen: .auth, token: s.authAttempt))
+            case .logIn:
+                s.authAttempt += 1  // a restore that still runs goes stale
+                s.stack.append(Frame(screen: .auth, token: s.authAttempt))
+                fx.append(.logIn(token: s.authAttempt))
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
             case .playlists: load(.playlists)
             case .likedSongs: load(.tracks(playlist: Playlist.likedSongsID))
@@ -162,12 +176,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .about: s.stack.append(Frame(screen: .about))
             case .logOut: s.stack.append(Frame(screen: .confirm))
             case .cancel: s.stack.removeLast()
-            case .confirmLogOut: signOut("Logged out")
+            case .confirmLogOut: signOut("Logged out"); fx.append(.logOut)
             }
 
         case .menu:
             if s.top.screen == .now && s.nowMode == .scrub { s.nowMode = .volume; s.overlayUntil = 0; return }
-            if s.top.screen == .auth || s.stack.count < 2 { return }
+            // Not in the mockup: a closed browser tab would leave the login waiting forever.
+            if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
+            if s.stack.count < 2 { return }
             s.stack.removeLast(); s.nowMode = .volume
 
         case .play:
@@ -206,9 +222,19 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 shuffleLiked()
             }
 
-        case .authDone(let token):
+        case .launch:
+            guard !s.signedIn else { return }
+            s.authAttempt += 1
+            fx.append(.restoreSession(token: s.authAttempt))
+
+        case .restored(let token, let ok):
+            // Stale when the user started a login meanwhile.
+            guard ok, s.authAttempt == token, !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
+            s.stack = [Frame(screen: .main)]; s.signedIn = true
+
+        case .authDone(let token, let ok):
             guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
-            if s.offline { s.stack.removeLast(); return toast("Can’t reach Spotify") }
+            if s.offline || !ok { s.stack.removeLast(); return toast("Can’t reach Spotify") }
             s.stack = [Frame(screen: .main)]; s.signedIn = true
             toast("Signed in")
 

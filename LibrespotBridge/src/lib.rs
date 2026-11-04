@@ -181,6 +181,28 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
     LSB_OK
 }
 
+/// Ends the session, if there is one. A login that has not finished sends no event.
+///
+/// # Safety
+/// `bridge` must be valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_logout(bridge: *mut LsbBridge) -> i32 {
+    let Some(bridge) = bridge.as_ref() else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    let old = {
+        let mut slot = bridge.connected.lock().unwrap();
+        // Under the lock, so a login that is about to publish its session sees it.
+        bridge.latest_login.fetch_add(1, Ordering::SeqCst);
+        slot.take()
+    };
+    if let Some(old) = old {
+        let _guard = bridge.runtime.enter();
+        old.session.shutdown();
+    }
+    LSB_OK
+}
+
 /// Runs `action` with the logged-in session.
 unsafe fn with_session(bridge: *mut LsbBridge, action: impl FnOnce(&Session)) -> i32 {
     let Some(bridge) = bridge.as_ref() else {

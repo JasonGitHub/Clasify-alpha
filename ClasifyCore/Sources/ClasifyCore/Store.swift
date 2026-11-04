@@ -13,10 +13,19 @@ public protocol Player: AnyObject {
     func setVolume(_ percent: Int)
 }
 
-/// Spotify library source (playlists and Liked Songs). Returns nil when the fetch fails.
+/// Spotify login and library source (playlists and Liked Songs).
 @MainActor
 public protocol Library: AnyObject {
+    /// Returns nil when the fetch fails.
     func fetchLibrary() async -> [Playlist]?
+    /// Logs in through the browser. Returns false when the user cancels or the login fails.
+    func logIn() async -> Bool
+    /// Stops a login that waits for the browser.
+    func cancelLogIn() async
+    /// Logs in again with the stored login. Returns false when there is none or it fails.
+    func restoreSession() async -> Bool
+    /// Forgets the stored login and ends the session.
+    func logOut()
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.
@@ -53,6 +62,22 @@ public final class Store {
                     self?.fetches[token] = nil
                     self?.send(.loaded(token: token, library: result))  // a stale token is ignored by the reducer
                 }
+            case .logIn(let token):
+                let library = self.library
+                Task { [weak self] in
+                    let ok = await library.logIn()
+                    self?.send(.authDone(token: token, ok: ok))
+                }
+            case .cancelLogIn:
+                let library = self.library
+                Task { await library.cancelLogIn() }
+            case .restoreSession(let token):
+                let library = self.library
+                Task { [weak self] in
+                    let ok = await library.restoreSession()
+                    self?.send(.restored(token: token, ok: ok))
+                }
+            case .logOut: library.logOut()
             }
         }
     }

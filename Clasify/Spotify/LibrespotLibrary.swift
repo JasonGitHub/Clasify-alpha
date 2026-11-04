@@ -9,8 +9,8 @@ private let log = Logger(subsystem: "app.clasify.Clasify", category: "library")
 /// The user's Spotify library, read through librespot (not the Web API). It also owns
 /// the login: the refresh token is in the Keychain, the access token only in memory.
 ///
-/// Login is not wired into the reducer yet. `fetchLibrary` returns the whole library,
-/// as the current `Library` protocol asks. A later ClasifyCore change splits it per screen.
+/// `fetchLibrary` returns the whole library, as the current `Library` protocol asks.
+/// A later ClasifyCore change splits it per screen.
 @MainActor
 final class LibrespotLibrary: Library {
     /// The most bridge reads that run at the same time.
@@ -38,8 +38,20 @@ final class LibrespotLibrary: Library {
 
     var isLoggedIn: Bool { username != nil }
 
-    /// Logs in through the browser. Throws when the user cancels or Spotify refuses.
-    func logIn() async throws {
+    /// Logs in through the browser. Returns false when the user cancels or the login fails.
+    func logIn() async -> Bool {
+        do {
+            try await browserLogIn()
+            return true
+        } catch {
+            let status = (error as? BridgeError)?.status ?? 0
+            log.error("login failed: status \(status, privacy: .public)")
+            return false
+        }
+    }
+
+    /// Throws when the user cancels, Spotify refuses, or the Keychain refuses the token.
+    private func browserLogIn() async throws {
         let mine = session
         let tokens = try await LibrespotClient.oauthLogin()
         // A logout or another login came while the browser was open. Do not undo it.
@@ -54,8 +66,12 @@ final class LibrespotLibrary: Library {
         }
     }
 
-    /// Stops a login that waits for the browser.
+    /// Stops a login that waits for the browser. A login that already has its tokens
+    /// stops too, because the user went back to the login screen.
     func cancelLogIn() async {
+        session += 1
+        username = nil
+        cache = nil
         await LibrespotClient.oauthCancel()
     }
 
@@ -95,6 +111,7 @@ final class LibrespotLibrary: Library {
     /// is never kept: it goes straight to the bridge session.
     func logOut() {
         RefreshTokenStore.delete()
+        client.logout()
         session += 1
         username = nil
         cache = nil

@@ -18,7 +18,7 @@ func send(_ s: inout AppState, _ actions: Action..., now: Double = 100) -> [Effe
 /// Signed in on the main menu, library loaded.
 func mainMenu() -> AppState {
     var s = AppState()
-    send(&s, .select, .authDone(token: 1))
+    send(&s, .select, .authDone(token: 1, ok: true))
     s.library = library
     return s
 }
@@ -89,12 +89,10 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.loading && !s.top.error && s.top.token == 2)
     }
 
-    @Test func menuPopsButNotFromAuthOrRoot() {
+    @Test func menuPopsButNotFromRoot() {
         var s = AppState()
         send(&s, .menu)
         #expect(s.stack.count == 1)
-        send(&s, .select, .menu)
-        #expect(s.top.screen == .auth)
 
         s = playing()
         send(&s, .select, .menu)  // leave scrub first
@@ -182,13 +180,47 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func authDoneSignsInOrFailsOffline() {
         var s = AppState()
-        send(&s, .select, .offline(true), .authDone(token: 1))
+        #expect(send(&s, .select) == [.logIn(token: 1)])
+        send(&s, .offline(true), .authDone(token: 1, ok: true))
         #expect(s.top.screen == .login && !s.signedIn && s.toast == "Can’t reach Spotify")
-        send(&s, .offline(false), .select, .authDone(token: 1))  // late, from the first attempt
+        send(&s, .offline(false), .select, .authDone(token: 1, ok: true))  // late, from the first attempt
         #expect(s.top.screen == .auth && !s.signedIn)
-        send(&s, .reset, .select, .authDone(token: 2))  // from before the reset
+        send(&s, .reset, .select, .authDone(token: 2, ok: true))  // from before the reset
         #expect(s.top.screen == .auth && !s.signedIn)
-        send(&s, .authDone(token: 3))
+        send(&s, .authDone(token: 3, ok: true))
+        #expect(s.stack == [Frame(screen: .main)] && s.signedIn)
+    }
+
+    @Test func failedLoginGoesBackToLogin() {
+        var s = AppState()
+        send(&s, .select, .authDone(token: 1, ok: false))
+        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.toast == "Can’t reach Spotify")
+    }
+
+    @Test func menuCancelsLogin() {
+        var s = AppState()
+        send(&s, .select)
+        #expect(send(&s, .menu) == [.cancelLogIn])
+        #expect(s.stack == [Frame(screen: .login)])
+        send(&s, .authDone(token: 1, ok: false))  // the cancelled login reports late
+        #expect(s.stack == [Frame(screen: .login)] && s.toast == "")
+    }
+
+    @Test func launchRestoresTheStoredLogin() {
+        var s = AppState()
+        #expect(send(&s, .launch) == [.restoreSession(token: 1)])
+        send(&s, .restored(token: 1, ok: false))
+        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn)
+        send(&s, .launch, .restored(token: 2, ok: true))
+        #expect(s.stack == [Frame(screen: .main)] && s.signedIn && s.toast == "")
+        #expect(send(&s, .launch) == [])  // already signed in
+    }
+
+    @Test func restoreGoesStaleWhenTheUserLogsIn() {
+        var s = AppState()
+        send(&s, .launch, .select, .restored(token: 1, ok: true))
+        #expect(s.top.screen == .auth && !s.signedIn)
+        send(&s, .authDone(token: 2, ok: true))
         #expect(s.stack == [Frame(screen: .main)] && s.signedIn)
     }
 
@@ -215,7 +247,7 @@ func playing(_ i: Int = 0) -> AppState {
         var fresh = AppState()
         fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt
         #expect(s == fresh && s.tok == 2)
-        send(&s, .select, .authDone(token: 2), .select, .loaded(token: 1, library: library))  // late load from before reset
+        send(&s, .select, .authDone(token: 2, ok: true), .select, .loaded(token: 1, library: library))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
     }
 
@@ -225,7 +257,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.screen == .confirm)
         send(&s, .select)  // Cancel
         #expect(s.top.screen == .settings)
-        send(&s, .select, .wheel(1), .select)
+        #expect(send(&s, .select, .wheel(1), .select) == [.stop, .logOut])
         #expect(s.top.screen == .login && s.toast == "Logged out" && s.current == nil)
     }
 }
@@ -254,13 +286,35 @@ func playing(_ i: Int = 0) -> AppState {
 @MainActor final class FakeLibrary: Library {
     var result: [Playlist]? = library
     var fetches = 0
+    var loginResult = true
+    var calls: [String] = []
     func fetchLibrary() async -> [Playlist]? { fetches += 1; return result }
+    func logIn() async -> Bool { calls.append("logIn"); return loginResult }
+    func cancelLogIn() async { calls.append("cancelLogIn") }
+    func restoreSession() async -> Bool { calls.append("restoreSession"); return loginResult }
+    func logOut() { calls.append("logOut") }
+}
+
+@MainActor @Test func storeRunsLoginEffects() async {
+    let lib = FakeLibrary()
+    let store = Store(player: FakePlayer(), library: lib, env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    lib.loginResult = false
+    store.send(.launch)
+    store.send(.select)  // Log in
+    while lib.calls.count < 2 { await Task.yield() }
+    #expect(lib.calls == ["restoreSession", "logIn"])
+    while store.state.top.screen == .auth { await Task.yield() }
+    #expect(store.state.stack == [Frame(screen: .login)] && store.state.toast == "Can’t reach Spotify")
+    store.send(.select)
+    store.send(.menu)
+    while lib.calls.count < 4 { await Task.yield() }
+    #expect(lib.calls.suffix(2).sorted() == ["cancelLogIn", "logIn"])
 }
 
 @MainActor @Test func storeFetchesLibraryAndDeliversLoaded() async {
     let lib = FakeLibrary()
     var s = AppState()
-    send(&s, .select, .authDone(token: 1))
+    send(&s, .select, .authDone(token: 1, ok: true))
     let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
     store.send(.select)  // Playlists
     #expect(store.state.top.loading)

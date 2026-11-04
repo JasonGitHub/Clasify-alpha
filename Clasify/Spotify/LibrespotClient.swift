@@ -11,6 +11,19 @@ struct BridgeError: Error, Sendable, Equatable {
     static let cancelled = BridgeError(status: -1, message: "cancelled")
     static let keychain = BridgeError(status: -2, message: "cannot keep the login in the Keychain")
     static let noRefreshToken = BridgeError(status: -3, message: "Spotify sent no refresh token")
+    static let timedOut = BridgeError(status: -4, message: "login timed out")
+}
+
+/// The login that waits for LOGGED_IN or ERROR. `id` tells a timeout which login it is for.
+struct PendingLogin: Sendable {
+    var id = 0
+    var continuation: CheckedContinuation<String, any Error>?
+
+    /// Takes the continuation, so that only one caller resumes it.
+    mutating func take() -> CheckedContinuation<String, any Error>? {
+        defer { continuation = nil }
+        return continuation
+    }
 }
 
 /// Tokens from OAuth. Keep the access token in memory only. Only the refresh token
@@ -38,10 +51,14 @@ struct PlaylistSummary: Sendable, Equatable {
 /// own state), and `pendingLogin` is guarded by its lock.
 final class LibrespotClient: @unchecked Sendable {
     private let handle: OpaquePointer
-    private let pendingLogin: OSAllocatedUnfairLock<CheckedContinuation<String, any Error>?>
+    private let pendingLogin: OSAllocatedUnfairLock<PendingLogin>
+
+    /// A login with no answer by then fails. LibrespotLibrary runs logins one at a time,
+    /// so one login that never answers would block every later login.
+    static let loginTimeout = Duration.seconds(30)
 
     init?() {
-        let pending = OSAllocatedUnfairLock<CheckedContinuation<String, any Error>?>(initialState: nil)
+        let pending = OSAllocatedUnfairLock(initialState: PendingLogin())
         let box = Unmanaged.passRetained(EventBox(pendingLogin: pending)).toOpaque()
         guard let handle = lsb_new(eventCallback, box) else {
             Unmanaged<EventBox>.fromOpaque(box).release()
@@ -52,23 +69,42 @@ final class LibrespotClient: @unchecked Sendable {
     }
 
     /// Starts a librespot session with an access token. Returns the canonical username.
-    /// A newer login supersedes this one, which then throws `BridgeError.cancelled`.
+    /// A newer login or `logout` supersedes this one, which then throws `BridgeError.cancelled`.
+    /// It throws `BridgeError.timedOut` after `loginTimeout`.
     func login(accessToken: String) async throws -> String {
         try await withCheckedThrowingContinuation { continuation in
-            let older = pendingLogin.withLock { pending in
-                defer { pending = continuation }
-                return pending
+            let (id, older) = pendingLogin.withLock { pending in
+                let older = pending.take()
+                pending.id += 1
+                pending.continuation = continuation
+                return (pending.id, older)
             }
             older?.resume(throwing: BridgeError.cancelled)
             let status = lsb_login(handle, accessToken)
             if status != LSB_OK {
-                let mine = pendingLogin.withLock { pending in
-                    defer { pending = nil }
-                    return pending
-                }
-                mine?.resume(throwing: BridgeError(status: status, message: "login did not start"))
+                finishLogin(id, throwing: BridgeError(status: status, message: "login did not start"))
+                return
+            }
+            Task.detached { [self] in
+                try? await Task.sleep(for: Self.loginTimeout)
+                // Stop the bridge login too, so that it cannot publish a session later.
+                if finishLogin(id, throwing: .timedOut) { lsb_logout(handle) }
             }
         }
+    }
+
+    /// Fails login `id` if it still waits. Returns false when it already ended.
+    @discardableResult
+    private func finishLogin(_ id: Int, throwing error: BridgeError) -> Bool {
+        let mine = pendingLogin.withLock { pending in pending.id == id ? pending.take() : nil }
+        mine?.resume(throwing: error)
+        return mine != nil
+    }
+
+    /// Ends the bridge session. A login that still waits throws `BridgeError.cancelled`.
+    func logout() {
+        pendingLogin.withLock { $0.take() }?.resume(throwing: BridgeError.cancelled)
+        lsb_logout(handle)
     }
 
     /// The playlists in the user's list, in order.
@@ -152,9 +188,9 @@ private final class ResultBox<Value: Sendable>: Sendable {
 
 /// The bridge's event context. It lives as long as the app.
 private final class EventBox: Sendable {
-    let pendingLogin: OSAllocatedUnfairLock<CheckedContinuation<String, any Error>?>
+    let pendingLogin: OSAllocatedUnfairLock<PendingLogin>
 
-    init(pendingLogin: OSAllocatedUnfairLock<CheckedContinuation<String, any Error>?>) {
+    init(pendingLogin: OSAllocatedUnfairLock<PendingLogin>) {
         self.pendingLogin = pendingLogin
     }
 }
@@ -173,10 +209,7 @@ private func eventCallback(_ context: UnsafeMutableRawPointer?, _ event: UnsafeP
     case LSB_EVENT_ERROR: result = .failure(BridgeError(status: LSB_ERR_NOT_LOGGED_IN, message: string(raw.message) ?? "login failed"))
     default: return
     }
-    let pending = box.pendingLogin.withLock { pending in
-        defer { pending = nil }
-        return pending
-    }
+    let pending = box.pendingLogin.withLock { $0.take() }
     pending?.resume(with: result.mapError { $0 as any Error })
 }
 

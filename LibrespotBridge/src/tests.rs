@@ -67,6 +67,25 @@ fn bad_arguments_return_invalid_argument() {
 }
 
 #[test]
+fn logout_ends_the_session() {
+    let recorder = Recorder::default();
+    let context = &recorder as *const Recorder as *mut c_void;
+    unsafe {
+        assert_eq!(lsb_logout(std::ptr::null_mut()), LSB_ERR_INVALID_ARGUMENT);
+        let bridge = lsb_new(Some(record_event), context);
+        // A logout without a session does nothing.
+        assert_eq!(lsb_logout(bridge), LSB_OK);
+        let before = (*bridge).latest_login.load(Ordering::SeqCst);
+        assert_eq!(lsb_logout(bridge), LSB_OK);
+        // A login that is still running can no longer publish its session.
+        assert_eq!((*bridge).latest_login.load(Ordering::SeqCst), before + 1);
+        assert!((*bridge).connected.lock().unwrap().is_none());
+        lsb_free(bridge);
+    }
+    assert!(recorder.events.lock().unwrap().is_empty());
+}
+
+#[test]
 fn emit_passes_the_event_to_the_callback() {
     let recorder = Recorder::default();
     let callbacks = Callbacks {
