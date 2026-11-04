@@ -101,7 +101,9 @@ func playing(_ i: Int = 0) -> AppState {
         let load: [Effect] = [.setShuffle(true), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
         #expect(send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == load)
         #expect(s.top.screen == .now && s.shuffle && s.shuffleToken == nil)
-        send(&s, .menu, .menu)  // Liked Songs is read now, so the next shuffle starts at once
+        send(&s, .menu, .menu, .wheel(1))  // back to Shuffle Songs, one row lower under Now Playing
+        #expect(s.rows(for: s.top)[s.top.sel] == .shuffleSongs)
+        // Liked Songs is read now, so the next shuffle starts at once.
         #expect(send(&s, .select).contains(.load(trackID: "l0", context: "liked", autoplay: true, generation: 2)))
 
         s = mainMenu()
