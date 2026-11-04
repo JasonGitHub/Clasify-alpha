@@ -40,6 +40,13 @@ fn header_matches_rust() {
         let line = format!("#define {name} {value}\n");
         assert!(header.contains(&line), "header is missing: {line}");
     }
+    // The C layout and signature that Swift reads. event_layout_matches_c checks the Rust side.
+    for line in [
+        "    uint64_t login_id;",
+        "int32_t lsb_login(LsbBridge *bridge, const char *access_token, uint64_t login_id);",
+    ] {
+        assert!(header.contains(line), "header is missing: {line}");
+    }
     for gone in [
         "lsb_load",
         "lsb_play",

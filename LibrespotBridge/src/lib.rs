@@ -160,8 +160,9 @@ pub unsafe extern "C" fn lsb_login(
     let callbacks = bridge.callbacks;
     let connected = bridge.connected.clone();
     let latest_login = bridge.latest_login.clone();
-    let login_id = latest_login.fetch_add(1, Ordering::SeqCst) + 1;
-    let is_latest = move || latest_login.load(Ordering::SeqCst) == login_id;
+    // The bridge's own count, separate from the caller's `caller_id` that events carry.
+    let attempt = latest_login.fetch_add(1, Ordering::SeqCst) + 1;
+    let is_latest = move || latest_login.load(Ordering::SeqCst) == attempt;
     let _guard = bridge.runtime.enter();
     let session = Session::new(SessionConfig::default(), None);
     bridge.runtime.spawn(async move {
@@ -199,7 +200,8 @@ pub unsafe extern "C" fn lsb_login(
     LSB_OK
 }
 
-/// Ends the session, if there is one. A login that has not finished sends no event.
+/// Ends the session, if there is one. A login that has not finished sends no event,
+/// except in the narrow race that `lsb_login` documents.
 ///
 /// # Safety
 /// `bridge` must be valid or NULL.

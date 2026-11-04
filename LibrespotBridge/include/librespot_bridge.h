@@ -50,7 +50,8 @@ void lsb_free(LsbBridge *bridge);
 int32_t lsb_login(LsbBridge *bridge, const char *access_token, uint64_t login_id);
 
 // Ends the session, so reads and Connect calls return LSB_ERR_NOT_LOGGED_IN.
-// A login that has not finished sends no event. Returns LSB_OK even with no session.
+// A login that has not finished sends no event, except in the race described at
+// lsb_login. Returns LSB_OK even with no session.
 int32_t lsb_logout(LsbBridge *bridge);
 
 // OAuth with PKCE through librespot-oauth, with librespot's own client ID and
