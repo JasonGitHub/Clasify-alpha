@@ -60,6 +60,7 @@ When you reply to Jason or explain something, make readability the first priorit
 - Use active voice. Give one instruction per sentence.
 - Use common words, and use one term for one thing. Avoid idioms and long noun stacks.
 - Use exact code names, commands and technical terms as they are. Don't simplify them away.
+- Give times in Japan time (JST, UTC+9), for example "18:22 JST". Convert UTC times from GitHub and CI.
 
 ## Pull requests
 
