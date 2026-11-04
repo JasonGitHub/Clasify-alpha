@@ -142,7 +142,8 @@ public struct AppState: Equatable, Sendable {
         case .main: (current == nil ? [] : [.nowPlaying]) + [.playlists, .likedSongs, .shuffleSongs, .settings]
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
         case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
-        case .settings: [.shuffle, .repeatMode, .skin, .albumArt, .clicker, .about, .logOut]
+        // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
+        case .settings: [.shuffle, .repeatMode, .albumArt, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .auth, .about, .now: []
         }
