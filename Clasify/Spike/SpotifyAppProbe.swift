@@ -370,7 +370,8 @@ final class SpotifyAppProbe {
     nonisolated private static func path(of pid: pid_t) -> String {
         var buffer = [CChar](repeating: 0, count: 4096)
         guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return "" }
-        return String(cString: buffer)
+        let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     nonisolated private static func memory(of pid: pid_t) -> (resident: UInt64, footprint: UInt64) {
