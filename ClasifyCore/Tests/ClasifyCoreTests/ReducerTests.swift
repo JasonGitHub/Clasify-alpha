@@ -364,3 +364,21 @@ func playing(_ i: Int = 0) -> AppState {
     #expect(lib.fetches == 1 && !store.state.top.loading && store.state.library == library)
     #expect(store.state.rows(for: store.state.top) == [.playlist("focus")])
 }
+
+@Suite struct SpotifyAppDeviceTests {
+    typealias D = SpotifyAppDevice.Candidate
+
+    // From the spike build 9 log: the Spotify app's software string has no "osx".
+    let mac = D(id: "a1", name: "Jason’s Macbook Air 15", type: "COMPUTER")
+    let phone = D(id: "p1", name: "iPhone", type: "SMARTPHONE")
+
+    @Test func picksThisMacByNameOrTheOnlyComputer() {
+        #expect(SpotifyAppDevice.pick([phone, mac], computerName: "jason's macbook air 15") == .found(id: "a1"))
+        #expect(SpotifyAppDevice.pick([phone, mac], computerName: "Other Mac") == .found(id: "a1"))
+        #expect(SpotifyAppDevice.pick([phone, mac], computerName: nil) == .found(id: "a1"))
+        #expect(SpotifyAppDevice.pick([phone], computerName: "Jason’s Macbook Air 15") == .none)
+        let second = D(id: "a2", name: "Studio", type: "COMPUTER")
+        #expect(SpotifyAppDevice.pick([mac, second], computerName: "Studio") == .found(id: "a2"))
+        #expect(SpotifyAppDevice.pick([mac, second], computerName: "Laptop") == .ambiguous)
+    }
+}

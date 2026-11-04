@@ -43,6 +43,8 @@ final class SpotifyConnectPlayer: Player {
     /// that track, for up to 3 s, states can still show what played before the load.
     private var loaded: (track: String, at: ContinuousClock.Instant)?
     private var shuffle = false, repeatMode = RepeatMode.off
+    /// Clasify's volume. It is sent once after each play, so Spotify does not keep its own.
+    private var volume = AppState().volume
     /// The newest shuffle and repeat that our device reported, so a load sends only the changes.
     private var deviceOptions: [Int32: Bool] = [:]
     /// Moves the position on once a second while a track plays. Cluster updates come only on changes.
@@ -126,6 +128,7 @@ final class SpotifyConnectPlayer: Player {
     }
 
     func setVolume(_ percent: Int) {
+        volume = percent
         guard ours, let device else { return }
         client.fireVolume(device: device, percent: percent)
     }
@@ -169,6 +172,7 @@ final class SpotifyConnectPlayer: Player {
             }
             guard id == loadID, let found = device else { return }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
+            client.fireVolume(device: found, percent: volume)
             context = contextURI
             loaded = (trackID, ContinuousClock.now)
             loading = false
@@ -233,17 +237,18 @@ final class SpotifyConnectPlayer: Player {
         let name = SCDynamicStoreCopyComputerName(nil, nil) as String?
         let deadline = ContinuousClock.now + .seconds(15)
         while ContinuousClock.now < deadline && id == loadID {
-            let devices = try await client.devices()
-            if let found = Self.thisMac(in: devices, named: name) { return found.id }
-            try await Task.sleep(for: .milliseconds(500))
+            // Each call registers again (one connect-state PUT), so ask once a second.
+            let devices = try await client.devices().map {
+                SpotifyAppDevice.Candidate(id: $0.id, name: $0.name, type: $0.type)
+            }
+            switch SpotifyAppDevice.pick(devices, computerName: name) {
+            case .found(let found): return found
+            case .ambiguous: throw PlayerError(message: "Spotify runs on several computers. Quit it on the others")
+            case .none: try await Task.sleep(for: .seconds(1))
+            }
         }
-        throw PlayerError(message: "Spotify didn’t answer. Try again")
-    }
-
-    /// The Spotify desktop app on this Mac: a computer device, by this Mac's name if one matches.
-    private static func thisMac(in devices: [ConnectDevice], named name: String?) -> ConnectDevice? {
-        let apps = devices.filter { $0.type == "COMPUTER" && $0.software.lowercased().contains("osx") }
-        return apps.first { $0.name == name } ?? (apps.count == 1 ? apps[0] : nil)
+        // Spotify runs but has no device: it is logged out, or logged in to another account.
+        throw PlayerError(message: "Log in to the Spotify app with the same account")
     }
 
     private func launchSpotify() async throws {
