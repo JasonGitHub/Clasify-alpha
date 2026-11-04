@@ -1,0 +1,13 @@
+name: ClasifyCore
+on:
+  push: { branches: [main] }
+  pull_request: { paths: ["ClasifyCore/**", ".github/workflows/core.yml"] }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container: swift:6.0-noble
+    defaults: { run: { working-directory: ClasifyCore } }
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift build -Xswiftc -warnings-as-errors
+      - run: swift test
