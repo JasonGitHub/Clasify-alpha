@@ -14,11 +14,14 @@ public enum Action: Equatable, Sendable {
     /// Reported by the playback engine.
     /// Each carries the `generation` of the `.load` it is about, so a late callback from an earlier load is ignored.
     case position(Double, generation: Int), trackEnded(generation: Int)
+    /// The engine can't play the load with this `generation`. The message is shown as a toast.
+    case playbackFailed(String, generation: Int)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
 public enum Effect: Equatable, Sendable {
-    case load(trackID: String, autoplay: Bool, generation: Int)
+    /// `context` is the playlist ID the track plays from. The engine uses it as the Spotify play context.
+    case load(trackID: String, context: String?, autoplay: Bool, generation: Int)
     case pause, resume, stop
     case seek(Double, generation: Int)  // a seek starts a new generation too
     case setVolume(Int)
@@ -54,7 +57,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.stack.append(Frame(screen: screen, loading: true, token: s.tok))
         fx.append(.fetchLibrary(token: s.tok))
     }
-    func loadTrack(_ id: String, autoplay: Bool) { s.playGen += 1; fx.append(.load(trackID: id, autoplay: autoplay, generation: s.playGen)) }
+    func loadTrack(_ id: String, autoplay: Bool) {
+        s.playGen += 1
+        fx.append(.load(trackID: id, context: s.current?.playlist, autoplay: autoplay, generation: s.playGen))
+    }
     func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
     func play(_ pl: String, _ id: String) {
         s.current = TrackRef(playlist: pl, track: id)
@@ -195,6 +201,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .trackEnded(let gen):
             guard s.isPlaying, let c = s.current, gen == s.playGen else { return }
             if s.repeatMode == .one { s.t = 0; loadTrack(c.track, autoplay: true) } else { advance(1) }
+
+        case .playbackFailed(let msg, let gen):
+            guard s.current != nil, gen == s.playGen else { return }
+            s.isPlaying = false
+            toast(msg)
 
         case .loaded(let token, let library):
             guard s.top.loading, s.top.token == token else { return }  // stale load
