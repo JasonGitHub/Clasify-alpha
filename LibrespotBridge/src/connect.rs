@@ -41,6 +41,13 @@ pub(crate) enum Command {
     Volume(u16),
 }
 
+impl Command {
+    /// True when sending it twice has the same result as sending it once.
+    pub(crate) fn can_retry(&self) -> bool {
+        !matches!(self, Command::Next | Command::Prev)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ConnectDevice {
     pub id: String,
@@ -193,6 +200,10 @@ async fn register(session: &Session) -> Result<Cluster, String> {
             .map_err(|e| format!("bad Spotify Connect connection ID: {e}"))?;
         session.set_connection_id(&id);
     }
+    // `can_play: true` with `can_be_player: false` is the registration that spike
+    // build 7 proved: Spotify accepted it and the commands reached the Spotify app.
+    // Clasify still never plays: no player listens for audio. Try `can_play: false`
+    // in a spike build before changing it.
     let info = DeviceInfo {
         can_play: true,
         volume: 65535,
@@ -355,16 +366,22 @@ pub(crate) fn spawn_worker(runtime: &tokio::runtime::Runtime) -> UnboundedSender
                     callback,
                     context,
                 } => {
+                    let fresh = registered.as_deref() != Some(session.device_id());
                     let mut result = Ok(());
-                    if registered.as_deref() != Some(session.device_id()) {
+                    if fresh {
                         result = register(&session).await.map(|_| ());
-                        if result.is_ok() {
-                            registered = Some(session.device_id().to_owned());
-                        }
                     }
                     if result.is_ok() {
                         result = send(&session, &command, &to).await;
                     }
+                    // The registration can go stale, for example after sleep or a network
+                    // change. Then register again once and send the command once more. Next and
+                    // prev are not retried: if the first one did arrive, the retry skips twice.
+                    let retry = result.is_err() && !fresh && command.can_retry();
+                    if retry && register(&session).await.is_ok() {
+                        result = send(&session, &command, &to).await;
+                    }
+                    registered = result.is_ok().then(|| session.device_id().to_owned());
                     deliver_status(callback, context.0, result);
                 }
             }

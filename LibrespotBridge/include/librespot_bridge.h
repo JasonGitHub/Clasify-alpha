@@ -135,8 +135,10 @@ int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
 
 // Spotify Connect. Clasify plays no audio: it tells the Spotify app's Connect device
 // what to play. Before the first call of each login, the bridge registers this session
-// as a Connect device named "Clasify" that cannot play. Only the requests below can be
-// sent. There is no call that takes an endpoint path.
+// as a Connect device named "Clasify". It is not a player (can_be_player is false)
+// and plays no audio. If a command other than next or prev fails, the bridge registers
+// again once and sends it once more. Only the requests below can be sent. There is no
+// call that takes an endpoint path.
 // Each call needs a login (else LSB_ERR_NOT_LOGGED_IN). The calls run one at a time, in
 // call order, and each sends its result once, on a bridge thread: LSB_OK, or
 // LSB_ERR_CONNECT with a message. lsb_free drops calls that have not finished, and
