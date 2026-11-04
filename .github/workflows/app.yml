@@ -1,0 +1,29 @@
+name: App
+on:
+  push: { branches: [main] }
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ["ClasifyCore/**", "Clasify/**", "Clasify.xcodeproj/**", ".github/workflows/app.yml"]
+# macOS minutes cost more, so a new push cancels the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    # Skip draft PRs. The ready_for_review type above runs the job when a draft is marked ready.
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+      - run: xcodebuild -version
+      - name: Test ClasifyCore on macOS
+        working-directory: ClasifyCore
+        run: swift build -Xswiftc -warnings-as-errors && swift test
+      - name: Build the app with zero warnings
+        run: |
+          set -o pipefail
+          xcodebuild build -project Clasify.xcodeproj -scheme Clasify -configuration Debug \
+            -destination 'platform=macOS' -derivedDataPath DerivedData 2>&1 | tee build.log
+          # The app target treats compiler warnings as errors. Xcode hides warnings in package targets, so
+          # ClasifyCore is checked by the step above. Some warnings come from Xcode tools, so check the log too.
+          if grep -E '(^|: )warning: ' build.log; then echo "Build has warnings."; exit 1; fi
