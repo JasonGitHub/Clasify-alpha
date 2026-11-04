@@ -79,6 +79,9 @@ public struct AppState: Equatable, Sendable {
     /// Token of a Liked Songs load that should start a shuffle when it finishes.
     public var shuffleToken: Int?
     public var signedIn = false
+    /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
+    /// so a browser login cannot race it. Skins show "Signing in…".
+    public var restoring = false
     public var library: [Playlist] = []
     public var current: TrackRef?
     public var t: Double = 0
@@ -112,7 +115,7 @@ public struct AppState: Equatable, Sendable {
 
     public func rows(for frame: Frame) -> [Row] {
         switch frame.screen {
-        case .login: [.logIn]
+        case .login: restoring ? [] : [.logIn]
         case .main: (current == nil ? [] : [.nowPlaying]) + [.playlists, .likedSongs, .shuffleSongs, .settings]
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
         case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
