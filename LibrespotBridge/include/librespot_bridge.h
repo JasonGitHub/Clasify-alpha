@@ -19,6 +19,7 @@
 #define LSB_ERR_NOT_LOGGED_IN 2
 #define LSB_ERR_OAUTH 3
 #define LSB_ERR_READ 4
+#define LSB_ERR_CONNECT 5
 
 #define LSB_EVENT_LOGGED_IN 0
 #define LSB_EVENT_PLAYING 1
@@ -131,5 +132,48 @@ int32_t lsb_read_playlists(LsbBridge *bridge, LsbPlaylistsCallback on_result, vo
 // tracks without details are left out.
 int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
                         LsbTracksCallback on_result, void *context);
+
+// Spotify Connect. Clasify plays no audio: it tells the Spotify app's Connect device
+// what to play. Before the first call of each login, the bridge registers this session
+// as a Connect device named "Clasify". It is not a player (can_be_player is false)
+// and plays no audio. If a command other than next or prev fails, the bridge registers
+// again once and sends it once more. Only the requests below can be sent. There is no
+// call that takes an endpoint path.
+// Each call needs a login (else LSB_ERR_NOT_LOGGED_IN). The calls run one at a time, in
+// call order, and each sends its result once, on a bridge thread: LSB_OK, or
+// LSB_ERR_CONNECT with a message. lsb_free drops calls that have not finished, and
+// their callbacks never come. The strings and arrays are valid only during the callback.
+#define LSB_COMMAND_PAUSE 0
+#define LSB_COMMAND_RESUME 1
+#define LSB_COMMAND_NEXT 2
+#define LSB_COMMAND_PREV 3
+
+typedef struct LsbDevice {
+    const char *id;
+    const char *name;
+    const char *device_type;     // Like "COMPUTER" or "SMARTPHONE".
+    const char *software;        // The device's software version.
+    bool is_active;              // The device that plays now.
+} LsbDevice;
+
+typedef void (*LsbDevicesCallback)(void *context, int32_t status, const char *message,
+                                   const LsbDevice *devices, size_t count);
+typedef void (*LsbCommandCallback)(void *context, int32_t status, const char *message);
+// Registers this session again and lists the account's other Connect devices, by name.
+int32_t lsb_connect_devices(LsbBridge *bridge, LsbDevicesCallback on_result, void *context);
+// Plays context_uri on device_id, from track_uri, or from the start when track_uri is
+// NULL. context_uri is "spotify:playlist:<id>" or, for Liked Songs,
+// "spotify:user:<username>:collection" with the username from LSB_EVENT_LOGGED_IN.
+// track_uri is "spotify:track:<id>". device_id has only letters, digits, '-' and '_'.
+int32_t lsb_connect_play(LsbBridge *bridge, const char *device_id, const char *context_uri,
+                         const char *track_uri, LsbCommandCallback on_result, void *context);
+// command is one of LSB_COMMAND_*.
+int32_t lsb_connect_command(LsbBridge *bridge, const char *device_id, uint32_t command,
+                            LsbCommandCallback on_result, void *context);
+int32_t lsb_connect_seek(LsbBridge *bridge, const char *device_id, uint32_t position_ms,
+                         LsbCommandCallback on_result, void *context);
+// volume is 0 to 65535.
+int32_t lsb_connect_volume(LsbBridge *bridge, const char *device_id, uint16_t volume,
+                           LsbCommandCallback on_result, void *context);
 
 #endif

@@ -13,8 +13,14 @@ use librespot_playback::decoder::AudioPacket;
 use librespot_playback::mixer::{softmixer::SoftMixer, Mixer, MixerConfig};
 use librespot_playback::player::{Player, PlayerEvent};
 
+mod connect;
 mod library;
 mod oauth;
+pub use connect::{
+    lsb_connect_command, lsb_connect_devices, lsb_connect_play, lsb_connect_seek,
+    lsb_connect_volume, LsbCommandCallback, LsbDevice, LsbDevicesCallback, LSB_COMMAND_NEXT,
+    LSB_COMMAND_PAUSE, LSB_COMMAND_PREV, LSB_COMMAND_RESUME,
+};
 pub use library::{
     lsb_read_playlists, lsb_read_tracks, LsbPlaylist, LsbPlaylistsCallback, LsbTrack,
     LsbTracksCallback,
@@ -29,6 +35,7 @@ pub const LSB_ERR_INVALID_ARGUMENT: i32 = 1;
 pub const LSB_ERR_NOT_LOGGED_IN: i32 = 2;
 pub const LSB_ERR_OAUTH: i32 = 3;
 pub const LSB_ERR_READ: i32 = 4;
+pub const LSB_ERR_CONNECT: i32 = 5;
 
 pub const LSB_EVENT_LOGGED_IN: u32 = 0;
 pub const LSB_EVENT_PLAYING: u32 = 1;
@@ -214,6 +221,8 @@ pub struct LsbBridge {
     connected: Arc<Mutex<Option<Connected>>>,
     /// Counts `lsb_login` calls. Only the newest login may publish its result.
     latest_login: Arc<AtomicU64>,
+    /// Spotify Connect calls, run one at a time in call order.
+    connect: tokio::sync::mpsc::UnboundedSender<connect::Job>,
 }
 
 #[no_mangle]
@@ -234,11 +243,13 @@ pub extern "C" fn lsb_new(
         context,
     };
     let connected = Arc::new(Mutex::new(None));
+    let connect = connect::spawn_worker(&runtime);
     Box::into_raw(Box::new(LsbBridge {
         runtime,
         callbacks,
         connected,
         latest_login: Arc::new(AtomicU64::new(0)),
+        connect,
     }))
 }
 

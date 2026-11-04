@@ -16,8 +16,13 @@ librespot-core = { version = "=0.8.0", default-features = false, features = ["na
 librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 librespot-oauth = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 librespot-protocol = { version = "=0.8.0", default-features = false }
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
 # Already librespot dependencies, pinned to the versions in Cargo.lock. Named only
 # to decode the protobuf and JSON messages of the library reads.
 protobuf = "=3.7.2"
 protobuf-json-mapping = "=3.7.2"
+# Already librespot dependencies, pinned to the versions in Cargo.lock. Named only for
+# the Spotify Connect calls: http for the request method and headers, futures-util to
+# read the dealer's connection ID stream.
+http = "=1.5.0"
+futures-util = { version = "=0.3.34", default-features = false }
