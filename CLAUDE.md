@@ -26,6 +26,7 @@ No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) b
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
 - Network calls go only to Spotify and to the GitHub Releases API for the update check. No analytics. No crash reporting in 1.0.
 - Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk. Run librespot with no credentials cache and no audio cache. Write no log files.
+- librespot streams the current track to a temp file in the system temp folder and deletes it after the track. This is the only exception to the disk rule.
 - The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
 - librespot is linked as a static Rust library over a C FFI, not run as a spotifyd helper process.
 - 1.0 ships only the built-in librespot engine. The Spotify-app engine is out of 1.0: don't build it or show its setting, but keep playback behind the `Player` protocol so it can be added later.
