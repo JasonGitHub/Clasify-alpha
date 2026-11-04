@@ -50,7 +50,10 @@ void lsb_free(LsbBridge *bridge);
 
 // Sends LSB_EVENT_LOGGED_IN or LSB_EVENT_ERROR. Stores no credentials on disk.
 // Calling it again replaces the session and player when the new login succeeds.
-// Only the newest login sends its result. A replaced player sends no more events.
+// A superseded login sends no result, except in a narrow race: if lsb_login is
+// called again just as an earlier login succeeds, both can send LOGGED_IN.
+// If the newer login succeeds, it still replaces the older one.
+// A replaced player sends no more events.
 int32_t lsb_login(LsbBridge *bridge, const char *access_token);
 // `track_uri` is like "spotify:track:<id>".
 int32_t lsb_load(LsbBridge *bridge, const char *track_uri, bool start_playing, uint32_t position_ms);

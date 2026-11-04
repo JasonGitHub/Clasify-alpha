@@ -186,18 +186,25 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
         let sink = move || Box::new(CallbackSink(callbacks)) as Box<dyn Sink>;
         let player = Player::new(config, session, mixer.get_soft_volume(), sink);
         let mut events = player.get_player_event_channel();
-        {
+        let replaced = {
             let mut slot = connected.lock().unwrap();
             if !is_latest() {
                 return; // A newer login replaced this one.
             }
-            *slot = Some(Connected {
+            slot.replace(Connected {
                 login_id,
                 player,
                 mixer,
-            });
+            })
+        };
+        // Drop the old player outside the lock: dropping it joins its thread,
+        // and that thread may be in the audio callback, waiting for the lock.
+        drop(replaced);
+        // Not under the lock, so a callback can call back into the bridge.
+        // A login that starts right now can still follow this event.
+        if is_latest() {
+            callbacks.emit(LSB_EVENT_LOGGED_IN, 0, 0, None);
         }
-        callbacks.emit(LSB_EVENT_LOGGED_IN, 0, 0, None);
         while let Some(event) = events.recv().await {
             let slot = connected.lock().unwrap();
             if slot.as_ref().map(|c| c.login_id) != Some(login_id) {
