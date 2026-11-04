@@ -30,7 +30,8 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 - Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk. Run librespot with no credentials cache and no audio cache. Write no log files.
 - The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
 - librespot is linked as a static Rust library over a C FFI, not run as a separate helper process.
-- 1.0 plays through the Spotify desktop app, controlled with Apple Events, behind the `Player` protocol. librespot is used only for login and library reads, not playback. Spotify refuses audio keys to librespot (librespot#1649).
+- 1.0 plays through the Spotify desktop app, behind the `Player` protocol. Clasify starts and controls playback with Spotify Connect commands sent through the librespot session. AppleScript must never start playback or activate Spotify. Launch Spotify hidden.
+- librespot is used for login, library reads and Spotify Connect commands, not for audio. Spotify refuses audio keys to librespot (librespot#1649). No PlayPlay or other DRM work.
 - Library reads use librespot, with no Web API fallback. The shared Web API client ID is quota-blocked.
 - One question is still open. Don't settle it in code; ask Jason: SwiftUI vs AppKit for the skinned window.
 
