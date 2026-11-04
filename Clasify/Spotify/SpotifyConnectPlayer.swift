@@ -43,7 +43,9 @@ final class SpotifyConnectPlayer: Player {
     private var lastTrack = "", lastRunning = false
     /// The track of the newest load, and when its play command succeeded. Until Spotify shows
     /// that track, for up to 3 s, states can still show what played before the load.
-    private var loaded: (track: String, at: ContinuousClock.Instant)?
+    /// The track is nil when skips pressed during the load were sent: then any track in the
+    /// load's playlist on this Mac counts.
+    private var loaded: (track: String?, at: ContinuousClock.Instant)?
     private var shuffle = false, repeatMode = RepeatMode.off
     /// Clasify's volume. It is sent once after each play, so Spotify does not keep its own.
     private var volume = AppState().volume
@@ -55,6 +57,8 @@ final class SpotifyConnectPlayer: Player {
     private var warming: Task<String?, Never>?
     /// Bumped by each pre-warm and by `reset`, so a pre-warm from before a sign-out changes nothing.
     private var warmID = 0
+    /// Bumped by `reset`, so an option result from before a sign-out changes nothing.
+    private var session = 0
 
     init(client: LibrespotClient, library: LibrespotLibrary) {
         self.client = client
@@ -177,6 +181,7 @@ final class SpotifyConnectPlayer: Player {
     /// account, so the next account looks them up again.
     func reset() {
         warmID += 1
+        session += 1
         warming?.cancel()
         warming = nil
         device = nil
@@ -223,10 +228,10 @@ final class SpotifyConnectPlayer: Player {
             for _ in 0..<abs(pendingSkips) {
                 client.fire(pendingSkips > 0 ? LSB_COMMAND_NEXT : LSB_COMMAND_PREV, to: found)
             }
-            pendingSkips = 0
             client.fireVolume(device: found, percent: volume)
             context = contextURI
-            loaded = (trackID, ContinuousClock.now)
+            loaded = (pendingSkips == 0 ? trackID : nil, ContinuousClock.now)
+            pendingSkips = 0
             loading = false
             ours = true
         } catch let error as PlayerError {
@@ -257,6 +262,7 @@ final class SpotifyConnectPlayer: Player {
     /// It reads the wanted options again after each command. A toggle while a command is in
     /// flight then still reaches Spotify, though the call for that toggle saw nothing to send.
     private func applyOptions() async {
+        let session = session
         var failed: Set<Int32> = []
         for _ in 0..<8 {  // a bound, in case Spotify keeps reporting other values
             let want: [(Int32, Bool)] = [
@@ -269,8 +275,9 @@ final class SpotifyConnectPlayer: Player {
             let (option, on) = next
             do {
                 try await client.setOption(option, on, device: device)
-                // After a sign-out (`reset`), the value belongs to the old account's device.
-                guard self.device == device else { return }
+                // After a sign-out (`reset`), the value belongs to the old account. The next
+                // account can get the same device ID, so the session is compared, not the device.
+                guard session == self.session else { return }
                 deviceOptions[option] = on
             } catch {
                 Self.logFailure("option \(option)", error)
@@ -351,6 +358,13 @@ final class SpotifyConnectPlayer: Player {
 
     // MARK: State from the cluster
 
+    /// The load's track, or after queued skips any track of the load's playlist.
+    /// Liked Songs can come back as a playlist URI, so its context is not compared.
+    private func isLoaded(_ state: SpotifyPlayerState, track: String?) -> Bool {
+        if let track { return state.trackURI == track }
+        return context.hasSuffix(":collection") || state.contextURI == context
+    }
+
     private func handle(_ state: SpotifyPlayerState) {
         guard let device else { return }
         if state.activeDeviceID == device {
@@ -361,7 +375,7 @@ final class SpotifyConnectPlayer: Player {
         }
         guard ours else { return }
         if let loaded, ContinuousClock.now - loaded.at < .seconds(3),
-           state.activeDeviceID != device || state.trackURI != loaded.track {
+           state.activeDeviceID != device || !isLoaded(state, track: loaded.track) {
             return  // still what played before the load
         }
         loaded = nil
