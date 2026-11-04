@@ -1,6 +1,6 @@
 import Observation
 
-/// Playback engine (librespot in 1.0). Code above it doesn't know which engine is playing.
+/// Playback engine (the Spotify desktop app, controlled through Spotify Connect, in 1.0). Code above it doesn't know which engine is playing.
 @MainActor
 public protocol Player: AnyObject {
     /// Report `.position` and `.trackEnded` for this load with the same `generation`.
