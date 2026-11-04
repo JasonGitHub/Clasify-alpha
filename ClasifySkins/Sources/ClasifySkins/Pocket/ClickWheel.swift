@@ -8,6 +8,12 @@ struct ClickWheel: View {
     /// False in snapshot tests, which cannot draw the AppKit scroll view.
     var catchesScroll = true
 
+    init(input: @escaping @MainActor (Action) -> Void, catchesScroll: Bool = true, pressed: Zone? = nil) {
+        self.input = input
+        self.catchesScroll = catchesScroll
+        _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
+    }
+
     /// The parts of the wheel that act as buttons.
     enum Zone {
         case menu, prev, next, play, center
@@ -67,6 +73,15 @@ struct ClickWheel: View {
                         .init(color: Color(hex: 0xdadee3), location: 1),
                     ],
                     center: UnitPoint(x: 0.5, y: 0.35), startRadius: 0, endRadius: 161))
+                // The mockup's inset shadows: a white glow at the top, a faint shade at the bottom.
+                .overlay {
+                    Circle().stroke(Color.white.opacity(0.9), lineWidth: 4).blur(radius: 2).offset(y: 2)
+                        .clipShape(Circle())
+                }
+                .overlay {
+                    Circle().stroke(Color.black.opacity(0.06), lineWidth: 6).blur(radius: 3).offset(y: -3)
+                        .clipShape(Circle())
+                }
                 .overlay { Circle().strokeBorder(Color(hex: 0xc3c9d0), lineWidth: 1) }
                 .frame(width: Self.size, height: Self.size)
             key(.menu) { Text("MENU").font(.helvetica(11, bold: true)).tracking(1) }
@@ -111,6 +126,9 @@ struct ClickWheel: View {
         let light = Color(hex: 0xf3f5f7), dark = Color(hex: 0xdfe3e8)
         return Circle()
             .fill(LinearGradient.vertical(down ? dark : light, down ? light : dark))
+            .overlay {  // the mockup's 1 point white line inside the top edge
+                Circle().stroke(Color.white, lineWidth: 1).offset(y: 1).clipShape(Circle()).padding(1)
+            }
             .overlay { Circle().strokeBorder(Color(hex: 0xc3c9d0), lineWidth: 1) }
             .shadow(color: .black.opacity(0.12), radius: 1, y: 1)
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)

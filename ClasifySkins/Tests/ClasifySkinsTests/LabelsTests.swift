@@ -52,10 +52,10 @@ func sampleState() -> AppState {
         let screen = Screen.tracks(playlist: "spotify:playlist:a")
         s.current = TrackRef(playlist: "spotify:playlist:a", track: "spotify:track:r2")
         s.isPlaying = true
-        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s) == .init(label: "Song 2", value: "▶"))
+        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s) == .init(label: "Song 2", mark: .playing))
         #expect(Labels.row(.track("spotify:track:r3"), on: screen, in: s) == .init(label: "Song 3"))
         s.isPlaying = false
-        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s).value == "❚❚")
+        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s).mark == .paused)
     }
 
     @Test func messagesCoverTheScreensWithNoList() {
@@ -85,11 +85,11 @@ func sampleState() -> AppState {
 
     @Test func playMarkFollowsThePlayState() {
         var s = sampleState()
-        #expect(Labels.playMark(in: s) == "")
+        #expect(Labels.playMark(in: s) == nil)
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
-        #expect(Labels.playMark(in: s) == "❚❚")
+        #expect(Labels.playMark(in: s) == .paused)
         s.isPlaying = true
-        #expect(Labels.playMark(in: s) == "▶")
+        #expect(Labels.playMark(in: s) == .playing)
     }
 
     @Test func flagsAndTimes() {

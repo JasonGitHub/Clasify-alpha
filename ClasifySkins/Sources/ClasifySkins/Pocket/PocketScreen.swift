@@ -33,12 +33,16 @@ struct PocketScreen: View {
             if !state.toast.isEmpty { toast }
         }
         .frame(width: 252, height: 200)
-        .background(LinearGradient.vertical(Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec)))
-        .overlay {  // the inset shadow of the glass
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(Color.black.opacity(0.25), lineWidth: 6)
-                .blur(radius: 3)
-                .offset(y: 2)
+        .background {
+            // The glass and its inset shadow. As in the mockup, the header, the selected row,
+            // the bar and the scroll bar paint over the shadow.
+            LinearGradient.vertical(Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(Color.black.opacity(0.25), lineWidth: 6)
+                        .blur(radius: 3)
+                        .offset(y: 2)
+                }
         }
         .clipShape(RoundedRectangle(cornerRadius: 4))
         .padding(2)
@@ -50,8 +54,7 @@ struct PocketScreen: View {
 
     private var header: some View {
         HStack(spacing: 0) {
-            Text(Labels.playMark(in: state))
-                .font(.helvetica(9, bold: true))
+            PlayMarkView(mark: Labels.playMark(in: state), size: 9)
                 .frame(width: 24, alignment: .leading)
             Text(Labels.title(top.screen, in: state))
                 .lineLimit(1)
@@ -79,9 +82,11 @@ struct PocketScreen: View {
 
     private func bar(_ now: Labels.NowText) -> some View {
         HStack(spacing: 6) {
-            Text("\(Labels.playMark(in: state)) \(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")")
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 4) {
+                PlayMarkView(mark: Labels.playMark(in: state), size: 10)
+                Text("\(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")").lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Text(Labels.time(state.t)).monospacedDigit()
         }
         .font(.helvetica(10))
@@ -96,7 +101,7 @@ struct PocketScreen: View {
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 6)
+            .padding(.vertical, 7)  // 26 points tall, as in the mockup
             .padding(.horizontal, 8)
             .background(Color(hex: 0x1b1f24, opacity: 0.88), in: RoundedRectangle(cornerRadius: 4))
             .padding(.horizontal, 14)
@@ -163,6 +168,7 @@ struct PocketRow: View {
             Spacer(minLength: 0)
             HStack(spacing: 4) {
                 if !text.value.isEmpty { Text(text.value).font(.helvetica(12)) }
+                if let mark = text.mark { PlayMarkView(mark: mark, size: 12) }
                 if text.opens { IconView(.chevron, width: 7, height: 10) }
             }
             .fixedSize()
@@ -207,8 +213,31 @@ struct Spinner: View {
             }
             .rotationEffect(.degrees(turn * 360))
         }
-        .frame(width: 16, height: 16)
+        .frame(width: 20, height: 20)  // with the 2 point ring: 22 points, as CSS content-box gives
         .padding(1)
         .accessibilityHidden(true)
+    }
+}
+
+/// ▶ while the track plays, or two bars while it is paused. The bars are a shape, because
+/// the "❚❚" glyph falls back to a font that draws one solid square on some Macs.
+struct PlayMarkView: View {
+    let mark: Labels.PlayMark?
+    /// The text size beside it. The bars are this tall.
+    let size: CGFloat
+
+    var body: some View {
+        switch mark {
+        case .playing:
+            Text("▶").font(.helvetica(size, bold: true))
+        case .paused:
+            HStack(spacing: size * 4 / 9) {
+                Rectangle().frame(width: size / 3, height: size)
+                Rectangle().frame(width: size / 3, height: size)
+            }
+            .accessibilityLabel("Paused")
+        case nil:
+            EmptyView()
+        }
     }
 }

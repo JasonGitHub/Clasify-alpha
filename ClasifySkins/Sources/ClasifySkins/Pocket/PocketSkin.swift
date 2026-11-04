@@ -11,6 +11,8 @@ public struct PocketSkin: View {
     let send: @MainActor (Action) -> Void
     /// False in snapshot tests. See `ClickWheel.catchesScroll`.
     var interactive = true
+    /// A wheel button drawn pressed, for snapshot tests.
+    var pressed: ClickWheel.Zone?
 
     @FocusState private var focused: Bool
 
@@ -19,19 +21,21 @@ public struct PocketSkin: View {
         self.send = send
     }
 
-    init(state: AppState, interactive: Bool) {
+    init(state: AppState, interactive: Bool, pressed: ClickWheel.Zone? = nil) {
         self.state = state
         self.send = { _ in }
         self.interactive = interactive
+        self.pressed = pressed
     }
 
     public var body: some View {
         VStack(spacing: 32) {
             PocketScreen(state: state)
-            ClickWheel(input: input, catchesScroll: interactive)
+            ClickWheel(input: input, catchesScroll: interactive, pressed: pressed)
         }
-        .padding(.vertical, 24)
-        .padding(.horizontal, 20)
+        // The mockup's padding starts inside the 1 point border.
+        .padding(.vertical, 25)
+        .padding(.horizontal, 21)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
             RoundedRectangle(cornerRadius: 28)
