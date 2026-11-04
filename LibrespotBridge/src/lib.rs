@@ -125,6 +125,9 @@ pub extern "C" fn lsb_new(
 #[no_mangle]
 pub unsafe extern "C" fn lsb_free(bridge: *mut LsbBridge) {
     if !bridge.is_null() {
+        // Wait for a running state callback, and stop new ones, before the caller
+        // frees the watch context.
+        connect::set_sink(&(*bridge).state_sink, None);
         drop(Box::from_raw(bridge));
     }
 }

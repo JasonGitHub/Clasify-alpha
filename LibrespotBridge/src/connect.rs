@@ -4,7 +4,8 @@
 //! cannot pass an endpoint path.
 
 use std::ffi::{c_char, c_void};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, RwLock};
 
 use futures_util::StreamExt;
 use http::header::{HeaderValue, CONTENT_TYPE};
@@ -195,7 +196,7 @@ pub(crate) struct SpotifyState {
     pub repeat_track: bool,
 }
 
-/// The player state of a cluster at `now_ms` (Unix time in milliseconds). Spotify
+/// The player state of a cluster at `now_ms` (Spotify's clock, Unix time in ms). Spotify
 /// gives the position at its own timestamp, so a running track's position moves on
 /// by the time since then, up to the track's duration.
 pub(crate) fn spotify_state(cluster: &Cluster, now_ms: i64) -> SpotifyState {
@@ -224,9 +225,12 @@ pub(crate) fn spotify_state(cluster: &Cluster, now_ms: i64) -> SpotifyState {
     }
 }
 
-fn now_ms() -> i64 {
+/// Now on Spotify's clock. `time_delta_s` is `Session::time_delta()`: Spotify's time
+/// minus the Mac's time, in seconds. Spotify's player timestamps use Spotify's clock.
+pub(crate) fn spotify_now_ms(time_delta_s: i64) -> i64 {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
-    now.map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX))
+    let local = now.map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+    local.saturating_add(time_delta_s.saturating_mul(1000))
 }
 
 /// Matches `LsbPlayerState` in the header.
@@ -248,20 +252,32 @@ pub type LsbStateCallback = extern "C" fn(context: *mut c_void, state: *const Ls
 
 #[derive(Clone, Copy)]
 pub(crate) struct StateSink {
-    callback: LsbStateCallback,
-    context: *mut c_void,
+    pub(crate) callback: LsbStateCallback,
+    pub(crate) context: *mut c_void,
 }
 
 // SAFETY: the header requires that `context` and the callback are safe to call
 // from any thread. The bridge never reads through `context` itself.
 unsafe impl Send for StateSink {}
+// SAFETY: the bridge only copies the two values and never reads through `context`.
+// Two deliveries can run at once on two bridge threads; the header requires that the
+// callback is safe to call from any thread at once. It should copy the state and return.
+unsafe impl Sync for StateSink {}
 
-/// The state callback that `lsb_connect_watch` set, if any.
-pub(crate) type SharedSink = Arc<Mutex<Option<StateSink>>>;
+/// The state callback that `lsb_connect_watch` set, if any. A delivery holds the read
+/// lock while the callback runs. `lsb_connect_watch` and `lsb_free` take the write lock,
+/// so they wait for a running callback, and the old context is not used after they return.
+pub(crate) type SharedSink = Arc<RwLock<Option<StateSink>>>;
+
+/// Sets or clears the callback. It waits until no callback runs.
+pub(crate) fn set_sink(sink: &SharedSink, value: Option<StateSink>) {
+    // A poisoned lock still holds a valid Option. A panic here would abort the app.
+    *sink.write().unwrap_or_else(|e| e.into_inner()) = value;
+}
 
 pub(crate) fn deliver_state(sink: &SharedSink, state: &SpotifyState) {
-    // Copy the callback out, so it does not run under the lock.
-    let Some(sink) = *sink.lock().unwrap() else {
+    let guard = sink.read().unwrap_or_else(|e| e.into_inner());
+    let Some(sink) = *guard else {
         return;
     };
     let texts = [
@@ -283,6 +299,7 @@ pub(crate) fn deliver_state(sink: &SharedSink, state: &SpotifyState) {
         repeat_track: state.repeat_track,
     };
     (sink.callback)(sink.context, &raw);
+    drop(guard);
 }
 
 /// A random ID for the command's logging parameters. It is not a secret.
@@ -300,6 +317,8 @@ fn command_id() -> String {
 pub(crate) struct Dealer {
     device_id: String,
     connection_id: watch::Receiver<String>,
+    /// The session's newest `time_delta()`, for the cluster task, which holds no session.
+    time_delta: Arc<AtomicI64>,
 }
 
 /// Starts the session's dealer. A task keeps reading the dealer's connection IDs: the
@@ -329,11 +348,14 @@ async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, St
         .await
         .map_err(|e| format!("cannot start Spotify Connect: {e}"))?;
     let sink = sink.clone();
+    let time_delta = Arc::new(AtomicI64::new(session.time_delta()));
+    let delta = time_delta.clone();
     tokio::spawn(async move {
         while let Some(update) = updates.next().await {
             // A message that does not decode is skipped. The next one has the full state.
             if let Ok(update) = update {
-                deliver_state(&sink, &spotify_state(&update.cluster, now_ms()));
+                let now = spotify_now_ms(delta.load(Ordering::Relaxed));
+                deliver_state(&sink, &spotify_state(&update.cluster, now));
             }
         }
     });
@@ -349,6 +371,7 @@ async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, St
     Ok(Dealer {
         device_id: session.device_id().to_owned(),
         connection_id,
+        time_delta,
     })
 }
 
@@ -407,7 +430,10 @@ async fn register(
         .map_err(|e| format!("cannot register with Spotify Connect: {e}"))?;
     let cluster = Cluster::parse_from_bytes(&bytes)
         .map_err(|e| format!("cannot decode the device list: {e}"))?;
-    deliver_state(sink, &spotify_state(&cluster, now_ms()));
+    deliver_state(
+        sink,
+        &spotify_state(&cluster, spotify_now_ms(session.time_delta())),
+    );
     Ok(cluster)
 }
 
@@ -542,6 +568,10 @@ pub(crate) fn spawn_worker(
                     callback,
                     context,
                 } => {
+                    if let Some(d) = &dealer {
+                        // The session updates its time delta at each keep-alive ping.
+                        d.time_delta.store(session.time_delta(), Ordering::Relaxed);
+                    }
                     let current = dealer.as_ref().is_some_and(|d| {
                         d.device_id == session.device_id()
                             && registered.as_deref() == Some(d.connection_id.borrow().as_str())
@@ -746,6 +776,6 @@ pub unsafe extern "C" fn lsb_connect_watch(
         return LSB_ERR_INVALID_ARGUMENT;
     };
     let sink = on_state.map(|callback| StateSink { callback, context });
-    *bridge.state_sink.lock().unwrap() = sink;
+    set_sink(&bridge.state_sink, sink);
     LSB_OK
 }

@@ -1015,6 +1015,44 @@ mod connect_tests {
         assert_eq!(*states.0.lock().unwrap(), vec![(TRACK.to_owned(), 7, true)]);
     }
 
+    /// A slow callback that marks when it ends.
+    extern "C" fn slow_state(context: *mut c_void, _state: *const LsbPlayerState) {
+        let done = unsafe { &*(context as *const std::sync::atomic::AtomicBool) };
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        done.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    #[test]
+    fn clearing_the_watch_waits_for_a_running_callback() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let done = Box::leak(Box::new(AtomicBool::new(false)));
+        let context = done as *const AtomicBool as *mut c_void;
+        let sink: SharedSink = SharedSink::default();
+        set_sink(
+            &sink,
+            Some(StateSink {
+                callback: slow_state,
+                context,
+            }),
+        );
+        let delivering = sink.clone();
+        let thread = std::thread::spawn(move || {
+            deliver_state(&delivering, &SpotifyState::default());
+        });
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        set_sink(&sink, None);
+        // The clear returned, so the callback has ended.
+        assert!(done.load(Ordering::SeqCst));
+        thread.join().unwrap();
+    }
+
+    #[test]
+    fn spotify_clock_adds_the_session_time_delta() {
+        let local = spotify_now_ms(0);
+        let ahead = spotify_now_ms(3);
+        assert!((2_900..=3_500).contains(&(ahead - local)));
+    }
+
     #[test]
     fn player_state_layout_matches_c() {
         use std::mem::{offset_of, size_of};

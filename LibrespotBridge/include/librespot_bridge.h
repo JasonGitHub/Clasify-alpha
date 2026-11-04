@@ -177,7 +177,10 @@ typedef struct LsbPlayerState {
 typedef void (*LsbStateCallback)(void *context, const LsbPlayerState *state);
 // Sets the callback for player state, or clears it when on_state is NULL. The state
 // comes after each registration and each cluster update, on a bridge thread. Updates
-// start with the first Connect call of a login.
+// start with the first Connect call of a login. When lsb_connect_watch or lsb_free
+// returns, the old callback is not running and does not run again, so the caller can
+// then free the old context. Do not call lsb_connect_watch or lsb_free from inside
+// the callback: they wait for it to return. Keep the callback short.
 int32_t lsb_connect_watch(LsbBridge *bridge, LsbStateCallback on_state, void *context);
 
 #endif
