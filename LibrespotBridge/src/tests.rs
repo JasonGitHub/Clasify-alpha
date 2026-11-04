@@ -136,12 +136,13 @@ fn player_events_map_to_bridge_events() {
     });
     let cases = [
         (
-            Loading {
+            PlayRequestIdChanged {
                 play_request_id: id,
-                track_id: t(),
-                position_ms: 4,
             },
-            expected(LSB_EVENT_PLAY_REQUEST, id, 4),
+            Some(Event {
+                play_request_id: id,
+                ..Event::new(LSB_EVENT_PLAY_REQUEST)
+            }),
         ),
         (
             Playing {
@@ -237,4 +238,18 @@ fn event_layout_matches_c() {
         offset_of!(LsbEvent, message),
     ];
     assert_eq!(offsets, [4, 8, 16, 24, 32]);
+}
+
+#[test]
+fn repeated_play_request_is_sent_once() {
+    let request = |id| Event {
+        play_request_id: id,
+        ..Event::new(LSB_EVENT_PLAY_REQUEST)
+    };
+    let mut last = None;
+    assert!(is_new(&request(1), &mut last));
+    assert!(!is_new(&request(1), &mut last));
+    assert!(is_new(&Event::new(LSB_EVENT_PLAYING), &mut last));
+    assert!(!is_new(&request(1), &mut last));
+    assert!(is_new(&request(2), &mut last));
 }

@@ -114,11 +114,12 @@ impl Callbacks {
 fn map_event(event: &PlayerEvent) -> Option<Event> {
     use PlayerEvent::*;
     Some(match event {
-        Loading {
-            play_request_id: id,
-            track_id,
-            position_ms,
-        } => Event::track(LSB_EVENT_PLAY_REQUEST, *id, track_id, *position_ms),
+        // librespot sends this at the start of every load, also for loads that skip
+        // `Loading` (reload of the current track, or repeat after end of track).
+        PlayRequestIdChanged { play_request_id } => Event {
+            play_request_id: *play_request_id,
+            ..Event::new(LSB_EVENT_PLAY_REQUEST)
+        },
         Playing {
             play_request_id: id,
             track_id,
@@ -158,6 +159,18 @@ fn map_event(event: &PlayerEvent) -> Option<Event> {
         },
         _ => return None,
     })
+}
+
+/// False for a repeated PLAY_REQUEST. A seek during loading restarts the load with
+/// the same id, so this keeps the app at exactly one PLAY_REQUEST per lsb_load.
+fn is_new(event: &Event, last_play_request: &mut Option<u64>) -> bool {
+    if event.kind != LSB_EVENT_PLAY_REQUEST {
+        return true;
+    }
+    let id = Some(event.play_request_id);
+    let is_new = *last_play_request != id;
+    *last_play_request = id;
+    is_new
 }
 
 /// Sends decoded audio to the app, which plays it through AVAudioEngine.
@@ -288,13 +301,17 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
         if is_latest() {
             callbacks.emit(&Event::new(LSB_EVENT_LOGGED_IN));
         }
+        let mut last_play_request = None;
         while let Some(event) = events.recv().await {
             let slot = connected.lock().unwrap();
             if slot.as_ref().map(|c| c.login_id) != Some(login_id) {
                 return; // This player was replaced.
             }
             drop(slot);
-            if let Some(event) = map_event(&event) {
+            let Some(event) = map_event(&event) else {
+                continue;
+            };
+            if is_new(&event, &mut last_play_request) {
                 callbacks.emit(&event);
             }
         }
