@@ -48,7 +48,7 @@ public struct Frame: Equatable, Sendable {
 public enum Row: Equatable, Sendable {
     case logIn, nowPlaying, playlists, likedSongs, shuffleSongs, settings
     case playlist(String), track(String)
-    case shuffle, repeatMode, eq, skin, albumArt, clicker, about, logOut
+    case shuffle, repeatMode, skin, albumArt, clicker, about, logOut
     case cancel, confirmLogOut
 }
 
@@ -60,7 +60,6 @@ public struct TrackRef: Equatable, Sendable {
 
 public enum NowMode: Sendable { case volume, scrub }
 public enum RepeatMode: String, CaseIterable, Sendable { case off = "Off", all = "All", one = "One" }
-public enum EQPreset: String, CaseIterable, Sendable { case off = "Off", rock = "Rock", pop = "Pop", vocal = "Vocal", bass = "Bass" }
 public enum Skin: String, CaseIterable, Sendable { case pocket = "Pocket", aqua = "Aqua", dark = "Dark" }
 
 extension CaseIterable where Self: Equatable {
@@ -87,7 +86,6 @@ public struct AppState: Equatable, Sendable {
     public var volume = 60
     public var shuffle = false
     public var repeatMode = RepeatMode.off
-    public var eq = EQPreset.off
     public var skin = Skin.pocket
     public var showArt = true
     public var clicker = true
@@ -118,7 +116,7 @@ public struct AppState: Equatable, Sendable {
         case .main: (current == nil ? [] : [.nowPlaying]) + [.playlists, .likedSongs, .shuffleSongs, .settings]
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
         case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
-        case .settings: [.shuffle, .repeatMode, .eq, .skin, .albumArt, .clicker, .about, .logOut]
+        case .settings: [.shuffle, .repeatMode, .skin, .albumArt, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .auth, .about, .now: []
         }

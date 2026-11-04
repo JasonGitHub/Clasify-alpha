@@ -154,7 +154,6 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if case .tracks(let pl) = s.top.screen { play(pl, id) }
             case .shuffle: s.shuffle.toggle()
             case .repeatMode: s.repeatMode = s.repeatMode.next
-            case .eq: s.eq = s.eq.next
             case .skin:
                 s.skin = s.skin.next
                 toast(s.skin == .pocket ? "Pocket skin" : "Window switches to \(s.skin.rawValue) skin")

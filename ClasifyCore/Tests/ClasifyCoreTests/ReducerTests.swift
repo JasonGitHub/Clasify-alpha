@@ -53,9 +53,9 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.screen == .settings)
         send(&s, .select, .wheel(1), .select, .select)
         #expect(s.shuffle && s.repeatMode == .one)
-        send(&s, .wheel(2), .select)
+        send(&s, .wheel(1), .select)
         #expect(s.skin == .aqua && s.toast == "Window switches to Aqua skin")
-        #expect(s.rows(for: s.top).count == 8)  // no Playback engine row in 1.0
+        #expect(s.rows(for: s.top).count == 7)  // no Playback engine or EQ row in 1.0
     }
 
     @Test func selectTrackLoadsAndPlays() {
@@ -221,7 +221,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func logOutGoesThroughConfirm() {
         var s = playing()
-        send(&s, .menu, .menu, .menu, .wheel(4), .select, .wheel(7), .select)
+        send(&s, .menu, .menu, .menu, .wheel(4), .select, .wheel(6), .select)
         #expect(s.top.screen == .confirm)
         send(&s, .select)  // Cancel
         #expect(s.top.screen == .settings)
