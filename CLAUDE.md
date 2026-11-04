@@ -17,7 +17,7 @@ Design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjo
 
 No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Minimum macOS is 14.
 
-- `ClasifyCore/` (store and reducer) is plain Swift with no Apple UI frameworks. It builds and tests on Linux: `cd ClasifyCore && swift build -Xswiftc -warnings-as-errors && swift test`. CI runs the same on Linux (`.github/workflows/core.yml`).
+- `ClasifyCore/` (store and reducer) is plain Swift with no Apple UI frameworks. It builds and tests on Linux: `cd ClasifyCore && swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors`. CI runs the same on Linux (`.github/workflows/core.yml`).
 - The app itself builds on GitHub Actions macOS runners. Cloud sessions run on Linux and cannot run `xcodebuild`, so say in the PR when an app change was not built or tested locally.
 
 ## Hard constraints
