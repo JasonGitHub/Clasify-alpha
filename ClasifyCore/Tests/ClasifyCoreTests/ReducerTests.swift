@@ -487,6 +487,10 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(pick([phone, pc], nil) == .none)
         #expect(pick([pc, mac], "Jason’s Macbook Air 15") == .found(id: "a1"))
         #expect(pick([pc, mac], "Renamed Mac") == .found(id: "a1"))  // the only new computer
-        #expect(pick([pc], "WORK-PC") == .found(id: "w1"))  // a name match always wins
+        // A Mac from before the launch with this Mac's name is another Mac, so keep waiting.
+        let twin = D(id: "t1", name: "Jason’s Macbook Air 15", type: "COMPUTER")
+        let beforeTwin: Set = ["t1"]
+        #expect(SpotifyAppDevice.pick([twin], computerName: mac.name, excluding: beforeTwin) == .none)
+        #expect(SpotifyAppDevice.pick([twin, mac], computerName: mac.name, excluding: beforeTwin) == .found(id: "a1"))
     }
 }

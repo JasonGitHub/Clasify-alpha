@@ -31,6 +31,8 @@ final class SpotifyConnectPlayer: Player {
     private var loading = false
     /// Pause or Play pressed while loading: the play state to set once the load plays.
     private var wantsRunning = true
+    /// Next (+1) and Prev (-1) pressed while loading, sent once the load plays.
+    private var pendingSkips = 0
     /// The Spotify app's device on this Mac, once a load found it.
     private var device: String?
     /// The context of the newest load, as Spotify knows it.
@@ -82,6 +84,7 @@ final class SpotifyConnectPlayer: Player {
         ours = false
         loading = true
         wantsRunning = autoplay
+        pendingSkips = 0
         loaded = nil
         lastTrack = ""
         ticker?.cancel()
@@ -117,12 +120,12 @@ final class SpotifyConnectPlayer: Player {
 
     func next(generation: Int) {
         self.generation = generation
-        fire(LSB_COMMAND_NEXT)
+        if loading { pendingSkips += 1 } else { fire(LSB_COMMAND_NEXT) }
     }
 
     func prev(generation: Int) {
         self.generation = generation
-        fire(LSB_COMMAND_PREV)
+        if loading { pendingSkips -= 1 } else { fire(LSB_COMMAND_PREV) }
     }
 
     func seek(to seconds: Double, generation: Int) {
@@ -217,6 +220,10 @@ final class SpotifyConnectPlayer: Player {
             }
             guard id == loadID, let found = device else { return }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
+            for _ in 0..<abs(pendingSkips) {
+                client.fire(pendingSkips > 0 ? LSB_COMMAND_NEXT : LSB_COMMAND_PREV, to: found)
+            }
+            pendingSkips = 0
             client.fireVolume(device: found, percent: volume)
             context = contextURI
             loaded = (trackID, ContinuousClock.now)
@@ -246,19 +253,26 @@ final class SpotifyConnectPlayer: Player {
     /// Sends the shuffle and repeat options that our device does not report yet.
     /// Repeat One keeps the context repeat on too, so the context still repeats if Spotify
     /// ignores the track repeat.
+    ///
+    /// It reads the wanted options again after each command. A toggle while a command is in
+    /// flight then still reaches Spotify, though the call for that toggle saw nothing to send.
     private func applyOptions() async {
-        guard let device else { return }
-        let want: [(Int32, Bool)] = [
-            (LSB_OPTION_SHUFFLE, shuffle),
-            (LSB_OPTION_REPEAT_CONTEXT, repeatMode != .off),
-            (LSB_OPTION_REPEAT_TRACK, repeatMode == .one),
-        ]
-        for (option, on) in want where deviceOptions[option] != on {
+        var failed: Set<Int32> = []
+        for _ in 0..<8 {  // a bound, in case Spotify keeps reporting other values
+            let want: [(Int32, Bool)] = [
+                (LSB_OPTION_SHUFFLE, shuffle),
+                (LSB_OPTION_REPEAT_CONTEXT, repeatMode != .off),
+                (LSB_OPTION_REPEAT_TRACK, repeatMode == .one),
+            ]
+            guard let device, let next = want.first(where: { deviceOptions[$0.0] != $0.1 && !failed.contains($0.0) })
+            else { return }
+            let (option, on) = next
             do {
                 try await client.setOption(option, on, device: device)
                 deviceOptions[option] = on
             } catch {
                 Self.logFailure("option \(option)", error)
+                failed.insert(option)
             }
         }
     }

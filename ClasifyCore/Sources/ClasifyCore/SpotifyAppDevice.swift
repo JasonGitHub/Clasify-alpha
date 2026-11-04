@@ -15,18 +15,18 @@ public enum SpotifyAppDevice {
         case ambiguous
     }
 
-    /// A computer device with this Mac's name, else the only computer device that is not in
-    /// `excluding`. Names are compared without case, and with ’ and ' as the same letter.
+    /// Of the computer devices that are not in `excluding`: the one with this Mac's name, else
+    /// the only one. Names are compared without case, and with ’ and ' as the same letter.
     ///
     /// When Clasify launches Spotify here, it passes the devices that were there before the
-    /// launch. Another machine, such as a work PC, is then never taken for this Mac: only a
-    /// computer that came after the launch can be this Mac's Spotify app.
+    /// launch. Another machine, such as a work PC or a second Mac with the same name, is then
+    /// never taken for this Mac: only a computer that came after the launch can be this Mac's
+    /// Spotify app.
     public static func pick(_ devices: [Candidate], computerName: String?, excluding: Set<String> = []) -> Pick {
-        let computers = devices.filter { $0.type == "COMPUTER" }
-        if let name = computerName.map(normalized), let match = computers.first(where: { normalized($0.name) == name }) {
+        let new = devices.filter { $0.type == "COMPUTER" && !excluding.contains($0.id) }
+        if let name = computerName.map(normalized), let match = new.first(where: { normalized($0.name) == name }) {
             return .found(id: match.id)
         }
-        let new = computers.filter { !excluding.contains($0.id) }
         switch new.count {
         case 0: return .none
         case 1: return .found(id: new[0].id)
