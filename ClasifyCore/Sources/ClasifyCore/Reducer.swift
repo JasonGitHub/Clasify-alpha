@@ -4,8 +4,10 @@ public enum Action: Equatable, Sendable {
     case wheel(Int)  // detents, + is clockwise
     case select, menu, play, next, prev
     case tick  // drives toast and overlay timers
-    /// A load finished. `library` is nil when the fetch failed.
-    case loaded(token: Int, library: [Playlist]?)
+    /// The playlist list was read: names and track counts, no tracks. nil when the read failed.
+    case playlistsLoaded(token: Int, playlists: [Playlist]?)
+    /// The tracks of one playlist (or Liked Songs) were read. nil when the read failed.
+    case tracksLoaded(token: Int, playlist: String, tracks: [Track]?)
     /// The app started. It tries to log in again with the stored login.
     case launch
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
@@ -40,8 +42,13 @@ public enum Effect: Equatable, Sendable {
     case setShuffle(Bool), setRepeat(RepeatMode)
     case seek(Double, generation: Int)  // a seek starts a new generation too
     case setVolume(Int)
-    /// Fetch the library; the result comes back as `.loaded(token:library:)` with this token.
-    case fetchLibrary(token: Int)
+    /// Read the playlist list; the result comes back as `.playlistsLoaded` with this token.
+    case fetchPlaylists(token: Int)
+    /// Read one playlist's tracks; the result comes back as `.tracksLoaded` with this token.
+    case fetchTracks(token: Int, playlist: String)
+    /// Read Liked Songs and the playlist list in the background after a login, so that the
+    /// first open is fast. Nothing comes back: the library keeps the result for the next fetch.
+    case prefetch
     /// Log in through the browser; the result comes back as `.authDone` with this token.
     case logIn(token: Int)
     case cancelLogIn
@@ -74,10 +81,27 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let now = env.now()
     var fx: [Effect] = []
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
-    func load(_ screen: Screen) {
+    func fetch(_ screen: Screen) {
+        switch screen {
+        case .tracks(let id): fx.append(.fetchTracks(token: s.tok, playlist: id))
+        default: fx.append(.fetchPlaylists(token: s.tok))
+        }
+    }
+    /// Opens a list screen. Only a list that this session has not read yet loads.
+    func open(_ screen: Screen) {
+        if s.isLoaded(screen) { return s.stack.append(Frame(screen: screen)) }
         s.tok += 1
         s.stack.append(Frame(screen: screen, loading: true, token: s.tok))
-        fx.append(.fetchLibrary(token: s.tok))
+        fetch(screen)
+    }
+    /// Ends the top frame's load. A pending shuffle starts when the load worked.
+    func finishLoad(_ token: Int, ok: Bool) {
+        s.top.loading = false
+        s.top.error = s.offline || !ok
+        if s.shuffleToken == token && !s.top.error {
+            s.shuffleToken = nil
+            shuffleLiked()
+        }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
         s.playGen += 1
@@ -98,7 +122,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     func signOut(_ msg: String) {
         stop()
-        s.stack = [Frame(screen: .login)]; s.signedIn = false; s.library = []  // library belongs to that account
+        s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
+        s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
         toast(msg)
     }
     func shuffleLiked() {
@@ -143,7 +168,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.tok += 1
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }  // a pending shuffle follows the retry
                 s.top.loading = true; s.top.error = false; s.top.token = s.tok
-                fx.append(.fetchLibrary(token: s.tok))
+                fetch(s.top.screen)
                 return
             }
             guard s.top.screen.isList, !s.top.loading else { return }
@@ -155,17 +180,17 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.stack.append(Frame(screen: .auth, token: s.authAttempt))
                 fx.append(.logIn(token: s.authAttempt))
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
-            case .playlists: load(.playlists)
-            case .likedSongs: load(.tracks(playlist: Playlist.likedSongsID))
+            case .playlists: open(.playlists)
+            case .likedSongs: open(.tracks(playlist: Playlist.likedSongsID))
             case .shuffleSongs:
                 if s.offline { return toast(offlineStart) }
-                if s.tracks(in: Playlist.likedSongsID).isEmpty {  // not fetched yet: load, then shuffle
-                    load(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
-                } else {
+                if s.loadedTracks.contains(Playlist.likedSongsID) {
                     shuffleLiked()
+                } else {  // not read yet: load, then shuffle
+                    open(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
                 }
             case .settings: s.stack.append(Frame(screen: .settings))
-            case .playlist(let id): load(.tracks(playlist: id))
+            case .playlist(let id): open(.tracks(playlist: id))
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
                 if case .tracks(let pl) = s.top.screen { play(pl, id) }
@@ -224,15 +249,35 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.isPlaying = false
             toast(msg)
 
-        case .loaded(let token, let library):
+        case .playlistsLoaded(let token, let playlists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
-            if let library { s.library = library }
-            s.top.loading = false
-            s.top.error = s.offline || library == nil
-            if s.shuffleToken == token && !s.top.error {
-                s.shuffleToken = nil
-                shuffleLiked()
+            if let playlists {
+                // Keep Liked Songs and the tracks already read for playlists that are still there.
+                let read = Dictionary(s.library.map { ($0.id, $0.tracks) }, uniquingKeysWith: { a, _ in a })
+                let kept = Set(playlists.map(\.id)).union([Playlist.likedSongsID])
+                s.loadedTracks = s.loadedTracks.intersection(kept)
+                s.library = s.library.filter { $0.id == Playlist.likedSongsID } + playlists.map {
+                    var p = $0
+                    if s.loadedTracks.contains(p.id) { p.tracks = read[p.id] ?? [] }
+                    return p
+                }
+                s.playlistsLoaded = true
             }
+            finishLoad(token, ok: playlists != nil)
+
+        case .tracksLoaded(let token, let id, let tracks):
+            guard s.top.loading, s.top.token == token else { return }  // stale load
+            if let tracks {
+                if let i = s.library.firstIndex(where: { $0.id == id }) {
+                    s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+                } else if id == Playlist.likedSongsID {
+                    s.library.insert(Playlist(id: id, name: "Liked Songs", tracks: tracks), at: 0)
+                } else {
+                    s.library.append(Playlist(id: id, name: "", tracks: tracks))
+                }
+                s.loadedTracks.insert(id)
+            }
+            finishLoad(token, ok: tracks != nil)
 
         case .launch:
             guard !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
@@ -242,13 +287,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .restored(let token, let ok):
             guard s.restoring, s.authAttempt == token else { return }  // from before a reset
             s.restoring = false
-            if ok { s.stack = [Frame(screen: .main)]; s.signedIn = true }
+            if ok { s.stack = [Frame(screen: .main)]; s.signedIn = true; fx.append(.prefetch) }
 
         case .authDone(let token, let ok):
             guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
             // A login that worked counts even if the app went offline since: its token is saved.
             if !ok { s.stack.removeLast(); return toast("Can’t reach Spotify") }
             s.stack = [Frame(screen: .main)]; s.signedIn = true
+            fx.append(.prefetch)
             toast("Signed in")
 
         case .offline(let on):

@@ -25,10 +25,18 @@ public protocol Player: AnyObject {
 }
 
 /// Spotify login and library source (playlists and Liked Songs).
+/// It reads each part only when asked, and keeps what it read in memory for the session.
 @MainActor
 public protocol Library: AnyObject {
-    /// Returns nil when the fetch fails.
-    func fetchLibrary() async -> [Playlist]?
+    /// The user's playlists in order, with names and track counts but no tracks.
+    /// Returns nil when the read fails.
+    func playlists() async -> [Playlist]?
+    /// The tracks of one playlist, or of Liked Songs for `Playlist.likedSongsID`.
+    /// Returns nil when the read fails.
+    func tracks(of playlist: String) async -> [Track]?
+    /// Reads Liked Songs and the playlist list in the background, at most two reads at a time,
+    /// so that a later `playlists()` or `tracks(of:)` can answer at once.
+    func prefetch() async
     /// Logs in through the browser. Returns false when the user cancels or the login fails.
     func logIn() async -> Bool
     /// Stops a login that waits for the browser.
@@ -52,7 +60,7 @@ public final class Store {
         self.player = player; self.library = library; self.state = state; self.env = env
     }
 
-    /// Waits for in-flight library fetches to deliver `.loaded`. For tests.
+    /// Waits for in-flight library fetches to deliver their results. For tests.
     func settle() async {
         while let task = fetches.values.first { await task.value }
     }
@@ -71,13 +79,24 @@ public final class Store {
             case .setRepeat(let mode): player.setRepeat(mode)
             case .seek(let t, let gen): player.seek(to: t, generation: gen)
             case .setVolume(let v): player.setVolume(v)
-            case .fetchLibrary(let token):
+            // A stale token is ignored by the reducer.
+            case .fetchPlaylists(let token):
                 let library = self.library
                 fetches[token] = Task { [weak self] in
-                    let result = await library.fetchLibrary()
+                    let result = await library.playlists()
                     self?.fetches[token] = nil
-                    self?.send(.loaded(token: token, library: result))  // a stale token is ignored by the reducer
+                    self?.send(.playlistsLoaded(token: token, playlists: result))
                 }
+            case .fetchTracks(let token, let id):
+                let library = self.library
+                fetches[token] = Task { [weak self] in
+                    let result = await library.tracks(of: id)
+                    self?.fetches[token] = nil
+                    self?.send(.tracksLoaded(token: token, playlist: id, tracks: result))
+                }
+            case .prefetch:
+                let library = self.library
+                Task(priority: .utility) { await library.prefetch() }
             case .logIn(let token):
                 let library = self.library
                 Task { [weak self] in

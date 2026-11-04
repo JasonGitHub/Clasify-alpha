@@ -13,11 +13,16 @@ public struct Playlist: Equatable, Sendable {
     /// Spotify URI. Liked Songs uses `Playlist.likedSongsID`.
     public var id: String
     public var name: String
+    /// Empty until the tracks are read. `AppState.loadedTracks` says which playlists are read.
     public var tracks: [Track]
+    /// From the playlist list, so it is known before the tracks are read.
+    public var trackCount: Int
 
     public static let likedSongsID = "liked"
 
-    public init(id: String, name: String, tracks: [Track]) { self.id = id; self.name = name; self.tracks = tracks }
+    public init(id: String, name: String, tracks: [Track], trackCount: Int? = nil) {
+        self.id = id; self.name = name; self.tracks = tracks; self.trackCount = trackCount ?? tracks.count
+    }
 }
 
 public enum Screen: Equatable, Sendable {
@@ -82,7 +87,12 @@ public struct AppState: Equatable, Sendable {
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false
+    /// Liked Songs (once read) first, then the playlists. Each part loads when its screen opens.
     public var library: [Playlist] = []
+    /// The playlist list was read in this session.
+    public var playlistsLoaded = false
+    /// The playlists (and `Playlist.likedSongsID`) whose tracks were read in this session.
+    public var loadedTracks: Set<String> = []
     public var current: TrackRef?
     public var t: Double = 0
     public var isPlaying = false
@@ -108,6 +118,15 @@ public struct AppState: Equatable, Sendable {
     /// The list rows that show at once: `visibleRows`, or one less while the bar for the
     /// playing track shows under the list.
     public var shownRows: Int { current == nil ? visibleRows : visibleRows - 1 }
+
+    /// The screen's list is already in the state, so it opens without a read.
+    public func isLoaded(_ screen: Screen) -> Bool {
+        switch screen {
+        case .playlists: playlistsLoaded
+        case .tracks(let id): loadedTracks.contains(id)
+        default: true
+        }
+    }
 
     public func tracks(in playlist: String) -> [Track] {
         library.first { $0.id == playlist }?.tracks ?? []
