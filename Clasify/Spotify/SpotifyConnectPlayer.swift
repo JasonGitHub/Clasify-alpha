@@ -2,6 +2,7 @@ import AppKit
 import ClasifyCore
 import Foundation
 import LibrespotBridge
+import SystemConfiguration
 import os
 
 /// Only statuses and step names go to the unified log, never a bridge message or a token.
@@ -11,8 +12,8 @@ private let log = Logger(subsystem: "app.clasify.Clasify", category: "player")
 /// commands through the librespot session. It never uses AppleScript, and it launches Spotify hidden.
 ///
 /// Spotify owns the play order of a context. Clasify sets Spotify's shuffle and repeat to its own
-/// settings and reports Spotify's track changes. It follows only the Spotify app on this Mac
-/// that it started playing. When the user moves playback to another device, it reports that once.
+/// settings and reports Spotify's track changes. It follows only the Spotify app on this Mac, and
+/// only while that app plays what Clasify started. When the user moves away, it reports that once.
 @MainActor
 final class SpotifyConnectPlayer: Player {
     nonisolated static let bundleID = "com.spotify.client"
@@ -24,70 +25,109 @@ final class SpotifyConnectPlayer: Player {
     private let library: LibrespotLibrary
     /// The generation of the newest load, seek, next or prev. Every report carries it.
     private var generation = 0
+    /// Bumped by each load and stop. A load that is not the newest stops at its next step.
+    private var loadID = 0
+    /// The newest load until its play command succeeded.
+    private var loading = false
+    /// Pause or Play pressed while loading: the play state to set once the load plays.
+    private var wantsRunning = true
     /// The Spotify app's device on this Mac, once a load found it.
     private var device: String?
-    /// True after our play command succeeded, until stop or a move to another device.
+    /// The context of the newest load, as Spotify knows it.
+    private var context = ""
+    /// True after our play command succeeded, until stop or a move away.
     /// States before that can be from an older session or another device, so they are ignored.
     private var ours = false
     private var lastTrack = "", lastRunning = false
     /// The track of the newest load, and when its play command succeeded. Until Spotify shows
-    /// that track, for up to 3 s, states still show the track from before the load.
+    /// that track, for up to 3 s, states can still show what played before the load.
     private var loaded: (track: String, at: ContinuousClock.Instant)?
     private var shuffle = false, repeatMode = RepeatMode.off
-    /// The options that the device has now, so a load sends only the ones that changed.
-    private var applied: (shuffle: Bool, repeatMode: RepeatMode)?
+    /// The newest shuffle and repeat that our device reported, so a load sends only the changes.
+    private var deviceOptions: [Int32: Bool] = [:]
     /// Moves the position on once a second while a track plays. Cluster updates come only on changes.
     private var ticker: Task<Void, Never>?
 
     init(client: LibrespotClient, library: LibrespotLibrary) {
         self.client = client
         self.library = library
-        client.stateBox.set(Self.stateHandler(for: self))
+        // One consumer keeps the states in the order that the bridge sent them.
+        let (states, continuation) = AsyncStream.makeStream(of: SpotifyPlayerState.self)
+        client.stateBox.set(Self.forward(to: continuation))
+        Task { [weak self] in
+            for await state in states { self?.handle(state) }
+        }
     }
 
-    /// Made outside the main actor: the bridge calls it on its own thread. It only hops to main,
-    /// asynchronously, because the bridge can wait for this callback.
-    private nonisolated static func stateHandler(for player: SpotifyConnectPlayer) -> @Sendable (SpotifyPlayerState) -> Void {
-        { [weak player] state in Task { @MainActor in player?.handle(state) } }
+    /// Made outside the main actor, because the bridge calls it on its own thread. It only
+    /// queues the state and returns, because the bridge can wait for this callback.
+    private nonisolated static func forward(
+        to continuation: AsyncStream<SpotifyPlayerState>.Continuation
+    ) -> @Sendable (SpotifyPlayerState) -> Void {
+        { continuation.yield($0) }
     }
 
     // MARK: Player
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
+        loadID += 1
+        let id = loadID
         ours = false
+        loading = true
+        wantsRunning = autoplay
         loaded = nil
         lastTrack = ""
-        Task { await play(trackID, context: context, autoplay: autoplay, generation: generation) }
+        ticker?.cancel()
+        Task { await play(trackID, context: context, id: id) }
     }
 
-    func pause() { command(LSB_COMMAND_PAUSE) }
+    func pause() {
+        if loading {
+            wantsRunning = false
+            return
+        }
+        fire(LSB_COMMAND_PAUSE)
+    }
+
     func resume() {
-        // After a move to another device, the pick is gone here. Ask for a new one, do not take it back.
+        if loading {
+            wantsRunning = true
+            return
+        }
+        // After a move away, the pick is gone here. Ask for a new one, do not take it back.
         guard ours else { return send(.playbackFailed("Pick a track to play it here", generation: generation)) }
-        command(LSB_COMMAND_RESUME)
+        fire(LSB_COMMAND_RESUME)
     }
 
     func stop() {
-        if ours { command(LSB_COMMAND_PAUSE) }
+        loadID += 1  // a load in flight must not start Spotify after this
+        loading = false
+        // Queued at once, so it goes out before the logout that can come next.
+        fire(LSB_COMMAND_PAUSE)
         ours = false
         ticker?.cancel()
     }
 
-    func next(generation: Int) { self.generation = generation; command(LSB_COMMAND_NEXT) }
-    func prev(generation: Int) { self.generation = generation; command(LSB_COMMAND_PREV) }
+    func next(generation: Int) {
+        self.generation = generation
+        fire(LSB_COMMAND_NEXT)
+    }
+
+    func prev(generation: Int) {
+        self.generation = generation
+        fire(LSB_COMMAND_PREV)
+    }
 
     func seek(to seconds: Double, generation: Int) {
         self.generation = generation
         guard ours, let device else { return }
-        let client = client
-        Task { do { try await client.seek(device: device, seconds: seconds) } catch { Self.logFailure("seek", error) } }
+        client.fireSeek(device: device, seconds: seconds)
     }
 
     func setVolume(_ percent: Int) {
         guard ours, let device else { return }
-        let client = client
-        Task { do { try await client.volume(device: device, percent: percent) } catch { Self.logFailure("volume", error) } }
+        client.fireVolume(device: device, percent: percent)
     }
 
     func setShuffle(_ on: Bool) {
@@ -100,33 +140,51 @@ final class SpotifyConnectPlayer: Player {
         if ours { Task { await applyOptions() } }
     }
 
+    private func fire(_ command: Int32) {
+        guard ours, let device else { return }
+        client.fire(command, to: device)
+    }
+
     // MARK: Playing
 
-    private func play(_ trackID: String, context: String?, autoplay: Bool, generation gen: Int) async {
-        guard let contextURI = contextURI(for: context) else {
-            return fail("Can’t play this list", gen)
-        }
+    private func play(_ trackID: String, context playlist: String?, id: Int) async {
+        guard let contextURI = contextURI(for: playlist) else { return fail("Can’t play this list", id) }
         do {
-            let device = try await appDevice()
-            guard gen == generation else { return }  // a newer load came
-            self.device = device
-            await applyOptions()
-            try await client.play(device: device, context: contextURI, track: trackID)
-            guard gen == generation else { return }
-            if !autoplay { try await client.send(LSB_COMMAND_PAUSE, to: device) }
+            // Reuse the known device. Look it up again once if the play fails, for example
+            // after Spotify restarted.
+            var known = device
+            for attempt in 0..<2 {
+                let found: String
+                if let known { found = known } else { found = try await appDevice(id) }
+                guard id == loadID else { return }
+                device = found
+                await applyOptions()
+                guard id == loadID else { return }
+                do {
+                    try await client.play(device: found, context: contextURI, track: trackID)
+                    break
+                } catch where attempt == 0 && known != nil {
+                    known = nil
+                }
+            }
+            guard id == loadID, let found = device else { return }
+            if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
+            context = contextURI
             loaded = (trackID, ContinuousClock.now)
+            loading = false
             ours = true
         } catch let error as PlayerError {
-            fail(error.message, gen)
+            fail(error.message, id)
         } catch {
             Self.logFailure("play", error)
-            fail("Can’t start Spotify playback", gen)
+            fail("Can’t start Spotify playback", id)
         }
     }
 
-    private func fail(_ message: String, _ gen: Int) {
-        guard gen == generation else { return }
-        send(.playbackFailed(message, generation: gen))
+    private func fail(_ message: String, _ id: Int) {
+        guard id == loadID else { return }
+        loading = false
+        send(.playbackFailed(message, generation: generation))
     }
 
     /// `Playlist.likedSongsID` plays the user's Liked Songs. Other IDs are Spotify playlist URIs.
@@ -136,31 +194,24 @@ final class SpotifyConnectPlayer: Player {
         return library.username.map { "spotify:user:\($0):collection" }
     }
 
-    /// Sends the shuffle and repeat options that the device does not have yet.
+    /// Sends the shuffle and repeat options that our device does not report yet.
+    /// Repeat One keeps the context repeat on too, so the context still repeats if Spotify
+    /// ignores the track repeat.
     private func applyOptions() async {
         guard let device else { return }
-        let want = (shuffle: shuffle, repeatMode: repeatMode)
-        if let applied, applied == want { return }
-        // Repeat One keeps the context repeat on too, so the context still repeats if
-        // Spotify ignores the track repeat.
-        let options = [
-            (LSB_OPTION_SHUFFLE, want.shuffle),
-            (LSB_OPTION_REPEAT_CONTEXT, want.repeatMode != .off),
-            (LSB_OPTION_REPEAT_TRACK, want.repeatMode == .one),
+        let want: [(Int32, Bool)] = [
+            (LSB_OPTION_SHUFFLE, shuffle),
+            (LSB_OPTION_REPEAT_CONTEXT, repeatMode != .off),
+            (LSB_OPTION_REPEAT_TRACK, repeatMode == .one),
         ]
-        do {
-            for (option, on) in options { try await client.setOption(option, on, device: device) }
-            applied = want
-        } catch {
-            applied = nil
-            Self.logFailure("options", error)
+        for (option, on) in want where deviceOptions[option] != on {
+            do {
+                try await client.setOption(option, on, device: device)
+                deviceOptions[option] = on
+            } catch {
+                Self.logFailure("option \(option)", error)
+            }
         }
-    }
-
-    private func command(_ command: Int32) {
-        guard ours, let device else { return }
-        let client = client
-        Task { do { try await client.send(command, to: device) } catch { Self.logFailure("command \(command)", error) } }
     }
 
     private nonisolated static func logFailure(_ step: String, _ error: any Error) {
@@ -175,23 +226,23 @@ final class SpotifyConnectPlayer: Player {
     }
 
     /// Launches Spotify hidden if it does not run, then waits until its device is in the cluster.
-    private func appDevice() async throws -> String {
+    private func appDevice(_ id: Int) async throws -> String {
         if NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).isEmpty {
             try await launchSpotify()
         }
+        let name = SCDynamicStoreCopyComputerName(nil, nil) as String?
         let deadline = ContinuousClock.now + .seconds(15)
-        while ContinuousClock.now < deadline {
+        while ContinuousClock.now < deadline && id == loadID {
             let devices = try await client.devices()
-            if let device = Self.thisMac(in: devices) { return device.id }
+            if let found = Self.thisMac(in: devices, named: name) { return found.id }
             try await Task.sleep(for: .milliseconds(500))
         }
         throw PlayerError(message: "Spotify didn’t answer. Try again")
     }
 
     /// The Spotify desktop app on this Mac: a computer device, by this Mac's name if one matches.
-    private static func thisMac(in devices: [ConnectDevice]) -> ConnectDevice? {
+    private static func thisMac(in devices: [ConnectDevice], named name: String?) -> ConnectDevice? {
         let apps = devices.filter { $0.type == "COMPUTER" && $0.software.lowercased().contains("osx") }
-        let name = Host.current().localizedName
         return apps.first { $0.name == name } ?? (apps.count == 1 ? apps[0] : nil)
     }
 
@@ -222,19 +273,28 @@ final class SpotifyConnectPlayer: Player {
     // MARK: State from the cluster
 
     private func handle(_ state: SpotifyPlayerState) {
-        guard ours, let device else { return }
-        guard state.activeDeviceID == device else {
-            // The user moved playback to another device, or Spotify quit. Do not fight it.
-            ours = false
-            ticker?.cancel()
-            let message = state.activeDeviceID.isEmpty ? "Spotify stopped playing" : "Playing on another device"
-            send(.playbackFailed(message, generation: generation))
-            return
+        guard let device else { return }
+        if state.activeDeviceID == device {
+            deviceOptions = [
+                LSB_OPTION_SHUFFLE: state.shuffle, LSB_OPTION_REPEAT_CONTEXT: state.repeatContext,
+                LSB_OPTION_REPEAT_TRACK: state.repeatTrack,
+            ]
         }
-        if let loaded, state.trackURI != loaded.track, ContinuousClock.now - loaded.at < .seconds(3) {
-            return  // still the track from before the load
+        guard ours else { return }
+        if let loaded, ContinuousClock.now - loaded.at < .seconds(3),
+           state.activeDeviceID != device || state.trackURI != loaded.track {
+            return  // still what played before the load
         }
         loaded = nil
+        // Liked Songs can come back as a playlist URI, so only a playlist context is compared.
+        let otherContext = !context.hasSuffix(":collection") && !state.contextURI.isEmpty && state.contextURI != context
+        guard state.activeDeviceID == device, !otherContext else {
+            // The user moved playback to another device or list, or Spotify quit. Do not fight it.
+            ours = false
+            ticker?.cancel()
+            let message = state.activeDeviceID.isEmpty ? "Spotify stopped playing" : "Playing elsewhere now"
+            return send(.playbackFailed(message, generation: generation))
+        }
         let gen = generation
         if !state.hasTrack {
             if lastRunning { send(.trackEnded(generation: gen)) }  // Spotify stopped at the end of the context

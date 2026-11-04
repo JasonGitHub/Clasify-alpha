@@ -22,6 +22,9 @@ struct SpotifyPlayerState: Sendable, Equatable {
     let isRunning: Bool
     /// A track is loaded. It can be paused.
     let hasTrack: Bool
+    let shuffle: Bool
+    let repeatContext: Bool
+    let repeatTrack: Bool
 }
 
 /// Where the bridge sends each player state. The handler runs on a bridge thread.
@@ -51,20 +54,23 @@ extension LibrespotClient {
         try await command("cannot play") { lsb_connect_play(handle, device, context, track, commandCallback, $0) }
     }
 
+    // The calls below queue at once and do not wait. The bridge runs them in call order,
+    // so a pause that is queued before `logout` still goes out first. A failure is only logged.
+
     /// `command` is one of `LSB_COMMAND_*`.
-    func send(_ command: Int32, to device: String) async throws {
-        try await self.command("command failed") { lsb_connect_command(handle, device, UInt32(command), commandCallback, $0) }
+    func fire(_ command: Int32, to device: String) {
+        lsb_connect_command(handle, device, UInt32(command), loggedCallback, nil)
     }
 
-    func seek(device: String, seconds: Double) async throws {
+    func fireSeek(device: String, seconds: Double) {
         let ms = UInt32(clamping: Int((max(seconds, 0) * 1000).rounded()))
-        try await command("cannot seek") { lsb_connect_seek(handle, device, ms, commandCallback, $0) }
+        lsb_connect_seek(handle, device, ms, loggedCallback, nil)
     }
 
     /// `percent` is 0 to 100.
-    func volume(device: String, percent: Int) async throws {
+    func fireVolume(device: String, percent: Int) {
         let value = UInt16(clamping: min(max(percent, 0), 100) * 65535 / 100)
-        try await command("cannot set volume") { lsb_connect_volume(handle, device, value, commandCallback, $0) }
+        lsb_connect_volume(handle, device, value, loggedCallback, nil)
     }
 
     /// `option` is one of `LSB_OPTION_*`.
@@ -104,6 +110,13 @@ private func devicesCallback(
     box.resume(.success(devices))
 }
 
+private let connectLog = Logger(subsystem: "app.clasify.Clasify", category: "connect")
+
+/// For calls that nobody waits on. Only the status goes to the log, never the message.
+private func loggedCallback(_ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?) {
+    if status != LSB_OK { connectLog.error("Connect command failed: status \(status, privacy: .public)") }
+}
+
 private func commandCallback(_ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?) {
     guard let context else { return }
     let box = Unmanaged<ResultBox<Void>>.fromOpaque(context).takeRetainedValue()
@@ -124,5 +137,6 @@ func stateCallback(_ context: UnsafeMutableRawPointer?, _ state: UnsafePointer<L
         activeDeviceID: string(raw.active_device_id) ?? "", trackURI: string(raw.track_uri) ?? "",
         contextURI: string(raw.context_uri) ?? "", position: Double(raw.position_ms) / 1000,
         duration: Double(raw.duration_ms) / 1000, isRunning: raw.is_playing && !raw.is_paused,
-        hasTrack: raw.is_playing))
+        hasTrack: raw.is_playing, shuffle: raw.shuffle, repeatContext: raw.repeat_context,
+        repeatTrack: raw.repeat_track))
 }
