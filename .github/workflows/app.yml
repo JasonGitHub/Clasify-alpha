@@ -2,8 +2,16 @@ name: App
 on:
   push: { branches: [main] }
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ["ClasifyCore/**", "Clasify/**", "Clasify.xcodeproj/**", ".github/workflows/app.yml"]
+# macOS minutes cost more, so a new push cancels the older run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   build:
+    # Skip draft PRs. The ready_for_review type above runs the job when a draft is marked ready.
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
