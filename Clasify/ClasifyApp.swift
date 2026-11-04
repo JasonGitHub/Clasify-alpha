@@ -7,7 +7,7 @@ struct ClasifyApp: App {
 
     var body: some Scene {
         WindowGroup("Clasify") {
-            PlaceholderView(store: model.store)
+            TestWindow(store: model.store)
         }
         .windowResizability(.contentSize)
     }
@@ -30,23 +30,5 @@ final class AppModel {
         player.send = { [weak store] action in store?.send(action) }
         self.store = store
         store.send(.launch)  // restores the stored login
-    }
-}
-
-/// Temporary window until the Pocket skin exists. It shows the store's first screen.
-struct PlaceholderView: View {
-    let store: Store?
-
-    var body: some View {
-        VStack(spacing: 8) {
-            Text("Clasify").font(.largeTitle)
-            if let store {
-                Text("Screen: \(String(describing: store.state.top.screen))")
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Can’t start the Spotify bridge").foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 320, height: 240)
     }
 }
