@@ -269,6 +269,8 @@ final class SpotifyConnectPlayer: Player {
             let (option, on) = next
             do {
                 try await client.setOption(option, on, device: device)
+                // After a sign-out (`reset`), the value belongs to the old account's device.
+                guard self.device == device else { return }
                 deviceOptions[option] = on
             } catch {
                 Self.logFailure("option \(option)", error)
