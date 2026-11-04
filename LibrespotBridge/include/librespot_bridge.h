@@ -44,12 +44,13 @@ typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);
 // seconds, and the position and track-ended events come too early.
 typedef void (*LsbAudioCallback)(void *context, const float *samples, size_t count);
 
-// Returns NULL if the bridge cannot start.
+// Returns NULL if a callback is NULL or the bridge cannot start.
 LsbBridge *lsb_new(LsbEventCallback on_event, LsbAudioCallback on_audio, void *context);
 void lsb_free(LsbBridge *bridge);
 
 // Sends LSB_EVENT_LOGGED_IN or LSB_EVENT_ERROR. Stores no credentials on disk.
 // Calling it again replaces the session and player when the new login succeeds.
+// Only the newest login sends its result. A replaced player sends no more events.
 int32_t lsb_login(LsbBridge *bridge, const char *access_token);
 // `track_uri` is like "spotify:track:<id>".
 int32_t lsb_load(LsbBridge *bridge, const char *track_uri, bool start_playing, uint32_t position_ms);

@@ -2,6 +2,7 @@
 //! Keep the two in sync: the `header_matches_rust` test checks the constants.
 
 use std::ffi::{c_char, c_void, CStr, CString};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use librespot_core::{authentication::Credentials, Session, SessionConfig, SpotifyUri};
@@ -92,6 +93,8 @@ impl Sink for CallbackSink {
 }
 
 struct Connected {
+    /// The `lsb_login` call that made this player. Its event loop stops when replaced.
+    login_id: u64,
     player: Arc<Player>,
     mixer: Arc<SoftMixer>,
 }
@@ -100,14 +103,19 @@ pub struct LsbBridge {
     runtime: tokio::runtime::Runtime,
     callbacks: Callbacks,
     connected: Arc<Mutex<Option<Connected>>>,
+    /// Counts `lsb_login` calls. Only the newest login may publish its result.
+    latest_login: Arc<AtomicU64>,
 }
 
 #[no_mangle]
 pub extern "C" fn lsb_new(
-    on_event: LsbEventCallback,
-    on_audio: LsbAudioCallback,
+    on_event: Option<LsbEventCallback>,
+    on_audio: Option<LsbAudioCallback>,
     context: *mut c_void,
 ) -> *mut LsbBridge {
+    let (Some(on_event), Some(on_audio)) = (on_event, on_audio) else {
+        return std::ptr::null_mut();
+    };
     let Ok(runtime) = tokio::runtime::Runtime::new() else {
         return std::ptr::null_mut();
     };
@@ -121,6 +129,7 @@ pub extern "C" fn lsb_new(
         runtime,
         callbacks,
         connected,
+        latest_login: Arc::new(AtomicU64::new(0)),
     }))
 }
 
@@ -153,11 +162,16 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
     let credentials = Credentials::with_access_token(token);
     let callbacks = bridge.callbacks;
     let connected = bridge.connected.clone();
+    let latest_login = bridge.latest_login.clone();
+    let login_id = latest_login.fetch_add(1, Ordering::SeqCst) + 1;
+    let is_latest = move || latest_login.load(Ordering::SeqCst) == login_id;
     let _guard = bridge.runtime.enter();
     let session = Session::new(SessionConfig::default(), None);
     bridge.runtime.spawn(async move {
         if let Err(error) = session.connect(credentials, false).await {
-            callbacks.emit(LSB_EVENT_ERROR, 0, 0, Some(&error.to_string()));
+            if is_latest() {
+                callbacks.emit(LSB_EVENT_ERROR, 0, 0, Some(&error.to_string()));
+            }
             return;
         }
         let Ok(mixer) = SoftMixer::open(MixerConfig::default()) else {
@@ -172,9 +186,24 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
         let sink = move || Box::new(CallbackSink(callbacks)) as Box<dyn Sink>;
         let player = Player::new(config, session, mixer.get_soft_volume(), sink);
         let mut events = player.get_player_event_channel();
-        *connected.lock().unwrap() = Some(Connected { player, mixer });
+        {
+            let mut slot = connected.lock().unwrap();
+            if !is_latest() {
+                return; // A newer login replaced this one.
+            }
+            *slot = Some(Connected {
+                login_id,
+                player,
+                mixer,
+            });
+        }
         callbacks.emit(LSB_EVENT_LOGGED_IN, 0, 0, None);
         while let Some(event) = events.recv().await {
+            let slot = connected.lock().unwrap();
+            if slot.as_ref().map(|c| c.login_id) != Some(login_id) {
+                return; // This player was replaced.
+            }
+            drop(slot);
             if let Some((kind, position_ms, volume)) = map_event(&event) {
                 callbacks.emit(kind, position_ms, volume, None);
             }

@@ -62,7 +62,7 @@ fn header_matches_rust() {
 fn playback_before_login_returns_not_logged_in() {
     let recorder = Recorder::default();
     let context = &recorder as *const Recorder as *mut c_void;
-    let bridge = lsb_new(record_event, record_audio, context);
+    let bridge = lsb_new(Some(record_event), Some(record_audio), context);
     assert!(!bridge.is_null());
     let uri = c"spotify:track:4uLU6hMCjMI75M1A2tKUQC";
     unsafe {
@@ -87,7 +87,7 @@ fn bad_arguments_return_invalid_argument() {
     unsafe {
         assert_eq!(lsb_play(null), LSB_ERR_INVALID_ARGUMENT);
         assert_eq!(lsb_login(null, c"token".as_ptr()), LSB_ERR_INVALID_ARGUMENT);
-        let bridge = lsb_new(record_event, record_audio, context);
+        let bridge = lsb_new(Some(record_event), Some(record_audio), context);
         assert_eq!(
             lsb_login(bridge, std::ptr::null()),
             LSB_ERR_INVALID_ARGUMENT
@@ -103,6 +103,8 @@ fn bad_arguments_return_invalid_argument() {
         lsb_free(bridge);
         lsb_free(null);
     }
+    assert!(lsb_new(None, Some(record_audio), context).is_null());
+    assert!(lsb_new(Some(record_event), None, context).is_null());
 }
 
 #[test]
