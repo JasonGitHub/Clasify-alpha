@@ -80,7 +80,7 @@ A thread squash-merges its own PR only when all of these are true. Otherwise it 
 
 - CI is green on the latest commit.
 - The Codex loop has ended with no significant findings on the latest commit.
-- The CTO thread has approved the PR.
+- The CTO thread has approved the latest commit. A rebase that does not change the PR's diff keeps the approval.
 - No question for Jason is open, such as a new dependency, a product choice, or a step that needs his Mac.
 - Every PR it depends on has merged.
 
