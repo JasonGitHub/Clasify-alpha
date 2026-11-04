@@ -14,7 +14,7 @@ use librespot_protocol::metadata::Track as TrackMessage;
 use librespot_protocol::playlist4_external::SelectedListContent;
 use protobuf::{EnumOrUnknown, Message};
 
-use crate::{read_str, with_player, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_READ, LSB_OK};
+use crate::{read_str, with_session, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_READ, LSB_OK};
 
 /// Rootlist items to ask for in one request.
 const ROOTLIST_PAGE: usize = 500;
@@ -343,7 +343,7 @@ pub(crate) fn deliver_tracks(
 
 pub(crate) unsafe fn session(bridge: *mut crate::LsbBridge) -> Result<Session, i32> {
     let mut session = None;
-    let status = with_player(bridge, |c| session = Some(c.session.clone()));
+    let status = with_session(bridge, |s| session = Some(s.clone()));
     session.ok_or(status)
 }
 

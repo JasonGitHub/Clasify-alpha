@@ -13,7 +13,6 @@ crate-type = ["staticlib", "rlib"]
 # dependency; we name it only to create the runtime that librespot needs.
 [dependencies]
 librespot-core = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
-librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 librespot-oauth = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 librespot-protocol = { version = "=0.8.0", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
