@@ -21,6 +21,8 @@ enum Labels {
     struct RowText: Equatable {
         var label: String
         var value = ""
+        /// The play or pause mark of the playing track's row.
+        var mark: PlayMark?
         var opens = false
     }
 
@@ -38,8 +40,8 @@ enum Labels {
         case .track(let id):
             guard case .tracks(let playlist) = screen else { return RowText(label: "") }
             let ref = TrackRef(playlist: playlist, track: id)
-            let mark = state.current == ref ? playMark(in: state) : ""
-            return RowText(label: state.track(ref)?.title ?? "", value: mark)
+            let mark = state.current == ref ? playMark(in: state) : nil
+            return RowText(label: state.track(ref)?.title ?? "", mark: mark)
         case .shuffle: return RowText(label: "Shuffle", value: state.shuffle ? "Songs" : "Off")
         case .repeatMode: return RowText(label: "Repeat", value: state.repeatMode.rawValue)
         case .skin: return RowText(label: "Skin", value: state.skin.rawValue)
@@ -111,9 +113,12 @@ enum Labels {
             duration: track?.duration ?? 0)
     }
 
-    /// "▶" while a track plays, "❚❚" while it is paused, and empty with no track.
-    static func playMark(in state: AppState) -> String {
-        state.current == nil ? "" : state.isPlaying ? "▶" : "❚❚"
+    /// The mark beside the playing track: ▶ while it plays, two bars while it is paused.
+    enum PlayMark: Equatable { case playing, paused }
+
+    /// Nil when no track is current.
+    static func playMark(in state: AppState) -> PlayMark? {
+        state.current == nil ? nil : state.isPlaying ? .playing : .paused
     }
 
     /// "SHUFFLE", "REPEAT" and "REPEAT 1", as Now Playing shows them.
