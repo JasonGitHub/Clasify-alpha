@@ -146,7 +146,7 @@ final class WebPlayerProbe {
 
     /// Sends a play command with a playlist context to the SDK device.
     func playOnSDK() {
-        guard let id = sdkDeviceID else { return set("Play on SDK", "SDK not ready") }
+        guard sdkDeviceID != nil else { return set("Play on SDK", "SDK not ready") }
         guard let context = model?.firstPlaylistURI else { return set("Play on SDK", "no playlist. Run 3a first.") }
         // The sender must be a registered Connect device, so register this session first.
         // connectResult sends the command when the device list comes back.
