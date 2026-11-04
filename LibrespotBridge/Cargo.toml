@@ -14,4 +14,10 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 librespot-core = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
 librespot-playback = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-oauth = { version = "=0.8.0", default-features = false, features = ["native-tls"] }
+librespot-protocol = { version = "=0.8.0", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
+# Already librespot dependencies, pinned to the versions in Cargo.lock. Named only
+# to decode the protobuf and JSON messages of the library reads.
+protobuf = "=3.7.2"
+protobuf-json-mapping = "=3.7.2"
