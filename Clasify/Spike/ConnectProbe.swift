@@ -149,12 +149,13 @@ final class ConnectProbe {
         model?.connectRequest("POST", "/connect-state/v1/player/command/from/{self}/to/\(device)", body: body)
     }
 
-    private func play(_ context: String, on device: String) {
+    /// `skipTo` is a JSON object body for options.skip_to, like `"track_uri":"spotify:track:…"`.
+    private func play(_ context: String, on device: String, skipTo: String = "") {
         let id = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let body = """
         {"command":{"context":{"uri":"\(context)","url":"context://\(context)","metadata":{}},\
         "play_origin":{"feature_identifier":"harmony","feature_version":"4.11.0"},\
-        "options":{"license":"on-demand","skip_to":{},"player_options_override":{}},\
+        "options":{"license":"on-demand","skip_to":{\(skipTo)},"player_options_override":{}},\
         "logging_params":{"command_id":"\(id)"},"endpoint":"play"}}
         """
         model?.connectRequest("POST", "/connect-state/v1/player/command/from/{self}/to/\(device)", body: body)
@@ -170,13 +171,18 @@ final class ConnectProbe {
         return nil
     }
 
-    /// Samples Spotify's windows and activation every 50 ms while `body` runs.
-    private func watchWindows(_ body: () async -> Void) async -> String {
+    /// Samples Spotify's windows and activation every `interval` ms while `body` runs.
+    /// `onSample` runs after each sample, for example to hide Spotify on its first window.
+    private func watchWindows(
+        interval: Int = 50, onSample: (@MainActor @Sendable (WindowWatcher) -> Void)? = nil,
+        _ body: () async -> Void
+    ) async -> String {
         let watcher = WindowWatcher()
         let task = Task { @MainActor in
             while !Task.isCancelled {
                 watcher.sample(spotify)
-                try? await Task.sleep(for: .milliseconds(50))
+                onSample?(watcher)
+                try? await Task.sleep(for: .milliseconds(interval))
             }
         }
         await body()
@@ -186,13 +192,43 @@ final class ConnectProbe {
         return watcher.summary
     }
 
+    /// Any Spotify process, helpers included.
+    private var anySpotifyProcess: Bool {
+        NSWorkspace.shared.runningApplications.contains { $0.bundleIdentifier?.hasPrefix(Self.bundleID) == true }
+    }
+
+    /// The installed Spotify app's version, for the report.
+    private var spotifyVersion: String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID),
+              let info = Bundle(url: url)?.infoDictionary
+        else { return "not installed" }
+        let short = info["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info["CFBundleVersion"] as? String ?? "?"
+        return "\(short) (\(build))"
+    }
+
     // MARK: 1. Cold start
 
-    func coldStart(model: SpikeModel, useOpenCommand: Bool) async {
+    enum LaunchMethod {
+        /// NSWorkspace with hides=true, activates=false, and these launch arguments.
+        case arguments([String])
+        /// NSWorkspace with hides=true, then hide Spotify and activate Clasify on the first window.
+        case hideOnFirstWindow
+
+        var name: String {
+            switch self {
+            case .arguments(let arguments): "Cold start (\(arguments.joined(separator: " ")))"
+            case .hideOnFirstWindow: "Cold start (hide on first window)"
+            }
+        }
+    }
+
+    func coldStart(model: SpikeModel, method: LaunchMethod) async {
         self.model = model
-        let name = useOpenCommand ? "Cold start (open -g -j)" : "Cold start (NSWorkspace hides)"
+        let name = method.name
+        set("Spotify version", spotifyVersion)
         guard let context = model.firstPlaylistURI else { return set(name, "no playlist. Run 1 and 2 first.") }
-        guard spotify == nil else { return set(name, "Spotify is running. Quit it first.") }
+        guard !anySpotifyProcess else { return set(name, "a Spotify process is running. Quit Spotify fully first.") }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) else {
             return set(name, "Spotify is not installed")
         }
@@ -202,19 +238,21 @@ final class ConnectProbe {
         var deviceMs: Int?
         var commandMs: Int?
         var audioMs: Int?
-        let windows = await watchWindows {
-            if useOpenCommand {
-                let open = Process()
-                open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                open.arguments = ["-g", "-j", "-b", Self.bundleID]
-                try? open.run()
-            } else {
-                let configuration = NSWorkspace.OpenConfiguration()
-                configuration.hides = true
-                configuration.activates = false
-                configuration.addsToRecentItems = false
-                NSWorkspace.shared.openApplication(at: url, configuration: configuration, completionHandler: nil)
-            }
+        let hider = Hider(launchedAt: launchedAt)
+        let onSample: (@MainActor @Sendable (WindowWatcher) -> Void)?
+        if case .hideOnFirstWindow = method {
+            onSample = { [self] watcher in hider.check(spotify, windows: watcher.lastWindows) }
+        } else {
+            onSample = nil
+        }
+        let interval = if case .hideOnFirstWindow = method { 10 } else { 50 }
+        let windows = await watchWindows(interval: interval, onSample: onSample) {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.hides = true
+            configuration.activates = false
+            configuration.addsToRecentItems = false
+            if case .arguments(let arguments) = method { configuration.arguments = arguments }
+            NSWorkspace.shared.openApplication(at: url, configuration: configuration, completionHandler: nil)
             guard let device = await findAppDevice(timeout: 40) else { return }
             deviceMs = Self.ms(since: launchedAt)
             let sentAt = Date()
@@ -229,6 +267,9 @@ final class ConnectProbe {
         set(name, "device in cluster after \(deviceMs.map { "\($0) ms" } ?? "none in 40 s"), "
             + "play sent at \(commandMs.map { "\($0) ms" } ?? "-"), playing at \(audioMs.map { "\($0) ms" } ?? "not seen")")
         set(name + ": window check", windows)
+        if case .hideOnFirstWindow = method {
+            set(name + ": hide steps", hider.summary)
+        }
     }
 
     // MARK: 2. Window open behind another app
@@ -261,10 +302,41 @@ final class ConnectProbe {
             sentAt = Date()
             play(liked, on: device.id)
             let third = await waitForState(since: sentAt) { $0.playing && $0.context == liked }
-            steps.append("Liked Songs \(third.map { "\($0) ms" } ?? "not seen")")
+            steps.append("Liked Songs \(third.map { "\($0) ms" } ?? "FAIL, context is \(state?.context ?? "none")")")
         }
         set(name, "before: \(before); " + steps.joined(separator: ", "))
         set(name + ": window check", windows)
+    }
+
+    // MARK: Liked Songs
+
+    /// Plays Liked Songs three ways and checks the context and track in the cluster.
+    func likedSongs(model: SpikeModel) async {
+        self.model = model
+        guard let liked = model.likedContextURI, let tracks = model.contexts[liked], let first = tracks.first else {
+            return set("Liked Songs", "no Liked Songs. Run 1 and 2 first.")
+        }
+        isBusy = true
+        defer { isBusy = false }
+        guard let device = await findAppDevice(timeout: 10) else { return set("Liked Songs", "no app device") }
+        let variants: [(name: String, context: String, skipTo: String)] = [
+            ("Liked A (user collection, as build 7)", liked, ""),
+            ("Liked B (user collection, skip_to first track)", liked, #""track_uri":"\#(first)","track_index":0"#),
+            ("Liked C (spotify:collection:tracks)", "spotify:collection:tracks", ""),
+        ]
+        for variant in variants {
+            let sentAt = Date()
+            play(variant.context, on: device.id, skipTo: variant.skipTo)
+            let delay = await waitForState(since: sentAt) { $0.playing && !$0.buffering && $0.track != "" }
+            try? await Task.sleep(for: .seconds(1))
+            let now = state
+            let inLiked = now.map { tracks.contains($0.track) } ?? false
+            let contextOK = now?.context == liked || now?.context.hasSuffix(":collection") == true
+                || now?.context == "spotify:collection:tracks"
+            set(variant.name, "\(contextOK && inLiked ? "PASS" : "FAIL"): after \(delay.map { "\($0) ms" } ?? "no update"), "
+                + "context \(now?.context ?? "none"), track in Liked Songs \(inLiked)")
+            try? await Task.sleep(for: .seconds(2))
+        }
     }
 
     // MARK: 3. Controls without AppleScript
@@ -349,13 +421,45 @@ final class ConnectProbe {
     }
 }
 
-/// Collects the 50 ms window samples for one test.
+/// Hides Spotify and activates Clasify each time a Spotify window or activation shows up.
 @MainActor
-private final class WindowWatcher {
+private final class Hider {
+    private let launchedAt: Date
+    private var steps: [String] = []
+    private var showing = false
+    private var clasifyLostFocus = false
+
+    init(launchedAt: Date) { self.launchedAt = launchedAt }
+
+    private var ms: Int { Int(Date().timeIntervalSince(launchedAt) * 1000) }
+
+    func check(_ app: NSRunningApplication?, windows: Int) {
+        guard let app else { return }
+        if !NSApplication.shared.isActive { clasifyLostFocus = true }
+        let now = windows > 0 || app.isActive
+        if now, !showing {
+            steps.append("shown at \(ms) ms (windows \(windows), active \(app.isActive)), hide sent")
+            app.hide()
+            NSApplication.shared.activate()
+        } else if !now, showing {
+            steps.append("gone at \(ms) ms")
+        }
+        showing = now
+    }
+
+    var summary: String {
+        (steps.isEmpty ? "no window seen" : steps.joined(separator: ", ")) + "; Clasify lost focus \(clasifyLostFocus)"
+    }
+}
+
+/// Collects the window samples for one test.
+@MainActor
+final class WindowWatcher {
     private let start = Date()
     private var samples = 0
     private var firstWindows: Int?
     private var maxWindows = 0
+    private(set) var lastWindows = 0
     private var everActive = false
     private var everFront = false
     private var firstChange: String?
@@ -367,6 +471,7 @@ private final class WindowWatcher {
         guard let app else { return }
         if firstSeenAt == nil { firstSeenAt = ms }
         let windows = ConnectProbe.onScreenWindows(of: app)
+        lastWindows = windows
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
         if firstWindows == nil { firstWindows = windows }
         if firstChange == nil, windows > (firstWindows ?? 0) || app.isActive || front {

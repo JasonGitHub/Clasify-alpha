@@ -61,13 +61,20 @@ struct SpikeView: View {
         return VStack(alignment: .leading, spacing: 6) {
             Text("3. Spotify app through Connect commands only").font(.headline)
             Text("Run 1 and 2 first. No AppleScript is used here.").font(.caption).foregroundStyle(.secondary)
-            Text("a. Quit Spotify, then click one. Do the other after quitting Spotify again.").font(.caption)
+            Text("a. Quit Spotify fully before each button. Watch the screen for a Spotify flash.").font(.caption)
             HStack {
-                Button("Cold start (NSWorkspace)") { Task { await probe.coldStart(model: model, useOpenCommand: false) } }
-                Button("Cold start (open -g -j)") { Task { await probe.coldStart(model: model, useOpenCommand: true) } }
+                Button("--minimized") { Task { await probe.coldStart(model: model, method: .arguments(["--minimized"])) } }
+                Button("--autostart --minimized") {
+                    Task { await probe.coldStart(model: model, method: .arguments(["--autostart", "--minimized"])) }
+                }
+                Button("--background") { Task { await probe.coldStart(model: model, method: .arguments(["--background"])) } }
+                Button("Hide on first window") { Task { await probe.coldStart(model: model, method: .hideOnFirstWindow) } }
             }
             Text("b. Open the Spotify window, then click on Clasify so Spotify is behind it.").font(.caption)
-            Button("Play, next, Liked Songs with Spotify behind") { Task { await probe.behind(model: model) } }
+            HStack {
+                Button("Play, next, Liked Songs with Spotify behind") { Task { await probe.behind(model: model) } }
+                Button("Liked Songs 3 ways") { Task { await probe.likedSongs(model: model) } }
+            }
             Text("c. While music plays:").font(.caption)
             HStack {
                 Button("Test controls") { Task { await probe.controls(model: model) } }

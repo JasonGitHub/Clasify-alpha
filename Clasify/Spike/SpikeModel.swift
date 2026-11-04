@@ -14,7 +14,7 @@ struct LogLine: Identifiable {
 @MainActor
 @Observable
 final class SpikeModel {
-    static let build = 9
+    static let build = 10
 
     private(set) var oauth: OAuthResult?
     private(set) var oauthStatus = "Not run"
