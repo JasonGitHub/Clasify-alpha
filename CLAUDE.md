@@ -72,7 +72,7 @@ When a PR is ready to merge, comment `@codex review` on it. Then work through wh
 - Don't push only for style nits. Answer them in their thread.
 - If you decline a finding, say why in its thread.
 - After a fix, push and comment `@codex review` again. Stop when a review has no significant findings.
-- After 3 rounds that still have significant findings, stop and ask Jason.
+- After 3 rounds that still have significant findings, stop and ask the CTO thread. The CTO decides whether to merge, fix more, or escalate to Jason.
 
 ## Merging
 
