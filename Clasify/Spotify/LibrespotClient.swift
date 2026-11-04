@@ -42,7 +42,8 @@ struct PlaylistSummary: Sendable, Equatable {
     let trackCount: Int
 }
 
-/// Swift wrapper over the librespot bridge, for login and library reads only.
+/// Swift wrapper over the librespot bridge: login, library reads, and Spotify Connect
+/// commands (in LibrespotClient+Connect.swift).
 /// The app keeps one for its lifetime and never calls `lsb_free`, so callbacks
 /// can never come after the bridge is gone.
 ///
@@ -50,8 +51,10 @@ struct PlaylistSummary: Sendable, Equatable {
 /// bridge's C functions may be called from any thread (the Rust side locks its
 /// own state), and `pendingLogin` is guarded by its lock.
 final class LibrespotClient: @unchecked Sendable {
-    private let handle: OpaquePointer
+    let handle: OpaquePointer
     private let pendingLogin: OSAllocatedUnfairLock<PendingLogin>
+    /// Gets each Spotify player state. It lives as long as the app, like the bridge.
+    let stateBox = StateBox()
 
     /// A login with no answer by then fails. LibrespotLibrary runs logins one at a time,
     /// so one login that never answers would block every later login.
@@ -66,6 +69,8 @@ final class LibrespotClient: @unchecked Sendable {
         }
         self.handle = handle
         self.pendingLogin = pending
+        // The box is never released, because the bridge is never freed.
+        lsb_connect_watch(handle, stateCallback, Unmanaged.passRetained(stateBox).toOpaque())
     }
 
     /// Starts a librespot session with an access token. Returns the canonical username.
@@ -181,7 +186,7 @@ final class LibrespotClient: @unchecked Sendable {
 // and Swift 6 traps when it runs on another thread.
 
 /// Holds one continuation for a C callback that comes exactly once.
-private final class ResultBox<Value: Sendable>: Sendable {
+final class ResultBox<Value: Sendable>: Sendable {
     private let continuation: CheckedContinuation<Value, any Error>
 
     init(_ continuation: CheckedContinuation<Value, any Error>) { self.continuation = continuation }
@@ -198,7 +203,7 @@ private final class EventBox: Sendable {
     }
 }
 
-private func string(_ text: UnsafePointer<CChar>?) -> String? {
+func string(_ text: UnsafePointer<CChar>?) -> String? {
     text.map { String(cString: $0) }
 }
 
