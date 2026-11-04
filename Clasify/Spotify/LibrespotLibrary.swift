@@ -105,11 +105,14 @@ final class LibrespotLibrary: Library {
     func fetchLibrary() async -> [Playlist]? {
         if let cache { return cache }
         if !isLoggedIn, !(await restoreSession()) { return nil }
+        let mine = session
         do {
             return try await readAndCache()
         } catch let error as BridgeError where error == .cancelled {
             return nil  // The account changed while it read. The reducer drops this load.
         } catch {
+            // The account changed while it read. A restore now would log the old account in again.
+            guard session == mine else { return nil }
             // The session can drop. Log in again once, then try once more.
             guard await restoreSession() else { return nil }
             return try? await readAndCache()
