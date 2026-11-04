@@ -25,16 +25,18 @@ pub const LSB_EVENT_TRACK_ENDED: u32 = 4;
 pub const LSB_EVENT_UNAVAILABLE: u32 = 5;
 pub const LSB_EVENT_VOLUME: u32 = 6;
 pub const LSB_EVENT_ERROR: u32 = 7;
+pub const LSB_EVENT_PLAY_REQUEST: u32 = 8;
 
-/// Matches `LsbEvent` in the header. `message` is valid only during the callback.
+/// Matches `LsbEvent` in the header. The strings are valid only during the callback.
 #[repr(C)]
 pub struct LsbEvent {
     pub kind: u32,
     pub position_ms: u32,
+    pub play_request_id: u64,
     pub volume: u16,
+    pub track_uri: *const c_char,
     pub message: *const c_char,
 }
-
 pub type LsbEventCallback = extern "C" fn(context: *mut c_void, event: *const LsbEvent);
 /// Interleaved stereo f32 samples at 44.1 kHz.
 pub type LsbAudioCallback = extern "C" fn(context: *mut c_void, samples: *const f32, count: usize);
@@ -51,32 +53,111 @@ struct Callbacks {
 unsafe impl Send for Callbacks {}
 unsafe impl Sync for Callbacks {}
 
-impl Callbacks {
-    fn emit(&self, kind: u32, position_ms: u32, volume: u16, message: Option<&str>) {
-        let text = message.map(|m| CString::new(m.replace('\0', " ")).unwrap_or_default());
-        let event = LsbEvent {
+/// One event before it crosses the FFI. Fields that do not apply stay at their defaults.
+#[derive(Debug, Default, PartialEq)]
+struct Event {
+    kind: u32,
+    position_ms: u32,
+    play_request_id: u64,
+    volume: u16,
+    track_uri: Option<String>,
+    message: Option<String>,
+}
+
+impl Event {
+    fn new(kind: u32) -> Self {
+        Event {
             kind,
+            ..Event::default()
+        }
+    }
+
+    fn error(message: &str) -> Self {
+        Event {
+            message: Some(message.to_owned()),
+            ..Event::new(LSB_EVENT_ERROR)
+        }
+    }
+
+    fn track(kind: u32, play_request_id: u64, track: &SpotifyUri, position_ms: u32) -> Self {
+        Event {
+            play_request_id,
             position_ms,
-            volume,
-            message: text.as_ref().map_or(std::ptr::null(), |t| t.as_ptr()),
-        };
-        (self.on_event)(self.context, &event);
+            track_uri: track.to_uri().ok(),
+            ..Event::new(kind)
+        }
     }
 }
 
-/// Maps a librespot event to (kind, position_ms, volume). Other events are dropped.
-fn map_event(event: &PlayerEvent) -> Option<(u32, u32, u16)> {
-    match event {
-        PlayerEvent::Playing { position_ms, .. } => Some((LSB_EVENT_PLAYING, *position_ms, 0)),
-        PlayerEvent::Paused { position_ms, .. } => Some((LSB_EVENT_PAUSED, *position_ms, 0)),
-        PlayerEvent::PositionChanged { position_ms, .. }
-        | PlayerEvent::PositionCorrection { position_ms, .. }
-        | PlayerEvent::Seeked { position_ms, .. } => Some((LSB_EVENT_POSITION, *position_ms, 0)),
-        PlayerEvent::EndOfTrack { .. } => Some((LSB_EVENT_TRACK_ENDED, 0, 0)),
-        PlayerEvent::Unavailable { .. } => Some((LSB_EVENT_UNAVAILABLE, 0, 0)),
-        PlayerEvent::VolumeChanged { volume } => Some((LSB_EVENT_VOLUME, 0, *volume)),
-        _ => None,
+fn c_string(text: &Option<String>) -> Option<CString> {
+    text.as_ref()
+        .map(|t| CString::new(t.replace('\0', " ")).unwrap_or_default())
+}
+
+impl Callbacks {
+    fn emit(&self, event: &Event) {
+        let (track_uri, message) = (c_string(&event.track_uri), c_string(&event.message));
+        let as_ptr = |t: &Option<CString>| t.as_ref().map_or(std::ptr::null(), |t| t.as_ptr());
+        let raw = LsbEvent {
+            kind: event.kind,
+            position_ms: event.position_ms,
+            play_request_id: event.play_request_id,
+            volume: event.volume,
+            track_uri: as_ptr(&track_uri),
+            message: as_ptr(&message),
+        };
+        (self.on_event)(self.context, &raw);
     }
+}
+
+/// Maps a librespot event to a bridge event. Other events are dropped.
+fn map_event(event: &PlayerEvent) -> Option<Event> {
+    use PlayerEvent::*;
+    Some(match event {
+        Loading {
+            play_request_id: id,
+            track_id,
+            position_ms,
+        } => Event::track(LSB_EVENT_PLAY_REQUEST, *id, track_id, *position_ms),
+        Playing {
+            play_request_id: id,
+            track_id,
+            position_ms,
+        } => Event::track(LSB_EVENT_PLAYING, *id, track_id, *position_ms),
+        Paused {
+            play_request_id: id,
+            track_id,
+            position_ms,
+        } => Event::track(LSB_EVENT_PAUSED, *id, track_id, *position_ms),
+        PositionChanged {
+            play_request_id: id,
+            track_id,
+            position_ms,
+        }
+        | PositionCorrection {
+            play_request_id: id,
+            track_id,
+            position_ms,
+        }
+        | Seeked {
+            play_request_id: id,
+            track_id,
+            position_ms,
+        } => Event::track(LSB_EVENT_POSITION, *id, track_id, *position_ms),
+        EndOfTrack {
+            play_request_id: id,
+            track_id,
+        } => Event::track(LSB_EVENT_TRACK_ENDED, *id, track_id, 0),
+        Unavailable {
+            play_request_id: id,
+            track_id,
+        } => Event::track(LSB_EVENT_UNAVAILABLE, *id, track_id, 0),
+        VolumeChanged { volume } => Event {
+            volume: *volume,
+            ..Event::new(LSB_EVENT_VOLUME)
+        },
+        _ => return None,
+    })
 }
 
 /// Sends decoded audio to the app, which plays it through AVAudioEngine.
@@ -170,12 +251,14 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
     bridge.runtime.spawn(async move {
         if let Err(error) = session.connect(credentials, false).await {
             if is_latest() {
-                callbacks.emit(LSB_EVENT_ERROR, 0, 0, Some(&error.to_string()));
+                callbacks.emit(&Event::error(&error.to_string()));
             }
             return;
         }
         let Ok(mixer) = SoftMixer::open(MixerConfig::default()) else {
-            callbacks.emit(LSB_EVENT_ERROR, 0, 0, Some("cannot open mixer"));
+            if is_latest() {
+                callbacks.emit(&Event::error("cannot open mixer"));
+            }
             return;
         };
         let mixer = Arc::new(mixer);
@@ -203,7 +286,7 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
         // Not under the lock, so a callback can call back into the bridge.
         // A login that starts right now can still follow this event.
         if is_latest() {
-            callbacks.emit(LSB_EVENT_LOGGED_IN, 0, 0, None);
+            callbacks.emit(&Event::new(LSB_EVENT_LOGGED_IN));
         }
         while let Some(event) = events.recv().await {
             let slot = connected.lock().unwrap();
@@ -211,8 +294,8 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
                 return; // This player was replaced.
             }
             drop(slot);
-            if let Some((kind, position_ms, volume)) = map_event(&event) {
-                callbacks.emit(kind, position_ms, volume, None);
+            if let Some(event) = map_event(&event) {
+                callbacks.emit(&event);
             }
         }
     });
