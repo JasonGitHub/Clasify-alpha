@@ -2,6 +2,9 @@ name: LibrespotBridge
 on:
   push: { branches: [main] }
   pull_request: { paths: ["LibrespotBridge/**", ".github/workflows/bridge.yml"] }
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   test:
     runs-on: ubuntu-latest
