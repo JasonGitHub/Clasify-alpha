@@ -44,7 +44,7 @@ No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) b
 - Swift Testing, not XCTest.
 - Every `Action` case gets a unit test.
 - Tests use a fake `Player`. They never touch Spotify or the network.
-- Skins get snapshot tests of their main screens, made with `ImageRenderer`. No snapshot-testing package. These run on macOS CI only.
+- Skins get snapshot tests of their main screens, made with Apple APIs only: `ImageRenderer` for SwiftUI views, `NSView.cacheDisplay(in:to:)` for AppKit views. No snapshot-testing package. These run on macOS CI only.
 
 ## Pocket skin mockup
 
