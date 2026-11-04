@@ -11,13 +11,13 @@ public enum Action: Equatable, Sendable {
     case expire
     case reset
     /// Reported by the playback engine.
-    /// Each names the track it is about, so a late callback for a previous track is ignored.
-    case position(Double, trackID: String), trackEnded(trackID: String)
+    /// Each carries the `generation` of the `.load` it is about, so a late callback from an earlier load is ignored.
+    case position(Double, generation: Int), trackEnded(generation: Int)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
 public enum Effect: Equatable, Sendable {
-    case load(trackID: String, autoplay: Bool)
+    case load(trackID: String, autoplay: Bool, generation: Int)
     case pause, resume, stop
     case seek(Double)
     case setVolume(Int)
@@ -47,11 +47,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     var fx: [Effect] = []
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
     func load(_ screen: Screen) { s.tok += 1; s.stack.append(Frame(screen: screen, loading: true, token: s.tok)) }
+    func loadTrack(_ id: String, autoplay: Bool) { s.playGen += 1; fx.append(.load(trackID: id, autoplay: autoplay, generation: s.playGen)) }
     func play(_ pl: String, _ id: String) {
         s.current = TrackRef(playlist: pl, track: id)
         s.t = 0; s.isPlaying = true; s.nowMode = .volume
         s.stack.append(Frame(screen: .now))
-        fx.append(.load(trackID: id, autoplay: true))
+        loadTrack(id, autoplay: true)
     }
     func stop() {
         if s.current != nil { fx.append(.stop) }
@@ -78,7 +79,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             i = s.repeatMode == .all ? list.count - 1 : 0
         }
         s.current?.track = list[i].id
-        fx.append(.load(trackID: list[i].id, autoplay: s.isPlaying))
+        loadTrack(list[i].id, autoplay: s.isPlaying)
+    }
+    func shuffleLiked() {
+        let liked = s.tracks(in: Playlist.likedSongsID)
+        guard !liked.isEmpty else { return }
+        play(Playlist.likedSongsID, liked[env.random(liked.count)].id); s.shuffle = true
     }
     let offlineStart = "Offline. Can’t start playback"
 
@@ -126,9 +132,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .likedSongs: load(.tracks(playlist: Playlist.likedSongsID))
             case .shuffleSongs:
                 if s.offline { return toast(offlineStart) }
-                let liked = s.tracks(in: Playlist.likedSongsID)
-                guard !liked.isEmpty else { return }
-                play(Playlist.likedSongsID, liked[env.random(liked.count)].id); s.shuffle = true
+                if s.tracks(in: Playlist.likedSongsID).isEmpty {  // not fetched yet: load, then shuffle
+                    load(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
+                } else {
+                    shuffleLiked()
+                }
             case .settings: s.stack.append(Frame(screen: .settings))
             case .playlist(let id): load(.tracks(playlist: id))
             case .track(let id):
@@ -172,18 +180,22 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
             if s.overlayUntil > 0 && now > s.overlayUntil && s.nowMode != .scrub { s.overlayUntil = 0 }
 
-        case .position(let t, let id):
-            if s.current?.track == id { s.t = t }
+        case .position(let t, let gen):
+            if s.current != nil && gen == s.playGen { s.t = t }
 
-        case .trackEnded(let id):
-            guard s.isPlaying, let c = s.current, c.track == id else { return }
-            if s.repeatMode == .one { s.t = 0; fx.append(.load(trackID: c.track, autoplay: true)) } else { advance(1) }
+        case .trackEnded(let gen):
+            guard s.isPlaying, let c = s.current, gen == s.playGen else { return }
+            if s.repeatMode == .one { s.t = 0; loadTrack(c.track, autoplay: true) } else { advance(1) }
 
         case .loaded(let token, let library):
             guard s.top.loading, s.top.token == token else { return }  // stale load
             if let library { s.library = library }
             s.top.loading = false
             s.top.error = s.offline || library == nil
+            if s.shuffleToken == token {
+                s.shuffleToken = nil
+                if !s.top.error { shuffleLiked() }
+            }
 
         case .authDone:
             guard s.top.screen == .auth else { return }
@@ -200,9 +212,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .reset:
             stop()
-            let tok = s.tok  // keep tokens unique so a load from before the reset stays stale
+            let (tok, gen) = (s.tok, s.playGen)  // keep tokens unique so callbacks from before the reset stay stale
             s = AppState()
-            s.tok = tok
+            s.tok = tok; s.playGen = gen
         }
     }
     apply()

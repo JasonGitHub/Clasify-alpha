@@ -61,8 +61,17 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func selectTrackLoadsAndPlays() {
         var s = mainMenu()
         send(&s, .select, .loaded(token: 1, library: library), .select, .loaded(token: 2, library: library), .wheel(3))
-        #expect(send(&s, .select) == [.load(trackID: "f3", autoplay: true)])
+        #expect(send(&s, .select) == [.load(trackID: "f3", autoplay: true, generation: 1)])
         #expect(s.top.screen == .now && s.isPlaying && s.current == TrackRef(playlist: "focus", track: "f3"))
+    }
+
+    @Test func shuffleSongsLoadsLikedSongsFirst() {
+        var s = mainMenu()
+        s.library = []  // fresh sign-in: nothing fetched yet
+        send(&s, .wheel(2), .select)
+        #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
+        #expect(send(&s, .loaded(token: 1, library: library)) == [.load(trackID: "l0", autoplay: true, generation: 1)])
+        #expect(s.top.screen == .now && s.shuffle && s.shuffleToken == nil)
     }
 
     @Test func selectOnErrorRetriesWithNewToken() {
@@ -99,7 +108,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func nextAdvancesAndStopsAtEndUnlessRepeatAll() {
         var s = playing(6)
-        #expect(send(&s, .next) == [.load(trackID: "f7", autoplay: true)])
+        #expect(send(&s, .next) == [.load(trackID: "f7", autoplay: true, generation: 2)])
         #expect(send(&s, .next) == [.pause, .seek(0)])
         #expect(s.current?.track == "f7" && !s.isPlaying)
         s = playing(7); s.repeatMode = .all
@@ -117,7 +126,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {
         var s = playing(2)
-        send(&s, .position(5, trackID: "f2"))
+        send(&s, .position(5, generation: 1))
         #expect(send(&s, .prev) == [.seek(0)] && s.current?.track == "f2")
         send(&s, .prev)
         #expect(s.current?.track == "f1")
@@ -134,13 +143,14 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func positionAndTrackEndedComeFromEngine() {
         var s = playing()
-        send(&s, .position(12.5, trackID: "f0"))
+        send(&s, .position(12.5, generation: 1))
         #expect(s.t == 12.5)
-        #expect(send(&s, .trackEnded(trackID: "f0")) == [.load(trackID: "f1", autoplay: true)])
-        // late callbacks for f0 are ignored now that f1 is loaded
-        #expect(send(&s, .position(20, trackID: "f0"), .trackEnded(trackID: "f0")) == [] && s.t == 0)
+        #expect(send(&s, .trackEnded(generation: 1)) == [.load(trackID: "f1", autoplay: true, generation: 2)])
+        // late callbacks from the first load are ignored
+        #expect(send(&s, .position(20, generation: 1), .trackEnded(generation: 1)) == [] && s.t == 0)
         s.repeatMode = .one
-        #expect(send(&s, .trackEnded(trackID: "f1")) == [.load(trackID: "f1", autoplay: true)])
+        #expect(send(&s, .trackEnded(generation: 2)) == [.load(trackID: "f1", autoplay: true, generation: 3)])
+        #expect(send(&s, .trackEnded(generation: 2)) == [])  // same track reloaded, old callback still stale
         #expect(s.current?.track == "f1" && s.t == 0)
     }
 
@@ -191,7 +201,7 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(send(&s, .reset) == [.stop])
         var fresh = AppState()
-        fresh.tok = s.tok
+        fresh.tok = s.tok; fresh.playGen = s.playGen
         #expect(s == fresh && s.tok == 2)
         send(&s, .select, .authDone, .select, .loaded(token: 1, library: library))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
@@ -210,7 +220,7 @@ func playing(_ i: Int = 0) -> AppState {
 
 @MainActor final class FakePlayer: Player {
     var calls: [String] = []
-    func load(trackID: String, autoplay: Bool) { calls.append("load \(trackID) \(autoplay)") }
+    func load(trackID: String, autoplay: Bool, generation: Int) { calls.append("load \(trackID) \(autoplay)") }
     func pause() { calls.append("pause") }
     func resume() { calls.append("resume") }
     func stop() { calls.append("stop") }

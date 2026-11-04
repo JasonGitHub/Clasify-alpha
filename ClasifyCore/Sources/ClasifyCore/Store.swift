@@ -3,7 +3,8 @@ import Observation
 /// Playback engine (librespot in 1.0). Code above it doesn't know which engine is playing.
 @MainActor
 public protocol Player: AnyObject {
-    func load(trackID: String, autoplay: Bool)
+    /// Report `.position` and `.trackEnded` for this load with the same `generation`.
+    func load(trackID: String, autoplay: Bool, generation: Int)
     func pause()
     func resume()
     func stop()
@@ -25,7 +26,7 @@ public final class Store {
     public func send(_ action: Action) {
         for effect in reduce(&state, action, env) {
             switch effect {
-            case .load(let id, let autoplay): player.load(trackID: id, autoplay: autoplay)
+            case .load(let id, let autoplay, let gen): player.load(trackID: id, autoplay: autoplay, generation: gen)
             case .pause: player.pause()
             case .resume: player.resume()
             case .stop: player.stop()
