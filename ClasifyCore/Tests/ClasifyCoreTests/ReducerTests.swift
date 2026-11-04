@@ -72,6 +72,12 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
         #expect(send(&s, .loaded(token: 1, library: library)) == [.load(trackID: "l0", autoplay: true, generation: 1)])
         #expect(s.top.screen == .now && s.shuffle && s.shuffleToken == nil)
+
+        s = mainMenu(); s.library = []
+        send(&s, .wheel(2), .select, .loaded(token: 1, library: nil))  // fetch fails
+        #expect(s.top.error)
+        send(&s, .select, .loaded(token: 2, library: library))  // retry succeeds and still shuffles
+        #expect(s.top.screen == .now && s.shuffle && s.current?.track == "l0")
     }
 
     @Test func selectOnErrorRetriesWithNewToken() {

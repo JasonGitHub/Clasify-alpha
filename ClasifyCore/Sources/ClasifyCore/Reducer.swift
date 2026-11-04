@@ -119,6 +119,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             }
             if s.top.error {  // retry
                 s.tok += 1
+                if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }  // a pending shuffle follows the retry
                 s.top.loading = true; s.top.error = false; s.top.token = s.tok
                 return
             }
@@ -192,9 +193,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if let library { s.library = library }
             s.top.loading = false
             s.top.error = s.offline || library == nil
-            if s.shuffleToken == token {
+            if s.shuffleToken == token && !s.top.error {
                 s.shuffleToken = nil
-                if !s.top.error { shuffleLiked() }
+                shuffleLiked()
             }
 
         case .authDone:
