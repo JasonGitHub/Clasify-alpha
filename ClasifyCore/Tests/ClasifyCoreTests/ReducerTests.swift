@@ -18,7 +18,7 @@ func send(_ s: inout AppState, _ actions: Action..., now: Double = 100) -> [Effe
 /// Signed in on the main menu, library loaded.
 func mainMenu() -> AppState {
     var s = AppState()
-    send(&s, .select, .authDone)
+    send(&s, .select, .authDone(token: 1))
     s.library = library
     return s
 }
@@ -44,7 +44,7 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .menu, .menu, .select)  // Now Playing
         #expect(send(&s, .wheel(-2)) == [.setVolume(50)])
         #expect(s.overlayUntil == 101.5)
-        #expect(send(&s, .select, .wheel(2)) == [.seek(10)])  // scrub
+        #expect(send(&s, .select, .wheel(2)) == [.seek(10, generation: 2)])  // scrub
     }
 
     @Test func selectPushesScreensAndTogglesSettings() {
@@ -115,7 +115,7 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func nextAdvancesAndStopsAtEndUnlessRepeatAll() {
         var s = playing(6)
         #expect(send(&s, .next) == [.load(trackID: "f7", autoplay: true, generation: 2)])
-        #expect(send(&s, .next) == [.pause, .seek(0)])
+        #expect(send(&s, .next) == [.pause, .seek(0, generation: 3)])
         #expect(s.current?.track == "f7" && !s.isPlaying)
         s = playing(7); s.repeatMode = .all
         send(&s, .next)
@@ -133,7 +133,8 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {
         var s = playing(2)
         send(&s, .position(5, generation: 1))
-        #expect(send(&s, .prev) == [.seek(0)] && s.current?.track == "f2")
+        #expect(send(&s, .prev) == [.seek(0, generation: 2)] && s.current?.track == "f2")
+        #expect(send(&s, .trackEnded(generation: 1)) == [])  // queued before the restart
         send(&s, .prev)
         #expect(s.current?.track == "f1")
     }
@@ -180,9 +181,13 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func authDoneSignsInOrFailsOffline() {
         var s = AppState()
-        send(&s, .select, .offline(true), .authDone)
+        send(&s, .select, .offline(true), .authDone(token: 1))
         #expect(s.top.screen == .login && !s.signedIn && s.toast == "Can’t reach Spotify")
-        send(&s, .offline(false), .select, .authDone)
+        send(&s, .offline(false), .select, .authDone(token: 1))  // late, from the first attempt
+        #expect(s.top.screen == .auth && !s.signedIn)
+        send(&s, .reset, .select, .authDone(token: 2))  // from before the reset
+        #expect(s.top.screen == .auth && !s.signedIn)
+        send(&s, .authDone(token: 3))
         #expect(s.stack == [Frame(screen: .main)] && s.signedIn)
     }
 
@@ -207,9 +212,9 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(send(&s, .reset) == [.stop])
         var fresh = AppState()
-        fresh.tok = s.tok; fresh.playGen = s.playGen
+        fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt
         #expect(s == fresh && s.tok == 2)
-        send(&s, .select, .authDone, .select, .loaded(token: 1, library: library))  // late load from before reset
+        send(&s, .select, .authDone(token: 2), .select, .loaded(token: 1, library: library))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
     }
 
@@ -230,7 +235,7 @@ func playing(_ i: Int = 0) -> AppState {
     func pause() { calls.append("pause") }
     func resume() { calls.append("resume") }
     func stop() { calls.append("stop") }
-    func seek(to seconds: Double) { calls.append("seek \(seconds)") }
+    func seek(to seconds: Double, generation: Int) { calls.append("seek \(seconds)") }
     func setVolume(_ percent: Int) { calls.append("volume \(percent)") }
 }
 

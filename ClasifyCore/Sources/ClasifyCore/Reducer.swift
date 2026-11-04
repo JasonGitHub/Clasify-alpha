@@ -6,7 +6,8 @@ public enum Action: Equatable, Sendable {
     case tick  // drives toast and overlay timers
     /// A load finished. `library` is nil when the fetch failed.
     case loaded(token: Int, library: [Playlist]?)
-    case authDone
+    /// Login finished for the attempt whose token is on the `.auth` frame.
+    case authDone(token: Int)
     case offline(Bool)
     case expire
     case reset
@@ -19,7 +20,7 @@ public enum Action: Equatable, Sendable {
 public enum Effect: Equatable, Sendable {
     case load(trackID: String, autoplay: Bool, generation: Int)
     case pause, resume, stop
-    case seek(Double)
+    case seek(Double, generation: Int)  // a seek starts a new generation too
     case setVolume(Int)
 }
 
@@ -48,6 +49,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
     func load(_ screen: Screen) { s.tok += 1; s.stack.append(Frame(screen: screen, loading: true, token: s.tok)) }
     func loadTrack(_ id: String, autoplay: Bool) { s.playGen += 1; fx.append(.load(trackID: id, autoplay: autoplay, generation: s.playGen)) }
+    func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
     func play(_ pl: String, _ id: String) {
         s.current = TrackRef(playlist: pl, track: id)
         s.t = 0; s.isPlaying = true; s.nowMode = .volume
@@ -73,7 +75,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             i = env.random(list.count - 1)  // any track but the current one
             if i >= at { i += 1 }
         } else if i >= list.count {
-            guard s.repeatMode == .all else { s.isPlaying = false; fx += [.pause, .seek(0)]; return }
+            guard s.repeatMode == .all else { s.isPlaying = false; fx.append(.pause); seek(0); return }
             i = 0
         } else if i < 0 {
             i = s.repeatMode == .all ? list.count - 1 : 0
@@ -96,7 +98,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if s.nowMode == .scrub {
                     s.t = clamp(s.t + Double(d * 5), 0, max((s.track(c)?.duration ?? 0) - 1, 0))
                     s.overlayUntil = now + 2.5
-                    fx.append(.seek(s.t))
+                    seek(s.t)
                 } else {
                     s.volume = clamp(s.volume + d * 5, 0, 100)
                     s.overlayUntil = now + 1.5
@@ -127,7 +129,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let rows = s.rows(for: s.top)
             guard rows.indices.contains(s.top.sel) else { return }
             switch rows[s.top.sel] {
-            case .logIn: s.stack.append(Frame(screen: .auth))
+            case .logIn: s.authAttempt += 1; s.stack.append(Frame(screen: .auth, token: s.authAttempt))
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
             case .playlists: load(.playlists)
             case .likedSongs: load(.tracks(playlist: Playlist.likedSongsID))
@@ -175,7 +177,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .prev:
             guard s.current != nil else { return }
-            if s.t > 3 { s.t = 0; fx.append(.seek(0)) } else if s.offline { toast(offlineStart) } else { advance(-1) }
+            if s.t > 3 { s.t = 0; seek(0) } else if s.offline { toast(offlineStart) } else { advance(-1) }
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
@@ -198,8 +200,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 shuffleLiked()
             }
 
-        case .authDone:
-            guard s.top.screen == .auth else { return }
+        case .authDone(let token):
+            guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
             if s.offline { s.stack.removeLast(); return toast("Can’t reach Spotify") }
             s.stack = [Frame(screen: .main)]; s.signedIn = true
             toast("Signed in")
@@ -213,9 +215,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .reset:
             stop()
-            let (tok, gen) = (s.tok, s.playGen)  // keep tokens unique so callbacks from before the reset stay stale
+            let (tok, gen, auth) = (s.tok, s.playGen, s.authAttempt)  // keep counters so callbacks from before the reset stay stale
             s = AppState()
-            s.tok = tok; s.playGen = gen
+            s.tok = tok; s.playGen = gen; s.authAttempt = auth
         }
     }
     apply()

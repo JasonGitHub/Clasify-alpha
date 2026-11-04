@@ -75,6 +75,8 @@ public struct AppState: Equatable, Sendable {
     public var tok = 0
     /// Bumped on every track load; engine callbacks echo it back.
     public var playGen = 0
+    /// Bumped on every login attempt; `.authDone` echoes it back.
+    public var authAttempt = 0
     /// Token of a Liked Songs load that should start a shuffle when it finishes.
     public var shuffleToken: Int?
     public var signedIn = false
