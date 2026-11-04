@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		C1A500000000000000000001 /* ClasifyCore in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000002 /* ClasifyCore */; };
+		C1A500000000000000000013 /* ClasifySkins in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000014 /* ClasifySkins */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C1A500000000000000000001 /* ClasifyCore in Frameworks */,
+				C1A500000000000000000013 /* ClasifySkins in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +73,7 @@
 			name = Clasify;
 			packageProductDependencies = (
 				C1A500000000000000000002 /* ClasifyCore */,
+				C1A500000000000000000014 /* ClasifySkins */,
 			);
 			productName = Clasify;
 			productReference = C1A500000000000000000003 /* Clasify.app */;
@@ -97,6 +100,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				C1A50000000000000000000E /* XCLocalSwiftPackageReference "ClasifyCore" */,
+				C1A500000000000000000015 /* XCLocalSwiftPackageReference "ClasifySkins" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C1A500000000000000000007 /* Products */;
@@ -262,12 +266,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ClasifyCore;
 		};
+		C1A500000000000000000015 /* XCLocalSwiftPackageReference "ClasifySkins" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ClasifySkins;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		C1A500000000000000000002 /* ClasifyCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ClasifyCore;
+		};
+		C1A500000000000000000014 /* ClasifySkins */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifySkins;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

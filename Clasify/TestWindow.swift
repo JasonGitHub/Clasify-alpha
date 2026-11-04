@@ -1,9 +1,9 @@
 import ClasifyCore
 import SwiftUI
 
-// TEMPORARY: a plain test window until the Pocket skin exists. It drives the real Store.
-// It only sends actions and formats state for display. The reducer holds all logic.
-// Delete this file when the skin lands.
+// TEMPORARY: a plain test window. It drives the real Store. View > Show Test Window switches
+// to it from the Pocket skin. It only sends actions and formats state for display.
+// Delete this file, and DebugCommands in ClasifyApp.swift, once the skin works on Jason's Mac.
 
 /// Shows the store's state and sends the skin's input actions.
 struct TestWindow: View {
@@ -41,14 +41,6 @@ private struct TestPanel: View {
             controls
         }
         .padding()
-        // The reducer's toast and overlay timers run on .tick. Send it only while one runs,
-        // so an idle window does not redraw. The skin PR moves this out of the view.
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .milliseconds(250))
-                if state.toastUntil > 0 || state.overlayUntil > 0 { store.send(.tick) }
-            }
-        }
     }
 
     private var rowList: some View {
