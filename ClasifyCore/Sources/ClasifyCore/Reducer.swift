@@ -171,9 +171,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if case .tracks(let pl) = s.top.screen { play(pl, id) }
             case .shuffle: s.shuffle.toggle(); fx.append(.setShuffle(s.shuffle))
             case .repeatMode: s.repeatMode = s.repeatMode.next; fx.append(.setRepeat(s.repeatMode))
-            case .skin:
-                s.skin = s.skin.next
-                toast(s.skin == .pocket ? "Pocket skin" : "Window switches to \(s.skin.rawValue) skin")
+            case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
             case .albumArt: s.showArt.toggle()
             case .clicker: s.clicker.toggle()
             case .about: s.stack.append(Frame(screen: .about))

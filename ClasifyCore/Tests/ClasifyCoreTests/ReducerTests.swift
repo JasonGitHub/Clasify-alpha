@@ -66,8 +66,9 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .select, .wheel(1), .select, .select)
         #expect(s.shuffle && s.repeatMode == .one)
         send(&s, .wheel(1), .select)
-        #expect(s.skin == .aqua && s.toast == "Window switches to Aqua skin")
-        #expect(s.rows(for: s.top).count == 7)  // no Playback engine or EQ row in 1.0
+        #expect(!s.showArt && s.skin == .pocket && s.toast.isEmpty)
+        #expect(!s.rows(for: s.top).contains(.skin))  // only the Pocket skin in 1.0
+        #expect(s.rows(for: s.top).count == 6)  // no Playback engine, EQ or Skin row in 1.0
     }
 
     @Test func selectTrackLoadsAndPlays() {
