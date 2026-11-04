@@ -47,6 +47,10 @@ void lsb_free(LsbBridge *bridge);
 // If the newer login succeeds, it still replaces the older one.
 int32_t lsb_login(LsbBridge *bridge, const char *access_token);
 
+// Ends the session, so reads and Connect calls return LSB_ERR_NOT_LOGGED_IN.
+// A login that has not finished sends no event. Returns LSB_OK even with no session.
+int32_t lsb_logout(LsbBridge *bridge);
+
 // OAuth with PKCE through librespot-oauth, with librespot's own client ID and
 // read-only scopes. The bridge stores no token: keep the refresh token in the Keychain.
 // Never log or store the access token.
