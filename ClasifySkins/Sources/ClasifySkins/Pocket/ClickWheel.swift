@@ -76,7 +76,7 @@ struct ClickWheel: View {
             center
         }
         .frame(width: Self.size, height: Self.size)
-        .overlay { if catchesScroll { ScrollCatcher { input(.wheel($0)) }.clipShape(Circle()) } }
+        .background { if catchesScroll { ScrollCatcher { input(.wheel($0)) } } }
         .contentShape(Circle())
         .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
         .onContinuousHover { phase in

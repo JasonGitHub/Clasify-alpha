@@ -23,6 +23,10 @@ import Testing
         func isBlue(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return c.b > c.r + 60 && c.b > 150 }
         func isLight(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return min(c.r, c.g, c.b) > 180 }
         func isDark(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return max(c.r, c.g, c.b) < 120 }
+        /// The scrub fill, #9aa6b2: mid gray with a little blue.
+        func isGray(_ x: Int, _ y: Int) -> Bool {
+            let c = rgb(x, y); return (130...200).contains(c.r) && c.b > c.r && c.b - c.r < 45
+        }
     }
 
     // Points in the mockup layout: the device padding is 24 x 20, the screen border 2,
@@ -99,16 +103,26 @@ import Testing
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
         s.stack.append(Frame(screen: .now))
         s.overlayUntil = 1
-        _ = try render(s, "now-volume")
+        s.volume = 60
+        let volume = try render(s, "now-volume")
+        // The volume bar is 8 points high, centered 21 points above the screen's bottom.
+        #expect(volume.isBlue(80, 205))  // inside the 60% fill
+        #expect(volume.isLight(230, 205))  // past it
         s.nowMode = .scrub
         s.showArt = false
-        _ = try render(s, "now-scrub")
+        s.t = 102.5  // half of the track
+        let scrub = try render(s, "now-scrub")
+        // The progress bar sits at the top of its 22 point row.
+        #expect(scrub.isGray(80, 198))  // the scrub fill
+        #expect(scrub.isDark(147, 198))  // the diamond at the fill's end
+        #expect(scrub.isLight(230, 198))
     }
 
     @Test func messageAndToast() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .playlists, loading: true))
-        _ = try render(s, "loading")
+        let loading = try render(s, "loading")
+        #expect(!loading.isBlue(150, Self.rowCenter(0)))  // no list while loading
         s.stack = [Frame(screen: .login)]
         s.toast = "Logged out"
         let shot = try render(s, "toast")

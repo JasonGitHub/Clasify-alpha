@@ -1,11 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// Turns trackpad and mouse-wheel scrolling over a view into wheel detents.
+/// Turns trackpad and mouse-wheel scrolling over a round view into wheel detents.
 /// SwiftUI on macOS 14 has no scroll-event API outside a ScrollView, so this is a small AppKit view.
-/// It takes only scroll events. Clicks and drags go through it to the SwiftUI views below.
+/// Put it in the background of the view. It never takes clicks or drags: it watches the window's
+/// scroll events and takes only the ones inside its circle.
 struct ScrollCatcher: NSViewRepresentable {
-    /// Scroll distance for one detent, as in the mockup.
+    /// Scroll distance for one detent, as in the mockup. One mouse-wheel line is one detent.
     static let step: CGFloat = 40
 
     let onDetent: @MainActor (Int) -> Void
@@ -23,21 +24,35 @@ struct ScrollCatcher: NSViewRepresentable {
     final class CatcherView: NSView {
         var onDetent: @MainActor (Int) -> Void = { _ in }
         private var distance: CGFloat = 0
+        private var monitor: Any?
 
-        override func hitTest(_ point: NSPoint) -> NSView? {
-            NSApp.currentEvent?.type == .scrollWheel ? super.hitTest(point) : nil
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }  // clicks and drags go to SwiftUI
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            monitor = nil
+            guard window != nil else { return }
+            // AppKit calls local monitors on the main thread.
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak self] event in
+                let taken = MainActor.assumeIsolated { self?.take(event) ?? false }
+                return taken ? nil : event
+            }
         }
 
-        override func scrollWheel(with event: NSEvent) {
+        /// Turns the event into detents if it is over the circle. Returns false to pass it on.
+        private func take(_ event: NSEvent) -> Bool {
+            guard event.window === window else { return false }
+            let point = convert(event.locationInWindow, from: nil)
+            let radius = min(bounds.width, bounds.height) / 2
+            guard hypot(point.x - bounds.midX, point.y - bounds.midY) <= radius else { return false }
             if event.phase == .began { distance = 0 }
-            // A mouse wheel reports lines, a trackpad points. Down the list is positive, as in a browser.
-            let lines: CGFloat = event.hasPreciseScrollingDeltas ? 1 : Self.lineHeight
-            distance -= event.scrollingDeltaY * lines
+            // A trackpad reports points, a mouse wheel lines. Down the list is positive, as in a browser.
+            let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : ScrollCatcher.step
+            distance -= event.scrollingDeltaY * scale
             while distance >= ScrollCatcher.step { distance -= ScrollCatcher.step; onDetent(1) }
             while distance <= -ScrollCatcher.step { distance += ScrollCatcher.step; onDetent(-1) }
+            return true
         }
-
-        /// One mouse-wheel line counts as one detent.
-        private static let lineHeight = ScrollCatcher.step
     }
 }

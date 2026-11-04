@@ -38,7 +38,7 @@ enum Labels {
         case .track(let id):
             guard case .tracks(let playlist) = screen else { return RowText(label: "") }
             let ref = TrackRef(playlist: playlist, track: id)
-            let mark = state.current == ref ? (state.isPlaying ? "▶" : "❚❚") : ""
+            let mark = state.current == ref ? playMark(in: state) : ""
             return RowText(label: state.track(ref)?.title ?? "", value: mark)
         case .shuffle: return RowText(label: "Shuffle", value: state.shuffle ? "Songs" : "Off")
         case .repeatMode: return RowText(label: "Repeat", value: state.repeatMode.rawValue)
@@ -109,6 +109,11 @@ enum Labels {
             list: title(.tracks(playlist: ref.playlist), in: state),
             count: index.map { "\($0 + 1) of \(tracks.count)" } ?? "",
             duration: track?.duration ?? 0)
+    }
+
+    /// "▶" while a track plays, "❚❚" while it is paused, and empty with no track.
+    static func playMark(in state: AppState) -> String {
+        state.current == nil ? "" : state.isPlaying ? "▶" : "❚❚"
     }
 
     /// "SHUFFLE", "REPEAT" and "REPEAT 1", as Now Playing shows them.

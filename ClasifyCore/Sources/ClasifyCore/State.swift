@@ -105,6 +105,10 @@ public struct AppState: Equatable, Sendable {
         set { stack[stack.count - 1] = newValue }
     }
 
+    /// The list rows that show at once: `visibleRows`, or one less while the bar for the
+    /// playing track shows under the list.
+    public var shownRows: Int { current == nil ? visibleRows : visibleRows - 1 }
+
     public func tracks(in playlist: String) -> [Track] {
         library.first { $0.id == playlist }?.tracks ?? []
     }

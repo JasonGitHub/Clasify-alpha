@@ -48,7 +48,11 @@ public struct PocketSkin: View {
         .focused($focused)
         .focusEffectDisabled()
         .onKeyPress(phases: [.down, .repeat]) { press in
-            guard let action = Self.action(for: press.key) else { return .ignored }
+            // Keys with Command, Option or Control belong to the menus.
+            guard press.modifiers.isDisjoint(with: [.command, .option, .control]),
+                  let action = Self.action(for: press.key)
+            else { return .ignored }
+            if press.phase == .repeat && !Self.repeats(action) { return .handled }
             input(action)
             return .handled
         }
@@ -69,6 +73,11 @@ public struct PocketSkin: View {
         case .leftArrow: .prev
         default: nil
         }
+    }
+
+    /// A held arrow key turns the wheel on. A held Space, Return or skip key acts once.
+    static func repeats(_ action: Action) -> Bool {
+        if case .wheel = action { true } else { false }
     }
 
     /// Clicks when the Clicker setting is on, then sends the action.

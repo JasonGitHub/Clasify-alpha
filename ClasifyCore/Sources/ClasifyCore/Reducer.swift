@@ -130,7 +130,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
             let sel = clamp(s.top.sel + d, 0, n - 1)
-            s.top.off = clamp(s.top.off, sel - visibleRows + 1, sel)
+            s.top.off = clamp(s.top.off, sel - s.shownRows + 1, sel)
             s.top.sel = sel
 
         case .select:
@@ -269,5 +269,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         }
     }
     apply()
+    // The bar for the playing track comes and goes, so keep the selection in the rows that show.
+    if s.top.screen.isList { s.top.off = clamp(s.top.off, s.top.sel - s.shownRows + 1, s.top.sel) }
     return fx
 }

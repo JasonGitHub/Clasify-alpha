@@ -50,14 +50,14 @@ struct PocketScreen: View {
 
     private var header: some View {
         HStack(spacing: 0) {
-            Text(state.isPlaying ? "▶" : state.current != nil ? "❚❚" : "")
-                .font(.helvetica(9))
+            Text(Labels.playMark(in: state))
+                .font(.helvetica(9, bold: true))
                 .frame(width: 24, alignment: .leading)
             Text(Labels.title(top.screen, in: state))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
             Text(state.offline ? "OFF" : "")
-                .font(.helvetica(9))
+                .font(.helvetica(9, bold: true))
                 .foregroundStyle(Pocket.offline)
                 .frame(width: 24, alignment: .trailing)
         }
@@ -73,13 +73,13 @@ struct PocketScreen: View {
         } else if top.screen == .now {
             PocketNowPlaying(state: state)
         } else {
-            PocketList(state: state, rowsShown: hasBar ? visibleRows - 1 : visibleRows)
+            PocketList(state: state)
         }
     }
 
     private func bar(_ now: Labels.NowText) -> some View {
         HStack(spacing: 6) {
-            Text("\(state.isPlaying ? "▶" : "❚❚") \(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")")
+            Text("\(Labels.playMark(in: state)) \(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")")
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(Labels.time(state.t)).monospacedDigit()
@@ -107,17 +107,13 @@ struct PocketScreen: View {
 /// The rows of a list screen, with the selection and a scroll bar for long lists.
 struct PocketList: View {
     let state: AppState
-    /// Six rows, or five when the bar shows.
-    let rowsShown: Int
 
     var body: some View {
         let top = state.top
         let rows = state.rows(for: top)
-        // The reducer keeps the selection inside six rows. When the bar takes one row away,
-        // move the first row down so the selection still shows. This changes only the drawing.
-        let first = min(max(top.off, top.sel - rowsShown + 1), max(rows.count - rowsShown, 0))
-        let shown = Array(rows.indices.dropFirst(first).prefix(rowsShown))
-        let scrolls = rows.count > rowsShown
+        let first = top.off  // the reducer keeps the selection inside state.shownRows
+        let shown = Array(rows.indices.dropFirst(first).prefix(state.shownRows))
+        let scrolls = rows.count > state.shownRows
         VStack(spacing: 0) {
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),
@@ -142,7 +138,7 @@ struct PocketList: View {
         GeometryReader { geo in
             let height = geo.size.height
             Capsule().fill(Color(hex: 0x5d6772))
-                .frame(height: height * min(1, CGFloat(rowsShown) / CGFloat(count)))
+                .frame(height: height * min(1, CGFloat(state.shownRows) / CGFloat(count)))
                 .offset(y: height * CGFloat(first) / CGFloat(count))
         }
         .frame(width: 5)

@@ -83,6 +83,15 @@ func sampleState() -> AppState {
         #expect(Labels.now(in: s)?.count == "")
     }
 
+    @Test func playMarkFollowsThePlayState() {
+        var s = sampleState()
+        #expect(Labels.playMark(in: s) == "")
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
+        #expect(Labels.playMark(in: s) == "❚❚")
+        s.isPlaying = true
+        #expect(Labels.playMark(in: s) == "▶")
+    }
+
     @Test func flagsAndTimes() {
         var s = sampleState()
         #expect(Labels.flags(in: s) == "")
@@ -115,6 +124,8 @@ func sampleState() -> AppState {
         #expect(PocketSkin.action(for: .rightArrow) == .next)
         #expect(PocketSkin.action(for: .leftArrow) == .prev)
         #expect(PocketSkin.action(for: "x") == nil)
+        #expect(PocketSkin.repeats(.wheel(1)))
+        #expect(!PocketSkin.repeats(.play) && !PocketSkin.repeats(.select) && !PocketSkin.repeats(.next))
     }
 
     @Test func wheelZonesFollowTheMockup() {

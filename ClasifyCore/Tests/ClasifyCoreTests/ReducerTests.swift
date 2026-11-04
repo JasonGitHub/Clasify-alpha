@@ -39,12 +39,24 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.sel == 3)  // clamped to last row
 
         s = playing()
-        send(&s, .menu, .wheel(7))  // back to Focus tracks
-        #expect(s.top.sel == 7 && s.top.off == 2)
+        send(&s, .menu, .wheel(7))  // back to Focus tracks, where the bar leaves 5 rows
+        #expect(s.top.sel == 7 && s.top.off == 3)
         send(&s, .menu, .menu, .select)  // Now Playing
         #expect(send(&s, .wheel(-2)) == [.setVolume(50)])
         #expect(s.overlayUntil == 101.5)
         #expect(send(&s, .select, .wheel(2)) == [.seek(10, generation: 2)])  // scrub
+    }
+
+    @Test func listKeepsTheSelectionInTheRowsThatShow() {
+        var s = mainMenu()
+        send(&s, .select, .loaded(token: 1, library: library), .select, .loaded(token: 2, library: library), .wheel(5))
+        #expect(s.shownRows == 6 && s.top.sel == 5 && s.top.off == 0)
+        send(&s, .select, .menu)  // play track 5, then back: the bar now takes a row
+        #expect(s.shownRows == 5 && s.top.sel == 5 && s.top.off == 1)
+        send(&s, .wheel(-1))  // the selection moves up, the rows stay
+        #expect(s.top.sel == 4 && s.top.off == 1)
+        send(&s, .wheel(-4))
+        #expect(s.top.sel == 0 && s.top.off == 0)
     }
 
     @Test func selectPushesScreensAndTogglesSettings() {

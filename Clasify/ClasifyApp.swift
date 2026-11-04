@@ -96,13 +96,16 @@ final class AppModel {
         player.send = { [weak store] action in store?.send(action) }
         self.store = store
         store.send(.launch)  // restores the stored login
-        // The reducer's toast and overlay timers run on .tick. Send it only while one runs,
-        // so an idle app does not redraw.
+        // The reducer's toast and overlay timers run on .tick. Each .tick redraws the skin,
+        // so send it only when a timer has run out. The overlay never runs out while scrubbing.
         ticker = Task { [weak store] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
-                guard let store else { return }
-                if store.state.toastUntil > 0 || store.state.overlayUntil > 0 { store.send(.tick) }
+                guard let state = store?.state else { return }
+                let now = Dependencies.live.now()
+                let toastDone = state.toastUntil > 0 && now > state.toastUntil
+                let overlayDone = state.overlayUntil > 0 && now > state.overlayUntil && state.nowMode != .scrub
+                if toastDone || overlayDone { store?.send(.tick) }
             }
         }
     }
