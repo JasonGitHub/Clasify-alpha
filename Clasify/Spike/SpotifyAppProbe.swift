@@ -154,6 +154,8 @@ final class SpotifyAppProbe {
             return
         }
         visibility("Hidden at ready")
+        // Build 4 showed that hides = true does not keep Spotify hidden. Hide it again here.
+        await refocus("Connect")
         startListening()
         try? await Task.sleep(for: .seconds(3))
         visibility("Hidden 3 s after ready")
