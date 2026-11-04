@@ -108,6 +108,9 @@ func playing(_ i: Int = 0) -> AppState {
         s = playing(3); s.shuffle = true
         send(&s, .next)
         #expect(s.current?.track == "f0")  // random 0, skips current
+        s = playing(3)
+        send(&s, .offline(true))
+        #expect(send(&s, .next, .prev) == [] && s.current?.track == "f3" && s.toast == "Offline. Can’t start playback")
     }
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {
@@ -176,7 +179,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .expire) == [] && s.toast == "")
         s = playing()
         #expect(send(&s, .expire) == [.stop])
-        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.current == nil)
+        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.current == nil && s.library.isEmpty)
         #expect(s.toast == "Session expired. Log in again")
     }
 

@@ -58,7 +58,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     func signOut(_ msg: String) {
         stop()
-        s.stack = [Frame(screen: .login)]; s.signedIn = false
+        s.stack = [Frame(screen: .login)]; s.signedIn = false; s.library = []  // library belongs to that account
         toast(msg)
     }
     func advance(_ d: Int) {
@@ -158,11 +158,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             fx.append(s.isPlaying ? .resume : .pause)
 
         case .next:
+            guard s.current != nil else { return }
+            if s.offline { return toast(offlineStart) }  // a load offline would leave UI and player on different tracks
             advance(1)
 
         case .prev:
             guard s.current != nil else { return }
-            if s.t > 3 { s.t = 0; fx.append(.seek(0)) } else { advance(-1) }
+            if s.t > 3 { s.t = 0; fx.append(.seek(0)) } else if s.offline { toast(offlineStart) } else { advance(-1) }
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
