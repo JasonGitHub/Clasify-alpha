@@ -13,9 +13,22 @@ use librespot_playback::decoder::AudioPacket;
 use librespot_playback::mixer::{softmixer::SoftMixer, Mixer, MixerConfig};
 use librespot_playback::player::{Player, PlayerEvent};
 
+mod library;
+mod oauth;
+pub use library::{
+    lsb_read_playlists, lsb_read_tracks, LsbPlaylist, LsbPlaylistsCallback, LsbTrack,
+    LsbTracksCallback,
+};
+pub use oauth::{
+    lsb_oauth_cancel, lsb_oauth_login, lsb_oauth_refresh, LsbToken, LsbTokenCallback,
+    OAUTH_REDIRECT_URI, OAUTH_SCOPES,
+};
+
 pub const LSB_OK: i32 = 0;
 pub const LSB_ERR_INVALID_ARGUMENT: i32 = 1;
 pub const LSB_ERR_NOT_LOGGED_IN: i32 = 2;
+pub const LSB_ERR_OAUTH: i32 = 3;
+pub const LSB_ERR_READ: i32 = 4;
 
 pub const LSB_EVENT_LOGGED_IN: u32 = 0;
 pub const LSB_EVENT_PLAYING: u32 = 1;
@@ -189,6 +202,8 @@ impl Sink for CallbackSink {
 struct Connected {
     /// The `lsb_login` call that made this player. Its event loop stops when replaced.
     login_id: u64,
+    /// For the library reads.
+    session: Session,
     player: Arc<Player>,
     mixer: Arc<SoftMixer>,
 }
@@ -280,7 +295,7 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
             ..PlayerConfig::default()
         };
         let sink = move || Box::new(CallbackSink(callbacks)) as Box<dyn Sink>;
-        let player = Player::new(config, session, mixer.get_soft_volume(), sink);
+        let player = Player::new(config, session.clone(), mixer.get_soft_volume(), sink);
         let mut events = player.get_player_event_channel();
         let replaced = {
             let mut slot = connected.lock().unwrap();
@@ -289,6 +304,7 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
             }
             slot.replace(Connected {
                 login_id,
+                session: session.clone(),
                 player,
                 mixer,
             })
@@ -299,7 +315,10 @@ pub unsafe extern "C" fn lsb_login(bridge: *mut LsbBridge, access_token: *const 
         // Not under the lock, so a callback can call back into the bridge.
         // A login that starts right now can still follow this event.
         if is_latest() {
-            callbacks.emit(&Event::new(LSB_EVENT_LOGGED_IN));
+            callbacks.emit(&Event {
+                message: Some(session.username()),
+                ..Event::new(LSB_EVENT_LOGGED_IN)
+            });
         }
         let mut last_play_request = None;
         while let Some(event) = events.recv().await {

@@ -1030,7 +1030,11 @@ name = "librespot-bridge"
 version = "0.1.0"
 dependencies = [
  "librespot-core",
+ "librespot-oauth",
  "librespot-playback",
+ "librespot-protocol",
+ "protobuf",
+ "protobuf-json-mapping",
  "tokio",
 ]
 
