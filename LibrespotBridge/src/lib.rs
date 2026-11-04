@@ -32,6 +32,7 @@ pub const LSB_EVENT_LOG: u32 = 9;
 pub const LSB_EVENT_LIBRARY: u32 = 10;
 pub const LSB_EVENT_CONTEXT: u32 = 11;
 pub const LSB_EVENT_CONNECT: u32 = 12;
+pub const LSB_EVENT_CLUSTER: u32 = 13;
 
 /// Matches `LsbEvent` in the header. The strings are valid only during the callback.
 #[repr(C)]
@@ -559,8 +560,28 @@ pub unsafe extern "C" fn lsb_connect_post(
     path: *const c_char,
     json_body: *const c_char,
 ) -> i32 {
+    lsb_connect_request(bridge, c"POST".as_ptr(), path, json_body)
+}
+
+/// Spike: like `lsb_connect_post`, with `method` "POST" or "PUT" (PUT is for the
+/// Connect volume endpoint).
+///
+/// # Safety
+/// As for `lsb_connect_post`. `method` must be a valid C string.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_request(
+    bridge: *mut LsbBridge,
+    method: *const c_char,
+    path: *const c_char,
+    json_body: *const c_char,
+) -> i32 {
     let (Some(bridge_ref), Some(path)) = (bridge.as_ref(), read_str(path)) else {
         return LSB_ERR_INVALID_ARGUMENT;
+    };
+    let method = match read_str(method) {
+        Some("POST") => http::Method::POST,
+        Some("PUT") => http::Method::PUT,
+        _ => return LSB_ERR_INVALID_ARGUMENT,
     };
     if !path.starts_with("/connect-state/v1/") {
         return LSB_ERR_INVALID_ARGUMENT;
@@ -583,7 +604,7 @@ pub unsafe extern "C" fn lsb_connect_post(
         let result = session
             .spclient()
             .request(
-                &http::Method::POST,
+                &method,
                 &path,
                 Some(headers),
                 body.as_deref().map(str::as_bytes),
@@ -624,7 +645,7 @@ pub unsafe extern "C" fn lsb_connect_devices(bridge: *mut LsbBridge) -> i32 {
     };
     let callbacks = bridge_ref.callbacks;
     bridge_ref.runtime.spawn(async move {
-        let message = match connect_devices(&session).await {
+        let message = match connect_devices(&session, callbacks).await {
             Ok(lines) => lines,
             Err(error) => format!("ERROR {error}"),
         };
@@ -637,7 +658,7 @@ pub unsafe extern "C" fn lsb_connect_devices(bridge: *mut LsbBridge) -> i32 {
     LSB_OK
 }
 
-async fn connect_devices(session: &Session) -> Result<String, String> {
+async fn connect_devices(session: &Session, callbacks: Callbacks) -> Result<String, String> {
     use futures_util::StreamExt;
     use librespot_protocol::connect::{
         Capabilities, Cluster, Device, DeviceInfo, MemberType, PutStateReason, PutStateRequest,
@@ -656,6 +677,27 @@ async fn connect_devices(session: &Session) -> Result<String, String> {
                     .unwrap_or_default())
             })
             .map_err(|e| format!("dealer listen: {e}"))?;
+        let mut clusters = session
+            .dealer()
+            .listen_for(
+                "hm://connect-state/v1/cluster",
+                librespot_core::dealer::protocol::Message::from_raw::<
+                    librespot_protocol::connect::ClusterUpdate,
+                >,
+            )
+            .map_err(|e| format!("dealer listen cluster: {e}"))?;
+        tokio::spawn(async move {
+            while let Some(update) = clusters.next().await {
+                let message = match update {
+                    Ok(update) => cluster_summary(&update),
+                    Err(error) => format!("ERROR {error}"),
+                };
+                callbacks.emit(&Event {
+                    message: Some(message),
+                    ..Event::new(LSB_EVENT_CLUSTER)
+                });
+            }
+        });
         session
             .dealer()
             .start()
@@ -716,6 +758,33 @@ async fn connect_devices(session: &Session) -> Result<String, String> {
         })
         .collect();
     Ok(lines.join("\n"))
+}
+
+/// One line: reason|active device|playing|paused|buffering|track|position as of
+/// timestamp|timestamp|duration|context|active device volume|server timestamp.
+fn cluster_summary(update: &librespot_protocol::connect::ClusterUpdate) -> String {
+    let cluster = &update.cluster;
+    let state = &cluster.player_state;
+    let volume = cluster
+        .device
+        .get(&cluster.active_device_id)
+        .map(|d| d.volume)
+        .unwrap_or_default();
+    format!(
+        "{:?}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
+        update.update_reason.enum_value_or_default(),
+        cluster.active_device_id,
+        state.is_playing,
+        state.is_paused,
+        state.is_buffering,
+        state.track.uri,
+        state.position_as_of_timestamp,
+        state.timestamp,
+        state.duration,
+        state.context_uri,
+        volume,
+        cluster.server_timestamp_ms
+    )
 }
 
 /// `track_uri` is the context URI. `message` is the track URIs of the loaded pages,

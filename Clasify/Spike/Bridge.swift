@@ -24,6 +24,7 @@ struct BridgeEvent: Sendable {
         case LSB_EVENT_LIBRARY: "LIBRARY"
         case LSB_EVENT_CONTEXT: "CONTEXT"
         case LSB_EVENT_CONNECT: "CONNECT"
+        case LSB_EVENT_CLUSTER: "CLUSTER"
         default: "KIND_\(kind)"
         }
     }
@@ -89,6 +90,9 @@ final class Bridge {
     func setAccessPointPort(_ port: UInt16) -> Int32 { lsb_set_ap_port(handle, port) }
     func connectDevices() -> Int32 { lsb_connect_devices(handle) }
     func connectPost(_ path: String, body: String?) -> Int32 { lsb_connect_post(handle, path, body) }
+    func connectRequest(_ method: String, _ path: String, body: String?) -> Int32 {
+        lsb_connect_request(handle, method, path, body)
+    }
 
     /// Starts OAuth in the browser. `onResult` runs once, on a bridge thread.
     nonisolated static func oauthLogin(onResult: @escaping @Sendable (OAuthResult) -> Void) -> Int32 {

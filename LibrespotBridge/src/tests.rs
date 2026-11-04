@@ -75,6 +75,7 @@ fn header_matches_rust() {
         ("LSB_EVENT_LIBRARY", LSB_EVENT_LIBRARY),
         ("LSB_EVENT_CONTEXT", LSB_EVENT_CONTEXT),
         ("LSB_EVENT_CONNECT", LSB_EVENT_CONNECT),
+        ("LSB_EVENT_CLUSTER", LSB_EVENT_CLUSTER),
     ];
     for (name, value) in constants {
         let line = format!("#define {name} {value}\n");
@@ -109,6 +110,15 @@ fn playback_before_login_returns_not_logged_in() {
             LSB_ERR_NOT_LOGGED_IN
         );
         assert_eq!(lsb_connect_devices(bridge), LSB_ERR_NOT_LOGGED_IN);
+        assert_eq!(
+            lsb_connect_request(
+                bridge,
+                c"DELETE".as_ptr(),
+                connect.as_ptr(),
+                std::ptr::null()
+            ),
+            LSB_ERR_INVALID_ARGUMENT
+        );
         let library = c"/playlist/v2/user/x/rootlist";
         assert_eq!(
             lsb_connect_post(bridge, library.as_ptr(), std::ptr::null()),

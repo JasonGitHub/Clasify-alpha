@@ -38,6 +38,10 @@
 // Spike: the result of lsb_connect_post. `track_uri` is the path, `message` is
 // "OK <body>" or "ERROR <text>" and the session device ID.
 #define LSB_EVENT_CONNECT 12
+// Spike: a Connect cluster update, after lsb_connect_devices. `message` is
+// reason|active device|playing|paused|buffering|track|position as of timestamp|
+// timestamp|duration|context|active device volume|server timestamp.
+#define LSB_EVENT_CLUSTER 13
 
 typedef struct LsbBridge LsbBridge;
 
@@ -98,6 +102,8 @@ int32_t lsb_connect_post(LsbBridge *bridge, const char *path, const char *json_b
 // Spike: registers this session as a Connect device and lists the cluster's devices.
 // Sends one LSB_EVENT_CONNECT with `track_uri` "devices".
 int32_t lsb_connect_devices(LsbBridge *bridge);
+// Spike: as lsb_connect_post, with `method` "POST" or "PUT".
+int32_t lsb_connect_request(LsbBridge *bridge, const char *method, const char *path, const char *json_body);
 
 // OAuth login with PKCE through librespot-oauth, with librespot's own client ID.
 // Opens the Spotify login page in the browser and listens on the loopback

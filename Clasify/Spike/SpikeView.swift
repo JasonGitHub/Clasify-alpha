@@ -19,6 +19,8 @@ struct SpikeView: View {
                 Divider()
                 goLibrespotSection
                 Divider()
+                connectSection
+                Divider()
                 webPlayerSection
                 Divider()
                 HStack {
@@ -172,6 +174,28 @@ struct SpikeView: View {
             }
             ForEach(probe.results) { line in detail("\(line.name): \(line.value)") }
         }
+    }
+
+    private var connectSection: some View {
+        let probe = model.connect
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Build 8: Spotify app through Connect commands only").font(.headline)
+            Text("Run 1 and 3a first. No AppleScript is used here.").font(.caption).foregroundStyle(.secondary)
+            Text("1. Quit Spotify, then click one. Do the other after quitting Spotify again.").font(.caption)
+            HStack {
+                Button("Cold start (NSWorkspace)") { Task { await probe.coldStart(model: model, useOpenCommand: false) } }
+                Button("Cold start (open -g -j)") { Task { await probe.coldStart(model: model, useOpenCommand: true) } }
+            }
+            Text("2. Open the Spotify window, then click on Clasify so Spotify is behind it.").font(.caption)
+            Button("Play, next, Liked Songs with Spotify behind") { Task { await probe.behind(model: model) } }
+            Text("3 and 4. While music plays:").font(.caption)
+            HStack {
+                Button("Test controls") { Task { await probe.controls(model: model) } }
+                Button("Wait for track end") { Task { await probe.trackEnd(model: model) } }
+            }
+            ForEach(probe.results) { line in detail("\(line.name): \(line.value)") }
+        }
+        .disabled(probe.isBusy)
     }
 
     private var webPlayerSection: some View {
