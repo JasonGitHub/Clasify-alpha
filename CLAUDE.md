@@ -15,10 +15,12 @@ Design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjo
 
 ## Build and test
 
-No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Minimum macOS is 14.
+Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Minimum macOS is 14.
 
 - `ClasifyCore/` (store and reducer) is plain Swift with no Apple UI frameworks. It builds and tests on Linux: `cd ClasifyCore && swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors`. CI runs the same on Linux (`.github/workflows/core.yml`).
-- The app itself builds on GitHub Actions macOS runners. Cloud sessions run on Linux and cannot run `xcodebuild`, so say in the PR when an app change was not built or tested locally.
+- `LibrespotBridge/` is the librespot static library with its C header: `cd LibrespotBridge && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked`. CI: `.github/workflows/bridge.yml`.
+- `Clasify.xcodeproj` builds the app from the `Clasify/` folder. New Swift files there need no project edits. CI: `.github/workflows/app.yml` on macOS runners.
+- The app builds only on macOS. Cloud sessions run on Linux and cannot run `xcodebuild`, so say in the PR when an app change was not built or tested locally.
 
 ## Hard constraints
 
@@ -43,7 +45,7 @@ No Xcode project yet. Swift 6, Xcode + Swift Package Manager; librespot (Rust) b
 
 - Swift Testing, not XCTest.
 - Every `Action` case gets a unit test.
-- Tests use a fake `Player`. They never touch Spotify or the network.
+- Tests use a fake `Player` and a fake `Library`. They never touch Spotify or the network.
 - Skins get snapshot tests of their main screens, made with Apple APIs only: `ImageRenderer` for SwiftUI views, `NSView.cacheDisplay(in:to:)` for AppKit views. No snapshot-testing package. These run on macOS CI only.
 
 ## Pocket skin mockup
@@ -58,6 +60,7 @@ When you reply to Jason or explain something, make readability the first priorit
 - Use active voice. Give one instruction per sentence.
 - Use common words, and use one term for one thing. Avoid idioms and long noun stacks.
 - Use exact code names, commands and technical terms as they are. Don't simplify them away.
+- Give times in Japan time (JST, UTC+9), for example "18:22 JST". Convert UTC times from GitHub and CI.
 
 ## Pull requests
 

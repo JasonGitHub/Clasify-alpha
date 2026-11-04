@@ -18,7 +18,7 @@ jobs:
       - run: xcodebuild -version
       - name: Test ClasifyCore on macOS
         working-directory: ClasifyCore
-        run: swift build -Xswiftc -warnings-as-errors && swift test
+        run: swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors
       - name: Build the app with zero warnings
         run: |
           set -o pipefail
