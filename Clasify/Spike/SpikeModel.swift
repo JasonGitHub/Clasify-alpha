@@ -455,7 +455,8 @@ final class SpikeModel {
         lines += spotifyApp.reportLines
         lines += ["", "5. go-librespot:"]
         lines += goLibrespot.reportLines
-        lines += ["", "6. Web Playback SDK and Spotify Connect:"]
+        // The web player test (build 7, part A) is parked. Only its Connect results are kept.
+        lines += ["", "6. Spotify Connect (build 7):"]
         lines += webPlayer.reportLines
         lines += ["", "7. Spotify app through Connect commands only:"]
         lines += connect.reportLines

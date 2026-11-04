@@ -21,8 +21,6 @@ struct SpikeView: View {
                 Divider()
                 connectSection
                 Divider()
-                webPlayerSection
-                Divider()
                 HStack {
                     Button("4. Copy report") {
                         model.copyReport()
