@@ -149,7 +149,8 @@ func sampleState() -> AppState {
         let wav = Clicker.wav()
         let samples = Clicker.samples()
         #expect(samples.count == 176)  // 4 ms at 44.1 kHz
-        #expect(wav.count == 44 + samples.count * 2)
+        let size: Int = 44 + samples.count * 2  // the header, then 16-bit samples
+        #expect(wav.count == size)
         #expect(wav.prefix(4) == Data("RIFF".utf8))
         #expect(samples.contains { $0 != 0 })
     }

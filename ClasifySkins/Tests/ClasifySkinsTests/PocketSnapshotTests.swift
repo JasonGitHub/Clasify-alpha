@@ -72,7 +72,8 @@ import Testing
         s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
         let shot = try render(s, "tracks")
         #expect(shot.isBlue(100, Self.rowCenter(0)))
-        #expect(shot.isDark(Self.screenLeft + 252 - 4, Self.listTop + 8))  // the scroll thumb
+        let thumbX: Int = Self.screenLeft + 248, thumbY: Int = Self.listTop + 8
+        #expect(shot.isDark(thumbX, thumbY))  // the scroll thumb
     }
 
     @Test func settings() throws {
@@ -93,9 +94,10 @@ import Testing
         let cover = Color(hex: Labels.cover(for: "OutKast"))
         let want = NSColor(cover).usingColorSpace(.sRGB)!
         let got = shot.rgb(Self.screenLeft + 12 + 8, 130)  // left part of the cover, beside the note
-        #expect(abs(got.r - Int(want.redComponent * 255)) < 12)
-        #expect(abs(got.g - Int(want.greenComponent * 255)) < 12)
-        #expect(abs(got.b - Int(want.blueComponent * 255)) < 12)
+        let wantR = Int(want.redComponent * 255), wantG = Int(want.greenComponent * 255)
+        let wantB = Int(want.blueComponent * 255)
+        let near = abs(got.r - wantR) < 12 && abs(got.g - wantG) < 12 && abs(got.b - wantB) < 12
+        #expect(near, "cover \(got), want \((wantR, wantG, wantB))")
     }
 
     @Test func nowPlayingVolumeAndScrub() throws {
@@ -126,12 +128,15 @@ import Testing
         s.stack = [Frame(screen: .login)]
         s.toast = "Logged out"
         let shot = try render(s, "toast")
-        #expect(shot.isDark(Self.screenLeft + 24, 24 + 2 + 200 - 26 - 6))  // the toast's dark box
+        let toastX: Int = Self.screenLeft + 24, toastY: Int = 194  // 6 points above the toast's bottom, 26 above the screen's
+        #expect(shot.isDark(toastX, toastY))  // the toast's dark box
     }
 
     @Test func wheelIsDrawn() throws {
         let shot = try render(AppState(), "wheel")
-        #expect(shot.isLight(150, 24 + 204 + 32 + 98))  // the center button
-        #expect(shot.isLight(150, 24 + 204 + 32 + 60))  // the ring
+        let wheelTop: Int = 260  // device padding 24, screen 204, gap 32
+        let centerY: Int = wheelTop + 98, ringY: Int = wheelTop + 60
+        #expect(shot.isLight(150, centerY))  // the center button
+        #expect(shot.isLight(150, ringY))  // the ring
     }
 }
