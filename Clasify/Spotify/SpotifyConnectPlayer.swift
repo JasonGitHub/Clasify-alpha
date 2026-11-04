@@ -231,7 +231,11 @@ final class SpotifyConnectPlayer: Player {
 
     /// Launches Spotify hidden if it does not run, then waits until its device is in the cluster.
     private func appDevice(_ id: Int) async throws -> String {
+        // Devices from before a launch here are other machines, so they are never this Mac.
+        var before: Set<String> = []
         if NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).isEmpty {
+            let listed = try await client.devices()
+            before = Set(listed.map(\.id))
             try await launchSpotify()
         }
         let name = SCDynamicStoreCopyComputerName(nil, nil) as String?
@@ -241,7 +245,7 @@ final class SpotifyConnectPlayer: Player {
             let devices = try await client.devices().map {
                 SpotifyAppDevice.Candidate(id: $0.id, name: $0.name, type: $0.type)
             }
-            switch SpotifyAppDevice.pick(devices, computerName: name) {
+            switch SpotifyAppDevice.pick(devices, computerName: name, excluding: before) {
             case .found(let found): return found
             case .ambiguous: throw PlayerError(message: "Spotify runs on several computers. Quit it on the others")
             case .none: try await Task.sleep(for: .seconds(1))

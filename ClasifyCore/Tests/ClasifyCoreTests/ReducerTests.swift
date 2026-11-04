@@ -373,12 +373,29 @@ func playing(_ i: Int = 0) -> AppState {
     let phone = D(id: "p1", name: "iPhone", type: "SMARTPHONE")
 
     @Test func picksThisMacByNameOrTheOnlyComputer() {
-        #expect(SpotifyAppDevice.pick([phone, mac], computerName: "jason's macbook air 15") == .found(id: "a1"))
-        #expect(SpotifyAppDevice.pick([phone, mac], computerName: "Other Mac") == .found(id: "a1"))
-        #expect(SpotifyAppDevice.pick([phone, mac], computerName: nil) == .found(id: "a1"))
-        #expect(SpotifyAppDevice.pick([phone], computerName: "Jason’s Macbook Air 15") == .none)
+        func pick(_ devices: [D], _ name: String?) -> SpotifyAppDevice.Pick {
+            SpotifyAppDevice.pick(devices, computerName: name)
+        }
+        #expect(pick([phone, mac], "jason's macbook air 15") == .found(id: "a1"))
+        #expect(pick([phone, mac], "Other Mac") == .found(id: "a1"))
+        #expect(pick([phone, mac], nil) == .found(id: "a1"))
+        #expect(pick([phone], "Jason’s Macbook Air 15") == .none)
         let second = D(id: "a2", name: "Studio", type: "COMPUTER")
-        #expect(SpotifyAppDevice.pick([mac, second], computerName: "Studio") == .found(id: "a2"))
-        #expect(SpotifyAppDevice.pick([mac, second], computerName: "Laptop") == .ambiguous)
+        #expect(pick([mac, second], "Studio") == .found(id: "a2"))
+        #expect(pick([mac, second], "Laptop") == .ambiguous)
+    }
+
+    @Test func coldStartWaitsForThisMacInsteadOfAnotherComputer() {
+        // Clasify just launched Spotify here. The work PC was in the list before the launch.
+        let pc = D(id: "w1", name: "WORK-PC", type: "COMPUTER")
+        let before: Set = ["w1", "p1"]
+        func pick(_ devices: [D], _ name: String?) -> SpotifyAppDevice.Pick {
+            SpotifyAppDevice.pick(devices, computerName: name, excluding: before)
+        }
+        #expect(pick([phone, pc], "Jason’s Macbook Air 15") == .none)  // keeps waiting
+        #expect(pick([phone, pc], nil) == .none)
+        #expect(pick([pc, mac], "Jason’s Macbook Air 15") == .found(id: "a1"))
+        #expect(pick([pc, mac], "Renamed Mac") == .found(id: "a1"))  // the only new computer
+        #expect(pick([pc], "WORK-PC") == .found(id: "w1"))  // a name match always wins
     }
 }
