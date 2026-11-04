@@ -28,6 +28,9 @@ final class LibrespotLibrary: Library {
     /// The running `restoreSession`. Two refreshes with one refresh token can fail,
     /// because Spotify can replace the token, so callers share one.
     private var restoring: Task<Bool, Never>?
+    /// The newest bridge login (it may be done). Bridge logins run one at a time: when two overlap, the
+    /// bridge can send LOGGED_IN for both, and the client could not tell them apart.
+    private var bridgeLogin: Task<Void, Never>?
 
     init(client: LibrespotClient) {
         self.client = client
@@ -70,7 +73,10 @@ final class LibrespotLibrary: Library {
         guard let refresh = RefreshTokenStore.read() else { return false }
         do {
             let tokens = try await LibrespotClient.oauthRefresh(refresh)
-            if let newRefresh = tokens.refreshToken { RefreshTokenStore.save(newRefresh) }
+            // Spotify can replace the refresh token, and then the old one stops working.
+            // Keep the new one at once. If the Keychain refuses it, report no session,
+            // so the app does not look logged in with a login that cannot come back.
+            if let newRefresh = tokens.refreshToken, !RefreshTokenStore.save(newRefresh) { return false }
             try await startSession(tokens.accessToken)
             return true
         } catch {
@@ -106,7 +112,14 @@ final class LibrespotLibrary: Library {
         let mine = session
         cache = nil
         username = nil
-        let name = try await client.login(accessToken: token)
+        // Chain this login after the one before it, so the two never overlap.
+        let (client, previous) = (self.client, bridgeLogin)
+        let attempt = Task {
+            await previous?.value
+            return try await client.login(accessToken: token)
+        }
+        bridgeLogin = Task { _ = await attempt.result }
+        let name = try await attempt.value
         guard session == mine else { throw BridgeError.cancelled }  // a logout or newer login came first
         username = name
     }
