@@ -1,22 +1,27 @@
 public struct Track: Equatable, Sendable {
+    public var id: String  // Spotify URI
     public var title: String
     public var artist: String
     public var duration: Double  // seconds
 
-    public init(title: String, artist: String, duration: Double) {
-        self.title = title; self.artist = artist; self.duration = duration
+    public init(id: String, title: String, artist: String, duration: Double) {
+        self.id = id; self.title = title; self.artist = artist; self.duration = duration
     }
 }
 
 public struct Playlist: Equatable, Sendable {
+    /// Spotify URI. Liked Songs uses `Playlist.likedSongsID`.
+    public var id: String
     public var name: String
     public var tracks: [Track]
 
-    public init(name: String, tracks: [Track]) { self.name = name; self.tracks = tracks }
+    public static let likedSongsID = "liked"
+
+    public init(id: String, name: String, tracks: [Track]) { self.id = id; self.name = name; self.tracks = tracks }
 }
 
 public enum Screen: Equatable, Sendable {
-    case login, auth, main, playlists, tracks(playlist: Int), settings, confirm, about, now
+    case login, auth, main, playlists, tracks(playlist: String), settings, confirm, about, now
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
@@ -42,21 +47,21 @@ public struct Frame: Equatable, Sendable {
 /// A selectable list row. Skins map rows to labels and values.
 public enum Row: Equatable, Sendable {
     case logIn, nowPlaying, playlists, likedSongs, shuffleSongs, settings
-    case playlist(Int), track(Int)
-    case shuffle, repeatMode, eq, skin, albumArt, clicker, engine, about, logOut
+    case playlist(String), track(String)
+    case shuffle, repeatMode, eq, skin, albumArt, clicker, about, logOut
     case cancel, confirmLogOut
 }
 
+/// The playing track, by ID, so a library reload that reorders things can't point it elsewhere.
 public struct TrackRef: Equatable, Sendable {
-    public var playlist: Int, track: Int
-    public init(playlist: Int, track: Int) { self.playlist = playlist; self.track = track }
+    public var playlist: String, track: String
+    public init(playlist: String, track: String) { self.playlist = playlist; self.track = track }
 }
 
 public enum NowMode: Sendable { case volume, scrub }
 public enum RepeatMode: String, CaseIterable, Sendable { case off = "Off", all = "All", one = "One" }
 public enum EQPreset: String, CaseIterable, Sendable { case off = "Off", rock = "Rock", pop = "Pop", vocal = "Vocal", bass = "Bass" }
 public enum Skin: String, CaseIterable, Sendable { case pocket = "Pocket", aqua = "Aqua", dark = "Dark" }
-public enum Engine: String, CaseIterable, Sendable { case builtIn = "Built-in", spotifyApp = "Spotify app" }
 
 extension CaseIterable where Self: Equatable {
     var next: Self {
@@ -69,7 +74,6 @@ public struct AppState: Equatable, Sendable {
     public var stack = [Frame(screen: .login)]
     public var tok = 0
     public var signedIn = false
-    /// Index 0 is Liked Songs; the rest are the user's playlists.
     public var library: [Playlist] = []
     public var current: TrackRef?
     public var t: Double = 0
@@ -81,7 +85,6 @@ public struct AppState: Equatable, Sendable {
     public var skin = Skin.pocket
     public var showArt = true
     public var clicker = true
-    public var engine = Engine.builtIn
     public var nowMode = NowMode.volume
     public var overlayUntil: Double = 0
     public var toast = ""
@@ -95,22 +98,21 @@ public struct AppState: Equatable, Sendable {
         set { stack[stack.count - 1] = newValue }
     }
 
-    public func tracks(in playlist: Int) -> [Track] {
-        library.indices.contains(playlist) ? library[playlist].tracks : []
+    public func tracks(in playlist: String) -> [Track] {
+        library.first { $0.id == playlist }?.tracks ?? []
     }
 
     public func track(_ ref: TrackRef) -> Track? {
-        let list = tracks(in: ref.playlist)
-        return list.indices.contains(ref.track) ? list[ref.track] : nil
+        tracks(in: ref.playlist).first { $0.id == ref.track }
     }
 
     public func rows(for frame: Frame) -> [Row] {
         switch frame.screen {
         case .login: [.logIn]
         case .main: (current == nil ? [] : [.nowPlaying]) + [.playlists, .likedSongs, .shuffleSongs, .settings]
-        case .playlists: library.indices.dropFirst().map(Row.playlist)
-        case .tracks(let pl): tracks(in: pl).indices.map(Row.track)
-        case .settings: [.shuffle, .repeatMode, .eq, .skin, .albumArt, .clicker, .engine, .about, .logOut]
+        case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
+        case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
+        case .settings: [.shuffle, .repeatMode, .eq, .skin, .albumArt, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .auth, .about, .now: []
         }
