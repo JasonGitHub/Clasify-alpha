@@ -68,25 +68,7 @@ final class Bridge {
     /// `onEvent` runs on a bridge thread.
     init?(ring: AudioRing, onEvent: @escaping @Sendable (BridgeEvent) -> Void) {
         let context = Unmanaged.passRetained(BridgeContext(ring: ring, onEvent: onEvent)).toOpaque()
-        let handle = lsb_new(
-            { context, event in
-                guard let context, let event else { return }
-                let box = Unmanaged<BridgeContext>.fromOpaque(context).takeUnretainedValue()
-                let raw = event.pointee
-                box.onEvent(BridgeEvent(
-                    kind: raw.kind,
-                    positionMs: raw.position_ms,
-                    playRequestID: raw.play_request_id,
-                    trackURI: string(raw.track_uri),
-                    message: string(raw.message)
-                ))
-            },
-            { context, samples, count in
-                guard let context, let samples else { return }
-                Unmanaged<BridgeContext>.fromOpaque(context).takeUnretainedValue().ring.write(samples, count: count)
-            },
-            context
-        )
+        let handle = lsb_new(bridgeEventCallback, bridgeAudioCallback, context)
         guard let handle else {
             Unmanaged<BridgeContext>.fromOpaque(context).release()
             return nil
@@ -100,25 +82,49 @@ final class Bridge {
     func pause() -> Int32 { lsb_pause(handle) }
 
     /// Starts OAuth in the browser. `onResult` runs once, on a bridge thread.
-    static func oauthLogin(onResult: @escaping @Sendable (OAuthResult) -> Void) -> Int32 {
+    nonisolated static func oauthLogin(onResult: @escaping @Sendable (OAuthResult) -> Void) -> Int32 {
         let context = Unmanaged.passRetained(OAuthContext(onResult: onResult)).toOpaque()
-        let status = lsb_oauth_login({ context, result in
-            guard let context, let result else { return }
-            let box = Unmanaged<OAuthContext>.fromOpaque(context).takeRetainedValue()
-            let raw = result.pointee
-            box.onResult(OAuthResult(
-                accessToken: string(raw.access_token),
-                scopes: (string(raw.scopes) ?? "").split(separator: " ").map(String.init),
-                clientID: string(raw.client_id) ?? "",
-                redirectURI: string(raw.redirect_uri) ?? "",
-                expiresInSeconds: raw.expires_in_s,
-                hasRefreshToken: raw.has_refresh_token,
-                message: string(raw.message)
-            ))
-        }, context)
+        let status = lsb_oauth_login(oauthResultCallback, context)
         if status != LSB_OK {
             Unmanaged<OAuthContext>.fromOpaque(context).release()
         }
         return status
     }
+}
+
+// The C callbacks are global functions, so they are nonisolated. They run on bridge
+// threads. A closure written inside a @MainActor method would be main-actor isolated,
+// and Swift 6 traps when it runs off the main thread.
+
+private func bridgeEventCallback(_ context: UnsafeMutableRawPointer?, _ event: UnsafePointer<LsbEvent>?) {
+    guard let context, let event else { return }
+    let box = Unmanaged<BridgeContext>.fromOpaque(context).takeUnretainedValue()
+    let raw = event.pointee
+    box.onEvent(BridgeEvent(
+        kind: raw.kind,
+        positionMs: raw.position_ms,
+        playRequestID: raw.play_request_id,
+        trackURI: string(raw.track_uri),
+        message: string(raw.message)
+    ))
+}
+
+private func bridgeAudioCallback(_ context: UnsafeMutableRawPointer?, _ samples: UnsafePointer<Float>?, _ count: Int) {
+    guard let context, let samples else { return }
+    Unmanaged<BridgeContext>.fromOpaque(context).takeUnretainedValue().ring.write(samples, count: count)
+}
+
+private func oauthResultCallback(_ context: UnsafeMutableRawPointer?, _ result: UnsafePointer<LsbOAuthResult>?) {
+    guard let context, let result else { return }
+    let box = Unmanaged<OAuthContext>.fromOpaque(context).takeRetainedValue()
+    let raw = result.pointee
+    box.onResult(OAuthResult(
+        accessToken: string(raw.access_token),
+        scopes: (string(raw.scopes) ?? "").split(separator: " ").map(String.init),
+        clientID: string(raw.client_id) ?? "",
+        redirectURI: string(raw.redirect_uri) ?? "",
+        expiresInSeconds: raw.expires_in_s,
+        hasRefreshToken: raw.has_refresh_token,
+        message: string(raw.message)
+    ))
 }

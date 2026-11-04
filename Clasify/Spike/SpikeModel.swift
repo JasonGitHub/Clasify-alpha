@@ -60,16 +60,25 @@ final class SpikeModel {
 
     var hasToken: Bool { token != nil }
 
+    /// Wraps a main-actor handler for a bridge thread. Built in a nonisolated function, so
+    /// the returned closure has no actor isolation and may run on any thread. It hops to
+    /// the main queue in FIFO order, which keeps the event order.
+    nonisolated private static func onMain<T: Sendable>(
+        _ handler: @escaping @MainActor @Sendable (T) -> Void
+    ) -> @Sendable (T) -> Void {
+        { value in
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { handler(value) }
+            }
+        }
+    }
+
     // MARK: Step 1, OAuth login
 
     func logIn() {
         isLoggingIn = true
         oauthStatus = "Waiting for the browser…"
-        let status = Bridge.oauthLogin { result in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { self.receive(result) }
-            }
-        }
+        let status = Bridge.oauthLogin(onResult: Self.onMain { [self] result in receive(result) })
         if status != LSB_OK {
             isLoggingIn = false
             oauthStatus = "FAIL: lsb_oauth_login returned \(status)"
@@ -96,11 +105,7 @@ final class SpikeModel {
                 sawFailure = true
             }
             self.audio = audio
-            bridge = Bridge(ring: audio.ring) { event in
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated { self.receive(event) }
-                }
-            }
+            bridge = Bridge(ring: audio.ring, onEvent: Self.onMain { [self] event in receive(event) })
             if bridge == nil {
                 bridgeStatus = "FAIL: lsb_new returned NULL"
                 return
