@@ -63,3 +63,13 @@ When you reply to Jason or explain something, make readability the first priorit
 - One fix or feature per PR, ideally under 200 changed lines, with a description of what changed and why.
 - PR titles become CHANGELOG lines, so write each title as a one-line changelog entry.
 - CI must be green (build with zero warnings, all tests pass) before merging.
+
+## Code review with Codex
+
+When a PR is ready to merge, comment `@codex review` on it. Then work through what Codex reports:
+
+- Fix significant findings: bugs, data loss, security problems, or a mismatch with the design doc or mockup. Verify each finding against the code before you change anything.
+- Don't push only for style nits. Answer them in their thread.
+- If you decline a finding, say why in its thread.
+- After a fix, push and comment `@codex review` again. Stop when a review has no significant findings.
+- After 3 rounds that still have significant findings, stop and ask Jason.
