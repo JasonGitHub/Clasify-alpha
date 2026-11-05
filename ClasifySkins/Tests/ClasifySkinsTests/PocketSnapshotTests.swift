@@ -91,6 +91,10 @@ import Testing
         let art = shot.rgb(Self.screenLeft + 170, Self.listTop + 150)  // past the pane's shadow
         let want = try reference(Labels.cover(for: "OutKast"))
         #expect(near(art, want), "art \(art), want \(want)")
+
+        s.showArt = false  // Album Art off: a full-width list, with no covers
+        let plain = try render(s, "main-no-art")
+        #expect(plain.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
     }
 
     @Test func mainArtFollowsTheMockupKeyframes() {

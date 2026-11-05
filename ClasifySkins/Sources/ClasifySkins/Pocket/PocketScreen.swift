@@ -33,7 +33,8 @@ struct PocketScreen: View {
 
     var body: some View {
         // The main menu is a 136 point pane with a shadow, over covers on the right.
-        let split = top.screen == .main
+        // With Album Art off, it is a full-width list and loads no covers.
+        let split = top.screen == .main && state.showArt
         ZStack(alignment: .leading) {
             if split { MainArt(tracks: state.mainArt).padding(.leading, 136) }
             VStack(spacing: 0) {
