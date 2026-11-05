@@ -87,6 +87,8 @@ final class AppModel {
     /// The album covers that the skin draws.
     let artwork = ArtworkLoader()
     @ObservationIgnored private var ticker: Task<Void, Never>?
+    /// TEST: trackpad ticks that follow the wheel.
+    @ObservationIgnored private var haptics: Haptics?
 
     init() {
         guard let client = LibrespotClient() else {
@@ -98,6 +100,7 @@ final class AppModel {
         let store = Store(player: player, library: library)
         player.send = { [weak store] action in store?.send(action) }
         self.store = store
+        haptics = Haptics(store: store)
         store.send(.launch)  // restores the stored login
         // The reducer's toast and overlay timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
