@@ -179,6 +179,13 @@ int32_t lsb_connect_volume(LsbBridge *bridge, const char *device_id, uint16_t vo
 int32_t lsb_connect_set_option(LsbBridge *bridge, const char *device_id, uint32_t option,
                                bool on, LsbCommandCallback on_result, void *context);
 
+// Moves playback from the active device (from_device_id, for example a phone) to
+// to_device_id (the Spotify app on this Mac). The song, the context and the place carry
+// over. The play or pause state stays as it was: send LSB_COMMAND_RESUME after it to play.
+int32_t lsb_connect_transfer(LsbBridge *bridge, const char *from_device_id,
+                             const char *to_device_id, LsbCommandCallback on_result,
+                             void *context);
+
 // The Spotify app's player, from the account's Connect cluster. The strings are ""
 // when there is no value. The context of Liked Songs can come back as a playlist
 // URI, so match the playing track, not the context.

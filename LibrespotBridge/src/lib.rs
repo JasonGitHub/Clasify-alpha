@@ -14,14 +14,14 @@ mod library;
 mod oauth;
 pub use connect::{
     lsb_connect_command, lsb_connect_devices, lsb_connect_play, lsb_connect_seek,
-    lsb_connect_set_option, lsb_connect_volume, lsb_connect_watch, LsbCommandCallback, LsbDevice,
-    LsbDevicesCallback, LsbPlayerState, LsbStateCallback, LSB_COMMAND_NEXT, LSB_COMMAND_PAUSE,
-    LSB_COMMAND_PREV, LSB_COMMAND_RESUME, LSB_OPTION_REPEAT_CONTEXT, LSB_OPTION_REPEAT_TRACK,
-    LSB_OPTION_SHUFFLE,
+    lsb_connect_set_option, lsb_connect_transfer, lsb_connect_volume, lsb_connect_watch,
+    LsbCommandCallback, LsbDevice, LsbDevicesCallback, LsbPlayerState, LsbStateCallback,
+    LSB_COMMAND_NEXT, LSB_COMMAND_PAUSE, LSB_COMMAND_PREV, LSB_COMMAND_RESUME,
+    LSB_OPTION_REPEAT_CONTEXT, LSB_OPTION_REPEAT_TRACK, LSB_OPTION_SHUFFLE,
 };
 pub use library::{
-    lsb_read_playlists, lsb_read_tracks, LsbPlaylist, LsbPlaylistsCallback, LsbTrack,
-    LsbTracksCallback,
+    lsb_read_playlists, lsb_read_track, lsb_read_tracks, LsbPlaylist, LsbPlaylistsCallback,
+    LsbTrack, LsbTracksCallback,
 };
 pub use oauth::{
     lsb_oauth_cancel, lsb_oauth_login, lsb_oauth_refresh, LsbToken, LsbTokenCallback,
