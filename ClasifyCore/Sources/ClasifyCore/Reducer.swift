@@ -180,6 +180,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func setPlaylists(_ playlists: [Playlist]) {
         let read = Dictionary(s.library.map { ($0.id, $0.tracks) }, uniquingKeysWith: { a, _ in a })
         let kept = Set(playlists.map(\.id)).union([Playlist.likedSongsID])
+        // The playing playlist is gone: keep the playing track's details for Now Playing.
+        if let ref = s.current, !kept.contains(ref.playlist), let track = s.track(ref) { keepExtra(track) }
         s.loadedTracks = s.loadedTracks.intersection(kept)
         s.library = s.library.filter { $0.id == Playlist.likedSongsID } + playlists.map {
             var p = $0

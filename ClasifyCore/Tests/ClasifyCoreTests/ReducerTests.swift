@@ -431,6 +431,13 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.current?.track == "f3" && s.track(s.current!) == focus.tracks[3])
     }
 
+    @Test func playlistsRefreshedKeepsThePlayingSongWhenItsPlaylistLeaves() {
+        var s = playing(3)
+        s.refreshing = [""]
+        send(&s, .playlistsRefreshed([Playlist(id: "mix", name: "Mix", tracks: [], trackCount: 3)]))
+        #expect(s.tracks(in: "focus").isEmpty && s.track(s.current!) == focus.tracks[3])
+    }
+
     @Test func playlistsRefreshedKeepsTheSelectedPlaylist() {
         var s = mainMenu()
         send(&s, openFocus(1) + [.menu])  // on Playlists, Focus selected
