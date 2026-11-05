@@ -34,6 +34,10 @@ public protocol Library: AnyObject {
     /// The tracks of one playlist, or of Liked Songs for `Playlist.likedSongsID`.
     /// Returns nil when the read fails.
     func tracks(of playlist: String) async -> [Track]?
+    /// The playlist list or one playlist's tracks, read again past any cached read.
+    /// Returns nil when the read fails.
+    func rereadPlaylists() async -> [Playlist]?
+    func reread(_ playlist: String) async -> [Track]?
     /// The details of one track ("spotify:track:<id>"). Returns nil when the read fails.
     func track(_ id: String) async -> Track?
     /// Reads Liked Songs and the playlist list in the background, at most two reads at a time,
@@ -95,6 +99,18 @@ public final class Store {
                     let result = await library.tracks(of: id)
                     self?.fetches[token] = nil
                     self?.send(.tracksLoaded(token: token, playlist: id, tracks: result))
+                }
+            case .refreshPlaylists:
+                let library = self.library
+                Task(priority: .utility) { [weak self] in
+                    let result = await library.rereadPlaylists()
+                    self?.send(.playlistsRefreshed(result))
+                }
+            case .refreshTracks(let id):
+                let library = self.library
+                Task(priority: .utility) { [weak self] in
+                    let result = await library.reread(id)
+                    self?.send(.tracksRefreshed(playlist: id, tracks: result))
                 }
             case .readTrack(let id):
                 let library = self.library

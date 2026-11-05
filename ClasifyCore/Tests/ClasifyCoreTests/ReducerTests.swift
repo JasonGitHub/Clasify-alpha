@@ -392,6 +392,60 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.current == nil)
     }
 
+    @Test func openingAStaleListReadsItAgainInTheBackground() {
+        var s = mainMenu()
+        send(&s, openFocus(1))  // read at 100
+        #expect(send(&s, .menu, .select, now: 219) == [])  // not stale yet: no read
+        #expect(send(&s, .menu, .select, now: 220) == [.refreshTracks(playlist: "focus")])
+        #expect(!s.top.loading && s.rows(for: s.top).count == 8)  // the old rows show at once
+        #expect(send(&s, .menu, .select, now: 300) == [])  // one refresh at a time
+        #expect(send(&s, .menu, .menu, .select, now: 300) == [.refreshPlaylists])  // the playlist list too
+        s.refreshing = []
+        send(&s, .offline(true))
+        #expect(send(&s, .select, .menu, now: 400) == [])  // offline: no read
+    }
+
+    @Test func tracksRefreshedKeepsTheSelectedSong() {
+        var s = mainMenu()
+        send(&s, openFocus(1))
+        send(&s, .wheel(6))  // f6
+        let added = Track(id: "new", title: "New", artist: "x", duration: 30)
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: [added]))  // not asked for: ignored
+        #expect(s.tracks(in: "focus").count == 8)
+        s.refreshing = ["focus"]
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: [added] + focus.tracks), now: 500)
+        #expect(s.top.sel == 7 && s.rows(for: s.top)[7] == .track("f6") && s.top.off == 7 - s.shownRows + 1)
+        #expect(s.readAt["focus"] == 500 && s.refreshing.isEmpty)
+        s.refreshing = ["focus"]
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: nil))  // failed: the old rows stay
+        #expect(s.tracks(in: "focus").count == 9 && s.refreshing.isEmpty)
+        s.refreshing = ["focus"]
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: Array(focus.tracks.prefix(3))))  // f6 left
+        #expect(s.top.sel == 2)
+    }
+
+    @Test func tracksRefreshedKeepsThePlayingSongWhenItLeaves() {
+        var s = playing(3)
+        s.refreshing = ["focus"]
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: Array(focus.tracks.prefix(2))))
+        #expect(s.current?.track == "f3" && s.track(s.current!) == focus.tracks[3])
+    }
+
+    @Test func playlistsRefreshedKeepsTheSelectedPlaylist() {
+        var s = mainMenu()
+        send(&s, openFocus(1), .menu)  // on Playlists, Focus selected
+        let mix = Playlist(id: "mix", name: "Mix", tracks: [], trackCount: 3)
+        s.refreshing = [""]
+        send(&s, .playlistsRefreshed([mix, focusInfo]), now: 600)
+        #expect(s.rows(for: s.top) == [.playlist("mix"), .playlist("focus")] && s.top.sel == 1)
+        #expect(s.tracks(in: "focus").count == 8 && s.readAt[""] == 600)  // read tracks stay
+        s.refreshing = [""]
+        send(&s, .expire)  // signs out
+        #expect(s.readAt.isEmpty && s.refreshing.isEmpty)
+        send(&s, .playlistsRefreshed([mix]))  // from before the sign-out
+        #expect(s.library.isEmpty)
+    }
+
     @Test func playbackFailedPausesAndShowsToast() {
         var s = playing()
         send(&s, .playbackFailed("Old", generation: 0))  // stale load
@@ -584,6 +638,10 @@ func playing(_ i: Int = 0) -> AppState {
         fetches.append(playlist); return library.first { $0.id == playlist }?.tracks
     }
     var extra: [String: Track] = [:]
+    func rereadPlaylists() async -> [Playlist]? { fetches.append("reread playlists"); return [focusInfo] }
+    func reread(_ playlist: String) async -> [Track]? {
+        fetches.append("reread \(playlist)"); return library.first { $0.id == playlist }?.tracks
+    }
     func track(_ id: String) async -> Track? { fetches.append(id); return extra[id] }
     func prefetch() async { calls.append("prefetch") }
     func logIn() async -> Bool { calls.append("logIn"); return loginResult }
@@ -600,6 +658,17 @@ func playing(_ i: Int = 0) -> AppState {
     store.send(.trackChanged(radio.id, playing: true, generation: 1))
     while store.state.extraTracks.isEmpty { await Task.yield() }
     #expect(store.state.track(store.state.current!) == radio && lib.fetches.last == radio.id)
+}
+
+@MainActor @Test func storeRereadsAStaleList() async {
+    let lib = FakeLibrary()
+    var s = mainMenu()
+    send(&s, openFocus(1))
+    let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 1000 }, random: { _ in 0 }))
+    store.send(.menu)
+    store.send(.select)
+    while !store.state.refreshing.isEmpty { await Task.yield() }
+    #expect(lib.fetches == ["reread focus"] && store.state.readAt["focus"] == 1000)
 }
 
 @MainActor @Test func storeRunsLoginEffects() async {

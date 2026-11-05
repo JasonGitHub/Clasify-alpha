@@ -10,6 +10,10 @@ public enum Action: Equatable, Sendable {
     case playlistsLoaded(token: Int, playlists: [Playlist]?)
     /// The tracks of one playlist (or Liked Songs) were read. nil when the read failed.
     case tracksLoaded(token: Int, playlist: String, tracks: [Track]?)
+    /// A background re-read that `.refreshPlaylists` or `.refreshTracks` asked for. nil when it
+    /// failed: the old rows stay.
+    case playlistsRefreshed([Playlist]?)
+    case tracksRefreshed(playlist: String, tracks: [Track]?)
     /// The app started. It tries to log in again with the stored login.
     case launch
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
@@ -54,6 +58,10 @@ public enum Effect: Equatable, Sendable {
     case fetchPlaylists(token: Int)
     /// Read one playlist's tracks; the result comes back as `.tracksLoaded` with this token.
     case fetchTracks(token: Int, playlist: String)
+    /// Read the playlist list or one playlist's tracks again, past the library's cache, while the
+    /// screen shows the old rows. The result comes back as `.playlistsRefreshed` or `.tracksRefreshed`.
+    case refreshPlaylists
+    case refreshTracks(playlist: String)
     /// Read Liked Songs and the playlist list in the background after a login, so that the
     /// first open is fast. Nothing comes back: the library keeps the result for the next fetch.
     case prefetch
@@ -89,6 +97,8 @@ public let visibleRows = 8
 public let trackRows = 5
 /// Seconds without a wheel turn before a scrub, shuffle or repeat slider goes back to the progress bar.
 public let sliderTimeout = 6.0
+/// Seconds after a read when opening its screen reads it again in the background.
+public let staleAfter = 120.0
 /// The most tracks from outside the library that `AppState.extraTracks` keeps.
 public let extraTrackLimit = 50
 /// Seconds that a list's scroll bar shows after a wheel step or a screen change.
@@ -109,7 +119,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
     func open(_ screen: Screen) {
-        if s.isLoaded(screen) { return s.stack.append(Frame(screen: screen)) }
+        if s.isLoaded(screen) {
+            s.stack.append(Frame(screen: screen))
+            return refreshIfStale(screen)
+        }
         s.tok += 1
         s.stack.append(Frame(screen: screen, loading: true, token: s.tok))
         fetch(screen)
@@ -138,6 +151,46 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     /// A current track from outside our copy of the list, such as Spotify's autoplay: read its
     /// details once. A read in flight or a failed read is not started again.
+    /// Reads a list again in the background when its read is older than `staleAfter`.
+    /// Only a screen opening calls this, so a wheel turn never starts a read.
+    func refreshIfStale(_ screen: Screen) {
+        let key = AppState.readKey(screen)
+        guard !s.offline, now - (s.readAt[key] ?? 0) >= staleAfter, !s.refreshing.contains(key) else { return }
+        s.refreshing.insert(key)
+        if case .tracks(let id) = screen { fx.append(.refreshTracks(playlist: id)) } else { fx.append(.refreshPlaylists) }
+    }
+    /// After new rows came in, each frame on `screen` keeps its selected row by ID. A row that
+    /// left keeps the index, clamped. The scroll offset moves with the selection.
+    func keepSelection(on screen: Screen, old: [Row]) {
+        for f in s.stack.indices where s.stack[f].screen == screen {
+            let new = s.rows(for: s.stack[f])
+            var frame = s.stack[f]
+            let picked = old.indices.contains(frame.sel) ? new.firstIndex(of: old[frame.sel]) : nil
+            let sel = picked ?? clamp(frame.sel, 0, max(new.count - 1, 0))
+            frame.off = clamp(frame.off + sel - frame.sel, max(0, sel - s.shownRows + 1), sel)
+            frame.sel = sel
+            s.stack[f] = frame
+        }
+    }
+    func keepExtra(_ track: Track) {
+        s.extraTracks.removeAll { $0.id == track.id }
+        s.extraTracks.append(track)
+        if s.extraTracks.count > extraTrackLimit { s.extraTracks.removeFirst(s.extraTracks.count - extraTrackLimit) }
+    }
+    /// Puts the playlist list in, and keeps Liked Songs and the tracks already read for
+    /// playlists that are still there.
+    func setPlaylists(_ playlists: [Playlist]) {
+        let read = Dictionary(s.library.map { ($0.id, $0.tracks) }, uniquingKeysWith: { a, _ in a })
+        let kept = Set(playlists.map(\.id)).union([Playlist.likedSongsID])
+        s.loadedTracks = s.loadedTracks.intersection(kept)
+        s.library = s.library.filter { $0.id == Playlist.likedSongsID } + playlists.map {
+            var p = $0
+            if s.loadedTracks.contains(p.id) { p.tracks = read[p.id] ?? [] }
+            return p
+        }
+        s.playlistsLoaded = true
+        s.readAt[AppState.readKey(.playlists)] = now
+    }
     func readIfUnknown(_ id: String) {
         guard let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) else { return }
         s.trackReads.insert(id)
@@ -151,7 +204,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
-        s.extraTracks = []; s.trackReads = []
+        s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []
         toast(msg)
     }
     func shuffleLiked() {
@@ -298,9 +351,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.trackReads.contains(id) else { return }
             guard let track else { return }  // failed: the ID stays, so it is not read again
             s.trackReads.remove(id)
-            s.extraTracks.removeAll { $0.id == id }
-            s.extraTracks.append(track)
-            if s.extraTracks.count > extraTrackLimit { s.extraTracks.removeFirst(s.extraTracks.count - extraTrackLimit) }
+            keepExtra(track)
 
         case .adopted(let id, let pl, let playing, let t, let gen):
             guard s.current == nil, gen == s.playGen else { return }  // a load or a newer one came first
@@ -316,19 +367,30 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .playlistsLoaded(let token, let playlists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
-            if let playlists {
-                // Keep Liked Songs and the tracks already read for playlists that are still there.
-                let read = Dictionary(s.library.map { ($0.id, $0.tracks) }, uniquingKeysWith: { a, _ in a })
-                let kept = Set(playlists.map(\.id)).union([Playlist.likedSongsID])
-                s.loadedTracks = s.loadedTracks.intersection(kept)
-                s.library = s.library.filter { $0.id == Playlist.likedSongsID } + playlists.map {
-                    var p = $0
-                    if s.loadedTracks.contains(p.id) { p.tracks = read[p.id] ?? [] }
-                    return p
-                }
-                s.playlistsLoaded = true
-            }
+            if let playlists { setPlaylists(playlists) }
             finishLoad(token, ok: playlists != nil)
+
+        case .playlistsRefreshed(let playlists):
+            // Not asked for in this session, for example from before a sign-out.
+            guard s.refreshing.remove(AppState.readKey(.playlists)) != nil, let playlists else { return }
+            let old = s.rows(for: Frame(screen: .playlists))
+            setPlaylists(playlists)
+            keepSelection(on: .playlists, old: old)
+
+        case .tracksRefreshed(let id, let tracks):
+            guard s.refreshing.remove(id) != nil, let tracks,
+                let i = s.library.firstIndex(where: { $0.id == id })  // the playlist is gone
+            else { return }
+            let screen = Screen.tracks(playlist: id)
+            let old = s.rows(for: Frame(screen: screen))
+            // The playing track left the list: keep its details for Now Playing.
+            if let ref = s.current, ref.playlist == id, !tracks.contains(where: { $0.id == ref.track }),
+                let track = s.library[i].tracks.first(where: { $0.id == ref.track }) {
+                keepExtra(track)
+            }
+            s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+            s.readAt[id] = now
+            keepSelection(on: screen, old: old)
 
         case .tracksLoaded(let token, let id, let tracks):
             guard s.top.loading, s.top.token == token else { return }  // stale load
@@ -341,6 +403,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                     s.library.append(Playlist(id: id, name: "", tracks: tracks))
                 }
                 s.loadedTracks.insert(id)
+                s.readAt[id] = now
             }
             finishLoad(token, ok: tracks != nil)
 

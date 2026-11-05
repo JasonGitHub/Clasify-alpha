@@ -171,6 +171,16 @@ final class LibrespotLibrary: Library {
         await withSession { try await self.readTracks(playlist) }
     }
 
+    func rereadPlaylists() async -> [Playlist]? {
+        playlistsRead = nil  // past the cached read; one that runs still delivers to its callers
+        return await playlists()
+    }
+
+    func reread(_ playlist: String) async -> [Track]? {
+        trackReads[playlist] = nil
+        return await tracks(of: playlist)
+    }
+
     func track(_ id: String) async -> Track? {
         let client = self.client
         return await withSession { try await client.track(uri: id) } ?? nil
