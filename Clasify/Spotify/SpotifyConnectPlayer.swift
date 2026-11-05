@@ -239,8 +239,8 @@ final class SpotifyConnectPlayer: Player {
                 }
                 // The transfer keeps the other device's play state, so set the wanted one.
                 client.fire(wantsRunning ? LSB_COMMAND_RESUME : LSB_COMMAND_PAUSE, to: device)
-                if let seek = pendingSeek { client.fireSeek(device: device, seconds: seek) }
                 for command in pendingSkips { client.fire(command, to: device) }
+                if let seek = pendingSeek { client.fireSeek(device: device, seconds: seek) }  // after the skips, as pressed
                 pendingSkips = []
                 pendingSeek = nil
                 client.fireVolume(device: device, percent: volume)  // as after a load: the sound now comes from this Mac
@@ -283,12 +283,12 @@ final class SpotifyConnectPlayer: Player {
 
     func next(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(LSB_COMMAND_NEXT) } else { fire(LSB_COMMAND_NEXT) }
+        if loading { pendingSkips.append(LSB_COMMAND_NEXT); pendingSeek = nil } else { fire(LSB_COMMAND_NEXT) }
     }
 
     func prev(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(LSB_COMMAND_PREV) } else { fire(LSB_COMMAND_PREV) }
+        if loading { pendingSkips.append(LSB_COMMAND_PREV); pendingSeek = nil } else { fire(LSB_COMMAND_PREV) }  // a seek before it was for the old track
     }
 
     func seek(to seconds: Double, generation: Int) {
@@ -477,14 +477,12 @@ final class SpotifyConnectPlayer: Player {
                 if resumePoint == nil { resumePoint = (trackID, playlist, self.position) }
                 return fail("Spotify quit. Press Play to go on", id, started: true)
             }
-            if let seek = pendingSeek {
-                client.fireSeek(device: found, seconds: seek)  // a scrub during the load wins
-            } else if let position, position >= 1 {
-                client.fireSeek(device: found, seconds: position)
-            }
-            pendingSeek = nil
+            if pendingSeek == nil, let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
             for command in pendingSkips { client.fire(command, to: found) }
+            // A scrub during the load came after any skip, because a skip clears it.
+            if let seek = pendingSeek { client.fireSeek(device: found, seconds: seek) }
+            pendingSeek = nil
             client.fireVolume(device: found, percent: volume)
             context = contextURI
             followedOther = false
