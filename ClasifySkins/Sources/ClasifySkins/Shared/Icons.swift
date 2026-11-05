@@ -122,9 +122,11 @@ struct IconView: View {
     let icon: Icon
     let width: CGFloat
     let height: CGFloat
+    /// The VoiceOver label of an icon that shows a state. Without one, VoiceOver skips the icon.
+    let label: String?
 
-    init(_ icon: Icon, width: CGFloat, height: CGFloat) {
-        self.icon = icon; self.width = width; self.height = height
+    init(_ icon: Icon, width: CGFloat, height: CGFloat, label: String? = nil) {
+        self.icon = icon; self.width = width; self.height = height; self.label = label
     }
 
     var body: some View {
@@ -138,6 +140,8 @@ struct IconView: View {
             }
         }
         .frame(width: width, height: height, alignment: .topLeading)
-        .accessibilityHidden(true)
+        .accessibilityElement()
+        .accessibilityLabel(label ?? "")
+        .accessibilityHidden(label == nil)
     }
 }

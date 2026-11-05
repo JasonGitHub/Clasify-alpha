@@ -74,8 +74,8 @@ struct PocketScreen: View {
                 Text("OFF").font(.helvetica(9, bold: true)).foregroundStyle(Pocket.offline)
             }
             switch Labels.playMark(in: state) {
-            case .playing: IconView(.play, width: 9, height: 10).foregroundStyle(Pocket.blue).accessibilityLabel("Playing")
-            case .paused: IconView(.pause, width: 9, height: 10).foregroundStyle(Pocket.blue).accessibilityLabel("Paused")
+            case .playing: IconView(.play, width: 9, height: 10, label: "Playing").foregroundStyle(Pocket.blue)
+            case .paused: IconView(.pause, width: 9, height: 10, label: "Paused").foregroundStyle(Pocket.blue)
             case nil: EmptyView()
             }
         }
@@ -186,7 +186,7 @@ struct PocketRow: View {
             Spacer(minLength: 0)
             HStack(spacing: 4) {
                 if !text.value.isEmpty { Text(text.value).font(.helvetica(12)) }
-                if text.playing { IconView(.speakerLoud, width: 13, height: 11).accessibilityLabel("Now playing") }
+                if text.playing { IconView(.speakerLoud, width: 13, height: 11, label: "Now playing") }
                 if text.opens { IconView(.chevron, width: 7, height: 10) }
             }
             .fixedSize()
