@@ -80,7 +80,8 @@ func sampleState() -> AppState {
         let now = try #require(Labels.now(in: s))
         #expect(now == .init(title: "Song 3", artist: "Band 3", list: "Road Trip", count: "3 of 12", duration: 180))
         s.current?.track = "spotify:track:unknown"  // not in Clasify's copy of the list
-        #expect(Labels.now(in: s)?.title == "spotify:track:unknown")
+        #expect(Labels.now(in: s)?.title == "Spotify")  // never the raw ID
+        #expect(Labels.now(in: s)?.artist == "")
         #expect(Labels.now(in: s)?.count == "")
     }
 
