@@ -23,10 +23,6 @@ import Testing
         func isBlue(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return c.b > c.r + 60 && c.b > 150 }
         func isLight(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return min(c.r, c.g, c.b) > 180 }
         func isDark(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return max(c.r, c.g, c.b) < 120 }
-        /// The scrub fill, #9aa6b2: mid gray with a little blue.
-        func isGray(_ x: Int, _ y: Int) -> Bool {
-            let c = rgb(x, y); return (130...200).contains(c.r) && c.b > c.r && c.b - c.r < 45
-        }
     }
 
     // Points in the mockup layout: the device border 1, its padding 24 x 20, the screen border 2,
@@ -75,7 +71,7 @@ import Testing
         #expect(shot.isBlue(150, Self.rowCenter(0)))  // "Log in with Spotify" is selected
         let headerTop = shot.rgb(50, 28), want = try reference(0xffffff)
         #expect(near(headerTop, want), "header top \(headerTop)")  // no glass shadow over the header
-        #expect(shot.isLight(50, 37))  // the header, left of the title
+        #expect(shot.isLight(150, 37))  // the header, right of the title
     }
 
     @Test func mainMenuWithTheBar() throws {
@@ -128,6 +124,16 @@ import Testing
         #expect(near(got, want), "cover \(got), want \(want)")
     }
 
+    @Test func aTrackWithNoCoverShowsTheBlueGreySquare() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")  // no cover ID
+        s.stack.append(Frame(screen: .now))
+        let shot = try render(s, "now-no-cover")
+        // The cover's top starts under the 14 point icon row: 47 + 6 + 14 + 2.
+        let got = shot.rgb(Self.screenLeft + 12 + 6, 75), want = try reference(0xd5dee8)
+        #expect(near(got, want), "placeholder \(got), want \(want)")
+    }
+
     @Test func nowPlayingShowsTheLoadedCover() throws {
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
@@ -142,9 +148,9 @@ import Testing
     @Test func theLastCoverStaysWhileTheNextOneLoads() throws {
         let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
-        #expect(Cover.shown(fresh: blue, pending: false, last: red) === blue)
-        #expect(Cover.shown(fresh: nil, pending: true, last: red) === red)  // no flash to the square
-        #expect(Cover.shown(fresh: nil, pending: false, last: red) == nil)  // no cover, or it failed
+        #expect(CoverArt.shown(fresh: blue, pending: false, last: red) === blue)
+        #expect(CoverArt.shown(fresh: nil, pending: true, last: red) === red)  // no flash to the square
+        #expect(CoverArt.shown(fresh: nil, pending: false, last: red) == nil)  // no cover, or it failed
     }
 
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.
@@ -165,17 +171,18 @@ import Testing
         s.overlayUntil = 1
         s.volume = 60
         let volume = try render(s, "now-volume")
-        // The volume bar is 8 points high, centered 21 points above the screen's bottom.
-        #expect(volume.isBlue(80, 206))  // inside the 60% fill
-        #expect(volume.isLight(230, 206))  // past it
+        // The bottom row is 24 points high over the 6 point padding, so bars center at y 209.
+        #expect(volume.isBlue(80, 209))  // inside the 60% glossy fill
+        #expect(volume.isLight(230, 209))  // past it
         s.nowMode = .scrub
         s.showArt = false
         s.t = 102.5  // half of the track
         let scrub = try render(s, "now-scrub")
-        // The progress bar sits at the top of its 22 point row.
-        #expect(scrub.isGray(80, 199))  // the scrub fill
-        #expect(scrub.isDark(148, 199))  // the diamond at the fill's end
-        #expect(scrub.isLight(230, 199))
+        // The times sit on the bar's line: 28 + 6 points on the left, 6 + 32 on the right.
+        let start: Int = Self.screenLeft + 12 + 34, end: Int = Self.screenLeft + 252 - 12 - 38
+        #expect(scrub.isBlue((start + end) / 2, 209))  // the blue diamond at the half
+        #expect(scrub.isLight(start + 10, 209))  // a thin light track, no fill
+        #expect(scrub.isLight(end - 10, 209))
     }
 
     @Test func nowPlayingSliders() throws {
@@ -186,7 +193,7 @@ import Testing
         s.shuffle = true
         let on = try render(s, "now-shuffle")
         // The slider fills the 42 points over the bottom padding. The knob sits on its 6 point track.
-        let right: Int = Self.screenLeft + 12 + 6 + 216, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 196
+        let right: Int = Self.screenLeft + 12 + 6 + 216, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 200
         #expect(on.isBlue(right - 2, knobY))  // Songs
         #expect(!on.isBlue(left + 2, knobY))
         s.nowMode = .repeatMode
@@ -224,11 +231,11 @@ import Testing
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
         s.isPlaying = false
         let shot = try render(s, "main-paused")
-        // The header mark: two 3 point bars with a 4 point gap, 9 points tall, at the left of the header.
-        let left: Int = Self.screenLeft + 8, midY: Int = 25 + 2 + 10
-        #expect(shot.isDark(left + 1, midY))  // the first bar
-        #expect(!shot.isDark(left + 5, midY))  // the gap
-        #expect(shot.isDark(left + 8, midY))  // the second bar
+        // The header mark: two blue bars, 2.6 points wide with a 1.8 point gap, at the right of the header.
+        let left: Int = Self.screenLeft + 252 - 8 - 9, midY: Int = 25 + 2 + 10
+        #expect(shot.isBlue(left + 2, midY))  // the first bar
+        #expect(!shot.isBlue(left + 5, midY))  // the gap
+        #expect(shot.isBlue(left + 7, midY))  // the second bar
     }
 
     /// The mockup states that the other tests do not draw. Each one must render at full size.
@@ -239,7 +246,7 @@ import Testing
         s.current = TrackRef(playlist: "spotify:playlist:a", track: "spotify:track:r2")
         s.isPlaying = true
         s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
-        _ = try render(s, "tracks-playing")  // the playing row shows ▶
+        _ = try render(s, "tracks-playing")  // the playing row shows a speaker
 
         s.offline = true
         _ = try render(s, "offline")  // OFF in the header
@@ -248,7 +255,10 @@ import Testing
         s.shuffle = true
         s.repeatMode = .one
         s.stack.append(Frame(screen: .now))
-        _ = try render(s, "now-flags")  // SHUFFLE REPEAT 1
+        _ = try render(s, "now-icons")  // shuffle dark, repeat dark with its "1"
+        s.shuffle = false
+        s.repeatMode = .off
+        _ = try render(s, "now-icons-off")  // both dimmed
 
         var error = Frame(screen: .playlists)
         error.error = true

@@ -18,11 +18,14 @@ enum Pocket {
             startPoint: .top, endPoint: .bottom)
     }
     static let offline = Color(hex: 0xa3261c)
+    /// The title bar's play and pause mark.
+    static let blue = Color(hex: 0x1f6fd1)
 }
 
 /// The LCD: the header, then a list, a message or Now Playing, then the bar and the toast.
 struct PocketScreen: View {
     let state: AppState
+    var input: @MainActor (Action) -> Void = { _ in }
 
     private var top: Frame { state.top }
 
@@ -56,20 +59,25 @@ struct PocketScreen: View {
         .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(Pocket.frame, lineWidth: 2) }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .foregroundStyle(Pocket.ink)
-        .accessibilityElement(children: .combine)
+        // .contain, not .combine: the shuffle and repeat buttons on Now Playing must stay
+        // separate VoiceOver controls.
+        .accessibilityElement(children: .contain)
     }
 
     private var header: some View {
-        HStack(spacing: 0) {
-            PlayMarkView(mark: Labels.playMark(in: state), size: 9)
-                .frame(width: 24, alignment: .leading)
+        // The title on the left; OFF and the blue play or pause mark on the right.
+        HStack(spacing: 6) {
             Text(Labels.title(top.screen, in: state))
                 .lineLimit(1)
-                .frame(maxWidth: .infinity)
-            Text(state.offline ? "OFF" : "")
-                .font(.helvetica(9, bold: true))
-                .foregroundStyle(Pocket.offline)
-                .frame(width: 24, alignment: .trailing)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if state.offline {
+                Text("OFF").font(.helvetica(9, bold: true)).foregroundStyle(Pocket.offline)
+            }
+            switch Labels.playMark(in: state) {
+            case .playing: IconView(.play, width: 9, height: 10, label: "Playing").foregroundStyle(Pocket.blue)
+            case .paused: IconView(.pause, width: 9, height: 10, label: "Paused").foregroundStyle(Pocket.blue)
+            case nil: EmptyView()
+            }
         }
         .font(.helvetica(11, bold: true))
         .padding(.horizontal, 8)
@@ -81,7 +89,7 @@ struct PocketScreen: View {
         if let message = Labels.message(for: top, in: state) {
             MessageView(message: message)
         } else if top.screen == .now {
-            PocketNowPlaying(state: state)
+            PocketNowPlaying(state: state, input: input)
         } else {
             PocketList(state: state)
         }
@@ -178,7 +186,7 @@ struct PocketRow: View {
             Spacer(minLength: 0)
             HStack(spacing: 4) {
                 if !text.value.isEmpty { Text(text.value).font(.helvetica(12)) }
-                if let mark = text.mark { PlayMarkView(mark: mark, size: 12) }
+                if text.playing { IconView(.speakerLoud, width: 13, height: 11, label: "Now playing") }
                 if text.opens { IconView(.chevron, width: 7, height: 10) }
             }
             .fixedSize()
