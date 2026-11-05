@@ -438,7 +438,7 @@ mod library_tests {
     }
 
     #[test]
-    fn cover_is_the_default_size_else_the_widest_under_640() {
+    fn cover_is_the_default_size_else_the_widest_under_640_else_the_narrowest() {
         let small = image(1, Some(Size::SMALL), 64);
         let default = image(2, Some(Size::DEFAULT), 300);
         let large = image(3, Some(Size::LARGE), 640);
@@ -449,7 +449,12 @@ mod library_tests {
         // An empty cover group falls back to the album's old cover list.
         let track = with_covers(vec![], vec![image(4, None, 300)]);
         assert_eq!(cover_id(&track), "04".repeat(20));
-        assert_eq!(cover_id(&with_covers(vec![large], vec![])), "");
+        // With only large images, the narrowest one is better than no cover.
+        let xlarge = image(5, Some(Size::XLARGE), 1280);
+        assert_eq!(
+            cover_id(&with_covers(vec![xlarge, large], vec![])),
+            "03".repeat(20)
+        );
         assert_eq!(cover_id(&TrackMessage::default()), "");
     }
 

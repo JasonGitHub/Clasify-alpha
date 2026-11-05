@@ -200,7 +200,7 @@ pub(crate) fn metadata_request(uris: &[String]) -> BatchedEntityRequest {
 const MAX_COVER_WIDTH: i32 = 640;
 
 /// The hex file ID of the album cover to show: the DEFAULT size (about 300 px), else the
-/// widest image under 640 px, else empty. The image is at https://i.scdn.co/image/<hex>.
+/// widest image under 640 px, else the narrowest image, else empty. The image is at https://i.scdn.co/image/<hex>.
 pub(crate) fn cover_id(track: &TrackMessage) -> String {
     let Some(album) = track.album.as_ref() else {
         return String::new();
@@ -217,8 +217,10 @@ pub(crate) fn cover_id(track: &TrackMessage) -> String {
             .filter(|i| i.width() < MAX_COVER_WIDTH)
             .max_by_key(|i| i.width())
     };
+    let narrowest = || usable().min_by_key(|i| i.width());
     default
         .or_else(small)
+        .or_else(narrowest)
         .map(|i: &Image| FileId::from(i).to_base16().unwrap_or_default())
         .unwrap_or_default()
 }
