@@ -145,19 +145,21 @@ fn library_and_token_layouts_match_c() {
         offset_of!(LsbPlaylist, track_count),
     ];
     assert_eq!(playlist, [8, 16]);
-    assert_eq!(size_of::<LsbTrack>(), 32);
+    assert_eq!(size_of::<LsbTrack>(), 40);
     let track = [
         offset_of!(LsbTrack, title),
         offset_of!(LsbTrack, artist),
+        offset_of!(LsbTrack, cover_id),
         offset_of!(LsbTrack, duration_ms),
     ];
-    assert_eq!(track, [8, 16, 24]);
+    assert_eq!(track, [8, 16, 24, 32]);
 }
 
 mod library_tests {
     use super::*;
     use crate::library::*;
     use crate::oauth::TokenResult;
+    use librespot_core::FileId;
     use librespot_protocol::context_page::ContextPage;
     use librespot_protocol::context_track::ContextTrack;
     use librespot_protocol::entity_extension_data::{
@@ -167,12 +169,14 @@ mod library_tests {
         BatchedExtensionResponse, EntityExtensionDataArray,
     };
     use librespot_protocol::extension_kind::ExtensionKind;
-    use librespot_protocol::metadata::{Artist, Track as TrackMessage};
+    use librespot_protocol::metadata::{
+        image::Size, Album, Artist, Image, ImageGroup, Track as TrackMessage,
+    };
     use librespot_protocol::playlist4_external::{
         Item, ListAttributes, ListItems, MetaItem, SelectedListContent,
     };
     use protobuf::well_known_types::any::Any;
-    use protobuf::{Message, MessageField};
+    use protobuf::{EnumOrUnknown, Message, MessageField};
     use std::collections::HashMap;
     use std::time::{Duration, Instant};
 
@@ -398,6 +402,7 @@ mod library_tests {
             uri: format!("spotify:track:{id}"),
             title: title.to_owned(),
             artist: artist.to_owned(),
+            cover_id: String::new(),
             duration_ms,
         };
         assert_eq!(
@@ -407,6 +412,63 @@ mod library_tests {
                 track("2", "Two", "B", 2000)
             ]
         );
+    }
+
+    fn image(id: u8, size: Option<Size>, width: i32) -> Image {
+        Image {
+            file_id: Some(vec![id; 20]),
+            size: size.map(EnumOrUnknown::new),
+            width: Some(width),
+            ..Default::default()
+        }
+    }
+
+    fn with_covers(group: Vec<Image>, cover: Vec<Image>) -> TrackMessage {
+        TrackMessage {
+            album: MessageField::some(Album {
+                cover_group: MessageField::some(ImageGroup {
+                    image: group,
+                    ..Default::default()
+                }),
+                cover,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn cover_is_the_default_size_else_the_widest_under_640_else_the_narrowest() {
+        let small = image(1, Some(Size::SMALL), 64);
+        let default = image(2, Some(Size::DEFAULT), 300);
+        let large = image(3, Some(Size::LARGE), 640);
+        let track = with_covers(vec![small.clone(), large.clone(), default], vec![]);
+        assert_eq!(cover_id(&track), "02".repeat(20));
+        let track = with_covers(vec![large.clone(), small.clone()], vec![]);
+        assert_eq!(cover_id(&track), "01".repeat(20));
+        // An empty cover group falls back to the album's old cover list.
+        let track = with_covers(vec![], vec![image(4, None, 300)]);
+        assert_eq!(cover_id(&track), "04".repeat(20));
+        // With only large images, the narrowest one is better than no cover.
+        let xlarge = image(5, Some(Size::XLARGE), 1280);
+        assert_eq!(
+            cover_id(&with_covers(vec![xlarge, large], vec![])),
+            "03".repeat(20)
+        );
+        assert_eq!(cover_id(&TrackMessage::default()), "");
+    }
+
+    #[test]
+    fn cover_id_is_lowercase_hex_like_librespot_file_ids() {
+        let bytes: Vec<u8> = (0xa0..0xb4).collect();
+        let expected = "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3";
+        assert_eq!(FileId::from(&bytes[..]).to_base16().unwrap(), expected);
+        let image = Image {
+            file_id: Some(bytes),
+            size: Some(EnumOrUnknown::new(Size::DEFAULT)),
+            ..Default::default()
+        };
+        assert_eq!(cover_id(&with_covers(vec![image], vec![])), expected);
     }
 
     #[test]
@@ -490,6 +552,7 @@ mod library_tests {
                     read(t.uri),
                     read(t.title),
                     read(t.artist),
+                    read(t.cover_id),
                     t.duration_ms.to_string(),
                 ]
             })
@@ -513,6 +576,7 @@ mod library_tests {
             uri: "spotify:track:1".to_owned(),
             title: "One".to_owned(),
             artist: "A".to_owned(),
+            cover_id: "ab67".to_owned(),
             duration_ms: 1000,
         };
         deliver_tracks(record_tracks, context, Ok(vec![track]), false);
@@ -531,7 +595,7 @@ mod library_tests {
                 (
                     LSB_OK,
                     None,
-                    vec![row(&["spotify:track:1", "One", "A", "1000"])]
+                    vec![row(&["spotify:track:1", "One", "A", "ab67", "1000"])]
                 ),
                 (LSB_ERR_READ, Some("offline".to_owned()), vec![]),
                 (LSB_ERR_NOT_LOGGED_IN, Some("dropped".to_owned()), vec![]),

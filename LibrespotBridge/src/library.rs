@@ -4,13 +4,13 @@
 use std::collections::{HashMap, VecDeque};
 use std::ffi::{c_char, c_void, CString};
 
-use librespot_core::Session;
+use librespot_core::{FileId, Session};
 use librespot_protocol::context_page::ContextPage;
 use librespot_protocol::extended_metadata::{
     BatchedEntityRequest, BatchedExtensionResponse, EntityRequest, ExtensionQuery,
 };
 use librespot_protocol::extension_kind::ExtensionKind;
-use librespot_protocol::metadata::Track as TrackMessage;
+use librespot_protocol::metadata::{image::Size, Image, Track as TrackMessage};
 use librespot_protocol::playlist4_external::SelectedListContent;
 use protobuf::{EnumOrUnknown, Message};
 
@@ -37,6 +37,8 @@ pub(crate) struct Track {
     pub uri: String,
     pub title: String,
     pub artist: String,
+    /// The album cover's image file ID in lowercase hex, or empty when there is none.
+    pub cover_id: String,
     pub duration_ms: u32,
 }
 
@@ -194,6 +196,35 @@ pub(crate) fn metadata_request(uris: &[String]) -> BatchedEntityRequest {
     }
 }
 
+/// Widest cover to take when the DEFAULT size is missing.
+const MAX_COVER_WIDTH: i32 = 640;
+
+/// The hex file ID of the album cover to show: the DEFAULT size (about 300 px), else the
+/// widest image under 640 px, else the narrowest image, else empty. The image is at https://i.scdn.co/image/<hex>.
+pub(crate) fn cover_id(track: &TrackMessage) -> String {
+    let Some(album) = track.album.as_ref() else {
+        return String::new();
+    };
+    let images = if album.cover_group.image.is_empty() {
+        &album.cover
+    } else {
+        &album.cover_group.image
+    };
+    let usable = || images.iter().filter(|i| !i.file_id().is_empty());
+    let default = usable().find(|i| i.has_size() && i.size() == Size::DEFAULT);
+    let small = || {
+        usable()
+            .filter(|i| i.width() < MAX_COVER_WIDTH)
+            .max_by_key(|i| i.width())
+    };
+    let narrowest = || usable().min_by_key(|i| i.width());
+    default
+        .or_else(small)
+        .or_else(narrowest)
+        .map(|i: &Image| FileId::from(i).to_base16().unwrap_or_default())
+        .unwrap_or_default()
+}
+
 /// The tracks for `uris`, in the same order. A track without metadata is left out.
 pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[String]) -> Vec<Track> {
     let mut found: HashMap<&str, Track> = HashMap::new();
@@ -214,6 +245,7 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
             uri: data.entity_uri.clone(),
             title: track.name().to_owned(),
             artist: artists.join(", "),
+            cover_id: cover_id(&track),
             duration_ms: track.duration().max(0) as u32,
         };
         found.insert(data.entity_uri.as_str(), track);
@@ -256,6 +288,7 @@ pub struct LsbTrack {
     pub uri: *const c_char,
     pub title: *const c_char,
     pub artist: *const c_char,
+    pub cover_id: *const c_char,
     pub duration_ms: u32,
 }
 
@@ -335,15 +368,19 @@ pub(crate) fn deliver_tracks(
         Ok(tracks) => {
             let texts: Vec<_> = tracks
                 .iter()
-                .map(|t| (c_text(&t.uri), c_text(&t.title), c_text(&t.artist)))
+                .map(|t| {
+                    let text = [&t.uri, &t.title, &t.artist, &t.cover_id];
+                    text.map(|t| c_text(t))
+                })
                 .collect();
             let raw: Vec<_> = tracks
                 .iter()
                 .zip(&texts)
-                .map(|(t, (uri, title, artist))| LsbTrack {
+                .map(|(t, [uri, title, artist, cover_id])| LsbTrack {
                     uri: uri.as_ptr(),
                     title: title.as_ptr(),
                     artist: artist.as_ptr(),
+                    cover_id: cover_id.as_ptr(),
                     duration_ms: t.duration_ms,
                 })
                 .collect();

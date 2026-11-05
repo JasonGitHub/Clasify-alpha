@@ -250,7 +250,7 @@ private func tracksCallback(
     let tracks = UnsafeBufferPointer(start: items, count: items == nil ? 0 : count).map {
         Track(
             id: string($0.uri) ?? "", title: string($0.title) ?? "", artist: string($0.artist) ?? "",
-            duration: Double($0.duration_ms) / 1000)
+            duration: Double($0.duration_ms) / 1000, coverID: string($0.cover_id))
     }
     box.resume(.success(tracks))
 }
