@@ -84,9 +84,9 @@ import Testing
         s.isPlaying = true
         s.top.sel = 1
         let shot = try render(s, "main")
-        // A 136 point pane with 8 rows of 22.5 and no bar.
-        #expect(shot.isLight(60, Self.rowCenter(0)))
-        #expect(shot.isBlue(60, Self.rowCenter(1)))
+        // A 136 point pane (x 24 to 160) with 8 rows of 22.5 and no bar.
+        #expect(shot.isLight(125, Self.rowCenter(0)))  // right of "Now Playing"
+        #expect(shot.isBlue(125, Self.rowCenter(1)))
         // On the right, the playing track's cover: here the artist's color, as no image is loaded.
         let art = shot.rgb(Self.screenLeft + 170, Self.listTop + 150)  // past the pane's shadow
         let want = try reference(Labels.cover(for: "OutKast"))
