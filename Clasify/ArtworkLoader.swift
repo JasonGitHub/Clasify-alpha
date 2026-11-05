@@ -20,7 +20,8 @@ final class ArtworkLoader {
     /// When a cover last failed, so it is not asked for again on every redraw.
     @ObservationIgnored private var failedAt: [String: ContinuousClock.Instant] = [:]
     /// TEMP: the playing track at the last `prefetchNext`, for the blink log.
-    @ObservationIgnored private var lastRef: TrackRef?, previousRef: TrackRef?
+    @ObservationIgnored private var lastRef: TrackRef?
+    @ObservationIgnored private var previousRef: TrackRef?
     private let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.urlCache = nil
