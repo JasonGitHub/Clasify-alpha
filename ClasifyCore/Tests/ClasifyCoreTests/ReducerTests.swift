@@ -282,6 +282,22 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.mainArt.map(\.id) == ["f3", "l0", "l1", "f3"])
     }
 
+    @Test func screenChangesSlideInFromTheRightOrTheLeft() {
+        var s = AppState()
+        send(&s, .select)  // the login wait opens
+        #expect(s.navSeq == 1 && s.navForward)
+        send(&s, .authDone(token: 1, ok: true))  // the main menu replaces login: still forward
+        #expect(s.navSeq == 2 && s.navForward)
+        send(&s, .wheel(1))  // no screen change
+        #expect(s.navSeq == 2)
+        send(&s, .select)  // Liked Songs opens
+        #expect(s.navSeq == 3 && s.navForward)
+        send(&s, .menu)  // back
+        #expect(s.navSeq == 4 && !s.navForward)
+        send(&s, .reset)
+        #expect(s.navSeq == 4)  // the same screen identity, so no slide
+    }
+
     @Test func tickExpiresToastAndOverlay() {
         var s = playing()
         s.toast = "hi"; s.toastUntil = 101; s.overlayUntil = 101
@@ -458,8 +474,8 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(send(&s, .reset) == [.stop])
         var fresh = AppState()
-        fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt
-        #expect(s == fresh && s.tok == 2)
+        fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt; fresh.navSeq = s.navSeq
+        #expect(s == fresh && s.tok == 2 && s.navSeq > 0)  // the reset keeps the screen identity: no slide
         send(&s, .select, .authDone(token: 2, ok: true), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
     }

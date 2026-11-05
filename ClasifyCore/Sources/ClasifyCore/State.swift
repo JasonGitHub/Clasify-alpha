@@ -118,6 +118,10 @@ public struct AppState: Equatable, Sendable {
     /// When a list's scroll bar fades out: `scrollBarTime` after the last wheel step on a
     /// list or the last screen change. 0 when the bar is hidden.
     public var scrollUntil: Double = 0
+    /// Counts screen changes, so a skin can slide the new screen in. `navForward` is true when
+    /// a screen opened, false on a way back.
+    public var navSeq = 0
+    public var navForward = true
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
     public var toast = ""
