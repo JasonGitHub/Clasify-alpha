@@ -29,6 +29,8 @@ public enum Action: Equatable, Sendable {
     /// The engine moved on to another track in the same context (its own next, prev or auto-advance).
     /// `playing` is the engine's play state after the change.
     case trackChanged(String, playing: Bool, generation: Int)
+    /// The details of one track that `.readTrack` asked for. nil when the read failed.
+    case trackRead(String, Track?)
     /// The engine can't play the load with this `generation`. The message is shown as a toast.
     case playbackFailed(String, generation: Int)
 }
@@ -58,6 +60,9 @@ public enum Effect: Equatable, Sendable {
     case restoreSession(token: Int)
     /// Forget the stored login.
     case logOut
+    /// Read one track's details, for a track that Spotify plays from outside the library.
+    /// The result comes back as `.trackRead`.
+    case readTrack(String)
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -80,6 +85,8 @@ public let visibleRows = 8
 public let trackRows = 5
 /// Seconds without a wheel turn before a scrub, shuffle or repeat slider goes back to the progress bar.
 public let sliderTimeout = 6.0
+/// The most tracks from outside the library that `AppState.extraTracks` keeps.
+public let extraTrackLimit = 50
 /// Seconds that a list's scroll bar shows after a wheel step or a screen change.
 public let scrollBarTime = 1.5
 
@@ -133,6 +140,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
+        s.extraTracks = []; s.trackReads = []
         toast(msg)
     }
     func shuffleLiked() {
@@ -272,6 +280,21 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.current != nil, gen == s.playGen else { return }
             s.isPlaying = playing
             if s.current?.track != id { s.current?.track = id; s.t = 0 }
+            // A track from outside our copy of the list, such as Spotify's autoplay: read its
+            // details once. A read in flight or a failed read is not started again.
+            if let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) {
+                s.trackReads.insert(id)
+                fx.append(.readTrack(id))
+            }
+
+        case .trackRead(let id, let track):
+            // Not asked for in this session, for example a read from before a sign-out.
+            guard s.trackReads.contains(id) else { return }
+            guard let track else { return }  // failed: the ID stays, so it is not read again
+            s.trackReads.remove(id)
+            s.extraTracks.removeAll { $0.id == id }
+            s.extraTracks.append(track)
+            if s.extraTracks.count > extraTrackLimit { s.extraTracks.removeFirst(s.extraTracks.count - extraTrackLimit) }
 
         case .playbackFailed(let msg, let gen):
             guard s.current != nil, gen == s.playGen else { return }

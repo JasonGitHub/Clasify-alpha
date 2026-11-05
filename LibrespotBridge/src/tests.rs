@@ -652,6 +652,20 @@ mod library_tests {
         );
     }
 
+    #[test]
+    fn only_a_track_uri_reads_one_track() {
+        assert!(valid_track_uri("spotify:track:4uLU6hMCjMI75M1A2tKUQC"));
+        for bad in [
+            "",
+            "spotify:track:",
+            "spotify:episode:4uLU6hMCjMI75M1A2tKUQC",
+            "spotify:track:4uLU/../x",
+            "spotify:track:4uLU 6h",
+        ] {
+            assert!(!valid_track_uri(bad), "{bad}");
+        }
+    }
+
     extern "C" fn ignore_token(_: *mut c_void, _: *const LsbToken) {}
 
     #[test]
@@ -688,6 +702,21 @@ mod library_tests {
             );
             assert_eq!(
                 lsb_read_tracks(bridge, none, None, ctx),
+                LSB_ERR_INVALID_ARGUMENT
+            );
+            let track = c"spotify:track:4uLU6hMCjMI75M1A2tKUQC";
+            assert_eq!(
+                lsb_read_track(bridge, track.as_ptr(), Some(record_tracks), ctx),
+                LSB_ERR_NOT_LOGGED_IN
+            );
+            for bad in [none, playlist.as_ptr(), c"spotify:track:".as_ptr()] {
+                assert_eq!(
+                    lsb_read_track(bridge, bad, Some(record_tracks), ctx),
+                    LSB_ERR_INVALID_ARGUMENT
+                );
+            }
+            assert_eq!(
+                lsb_read_track(bridge, track.as_ptr(), None, ctx),
                 LSB_ERR_INVALID_ARGUMENT
             );
             let null = std::ptr::null_mut();

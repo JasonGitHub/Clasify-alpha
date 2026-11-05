@@ -257,6 +257,11 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
 
 pub(crate) async fn read_tracks(session: &Session, uri: &str) -> Result<Vec<Track>, String> {
     let uris = context_track_uris(&SessionPages(session), uri).await?;
+    read_metadata(session, &uris).await
+}
+
+/// The details of `uris`, in the same order, in batches of `METADATA_BATCH`.
+async fn read_metadata(session: &Session, uris: &[String]) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::with_capacity(uris.len());
     for chunk in uris.chunks(METADATA_BATCH) {
         let response = session
@@ -267,6 +272,12 @@ pub(crate) async fn read_tracks(session: &Session, uri: &str) -> Result<Vec<Trac
         tracks.extend(decode_metadata(&response, chunk));
     }
     Ok(tracks)
+}
+
+/// A track URI that `lsb_read_track` accepts: `spotify:track:` and a base-62 ID.
+pub(crate) fn valid_track_uri(uri: &str) -> bool {
+    uri.strip_prefix("spotify:track:")
+        .is_some_and(|id| !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric()))
 }
 
 /// The Liked Songs context of the logged-in user.
@@ -463,6 +474,40 @@ pub unsafe extern "C" fn lsb_read_tracks(
         let context = context;
         let uri = uri.unwrap_or_else(|| liked_songs_uri(&session.username()));
         let result = read_tracks(&session, &uri).await;
+        deliver_tracks(callback, context.0, result, session.is_invalid());
+    });
+    LSB_OK
+}
+
+/// Reads the details of one track, for a track that Spotify plays from outside the library.
+/// The result comes once through `on_result`, on a bridge thread: one track, or none when
+/// Spotify has no details for it. Needs a login.
+///
+/// # Safety
+/// `bridge` must be valid. `track_uri` must be a NUL-terminated string.
+/// `context` and `on_result` must be safe to call from any thread.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_read_track(
+    bridge: *mut crate::LsbBridge,
+    track_uri: *const c_char,
+    on_result: Option<LsbTracksCallback>,
+    context: *mut c_void,
+) -> i32 {
+    let (Some(callback), Some(uri)) = (on_result, read_str(track_uri)) else {
+        return LSB_ERR_INVALID_ARGUMENT;
+    };
+    if !valid_track_uri(uri) {
+        return LSB_ERR_INVALID_ARGUMENT;
+    }
+    let uri = uri.to_owned();
+    let session = match session(bridge) {
+        Ok(session) => session,
+        Err(status) => return status,
+    };
+    let context = Context(context);
+    (*bridge).runtime.spawn(async move {
+        let context = context;
+        let result = read_metadata(&session, &[uri]).await;
         deliver_tracks(callback, context.0, result, session.is_invalid());
     });
     LSB_OK

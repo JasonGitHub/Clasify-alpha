@@ -103,6 +103,11 @@ public struct AppState: Equatable, Sendable {
     /// The playlists (and `Playlist.likedSongsID`) whose tracks were read in this session.
     public var loadedTracks: Set<String> = []
     public var current: TrackRef?
+    /// Tracks that Spotify played from outside our copy of the list, read one at a time.
+    /// Memory only, at most `extraTrackLimit`, the oldest goes first. Emptied at sign-out.
+    public var extraTracks: [Track] = []
+    /// Track IDs whose read runs or failed in this session, so each is read only once.
+    public var trackReads: Set<String> = []
     public var t: Double = 0
     public var isPlaying = false
     public var volume = 60
@@ -178,8 +183,9 @@ public struct AppState: Equatable, Sendable {
         library.first { $0.id == playlist }?.tracks ?? []
     }
 
+    /// The track in its playlist, else in `extraTracks`.
     public func track(_ ref: TrackRef) -> Track? {
-        tracks(in: ref.playlist).first { $0.id == ref.track }
+        tracks(in: ref.playlist).first { $0.id == ref.track } ?? extraTracks.first { $0.id == ref.track }
     }
 
     public func rows(for frame: Frame) -> [Row] {

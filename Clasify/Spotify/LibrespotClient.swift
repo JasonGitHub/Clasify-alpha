@@ -149,6 +149,18 @@ final class LibrespotClient: @unchecked Sendable {
         }
     }
 
+    /// The details of one track, or nil when Spotify has none for it.
+    func track(uri: String) async throws -> Track? {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[Track], any Error>) in
+            let box = Unmanaged.passRetained(ResultBox(continuation)).toOpaque()
+            let status = lsb_read_track(handle, uri, tracksCallback, box)
+            if status != LSB_OK {
+                Unmanaged<ResultBox<[Track]>>.fromOpaque(box).takeRetainedValue()
+                    .resume(.failure(BridgeError(status: status, message: "cannot read a track")))
+            }
+        }.first
+    }
+
     /// Opens the Spotify login page in the browser and waits for the redirect.
     /// The bridge call can block while an older login stops, so it runs off the main actor.
     static func oauthLogin() async throws -> OAuthTokens {

@@ -83,6 +83,9 @@ func sampleState() -> AppState {
         #expect(Labels.now(in: s)?.title == "Spotify")  // never the raw ID
         #expect(Labels.now(in: s)?.artist == "")
         #expect(Labels.now(in: s)?.count == "")
+        // After `.trackRead`, the details show, still with no place in the list.
+        s.extraTracks = [Track(id: "spotify:track:unknown", title: "Radio", artist: "Band 9", duration: 200, coverID: "ab")]
+        #expect(Labels.now(in: s) == .init(title: "Radio", artist: "Band 9", list: "Road Trip", count: "", duration: 200, coverID: "ab"))
     }
 
     @Test func playMarkFollowsThePlayState() {
