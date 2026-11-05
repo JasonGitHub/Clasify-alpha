@@ -479,16 +479,20 @@ final class SpotifyConnectPlayer: Player {
             return  // still what played before the load
         }
         loaded = nil
-        // Liked Songs can come back as a playlist URI, so only a playlist context is compared.
-        let otherContext = !context.hasSuffix(":collection") && !state.contextURI.isEmpty && state.contextURI != context
-        guard state.activeDeviceID == device, !otherContext else {
-            // The user moved playback to another device or list, or Spotify quit. Do not fight it.
+        guard state.activeDeviceID == device else {
+            // The user moved playback to another device, or Spotify quit. Do not fight it.
             // With no active device, nothing plays elsewhere, so Play may continue here.
             let stopped = state.activeDeviceID.isEmpty
-            let reason = stopped ? "no active device"
-                : state.activeDeviceID != device ? "other device"
-                : "other context (\(Self.contextKind(state.contextURI)))"
+            let reason = stopped ? "no active device" : "other device"
             return lose(stopped ? "Spotify stopped playing" : "Playing elsewhere now", resumable: stopped, reason: reason)
+        }
+        // Our Spotify app moved to another context: autoplay after the playlist ended, or a
+        // list picked in Spotify itself. Follow it and keep control. Liked Songs can come back
+        // as a playlist URI, so only a playlist context is compared.
+        if !context.hasSuffix(":collection") && !state.contextURI.isEmpty && state.contextURI != context {
+            log.notice("following Spotify into another context (\(Self.contextKind(state.contextURI), privacy: .public))")
+            context = state.contextURI
+            playlist = state.contextURI  // so Play after a quit loads the track in its own context
         }
         let gen = generation
         if !state.hasTrack {
