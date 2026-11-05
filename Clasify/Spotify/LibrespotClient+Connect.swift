@@ -25,6 +25,8 @@ struct SpotifyPlayerState: Sendable, Equatable {
     let shuffle: Bool
     let repeatContext: Bool
     let repeatTrack: Bool
+    /// How often the dealer reconnected in this login, for the log.
+    var dealerReconnects = 0
 }
 
 /// Where the bridge sends each player state. The handler runs on a bridge thread.
@@ -138,5 +140,5 @@ func stateCallback(_ context: UnsafeMutableRawPointer?, _ state: UnsafePointer<L
         contextURI: string(raw.context_uri) ?? "", position: Double(raw.position_ms) / 1000,
         duration: Double(raw.duration_ms) / 1000, isRunning: raw.is_playing && !raw.is_paused,
         hasTrack: raw.is_playing, shuffle: raw.shuffle, repeatContext: raw.repeat_context,
-        repeatTrack: raw.repeat_track))
+        repeatTrack: raw.repeat_track, dealerReconnects: Int(raw.dealer_reconnects)))
 }

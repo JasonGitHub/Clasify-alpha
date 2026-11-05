@@ -4,7 +4,7 @@
 //! cannot pass an endpoint path.
 
 use std::ffi::{c_char, c_void};
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
 use futures_util::StreamExt;
@@ -189,6 +189,8 @@ pub(crate) struct SpotifyState {
     pub context_uri: String,
     pub position_ms: u32,
     pub duration_ms: u32,
+    /// How often the dealer has reconnected in this session, for the app's log.
+    pub dealer_reconnects: u32,
     pub is_playing: bool,
     pub is_paused: bool,
     pub shuffle: bool,
@@ -217,6 +219,7 @@ pub(crate) fn spotify_state(cluster: &Cluster, now_ms: i64) -> SpotifyState {
         context_uri: player.context_uri.clone(),
         position_ms: ms(position),
         duration_ms: ms(duration),
+        dealer_reconnects: 0,
         is_playing: player.is_playing,
         is_paused: player.is_paused,
         shuffle: player.options.shuffling_context,
@@ -241,6 +244,7 @@ pub struct LsbPlayerState {
     pub context_uri: *const c_char,
     pub position_ms: u32,
     pub duration_ms: u32,
+    pub dealer_reconnects: u32,
     pub is_playing: bool,
     pub is_paused: bool,
     pub shuffle: bool,
@@ -292,6 +296,7 @@ pub(crate) fn deliver_state(sink: &SharedSink, state: &SpotifyState) {
         context_uri: texts[2].as_ptr(),
         position_ms: state.position_ms,
         duration_ms: state.duration_ms,
+        dealer_reconnects: state.dealer_reconnects,
         is_playing: state.is_playing,
         is_paused: state.is_paused,
         shuffle: state.shuffle,
@@ -319,6 +324,8 @@ pub(crate) struct Dealer {
     connection_id: watch::Receiver<String>,
     /// The session's newest `time_delta()`, for the cluster task, which holds no session.
     time_delta: Arc<AtomicI64>,
+    /// Connection IDs after the first one: each one is a dealer reconnect.
+    reconnects: Arc<AtomicU32>,
 }
 
 /// Starts the session's dealer. A task keeps reading the dealer's connection IDs: the
@@ -350,20 +357,33 @@ async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, St
     let sink = sink.clone();
     let time_delta = Arc::new(AtomicI64::new(session.time_delta()));
     let delta = time_delta.clone();
+    let reconnects = Arc::new(AtomicU32::new(0));
+    let count = reconnects.clone();
     tokio::spawn(async move {
         while let Some(update) = updates.next().await {
             // A message that does not decode is skipped. The next one has the full state.
             if let Ok(update) = update {
                 let now = spotify_now_ms(delta.load(Ordering::Relaxed));
-                deliver_state(&sink, &spotify_state(&update.cluster, now));
+                let mut state = spotify_state(&update.cluster, now);
+                state.dealer_reconnects = count.load(Ordering::Relaxed);
+                deliver_state(&sink, &state);
             }
         }
     });
     let (sender, connection_id) = watch::channel(String::new());
+    let count = reconnects.clone();
     tokio::spawn(async move {
+        let mut seen = false;
         while let Some(id) = ids.next().await {
             let id = id.unwrap_or_default();
-            if !id.is_empty() && sender.send(id).is_err() {
+            if id.is_empty() {
+                continue;
+            }
+            if seen {
+                count.fetch_add(1, Ordering::Relaxed);
+            }
+            seen = true;
+            if sender.send(id).is_err() {
                 return; // The worker dropped this dealer.
             }
         }
@@ -372,6 +392,7 @@ async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, St
         device_id: session.device_id().to_owned(),
         connection_id,
         time_delta,
+        reconnects,
     })
 }
 
@@ -385,7 +406,9 @@ async fn register(
     if dealer.as_ref().map(|d| d.device_id.as_str()) != Some(session.device_id()) {
         *dealer = Some(start_dealer(session, sink).await?);
     }
-    let ids = &mut dealer.as_mut().expect("set above").connection_id;
+    let current = dealer.as_mut().expect("set above");
+    let reconnects = current.reconnects.clone();
+    let ids = &mut current.connection_id;
     let wait = ids.wait_for(|id| !id.is_empty());
     let id = tokio::time::timeout(std::time::Duration::from_secs(10), wait)
         .await
@@ -430,10 +453,9 @@ async fn register(
         .map_err(|e| format!("cannot register with Spotify Connect: {e}"))?;
     let cluster = Cluster::parse_from_bytes(&bytes)
         .map_err(|e| format!("cannot decode the device list: {e}"))?;
-    deliver_state(
-        sink,
-        &spotify_state(&cluster, spotify_now_ms(session.time_delta())),
-    );
+    let mut state = spotify_state(&cluster, spotify_now_ms(session.time_delta()));
+    state.dealer_reconnects = reconnects.load(Ordering::Relaxed);
+    deliver_state(sink, &state);
     Ok(cluster)
 }
 

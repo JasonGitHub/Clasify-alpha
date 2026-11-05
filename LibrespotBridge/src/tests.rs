@@ -1055,6 +1055,7 @@ mod connect_tests {
             context_uri: PLAYLIST.to_owned(),
             position_ms: 12_500,
             duration_ms: 200_000,
+            dealer_reconnects: 0,
             is_playing: true,
             is_paused: false,
             shuffle: true,
@@ -1072,14 +1073,19 @@ mod connect_tests {
     }
 
     #[derive(Default)]
-    struct States(Mutex<Vec<(String, u32, bool)>>);
+    struct States(Mutex<Vec<(String, u32, u32, bool)>>);
 
     extern "C" fn record_state(context: *mut c_void, state: *const LsbPlayerState) {
         let (states, state) = unsafe { (&*(context as *const States), &*state) };
         let track = unsafe { read_str(state.track_uri) }
             .unwrap_or("?")
             .to_owned();
-        let entry = (track, state.position_ms, state.repeat_track);
+        let entry = (
+            track,
+            state.position_ms,
+            state.dealer_reconnects,
+            state.repeat_track,
+        );
         states.0.lock().unwrap().push(entry);
     }
 
@@ -1090,6 +1096,7 @@ mod connect_tests {
         let state = SpotifyState {
             track_uri: TRACK.to_owned(),
             position_ms: 7,
+            dealer_reconnects: 2,
             repeat_track: true,
             ..Default::default()
         };
@@ -1111,7 +1118,10 @@ mod connect_tests {
             );
             lsb_free(bridge);
         }
-        assert_eq!(*states.0.lock().unwrap(), vec![(TRACK.to_owned(), 7, true)]);
+        assert_eq!(
+            *states.0.lock().unwrap(),
+            vec![(TRACK.to_owned(), 7, 2, true)]
+        );
     }
 
     /// A slow callback that marks when it ends.
@@ -1155,16 +1165,17 @@ mod connect_tests {
     #[test]
     fn player_state_layout_matches_c() {
         use std::mem::{offset_of, size_of};
-        assert_eq!(size_of::<LsbPlayerState>(), 40);
+        assert_eq!(size_of::<LsbPlayerState>(), 48);
         let offsets = [
             offset_of!(LsbPlayerState, track_uri),
             offset_of!(LsbPlayerState, context_uri),
             offset_of!(LsbPlayerState, position_ms),
             offset_of!(LsbPlayerState, duration_ms),
+            offset_of!(LsbPlayerState, dealer_reconnects),
             offset_of!(LsbPlayerState, is_playing),
             offset_of!(LsbPlayerState, repeat_track),
         ];
-        assert_eq!(offsets, [8, 16, 24, 28, 32, 36]);
+        assert_eq!(offsets, [8, 16, 24, 28, 32, 36, 40]);
     }
 
     #[test]

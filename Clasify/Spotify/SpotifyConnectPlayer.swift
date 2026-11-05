@@ -48,6 +48,8 @@ final class SpotifyConnectPlayer: Player {
     /// States before that can be from an older session or another device, so they are ignored.
     private var ours = false
     private var lastTrack = "", lastRunning = false
+    /// The dealer reconnects that the newest state reported, so each new one is logged once.
+    private var dealerReconnects = 0
     /// TEMP (cover blink, 2026-11-05): the track before `lastTrack`, and when the newest play
     /// command succeeded, for the track-change log. Remove once the cause of the blink is known.
     private var trackBefore = "", playedAt = ContinuousClock.now
@@ -88,6 +90,10 @@ final class SpotifyConnectPlayer: Player {
             // The queue is .main, so this runs on the main actor.
             MainActor.assumeIsolated { self?.spotifyQuit() }
         }
+        // For the log only: a session can drop while the Mac sleeps.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { _ in log.notice("Mac woke from sleep") }
     }
 
     /// Made outside the main actor, because the bridge calls it on its own thread. It only
@@ -142,7 +148,10 @@ final class SpotifyConnectPlayer: Player {
             return start(point.track, context: point.playlist, autoplay: true, at: point.position)
         }
         // After a move away, the pick is gone here. Ask for a new one, do not take it back.
-        guard ours else { return send(.playbackFailed("Pick a track to play it here", generation: generation)) }
+        guard ours else {
+            log.notice("play: no control and no place to go on from")
+            return send(.playbackFailed("Pick a track to play it here", generation: generation))
+        }
         fire(LSB_COMMAND_RESUME)
     }
 
@@ -230,11 +239,13 @@ final class SpotifyConnectPlayer: Player {
     private func spotifyQuit() {
         device = nil
         deviceOptions = [:]
-        if ours { lose("Spotify quit. Press Play to go on", resumable: true) }
+        if ours { lose("Spotify quit. Press Play to go on", resumable: true, reason: "Spotify quit") }
     }
 
     /// Our playback ended outside Clasify. A resumable end keeps the place for Play.
-    private func lose(_ message: String, resumable: Bool) {
+    /// The log gets the reason kind only, with no IDs or names.
+    private func lose(_ message: String, resumable: Bool, reason: String) {
+        log.notice("lost control: \(reason, privacy: .public)")
         ours = false
         ticker?.cancel()
         if resumable { resumePoint = (lastTrack.isEmpty ? startedTrack : lastTrack, playlist, position) }
@@ -273,6 +284,7 @@ final class SpotifyConnectPlayer: Player {
                     Self.logTime("load: play acknowledged", since: start)
                     break
                 } catch where attempt == 0 && known != nil {
+                    Self.logFailure("play, first try", error)
                     known = nil
                 }
             }
@@ -353,7 +365,15 @@ final class SpotifyConnectPlayer: Player {
 
     private nonisolated static func logFailure(_ step: String, _ error: any Error) {
         let status = (error as? BridgeError)?.status ?? 0
-        log.error("\(step, privacy: .public) failed: status \(status, privacy: .public)")
+        let kind = switch status {
+        case LSB_ERR_NOT_LOGGED_IN: "not logged in"
+        case LSB_ERR_CONNECT: "Connect call failed"
+        case LSB_ERR_INVALID_ARGUMENT: "invalid argument"
+        case LSB_ERR_READ: "read failed"
+        case LSB_ERR_OAUTH: "OAuth"
+        default: error is BridgeError ? "other" : "not a bridge error"
+        }
+        log.error("\(step, privacy: .public) failed: status \(status, privacy: .public) (\(kind, privacy: .public))")
     }
 
     // MARK: The Spotify app
@@ -430,7 +450,20 @@ final class SpotifyConnectPlayer: Player {
         return context.hasSuffix(":collection") || state.contextURI.isEmpty || state.contextURI == context
     }
 
+    /// The kind of a Spotify context URI, for the log: playlist, collection, station and so on.
+    nonisolated static func contextKind(_ uri: String) -> String {
+        let parts = uri.split(separator: ":")
+        guard parts.first == "spotify", parts.count >= 2 else { return uri.isEmpty ? "none" : "other" }
+        if parts.last == "collection" { return "collection" }
+        let known = ["playlist", "album", "artist", "station", "show", "episode", "track", "user"]
+        return known.contains(String(parts[1])) ? String(parts[1]) : "other"
+    }
+
     private func handle(_ state: SpotifyPlayerState) {
+        if state.dealerReconnects != dealerReconnects {
+            dealerReconnects = state.dealerReconnects
+            log.notice("dealer reconnected: \(state.dealerReconnects, privacy: .public) in this login")
+        }
         guard let device else { return }
         if state.activeDeviceID == device {
             deviceOptions = [
@@ -451,7 +484,10 @@ final class SpotifyConnectPlayer: Player {
             // The user moved playback to another device or list, or Spotify quit. Do not fight it.
             // With no active device, nothing plays elsewhere, so Play may continue here.
             let stopped = state.activeDeviceID.isEmpty
-            return lose(stopped ? "Spotify stopped playing" : "Playing elsewhere now", resumable: stopped)
+            let reason = stopped ? "no active device"
+                : state.activeDeviceID != device ? "other device"
+                : "other context (\(Self.contextKind(state.contextURI)))"
+            return lose(stopped ? "Spotify stopped playing" : "Playing elsewhere now", resumable: stopped, reason: reason)
         }
         let gen = generation
         if !state.hasTrack {
