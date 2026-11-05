@@ -50,7 +50,9 @@ final class LibrespotLibrary: Library {
     private var session = 0
     /// The running `restoreSession`. Two refreshes with one refresh token can fail,
     /// because Spotify can replace the token, so callers share one.
-    private var restoring: Task<Bool, Never>?
+    private var restoring: Task<Restore, Never>?
+    /// Runs after each background login that worked, from a library read or from `SessionKeeper`.
+    var restored: @MainActor () -> Void = {}
     /// The newest bridge login (it may be done). Bridge logins run one at a time. Each event also
     /// carries its login id, so a late event of an older login is ignored.
     private var bridgeLogin: Task<Void, Never>?
@@ -104,31 +106,47 @@ final class LibrespotLibrary: Library {
     /// no stored login, or the refresh or the login failed. The stored token stays, because
     /// the bridge cannot tell "offline" from "refused". Only `logOut` removes it.
     @discardableResult
-    func restoreSession() async -> Bool {
+    func restoreSession() async -> Bool { await reconnect() == .done }
+
+    /// How a login with the stored refresh token ended.
+    enum Restore: Sendable { case done, failed, refused }
+
+    /// Logs in again with the stored refresh token, for example after the session dropped.
+    /// The library stays when the account is the same. `.refused` means that Spotify rejected
+    /// the token or no login is stored: only a new browser login helps. Callers share one run,
+    /// because two refreshes with one refresh token can fail.
+    func reconnect() async -> Restore {
         if let restoring { return await restoring.value }
-        let task = Task { await self.refreshAndStart() }
+        let task = Task {
+            let result = await self.refreshAndStart()
+            // Inside the task, so it runs once for each login, whichever caller started it.
+            if result == .done { self.restored() }
+            return result
+        }
         restoring = task
-        let restored = await task.value
+        let result = await task.value
         if restoring == task { restoring = nil }
-        return restored
+        return result
     }
 
-    private func refreshAndStart() async -> Bool {
-        guard let refresh = RefreshTokenStore.read() else { return false }
+    private func refreshAndStart() async -> Restore {
+        guard let refresh = RefreshTokenStore.read() else { return .refused }
         let mine = session
         do {
             let tokens = try await timed("oauth refresh") { try await LibrespotClient.oauthRefresh(refresh) }
             // A logout or a login came while the refresh ran. Do not save a token or
             // start a session, because that would undo it.
-            guard session == mine else { return false }
+            guard session == mine else { return .failed }
             // Spotify can replace the refresh token, and then the old one stops working.
             // Keep the new one at once. If the Keychain refuses it, report no session,
             // so the app does not look logged in with a login that cannot come back.
-            if let newRefresh = tokens.refreshToken, !RefreshTokenStore.save(newRefresh) { return false }
+            if let newRefresh = tokens.refreshToken, !RefreshTokenStore.save(newRefresh) { return .failed }
             try await startSession(tokens.accessToken)
-            return true
+            return .done
+        } catch let error as BridgeError where error.status == LSB_ERR_REFUSED {
+            return .refused
         } catch {
-            return false
+            return .failed
         }
     }
 
@@ -230,11 +248,12 @@ final class LibrespotLibrary: Library {
         trackReads = [:]
     }
 
+    /// A login of the same account keeps the library and the username, so a reconnect
+    /// is not seen above. Another account starts empty.
     private func startSession(_ token: String) async throws {
         session += 1
         let mine = session
-        clearCache()
-        username = nil
+        let previousName = username
         // Chain this login after the one before it, so the two never overlap.
         let (client, previous) = (self.client, bridgeLogin)
         let attempt = Task {
@@ -246,6 +265,7 @@ final class LibrespotLibrary: Library {
         bridgeLogin = Task { _ = await attempt.result }
         let name = try await attempt.value
         guard session == mine else { throw BridgeError.cancelled }  // a logout or newer login came first
+        if name != previousName { clearCache() }
         username = name
     }
 }

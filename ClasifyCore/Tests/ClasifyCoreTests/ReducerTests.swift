@@ -627,3 +627,43 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(pick([twin], afterWait: true) == .found(id: "t1"))  // this Mac back with its old ID
     }
 }
+
+@Test func backoffDoublesUpToTheLimitAndResets() {
+    var backoff = Backoff()
+    #expect((0..<7).map { _ in backoff.failed() } == [2, 4, 8, 16, 32, 60, 60])
+    backoff.reset()
+    #expect(backoff.failed() == 2)
+}
+
+private struct Dropped: Error {}
+private struct Other: Error {}
+
+@MainActor @Test func aCommandRetriesOnceAfterTheSessionComesBack() async {
+    var tries = 0, reconnects = 0
+    let dropped: (any Error) -> Bool = { $0 is Dropped }
+    /// Runs one retryOnce, and returns its value or the type of its error.
+    func run(reconnectWorks: Bool, failures: Int, error: any Error = Dropped()) async -> String {
+        tries = 0
+        do {
+            return try await retryOnce(after: { reconnects += 1; return reconnectWorks }, when: dropped) {
+                tries += 1
+                if tries <= failures { throw error }
+                return "sent"
+            }
+        } catch {
+            return "\(type(of: error))"
+        }
+    }
+    // Fails with a dropped session, the reconnect works, and the retry goes out.
+    #expect(await run(reconnectWorks: true, failures: 1) == "sent")
+    #expect(tries == 2 && reconnects == 1)
+    // A failed reconnect sends nothing more.
+    #expect(await run(reconnectWorks: false, failures: 1) == "Dropped")
+    #expect(tries == 1 && reconnects == 2)
+    // The retry runs only once.
+    #expect(await run(reconnectWorks: true, failures: 2) == "Dropped")
+    #expect(tries == 2 && reconnects == 3)
+    // Another failure does not log in again.
+    #expect(await run(reconnectWorks: true, failures: 1, error: Other()) == "Other")
+    #expect(tries == 1 && reconnects == 3)
+}

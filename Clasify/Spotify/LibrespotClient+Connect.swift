@@ -59,20 +59,24 @@ extension LibrespotClient {
     // The calls below queue at once and do not wait. The bridge runs them in call order,
     // so a pause that is queued before `logout` still goes out first. A failure is only logged.
 
-    /// `command` is one of `LSB_COMMAND_*`.
-    func fire(_ command: Int32, to device: String) {
+    /// `command` is one of `LSB_COMMAND_*`. Returns LSB_ERR_NOT_LOGGED_IN at once when the
+    /// session dropped: then the command was not queued.
+    @discardableResult
+    func fire(_ command: Int32, to device: String) -> Int32 {
         lsb_connect_command(handle, device, UInt32(command), loggedCallback, nil)
     }
 
-    func fireSeek(device: String, seconds: Double) {
+    @discardableResult
+    func fireSeek(device: String, seconds: Double) -> Int32 {
         let ms = UInt32(clamping: Int((max(seconds, 0) * 1000).rounded()))
-        lsb_connect_seek(handle, device, ms, loggedCallback, nil)
+        return lsb_connect_seek(handle, device, ms, loggedCallback, nil)
     }
 
     /// `percent` is 0 to 100.
-    func fireVolume(device: String, percent: Int) {
+    @discardableResult
+    func fireVolume(device: String, percent: Int) -> Int32 {
         let value = UInt16(clamping: min(max(percent, 0), 100) * 65535 / 100)
-        lsb_connect_volume(handle, device, value, loggedCallback, nil)
+        return lsb_connect_volume(handle, device, value, loggedCallback, nil)
     }
 
     /// `option` is one of `LSB_OPTION_*`.

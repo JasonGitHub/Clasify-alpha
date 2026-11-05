@@ -20,6 +20,8 @@ final class SpotifyConnectPlayer: Player {
 
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in }
+    /// Logs in again after the session dropped. Returns true when the session works again.
+    var reconnect: @MainActor () async -> Bool = { false }
 
     private let client: LibrespotClient
     private let library: LibrespotLibrary
@@ -161,7 +163,8 @@ final class SpotifyConnectPlayer: Player {
         loadID += 1  // a load in flight must not start Spotify after this
         loading = false
         // Queued at once, so it goes out before the logout that can come next.
-        fire(LSB_COMMAND_PAUSE)
+        // The retry after a reconnect must still go out, though `ours` is false by then.
+        fire(LSB_COMMAND_PAUSE, evenAfterStop: true)
         ours = false
         resumePoint = nil
         ticker?.cancel()
@@ -181,14 +184,13 @@ final class SpotifyConnectPlayer: Player {
         self.generation = generation
         position = seconds  // so a quit before the next state keeps the new place
         resumePoint?.position = seconds  // a scrub after a quit moves the place too
-        guard ours, let device else { return }
-        client.fireSeek(device: device, seconds: seconds)
+        resend { [client] in client.fireSeek(device: $0, seconds: seconds) }
     }
 
     func setVolume(_ percent: Int) {
         volume = percent
-        guard ours, let device else { return }
-        client.fireVolume(device: device, percent: percent)
+        // The retry reads `volume` again, so it sends the newest value.
+        resend { [client] in client.fireVolume(device: $0, percent: self.volume) }
     }
 
     func setShuffle(_ on: Bool) {
@@ -256,9 +258,32 @@ final class SpotifyConnectPlayer: Player {
         send(.playbackFailed(message, generation: generation))
     }
 
-    private func fire(_ command: Int32) {
+    private func fire(_ command: Int32, evenAfterStop: Bool = false) {
+        resend(evenAfterStop: evenAfterStop) { [client] in client.fire(command, to: $0) }
+    }
+
+    /// Sends one fire-and-forget command to our device. When the session dropped, it logs in
+    /// again and sends the command once more. `call` gets the device ID and returns the status.
+    /// The retry is dropped after a new load. `evenAfterStop` keeps it after a stop.
+    private func resend(evenAfterStop: Bool = false, _ call: @escaping @MainActor (String) -> Int32) {
         guard ours, let device else { return }
-        client.fire(command, to: device)
+        guard call(device) == LSB_ERR_NOT_LOGGED_IN else { return }
+        let id = loadID
+        Task {
+            guard await reconnect(), id == loadID, ours || evenAfterStop, let device = self.device else { return }
+            _ = call(device)
+        }
+    }
+
+    /// The session was logged in again. Register it, so the cluster watch delivers states again.
+    func sessionRestored() {
+        Task { _ = try? await client.devices() }
+        // The playback thread adds here: take control again when our device is active.
+    }
+
+    /// Runs one session call, and after a dropped session logs in again and runs it once more.
+    private func again<T>(_ call: @MainActor () async throws -> T) async throws -> T {
+        try await retryOnce(after: reconnect, when: { ($0 as? BridgeError)?.status == LSB_ERR_NOT_LOGGED_IN }, call)
     }
 
     // MARK: Playing
@@ -276,7 +301,7 @@ final class SpotifyConnectPlayer: Player {
             }
             for attempt in 0..<2 {
                 let found: String
-                if let known { found = known } else { found = try await appDevice { id == loadID } }
+                if let known { found = known } else { found = try await again { try await appDevice { id == loadID } } }
                 guard id == loadID else { return }
                 Self.logTime("load: device found", since: start)
                 device = found
@@ -284,7 +309,7 @@ final class SpotifyConnectPlayer: Player {
                 Self.logTime("load: options set", since: start)
                 guard id == loadID else { return }
                 do {
-                    try await client.play(device: found, context: contextURI, track: trackID)
+                    try await again { try await client.play(device: found, context: contextURI, track: trackID) }
                     Self.logTime("load: play acknowledged", since: start)
                     break
                 } catch where attempt == 0 && known != nil {
@@ -350,7 +375,8 @@ final class SpotifyConnectPlayer: Player {
             else { return }
             let (option, on) = next
             do {
-                try await client.setOption(option, on, device: device)
+                // After a dropped session, this logs in again and sends the option once more.
+                try await again { try await client.setOption(option, on, device: device) }
                 // After a sign-out (`reset`), the value belongs to the old account. The next
                 // account can get the same device ID, so the session is compared, not the device.
                 guard session == self.session else { return }
