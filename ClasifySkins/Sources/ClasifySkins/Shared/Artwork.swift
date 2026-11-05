@@ -6,15 +6,22 @@ import SwiftUI
 /// skin redraw when a cover arrives.
 public struct Artwork: Sendable {
     let lookup: @MainActor @Sendable (String) -> CGImage?
+    let pending: @MainActor @Sendable (String) -> Bool
 
-    public init(_ lookup: @escaping @MainActor @Sendable (String) -> CGImage?) {
+    /// `pending` says that a cover is still loading, so a skin can keep the cover it showed.
+    public init(
+        _ lookup: @escaping @MainActor @Sendable (String) -> CGImage?,
+        pending: @escaping @MainActor @Sendable (String) -> Bool = { _ in false }
+    ) {
         self.lookup = lookup
+        self.pending = pending
     }
 
     /// No covers: the skins show the colored square.
     public static let none = Artwork { _ in nil }
 
     @MainActor func image(for coverID: String?) -> CGImage? { coverID.flatMap(lookup) }
+    @MainActor func isPending(_ coverID: String?) -> Bool { coverID.map(pending) ?? false }
 }
 
 private struct ArtworkKey: EnvironmentKey {
