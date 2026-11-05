@@ -53,8 +53,8 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.sel == 3)  // clamped to last row
 
         s = playing()
-        send(&s, .menu, .wheel(7))  // back to Focus tracks, where the bar leaves 7 rows
-        #expect(s.top.sel == 7 && s.top.off == 1)
+        send(&s, .menu, .wheel(7))  // back to Focus tracks, where the bar leaves 4 rows
+        #expect(s.top.sel == 7 && s.top.off == 4)
         send(&s, .menu, .menu, .select)  // Now Playing
         #expect(send(&s, .wheel(-2)) == [.setVolume(50)])
         #expect(s.overlayUntil == 101.5)
@@ -65,11 +65,11 @@ func playing(_ i: Int = 0) -> AppState {
         var s = mainMenu()
         send(&s, openFocus(1))
         send(&s, .wheel(7))
-        #expect(s.shownRows == 8 && s.top.sel == 7 && s.top.off == 0)
+        #expect(s.shownRows == 5 && s.top.sel == 7 && s.top.off == 3)
         send(&s, .select, .menu)  // play track 7, then back: the bar now takes a row
-        #expect(s.shownRows == 7 && s.top.sel == 7 && s.top.off == 1)
+        #expect(s.shownRows == 4 && s.top.sel == 7 && s.top.off == 4)
         send(&s, .wheel(-1))  // the selection moves up, the rows stay
-        #expect(s.top.sel == 6 && s.top.off == 1)
+        #expect(s.top.sel == 6 && s.top.off == 4)
         send(&s, .wheel(-6))
         #expect(s.top.sel == 0 && s.top.off == 0)
     }
@@ -234,7 +234,9 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(!s.showsBar && s.shownRows == 8)  // Now Playing
         send(&s, .menu)
-        #expect(s.showsBar && s.shownRows == 7)
+        #expect(s.showsBar && s.shownRows == 4)  // five two-line song rows, less one
+        send(&s, .menu)
+        #expect(s.showsBar && s.shownRows == 7)  // Playlists
     }
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {

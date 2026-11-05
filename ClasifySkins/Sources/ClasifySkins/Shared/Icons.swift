@@ -12,7 +12,7 @@ enum Icon: Sendable {
 
     var viewBox: CGSize {
         switch self {
-        case .chevron: CGSize(width: 7, height: 10)
+        case .chevron: CGSize(width: 8, height: 12)
         case .prev, .next: CGSize(width: 18, height: 12)
         case .playPause: CGSize(width: 20, height: 12)
         case .speaker: CGSize(width: 14, height: 14)
@@ -72,8 +72,8 @@ enum Icon: Sendable {
         var p = Path()
         switch self {
         case .chevron:
-            p.addLines([CGPoint(x: 1.5, y: 1), CGPoint(x: 5.5, y: 5), CGPoint(x: 1.5, y: 9)])
-            return (p, 1.6)
+            p.addLines([CGPoint(x: 2, y: 1.5), CGPoint(x: 6.5, y: 6), CGPoint(x: 2, y: 10.5)])
+            return (p, 2)
         case .speakerLoud:
             // The SVG arcs "M10.5 4.5a3.5 3.5 0 010 5" and "M12.5 2.5a6.3 6.3 0 010 9".
             p.move(to: CGPoint(x: 10.5, y: 4.5))
@@ -111,7 +111,7 @@ enum Icon: Sendable {
     /// The SVG gives these strokes round ends.
     var roundCaps: Bool {
         switch self {
-        case .shuffle, .repeatMode: true
+        case .chevron, .shuffle, .repeatMode: true
         default: false
         }
     }

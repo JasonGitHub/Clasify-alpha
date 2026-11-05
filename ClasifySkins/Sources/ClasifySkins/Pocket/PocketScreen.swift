@@ -135,6 +135,7 @@ struct PocketList: View {
         let shown = Array(rows.indices.dropFirst(first).prefix(state.shownRows))
         let scrolls = rows.count > state.shownRows
         // The rows fill the list exactly: 180 points under the title bar, 160 over the bar.
+        // Song rows have two lines, so only state.shownRows of them fit: 36 or 40 points each.
         let height = (state.showsBar ? 160 : 180) / CGFloat(state.shownRows)
         VStack(spacing: 0) {
             ForEach(shown, id: \.self) { index in
@@ -180,14 +181,23 @@ struct PocketRow: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(text.label)
-                .font(.helvetica(13, bold: true))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(text.label)
+                    .font(.helvetica(13, bold: true))
+                    .lineLimit(1)
+                if !text.detail.isEmpty {
+                    Text(text.detail)
+                        .font(.helvetica(11))
+                        .lineLimit(1)
+                        .foregroundStyle(selected ? Color(hex: 0xe3efff) : Color(hex: 0x6b7580))
+                }
+            }
             Spacer(minLength: 0)
             HStack(spacing: 4) {
                 if !text.value.isEmpty { Text(text.value).font(.helvetica(12)) }
                 if text.playing { IconView(.speakerLoud, width: 13, height: 11, label: "Now playing") }
-                if text.opens { IconView(.chevron, width: 7, height: 10) }
+                // Only the selected row shows its chevron, in white.
+                if text.opens && selected { IconView(.chevron, width: 8, height: 12) }
             }
             .fixedSize()
         }
@@ -196,6 +206,11 @@ struct PocketRow: View {
         .frame(height: height)
         .foregroundStyle(selected ? Color.white : Pocket.ink)
         .background { if selected { Pocket.selection } }
+        .overlay(alignment: .bottom) {
+            // Two-line rows have a faint line between them, except under the selection.
+            if !text.detail.isEmpty && !selected { Color.black.opacity(0.06).frame(height: 1) }
+        }
+        .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

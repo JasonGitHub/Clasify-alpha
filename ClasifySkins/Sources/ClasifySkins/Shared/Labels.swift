@@ -21,6 +21,8 @@ enum Labels {
     struct RowText: Equatable {
         var label: String
         var value = ""
+        /// A second line under the label: the artist on a song row.
+        var detail = ""
         /// The playing track's row shows a speaker, whether it plays or is paused.
         var playing = false
         var opens = false
@@ -40,7 +42,8 @@ enum Labels {
         case .track(let id):
             guard case .tracks(let playlist) = screen else { return RowText(label: "") }
             let ref = TrackRef(playlist: playlist, track: id)
-            return RowText(label: state.track(ref)?.title ?? "", playing: state.current == ref)
+            let track = state.track(ref)
+            return RowText(label: track?.title ?? "", detail: track?.artist ?? "", playing: state.current == ref)
         case .shuffle: return RowText(label: "Shuffle", value: state.shuffle ? "Songs" : "Off")
         case .repeatMode: return RowText(label: "Repeat", value: state.repeatMode.rawValue)
         case .skin: return RowText(label: "Skin", value: state.skin.rawValue)
