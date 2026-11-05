@@ -21,7 +21,8 @@ public struct Backoff: Equatable, Sendable {
 /// and runs `attempt` once more. Any other failure, or a failed reconnect, throws the first error.
 @MainActor
 public func retryOnce<T>(
-    after reconnect: () async -> Bool, when dropped: (any Error) -> Bool, _ attempt: () async throws -> T
+    after reconnect: @MainActor () async -> Bool, when dropped: (any Error) -> Bool,
+    _ attempt: @MainActor () async throws -> T
 ) async throws -> T {
     do {
         return try await attempt()

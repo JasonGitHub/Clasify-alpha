@@ -21,7 +21,7 @@ final class SpotifyConnectPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in }
     /// Logs in again after the session dropped. Returns true when the session works again.
-    var reconnect: () async -> Bool = { false }
+    var reconnect: @MainActor () async -> Bool = { false }
 
     private let client: LibrespotClient
     private let library: LibrespotLibrary
@@ -271,7 +271,7 @@ final class SpotifyConnectPlayer: Player {
     }
 
     /// Runs one session call, and after a dropped session logs in again and runs it once more.
-    private func again<T>(_ call: () async throws -> T) async throws -> T {
+    private func again<T>(_ call: @MainActor () async throws -> T) async throws -> T {
         try await retryOnce(after: reconnect, when: { ($0 as? BridgeError)?.status == LSB_ERR_NOT_LOGGED_IN }, call)
     }
 
