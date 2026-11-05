@@ -241,7 +241,9 @@ final class SpotifyConnectPlayer: Player {
     private func spotifyQuit() {
         device = nil
         deviceOptions = [:]
-        if ours { lose("Spotify quit. Press Play to go on", resumable: true, reason: "Spotify quit") }
+        // After following Spotify into a station or album, there is no place to go on from.
+        let message = followedOther ? "Spotify quit. Pick a track to play" : "Spotify quit. Press Play to go on"
+        if ours { lose(message, resumable: true, reason: "Spotify quit") }
     }
 
     /// Our playback ended outside Clasify. A resumable end keeps the place for Play.
