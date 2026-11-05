@@ -131,11 +131,12 @@ public struct AppState: Equatable, Sendable {
         set { stack[stack.count - 1] = newValue }
     }
 
-    /// The bar for the playing track shows under every screen but Now Playing and the login wait.
+    /// The bar for the playing track shows under every screen but the main menu, Now Playing
+    /// and the login wait. The main menu shows covers on its right instead.
     public var showsBar: Bool {
         guard current != nil else { return false }
         switch top.screen {
-        case .now, .auth: return false
+        case .main, .now, .auth: return false
         default: return true
         }
     }
@@ -146,6 +147,18 @@ public struct AppState: Equatable, Sendable {
         var rows = visibleRows
         if case .tracks = top.screen { rows = trackRows }
         return showsBar ? rows - 1 : rows
+    }
+
+    /// The tracks whose covers take turns on the main menu's right side: the playing track,
+    /// then the first Liked Songs, four in all. Fewer tracks repeat. Empty when there are none.
+    public var mainArt: [Track] {
+        var picks: [Track] = []
+        if let ref = current, let track = track(ref) { picks.append(track) }
+        for track in tracks(in: Playlist.likedSongsID) where picks.count < 4 && !picks.contains(where: { $0.id == track.id }) {
+            picks.append(track)
+        }
+        guard !picks.isEmpty else { return [] }
+        return (0..<4).map { picks[$0 % picks.count] }
     }
 
     /// The screen's list is already in the state, so it opens without a read.

@@ -39,7 +39,9 @@ import Testing
     func render(
         _ state: AppState, _ name: String, pressed: ClickWheel.Zone? = nil, artwork: Artwork = .none
     ) throws -> Snapshot {
-        let skin = PocketSkin(state: state, interactive: false, pressed: pressed).environment(\.artwork, artwork)
+        let skin = PocketSkin(state: state, interactive: false, pressed: pressed)
+            .environment(\.artwork, artwork)
+            .environment(\.animationTime, 1)  // the main menu's first cover, just faded in
         let renderer = ImageRenderer(content: skin)
         renderer.scale = CGFloat(Snapshot.scale)
         let image = try #require(renderer.cgImage)
@@ -76,14 +78,37 @@ import Testing
         #expect(shot.isLight(150, 37))  // the header, right of the title
     }
 
-    @Test func mainMenuWithTheBar() throws {
+    @Test func mainMenuShowsCoversOnTheRight() throws {
         var s = sampleState()
-        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
         s.isPlaying = true
         s.top.sel = 1
         let shot = try render(s, "main")
-        #expect(shot.isLight(150, Self.rowCenter(0, bar: true)))
-        #expect(shot.isBlue(150, Self.rowCenter(1, bar: true)))
+        // A 136 point pane (x 24 to 160) with 8 rows of 22.5 and no bar.
+        #expect(shot.isLight(125, Self.rowCenter(0)))  // right of "Now Playing"
+        #expect(shot.isBlue(125, Self.rowCenter(1)))
+        // On the right, the playing track's cover: here the artist's color, as no image is loaded.
+        let art = shot.rgb(Self.screenLeft + 170, Self.listTop + 150)  // past the pane's shadow
+        let want = try reference(Labels.cover(for: "OutKast"))
+        #expect(near(art, want), "art \(art), want \(want)")
+
+        s.showArt = false  // Album Art off: a full-width list, with no covers
+        let plain = try render(s, "main-no-art")
+        #expect(plain.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
+    }
+
+    @Test func mainArtFollowsTheMockupKeyframes() {
+        func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+        #expect(MainArt.pose(at: 0, delay: 0).opacity == 0)
+        #expect(close(MainArt.pose(at: 0.48, delay: 0).opacity, 0.5))  // 2 % of 24 s
+        #expect(MainArt.pose(at: 3, delay: 0).opacity == 1)
+        #expect(close(MainArt.pose(at: 6.48, delay: 0).opacity, 0.5))  // 27 %
+        #expect(MainArt.pose(at: 12, delay: 0).opacity == 0)
+        #expect(MainArt.pose(at: 3, delay: 6).opacity == 0)  // the second layer has not started
+        #expect(MainArt.pose(at: 9, delay: 6) == MainArt.pose(at: 3, delay: 0))
+        #expect(MainArt.pose(at: 27, delay: 0) == MainArt.pose(at: 3, delay: 0))  // it loops
+        let end = MainArt.pose(at: 6.96, delay: 0)  // 29 %
+        #expect(close(end.scale, 1.22) && close(end.dx, 0.03) && close(end.dy, 0.02))
     }
 
     @Test func fiveSongRowsFillTheList() throws {
@@ -98,16 +123,17 @@ import Testing
 
     @Test func onlyTheSelectedRowShowsAChevron() throws {
         var s = sampleState()
-        s.top.sel = 1  // Liked Songs; Playlists above it also opens a screen
-        let shot = try render(s, "main-chevron")
+        s.stack.append(Frame(screen: .settings))
+        s.top.sel = 4  // About; Log out under it also opens a screen
+        let shot = try render(s, "settings-chevron")
         // The chevron is 8 points wide, 10 points in from the right edge of the 252 point list.
         let xs = Self.screenLeft + 232...Self.screenLeft + 244
         func box(_ row: Int) -> [(Int, Int)] {
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
         }
-        #expect(box(0).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Playlists
-        #expect(box(1).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+        #expect(box(5).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Log out
+        #expect(box(4).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
     }
 
     @Test func songListShowsArtistsAndTheScrollBar() throws {
@@ -264,7 +290,8 @@ import Testing
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
         s.isPlaying = false
-        let shot = try render(s, "main-paused")
+        s.stack.append(Frame(screen: .playlists))  // a full-width header; the main menu's is 136 points
+        let shot = try render(s, "paused")
         // The header mark: two blue bars, 2.6 points wide with a 1.8 point gap, at the right of the header.
         let left: Int = Self.screenLeft + 252 - 8 - 9, midY: Int = 25 + 2 + 10
         #expect(shot.isBlue(left + 2, midY))  // the first bar

@@ -7,6 +7,8 @@ enum Pocket {
     static let gray = Color(hex: 0x3d454e)
     static let line = Color(hex: 0x8f99a3)
     static let frame = Color(hex: 0x4b5056)
+    /// The LCD's glass, behind the lists.
+    static var glass: LinearGradient { .vertical(Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec)) }
     static var selection: LinearGradient { .vertical(Color(hex: 0x5aa3f0), Color(hex: 0x1f6fd1)) }
     /// The glossy blue of the progress fill and the slider knobs.
     static var gloss: LinearGradient {
@@ -30,13 +32,25 @@ struct PocketScreen: View {
     private var top: Frame { state.top }
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            Pocket.line.frame(height: 1)
-            content.frame(maxWidth: .infinity, maxHeight: .infinity)
-            if state.showsBar, let now = Labels.now(in: state) {
+        // The main menu is a 136 point pane with a shadow, over covers on the right.
+        // With Album Art off, it is a full-width list and loads no covers.
+        let split = top.screen == .main && state.showArt
+        ZStack(alignment: .leading) {
+            if split { MainArt(tracks: state.mainArt).padding(.leading, 136) }
+            VStack(spacing: 0) {
+                header
                 Pocket.line.frame(height: 1)
-                bar(now)
+                content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                if state.showsBar, let now = Labels.now(in: state) {
+                    Pocket.line.frame(height: 1)
+                    bar(now)
+                }
+            }
+            .frame(width: split ? 136 : 252)
+            .background {
+                if split {
+                    Pocket.glass.shadow(color: .black.opacity(0.4), radius: 5, x: 4, y: 0)
+                }
             }
         }
         .overlay(alignment: .bottom) {
@@ -46,7 +60,7 @@ struct PocketScreen: View {
         .background {
             // The glass and its inset shadow. As in the mockup, the header, the selected row,
             // the bar and the scroll bar paint over the shadow.
-            LinearGradient.vertical(Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec))
+            Pocket.glass
                 .overlay {
                     RoundedRectangle(cornerRadius: 4)
                         .stroke(Color.black.opacity(0.25), lineWidth: 6)
