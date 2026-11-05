@@ -168,6 +168,9 @@ struct PocketList: View {
         .background(Capsule().fill(Color(hex: 0xc3ccd5)))
         .padding(.vertical, 2)
         .padding(.trailing, 2)
+        // It shows for 1.5 s after a wheel step or a screen change, then fades out over 0.4 s.
+        .opacity(state.scrollUntil > 0 ? 1 : 0)
+        .animation(.easeInOut(duration: 0.4), value: state.scrollUntil > 0)
         .accessibilityHidden(true)
     }
 }

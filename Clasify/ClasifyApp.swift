@@ -102,7 +102,7 @@ final class AppModel {
         self.store = store
         haptics = Haptics(store: store)
         store.send(.launch)  // restores the stored login
-        // The reducer's toast and overlay timers run on .tick. Each .tick redraws the skin,
+        // The reducer's toast, overlay and scroll bar timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
         // and resets the player when the session signs out.
@@ -118,7 +118,8 @@ final class AppModel {
                 let now = Dependencies.live.now()
                 let toastDone = state.toastUntil > 0 && now > state.toastUntil
                 let overlayDone = state.overlayUntil > 0 && now > state.overlayUntil
-                if toastDone || overlayDone { store?.send(.tick) }
+                let scrollDone = state.scrollUntil > 0 && now > state.scrollUntil
+                if toastDone || overlayDone || scrollDone { store?.send(.tick) }
             }
         }
     }

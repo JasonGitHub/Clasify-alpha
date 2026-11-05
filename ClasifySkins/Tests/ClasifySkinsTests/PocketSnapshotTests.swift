@@ -113,6 +113,7 @@ import Testing
     @Test func songListShowsArtistsAndTheScrollBar() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
+        s.scrollUntil = 1  // a wheel step or a screen change just happened
         let shot = try render(s, "tracks")
         #expect(shot.isBlue(100, Self.rowCenter(0, songs: true)))
         // The second row is not selected. Its lower half holds the gray artist line, "Band 2".
@@ -127,6 +128,14 @@ import Testing
         let thumbX: Int = Self.screenLeft + 248, thumbY: Int = Self.listTop + 8
         let thumb = shot.rgb(thumbX, thumbY), want = try reference(0x5d6772)
         #expect(near(thumb, want), "thumb \(thumb), want \(want)")
+    }
+
+    @Test func theScrollBarHidesWhenTheListIsStill() throws {
+        var s = sampleState()
+        s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
+        let shot = try render(s, "tracks-still")
+        let thumbX: Int = Self.screenLeft + 248, thumbY: Int = Self.listTop + 8
+        #expect(shot.isBlue(thumbX, thumbY))  // the selected row's blue, with no thumb over it
     }
 
     @Test func settings() throws {

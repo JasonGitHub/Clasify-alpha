@@ -115,6 +115,9 @@ public struct AppState: Equatable, Sendable {
     /// When the volume bar hides, or when a scrub, shuffle or repeat slider goes back to the
     /// progress bar. 0 when nothing is timed.
     public var overlayUntil: Double = 0
+    /// When a list's scroll bar fades out: `scrollBarTime` after the last wheel step on a
+    /// list or the last screen change. 0 when the bar is hidden.
+    public var scrollUntil: Double = 0
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
     public var toast = ""
