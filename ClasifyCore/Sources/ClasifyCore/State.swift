@@ -117,6 +117,11 @@ public struct AppState: Equatable, Sendable {
     public var extraTracks: [Track] = []
     /// Track IDs whose read runs or failed in this session, so each is read only once.
     public var trackReads: Set<String> = []
+    /// When each list was last read, by `readKey`. Opening a list older than `staleAfter`
+    /// reads it again in the background.
+    public var readAt: [String: Double] = [:]
+    /// The `readKey`s whose background re-read runs, so each runs once at a time.
+    public var refreshing: Set<String> = []
     public var t: Double = 0
     public var isPlaying = false
     public var volume = 60
@@ -186,6 +191,11 @@ public struct AppState: Equatable, Sendable {
         case .tracks(let id): loadedTracks.contains(id)
         default: true
         }
+    }
+
+    /// The `readAt` key of a list screen: the playlist ID, or "" for the playlist list.
+    public static func readKey(_ screen: Screen) -> String {
+        if case .tracks(let id) = screen { id } else { "" }
     }
 
     public func tracks(in playlist: String) -> [Track] {

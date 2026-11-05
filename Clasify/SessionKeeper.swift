@@ -31,6 +31,7 @@ final class SessionKeeper {
             self?.backoff.reset()
             self?.notBefore = .now  // a player command can succeed during a wait: end that wait
             player?.sessionRestored()
+            self?.store?.send(.libraryStale)  // changes made during the drop show
         }
         Task { [weak self] in
             while !Task.isCancelled {

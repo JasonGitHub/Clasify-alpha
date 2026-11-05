@@ -84,6 +84,13 @@ extension LibrespotClient {
         try await command("cannot set option") { lsb_connect_set_option(handle, device, UInt32(option), on, commandCallback, $0) }
     }
 
+    /// Moves playback from the active device `from` (for example a phone) to `device`, the
+    /// Spotify app on this Mac. The song and the place carry over, and the play or pause state
+    /// stays: send `LSB_COMMAND_RESUME` after it to play.
+    func transfer(from: String, to device: String) async throws {
+        try await command("cannot move playback") { lsb_connect_transfer(handle, from, device, commandCallback, $0) }
+    }
+
     /// Runs one bridge command call. `start` gets the callback context and returns the call status.
     private func command(_ failure: String, _ start: (UnsafeMutableRawPointer) -> Int32) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in

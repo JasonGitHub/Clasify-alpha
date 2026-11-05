@@ -106,6 +106,13 @@ final class AppModel {
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] in await keeper?.reconnect() ?? false }
         self.keeper = keeper
+        // A change made in the Spotify app shows when the user comes back to Clasify.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
+        ) { [weak store] _ in
+            // The queue is .main, so this runs on the main actor.
+            MainActor.assumeIsolated { store?.send(.activated) }
+        }
         store.send(.launch)  // restores the stored login
         // The reducer's toast, overlay and scroll bar timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
