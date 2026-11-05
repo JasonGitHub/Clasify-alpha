@@ -65,7 +65,7 @@ int32_t lsb_session_status(LsbBridge *bridge);
 // read-only scopes. The bridge stores no token: keep the refresh token in the Keychain.
 // Never log or store the access token.
 typedef struct LsbToken {
-    int32_t status;              // LSB_OK, LSB_ERR_OAUTH, or LSB_ERR_REFUSED (refresh rejected).
+    int32_t status;              // LSB_OK, LSB_ERR_OAUTH, or LSB_ERR_REFUSED (lsb_oauth_refresh only).
     uint32_t expires_in_s;       // LSB_OK: seconds until the access token expires.
     const char *access_token;    // LSB_OK only, else NULL.
     const char *refresh_token;   // LSB_OK and Spotify sent one, else NULL.

@@ -540,14 +540,20 @@ mod library_tests {
         let revoked = "Failed to exchange code for access token \
             (Server returned error response: invalid_grant: Invalid refresh token)";
         assert_eq!(
-            TokenResult::new(Err(revoked.to_owned()), now).status,
+            TokenResult::refreshed(Err(revoked.to_owned()), now).status,
             LSB_ERR_REFUSED
         );
         let offline = "Failed to exchange code for access token (Request failed)";
         assert_eq!(
-            TokenResult::new(Err(offline.to_owned()), now).status,
+            TokenResult::refreshed(Err(offline.to_owned()), now).status,
             LSB_ERR_OAUTH
         );
+        // In a browser login, `invalid_grant` is about the code, not a saved token.
+        assert_eq!(
+            TokenResult::new(Err(revoked.to_owned()), now).status,
+            LSB_ERR_OAUTH
+        );
+        assert_eq!(TokenResult::refreshed(Ok(token("r")), now).status, LSB_OK);
     }
 
     type Delivered = Mutex<Vec<(i32, Option<String>, Vec<Vec<String>>)>>;
