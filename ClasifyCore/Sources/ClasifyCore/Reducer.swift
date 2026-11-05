@@ -31,6 +31,10 @@ public enum Action: Equatable, Sendable {
     case trackChanged(String, playing: Bool, generation: Int)
     /// The details of one track that `.readTrack` asked for. nil when the read failed.
     case trackRead(String, Track?)
+    /// The engine found a track that Spotify already plays on this Mac, with no load from
+    /// Clasify, for example at launch. It becomes `current`, and Now Playing does not open.
+    /// `playlist` is nil when the context is not a playlist or Liked Songs. A load wins.
+    case adopted(track: String, playlist: String?, playing: Bool, position: Double, generation: Int)
     /// The engine can't play the load with this `generation`. The message is shown as a toast.
     case playbackFailed(String, generation: Int)
 }
@@ -131,6 +135,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.stack.append(Frame(screen: .now))
         fx.append(.setShuffle(s.shuffle)); fx.append(.setRepeat(s.repeatMode))
         loadTrack(id, autoplay: true)
+    }
+    /// A current track from outside our copy of the list, such as Spotify's autoplay: read its
+    /// details once. A read in flight or a failed read is not started again.
+    func readIfUnknown(_ id: String) {
+        guard let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) else { return }
+        s.trackReads.insert(id)
+        fx.append(.readTrack(id))
     }
     func stop() {
         if s.current != nil { fx.append(.stop) }
@@ -280,12 +291,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.current != nil, gen == s.playGen else { return }
             s.isPlaying = playing
             if s.current?.track != id { s.current?.track = id; s.t = 0 }
-            // A track from outside our copy of the list, such as Spotify's autoplay: read its
-            // details once. A read in flight or a failed read is not started again.
-            if let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) {
-                s.trackReads.insert(id)
-                fx.append(.readTrack(id))
-            }
+            readIfUnknown(id)
 
         case .trackRead(let id, let track):
             // Not asked for in this session, for example a read from before a sign-out.
@@ -295,6 +301,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.extraTracks.removeAll { $0.id == id }
             s.extraTracks.append(track)
             if s.extraTracks.count > extraTrackLimit { s.extraTracks.removeFirst(s.extraTracks.count - extraTrackLimit) }
+
+        case .adopted(let id, let pl, let playing, let t, let gen):
+            guard s.current == nil, gen == s.playGen else { return }  // a load or a newer one came first
+            s.current = TrackRef(playlist: pl ?? "", track: id)  // "" is no playlist of ours
+            s.isPlaying = playing; s.t = t
+            if s.top.screen == .main { s.top.sel += 1 }  // the new Now Playing row goes on top: keep the pick
+            readIfUnknown(id)
 
         case .playbackFailed(let msg, let gen):
             guard s.current != nil, gen == s.playGen else { return }

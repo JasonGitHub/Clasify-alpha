@@ -368,6 +368,30 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.extraTracks.isEmpty)
     }
 
+    @Test func adoptedShowsWhatSpotifyPlaysWithoutOpeningNowPlaying() {
+        var s = mainMenu()
+        send(&s, .wheel(1))  // Liked Songs
+        #expect(send(&s, .adopted(track: "f2", playlist: "focus", playing: false, position: 12, generation: 0)) == [])
+        #expect(s.current == TrackRef(playlist: "focus", track: "f2") && !s.isPlaying && s.t == 12)
+        #expect(s.top.screen == .main && s.rows(for: s.top) == [.nowPlaying, .playlists, .likedSongs, .shuffleSongs, .settings])
+        #expect(s.top.sel == 2)  // still Liked Songs
+        #expect(send(&s, .play) == [.resume] && s.isPlaying)  // Play works at once
+        s = mainMenu()
+        send(&s, .adopted(track: "zz", playlist: nil, playing: true, position: 3, generation: 0))  // a station
+        #expect(s.current == TrackRef(playlist: "", track: "zz") && s.isPlaying)
+        #expect(send(&s, .next) == [.next(generation: 1)])
+        s = mainMenu()  // a track from outside the library: its details are read, as after `.trackChanged`
+        let radio = "spotify:track:radio"
+        #expect(send(&s, .adopted(track: radio, playlist: nil, playing: true, position: 0, generation: 0)) == [.readTrack(radio)])
+        s = playing()  // a load is in flight: the load wins
+        #expect(send(&s, .adopted(track: "f5", playlist: "focus", playing: true, position: 40, generation: 1)) == [])
+        #expect(s.current?.track == "f0" && s.t == 0)
+        s = mainMenu()
+        s.playGen = 2
+        send(&s, .adopted(track: "f1", playlist: "focus", playing: true, position: 0, generation: 1))  // stale
+        #expect(s.current == nil)
+    }
+
     @Test func playbackFailedPausesAndShowsToast() {
         var s = playing()
         send(&s, .playbackFailed("Old", generation: 0))  // stale load

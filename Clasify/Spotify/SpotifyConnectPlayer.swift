@@ -59,6 +59,9 @@ final class SpotifyConnectPlayer: Player {
     private var rejoinUntil: ContinuousClock.Instant?
     /// The user moved our playback to another device. A login does not take it back then.
     private var movedAway = false
+    /// The newest state from the bridge. At launch it can come before the pre-warm found our
+    /// device, so the pre-warm handles it again.
+    private var latest: SpotifyPlayerState?
     /// TEMP (cover blink, 2026-11-05): the track before `lastTrack`, and when the newest play
     /// command succeeded, for the track-change log. Remove once the cause of the blink is known.
     private var trackBefore = "", playedAt = ContinuousClock.now
@@ -227,7 +230,10 @@ final class SpotifyConnectPlayer: Player {
                 let found = try await appDevice { id == warmID }
                 guard id == warmID else { return nil }
                 Self.logTime("prewarm: device found", since: start)
-                if device == nil { device = found }
+                if device == nil {
+                    device = found
+                    if let latest { handle(latest) }  // so a launch can pick up what plays here
+                }
                 return found
             } catch {
                 Self.logFailure("prewarm", error)
@@ -249,6 +255,7 @@ final class SpotifyConnectPlayer: Player {
         rejoinUntil = nil
         movedAway = false
         startedTrack = ""
+        latest = nil  // it belongs to the account that signed out
     }
 
     /// Spotify quit. Its device must be found again after the next launch. While it played
@@ -292,25 +299,41 @@ final class SpotifyConnectPlayer: Player {
     func sessionRestored() {
         Task { _ = try? await client.devices() }
         // The new registration makes the cluster watch send the current state. If our device
-        // has a track and Clasify still shows our last load, `handle` takes control again.
-        // At launch there was no load yet, so nothing is taken.
+        // has a track, `handle` takes control again, or at launch shows what Spotify plays.
         rejoinUntil = ContinuousClock.now + .seconds(10)
     }
 
-    /// Takes control again after a new login, when our device still has a track and no load
-    /// or stop came after our last load. The state then goes to the store as a track change.
+    /// Takes control after a new login, when our device has a track and no load or stop came
+    /// since. After our own load, the state goes to the store as a track change. With no load
+    /// yet, as at launch, the store adopts the track, so Play, Pause and Next work at once.
     private func rejoin(_ state: SpotifyPlayerState) {
         guard let until = rejoinUntil, ContinuousClock.now < until, !ours, !loading, !movedAway,
-              !startedTrack.isEmpty, state.hasTrack else { return }
+              state.hasTrack else { return }
         rejoinUntil = nil
-        log.notice("took control again after a new login")
         ours = true
         resumePoint = nil
         loaded = nil
-        lastTrack = ""  // so the store gets the track and its play state
-        // Shuffle or repeat can have changed in Spotify while the session was down.
-        Task { await applyOptions() }
-        resend { [client] in client.fireVolume(device: $0, percent: self.volume) }  // and the volume
+        guard startedTrack.isEmpty else {
+            log.notice("took control again after a new login")
+            lastTrack = ""  // so the store gets the track and its play state
+            // Shuffle or repeat can have changed in Spotify while the session was down.
+            Task { await applyOptions() }
+            resend { [client] in client.fireVolume(device: $0, percent: self.volume) }  // and the volume
+            return
+        }
+        // Never change what the user already hears: no volume, shuffle or repeat goes out.
+        // Clasify's options apply again at its next load, and its volume at the next wheel turn.
+        log.notice("picked up what Spotify plays here (\(Self.contextKind(state.contextURI), privacy: .public))")
+        // The playlist as in `handle`: a playlist or Liked Songs, else none to go on from.
+        context = state.contextURI
+        let likedSongs = context.hasSuffix(":collection")
+        followedOther = !likedSongs && !context.hasPrefix("spotify:playlist:")
+        playlist = followedOther ? nil : likedSongs ? Playlist.likedSongsID : context
+        startedTrack = state.trackURI
+        lastTrack = state.trackURI
+        lastRunning = state.isRunning  // `handle` then sends no track change for it
+        send(.adopted(track: state.trackURI, playlist: playlist, playing: state.isRunning,
+                      position: state.position, generation: generation))
     }
 
     /// Runs one session call, and after a dropped session logs in again and runs it once more.
@@ -523,6 +546,7 @@ final class SpotifyConnectPlayer: Player {
     }
 
     private func handle(_ state: SpotifyPlayerState) {
+        latest = state
         // A lower count is a new login: it only sets the new baseline.
         if state.dealerReconnects > dealerReconnects {
             log.notice("dealer reconnected: \(state.dealerReconnects, privacy: .public) in this login")
@@ -535,6 +559,8 @@ final class SpotifyConnectPlayer: Player {
                 LSB_OPTION_REPEAT_TRACK: state.repeatTrack,
             ]
             rejoin(state)
+        } else if !state.activeDeviceID.isEmpty {
+            rejoinUntil = nil  // it plays elsewhere: a later move to this Mac is not ours to take
         }
         guard ours else { return }
         if let loaded, ContinuousClock.now - loaded.at < .seconds(3),
