@@ -27,7 +27,8 @@ struct MainArt: View {
     }
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion || fixedTime != nil)) { context in
+        // 30 frames a second is smooth for a 24 s drift, and costs less than the display rate.
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
             GeometryReader { geo in
                 ZStack {
