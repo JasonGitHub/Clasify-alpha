@@ -73,6 +73,7 @@ final class SpotifyConnectPlayer: Player {
         var startedTrack: String, lastTrack: String, lastRunning: Bool
         var playlist: String?, context: String, position: Double
         var resumePoint: (track: String, playlist: String?, position: Double)?
+        var loaded: (track: String?, at: ContinuousClock.Instant)?
     }
     /// TEMP (cover blink, 2026-11-05): the track before `lastTrack`, and when the newest play
     /// command succeeded, for the track-change log. Remove once the cause of the blink is known.
@@ -135,7 +136,7 @@ final class SpotifyConnectPlayer: Player {
         let before = Snapshot(
             ours: ours, movedAway: movedAway, followedOther: followedOther, startedTrack: startedTrack,
             lastTrack: lastTrack, lastRunning: lastRunning, playlist: playlist, context: context,
-            position: position, resumePoint: resumePoint)
+            position: position, resumePoint: resumePoint, loaded: loaded)
         start(trackID, context: context, autoplay: autoplay, at: nil)
         beforeLoad = before.startedTrack.isEmpty ? nil : before
         storeLoad = true
@@ -147,7 +148,7 @@ final class SpotifyConnectPlayer: Player {
         beforeLoad = nil
         (movedAway, followedOther, startedTrack) = (b.movedAway, b.followedOther, b.startedTrack)
         (lastTrack, lastRunning, playlist, context) = (b.lastTrack, b.lastRunning, b.playlist, b.context)
-        (position, resumePoint) = (b.position, b.resumePoint)
+        (position, resumePoint, loaded) = (b.position, b.resumePoint, b.loaded)  // `loaded` keeps its stale-state guard
         guard b.ours else { return }
         guard device != nil else {
             // Spotify quit during the load: Play goes on with the old track.
