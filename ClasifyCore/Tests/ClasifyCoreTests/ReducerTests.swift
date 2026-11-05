@@ -237,6 +237,8 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.showsBar && s.shownRows == 4)  // five two-line song rows, less one
         send(&s, .menu)
         #expect(s.showsBar && s.shownRows == 7)  // Playlists
+        send(&s, .menu)
+        #expect(!s.showsBar && s.shownRows == 8)  // the main menu shows covers instead
     }
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {
@@ -268,6 +270,16 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .tick, now: 200)
         send(&s, .wheel(1), now: 300)  // volume on Now Playing: no scroll bar
         #expect(s.scrollUntil == 0)
+    }
+
+    @Test func theMainMenuCoversStartWithThePlayingTrack() {
+        var s = mainMenu()
+        #expect(s.mainArt.isEmpty)
+        s.library = library
+        #expect(s.mainArt.map(\.id) == ["l0", "l1", "l0", "l1"])  // two Liked Songs, repeated
+        s = playing(3)
+        s.library = library
+        #expect(s.mainArt.map(\.id) == ["f3", "l0", "l1", "f3"])
     }
 
     @Test func tickExpiresToastAndOverlay() {
