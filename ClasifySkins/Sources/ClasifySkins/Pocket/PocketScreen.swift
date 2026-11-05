@@ -281,7 +281,7 @@ struct Marquee: View {
             }
             .fixedSize()
             .visualEffect { content, geo in content.offset(x: -shift * geo.size.width / 2) }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)  // minWidth 0: else the frame is as wide as both copies
         }
         .clipped()
     }
