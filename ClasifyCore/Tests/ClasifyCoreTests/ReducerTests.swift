@@ -405,6 +405,30 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .select, .menu, now: 400) == [])  // offline: no read
     }
 
+    @Test func activatedReadsTheShownListsAgainAfter30s() {
+        var s = mainMenu()
+        #expect(send(&s, .activated) == [])  // nothing read yet
+        send(&s, openFocus(1))  // read at 100
+        #expect(send(&s, .activated, now: 129) == [])
+        #expect(send(&s, .activated, now: 130) == [.refreshTracks(playlist: "focus"), .refreshPlaylists])
+        #expect(send(&s, .activated, now: 200) == [])  // already running
+        s.refreshing = []
+        send(&s, .menu, .menu)  // the main menu: only the playlist list
+        #expect(send(&s, .activated, now: 300) == [.refreshPlaylists])
+        s = AppState()
+        #expect(send(&s, .activated) == [])  // signed out
+    }
+
+    @Test func libraryStaleReadsTheShownListsAgainAtOnce() {
+        var s = mainMenu()
+        send(&s, openFocus(1))
+        #expect(send(&s, .libraryStale, now: 101) == [.refreshTracks(playlist: "focus"), .refreshPlaylists])
+        #expect(s.readAt.isEmpty)
+        s.refreshing = []
+        send(&s, .menu, .menu, .wheel(1), .select, now: 102)  // Liked Songs: not read yet, so it loads
+        #expect(send(&s, .libraryStale, now: 103) == [.refreshPlaylists])  // the loading list is not read twice
+    }
+
     @Test func tracksRefreshedKeepsTheSelectedSong() {
         var s = mainMenu()
         send(&s, openFocus(1))
