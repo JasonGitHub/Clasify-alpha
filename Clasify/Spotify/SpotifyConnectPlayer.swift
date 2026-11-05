@@ -313,14 +313,16 @@ final class SpotifyConnectPlayer: Player {
         ours = true
         resumePoint = nil
         loaded = nil
-        // Spotify's shuffle or repeat can differ: it changed while the session was down, or at launch.
-        Task { await applyOptions() }
-        resend { [client] in client.fireVolume(device: $0, percent: self.volume) }  // and the volume
         guard startedTrack.isEmpty else {
             log.notice("took control again after a new login")
             lastTrack = ""  // so the store gets the track and its play state
+            // Shuffle or repeat can have changed in Spotify while the session was down.
+            Task { await applyOptions() }
+            resend { [client] in client.fireVolume(device: $0, percent: self.volume) }  // and the volume
             return
         }
+        // Never change what the user already hears: no volume, shuffle or repeat goes out.
+        // Clasify's options apply again at its next load, and its volume at the next wheel turn.
         log.notice("picked up what Spotify plays here (\(Self.contextKind(state.contextURI), privacy: .public))")
         // The playlist as in `handle`: a playlist or Liked Songs, else none to go on from.
         context = state.contextURI
