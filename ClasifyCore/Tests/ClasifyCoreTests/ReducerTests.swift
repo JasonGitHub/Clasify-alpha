@@ -295,7 +295,7 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .menu)  // back
         #expect(s.navSeq == 4 && !s.navForward)
         send(&s, .reset)
-        #expect(s.navSeq == 0)  // a fresh state, with no slide
+        #expect(s.navSeq == 4)  // the same screen identity, so no slide
     }
 
     @Test func tickExpiresToastAndOverlay() {
