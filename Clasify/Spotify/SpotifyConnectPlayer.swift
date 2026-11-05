@@ -38,6 +38,12 @@ final class SpotifyConnectPlayer: Player {
     private var device: String?
     /// The context of the newest load, as Spotify knows it.
     private var context = ""
+    /// The track and playlist ID of the newest load, as Clasify knows them.
+    private var startedTrack = "", playlist: String?
+    /// The newest position that went to the store.
+    private var position: Double = 0
+    /// Where playback stopped when Spotify quit or stopped. Play loads it again there.
+    private var resumePoint: (track: String, playlist: String?, position: Double)?
     /// True after our play command succeeded, until stop or a move away.
     /// States before that can be from an older session or another device, so they are ignored.
     private var ours = false
@@ -70,6 +76,15 @@ final class SpotifyConnectPlayer: Player {
         Task { [weak self] in
             for await state in states { self?.handle(state) }
         }
+        // The cluster does not always report that Spotify quit, so watch the app too.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier == Self.bundleID else { return }
+            // The queue is .main, so this runs on the main actor.
+            MainActor.assumeIsolated { self?.spotifyQuit() }
+        }
     }
 
     /// Made outside the main actor, because the bridge calls it on its own thread. It only
@@ -84,6 +99,11 @@ final class SpotifyConnectPlayer: Player {
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
+        start(trackID, context: context, autoplay: autoplay, at: nil)
+    }
+
+    /// Starts a load. `position` is where to seek once it plays.
+    private func start(_ trackID: String, context: String?, autoplay: Bool, at position: Double?) {
         loadID += 1
         let id = loadID
         ours = false
@@ -92,8 +112,11 @@ final class SpotifyConnectPlayer: Player {
         pendingSkips = []
         loaded = nil
         lastTrack = ""
+        resumePoint = nil
+        startedTrack = trackID
+        playlist = context
         ticker?.cancel()
-        Task { await play(trackID, context: context, id: id) }
+        Task { await play(trackID, context: context, id: id, at: position) }
     }
 
     func pause() {
@@ -109,6 +132,10 @@ final class SpotifyConnectPlayer: Player {
             wantsRunning = true
             return
         }
+        // After Spotify quit or stopped, load the same track again where it stopped.
+        if !ours, let point = resumePoint {
+            return start(point.track, context: point.playlist, autoplay: true, at: point.position)
+        }
         // After a move away, the pick is gone here. Ask for a new one, do not take it back.
         guard ours else { return send(.playbackFailed("Pick a track to play it here", generation: generation)) }
         fire(LSB_COMMAND_RESUME)
@@ -120,6 +147,7 @@ final class SpotifyConnectPlayer: Player {
         // Queued at once, so it goes out before the logout that can come next.
         fire(LSB_COMMAND_PAUSE)
         ours = false
+        resumePoint = nil
         ticker?.cancel()
     }
 
@@ -187,6 +215,23 @@ final class SpotifyConnectPlayer: Player {
         warming = nil
         device = nil
         deviceOptions = [:]
+        resumePoint = nil
+    }
+
+    /// Spotify quit. Its device must be found again after the next launch. While it played
+    /// our track, show paused and keep the place, so Play continues there.
+    private func spotifyQuit() {
+        device = nil
+        deviceOptions = [:]
+        if ours { lose("Spotify quit. Press Play to go on", resumable: true) }
+    }
+
+    /// Our playback ended outside Clasify. A resumable end keeps the place for Play.
+    private func lose(_ message: String, resumable: Bool) {
+        ours = false
+        ticker?.cancel()
+        if resumable { resumePoint = (lastTrack.isEmpty ? startedTrack : lastTrack, playlist, position) }
+        send(.playbackFailed(message, generation: generation))
     }
 
     private func fire(_ command: Int32) {
@@ -196,7 +241,7 @@ final class SpotifyConnectPlayer: Player {
 
     // MARK: Playing
 
-    private func play(_ trackID: String, context playlist: String?, id: Int) async {
+    private func play(_ trackID: String, context playlist: String?, id: Int, at position: Double?) async {
         guard let contextURI = contextURI(for: playlist) else { return fail("Can’t play this list", id) }
         let start = ContinuousClock.now
         do {
@@ -225,6 +270,7 @@ final class SpotifyConnectPlayer: Player {
                 }
             }
             guard id == loadID, let found = device else { return }
+            if let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
             for command in pendingSkips { client.fire(command, to: found) }
             client.fireVolume(device: found, percent: volume)
@@ -388,10 +434,9 @@ final class SpotifyConnectPlayer: Player {
         let otherContext = !context.hasSuffix(":collection") && !state.contextURI.isEmpty && state.contextURI != context
         guard state.activeDeviceID == device, !otherContext else {
             // The user moved playback to another device or list, or Spotify quit. Do not fight it.
-            ours = false
-            ticker?.cancel()
-            let message = state.activeDeviceID.isEmpty ? "Spotify stopped playing" : "Playing elsewhere now"
-            return send(.playbackFailed(message, generation: generation))
+            // With no active device, nothing plays elsewhere, so Play may continue here.
+            let stopped = state.activeDeviceID.isEmpty
+            return lose(stopped ? "Spotify stopped playing" : "Playing elsewhere now", resumable: stopped)
         }
         let gen = generation
         if !state.hasTrack {
@@ -401,6 +446,7 @@ final class SpotifyConnectPlayer: Player {
         }
         lastTrack = state.trackURI
         lastRunning = state.hasTrack && state.isRunning
+        position = state.position
         send(.position(state.position, generation: gen))
         tick(from: state)
     }
@@ -414,6 +460,7 @@ final class SpotifyConnectPlayer: Player {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self, !Task.isCancelled, gen == self.generation else { return }
                 let t = min(state.position + Double((ContinuousClock.now - start).components.seconds), state.duration)
+                self.position = t
                 self.send(.position(t, generation: gen))
             }
         }
