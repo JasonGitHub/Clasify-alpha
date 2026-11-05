@@ -53,8 +53,8 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.sel == 3)  // clamped to last row
 
         s = playing()
-        send(&s, .menu, .wheel(7))  // back to Focus tracks, where the bar leaves 5 rows
-        #expect(s.top.sel == 7 && s.top.off == 3)
+        send(&s, .menu, .wheel(7))  // back to Focus tracks, where the bar leaves 7 rows
+        #expect(s.top.sel == 7 && s.top.off == 1)
         send(&s, .menu, .menu, .select)  // Now Playing
         #expect(send(&s, .wheel(-2)) == [.setVolume(50)])
         #expect(s.overlayUntil == 101.5)
@@ -64,13 +64,13 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func listKeepsTheSelectionInTheRowsThatShow() {
         var s = mainMenu()
         send(&s, openFocus(1))
-        send(&s, .wheel(5))
-        #expect(s.shownRows == 6 && s.top.sel == 5 && s.top.off == 0)
-        send(&s, .select, .menu)  // play track 5, then back: the bar now takes a row
-        #expect(s.shownRows == 5 && s.top.sel == 5 && s.top.off == 1)
+        send(&s, .wheel(7))
+        #expect(s.shownRows == 8 && s.top.sel == 7 && s.top.off == 0)
+        send(&s, .select, .menu)  // play track 7, then back: the bar now takes a row
+        #expect(s.shownRows == 7 && s.top.sel == 7 && s.top.off == 1)
         send(&s, .wheel(-1))  // the selection moves up, the rows stay
-        #expect(s.top.sel == 4 && s.top.off == 1)
-        send(&s, .wheel(-4))
+        #expect(s.top.sel == 6 && s.top.off == 1)
+        send(&s, .wheel(-6))
         #expect(s.top.sel == 0 && s.top.off == 0)
     }
 
@@ -170,6 +170,63 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .wheel(1), .select) == [.setRepeat(.all)])
         #expect(send(&s, .select) == [.setRepeat(.one)])
         #expect(send(&s, .select) == [.setRepeat(.off)])
+    }
+
+    @Test func centerStepsThroughTheNowPlayingSliders() {
+        var s = playing()
+        send(&s, .select)
+        #expect(s.nowMode == .scrub && s.overlayUntil == 106)
+        send(&s, .select)
+        #expect(s.nowMode == .shuffle)
+        #expect(send(&s, .wheel(1)) == [.setShuffle(true)] && s.shuffle)
+        #expect(send(&s, .wheel(2)) == [])  // already at Songs
+        #expect(send(&s, .wheel(-1)) == [.setShuffle(false)] && !s.shuffle)
+        send(&s, .select)
+        #expect(s.nowMode == .repeatMode)
+        #expect(send(&s, .wheel(1)) == [.setRepeat(.one)])  // the slider goes Off, One, All
+        #expect(send(&s, .wheel(3)) == [.setRepeat(.all)])  // one stop for each step
+        #expect(send(&s, .wheel(1)) == [])
+        #expect(send(&s, .wheel(-1)) == [.setRepeat(.one)])
+        send(&s, .select)
+        #expect(s.nowMode == .volume && s.overlayUntil == 101.5)  // the volume bar shows briefly
+    }
+
+    @Test func slidersGoBackToTheProgressBarAfterSixSeconds() {
+        var s = playing()
+        send(&s, .select, .select)  // the shuffle slider, until 106
+        send(&s, .tick, now: 105)
+        #expect(s.nowMode == .shuffle)
+        send(&s, .wheel(1), now: 105)  // a turn starts the 6 seconds again
+        send(&s, .tick, now: 110)
+        #expect(s.nowMode == .shuffle && s.overlayUntil == 111)
+        send(&s, .tick, now: 111.5)
+        #expect(s.nowMode == .volume && s.overlayUntil == 0)
+        send(&s, .select, .select, .select, .menu)  // MENU leaves the repeat slider at once
+        #expect(s.nowMode == .volume && s.overlayUntil == 0 && s.top.screen == .now)
+    }
+
+    @Test func shuffleAndRepeatKeysWorkOnEveryScreen() {
+        var s = mainMenu()
+        #expect(send(&s, .toggleShuffle) == [.setShuffle(true)] && s.shuffle)
+        #expect(send(&s, .cycleRepeat) == [.setRepeat(.all)])
+        #expect(send(&s, .cycleRepeat) == [.setRepeat(.one)])
+        #expect(send(&s, .cycleRepeat) == [.setRepeat(.off)])
+        s = playing()
+        #expect(send(&s, .toggleShuffle) == [.setShuffle(true)] && s.top.screen == .now)
+    }
+
+    @Test func fastWheelStepsMoveMoreRows() {
+        var speed = WheelSpeed()
+        let quick = (0..<16).map { speed.rows(at: Double($0) * 0.1) }
+        #expect(quick == [1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4])
+        #expect(speed.rows(at: 10) == 1)  // a pause ends the streak
+    }
+
+    @Test func theBarTakesARowExceptOnNowPlaying() {
+        var s = playing()
+        #expect(!s.showsBar && s.shownRows == 8)  // Now Playing
+        send(&s, .menu)
+        #expect(s.showsBar && s.shownRows == 7)
     }
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {

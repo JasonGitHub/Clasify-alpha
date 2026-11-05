@@ -75,7 +75,7 @@ private struct TestPanel: View {
                 Text("Nothing playing").foregroundStyle(.secondary)
             }
             Text("Shuffle \(state.shuffle ? "On" : "Off") · Repeat \(state.repeatMode.rawValue) · Volume \(state.volume)")
-            Text("Wheel on Now Playing: \(state.nowMode == .scrub ? "scrub" : "volume")\(state.offline ? " · Offline" : "")")
+            Text("Wheel on Now Playing: \(String(describing: state.nowMode))\(state.offline ? " · Offline" : "")")
                 .foregroundStyle(.secondary)
         }
         .font(.callout)

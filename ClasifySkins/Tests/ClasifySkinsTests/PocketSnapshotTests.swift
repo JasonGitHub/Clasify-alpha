@@ -30,10 +30,13 @@ import Testing
     }
 
     // Points in the mockup layout: the device border 1, its padding 24 x 20, the screen border 2,
-    // the header 20 plus a 1 point line, and each row 24.
-    static let screenLeft = 23, listTop = 48, rowHeight = 24
+    // the header 20 with its line, and 8 rows of 22.5 (7 of 160 / 7 over the bar).
+    static let screenLeft = 23, listTop = 47
 
-    static func rowCenter(_ index: Int) -> Int { listTop + index * rowHeight + rowHeight / 2 }
+    static func rowCenter(_ index: Int, bar: Bool = false) -> Int {
+        let height = bar ? 160.0 / 7 : 22.5
+        return listTop + Int((Double(index) + 0.5) * height)
+    }
 
     func render(
         _ state: AppState, _ name: String, pressed: ClickWheel.Zone? = nil, artwork: Artwork = .none
@@ -81,8 +84,18 @@ import Testing
         s.isPlaying = true
         s.top.sel = 1
         let shot = try render(s, "main")
-        #expect(shot.isLight(150, Self.rowCenter(0)))
-        #expect(shot.isBlue(150, Self.rowCenter(1)))
+        #expect(shot.isLight(150, Self.rowCenter(0, bar: true)))
+        #expect(shot.isBlue(150, Self.rowCenter(1, bar: true)))
+    }
+
+    @Test func eightRowsFillTheList() throws {
+        var s = sampleState()
+        s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
+        s.top.sel = 7
+        let shot = try render(s, "tracks-last-row")
+        #expect(shot.isBlue(100, Self.rowCenter(7)))  // the 8th row ends at the screen's bottom
+        #expect(shot.isBlue(100, 225))
+        #expect(!shot.isBlue(100, Self.rowCenter(6)))
     }
 
     @Test func longListShowsTheScrollBar() throws {
@@ -155,6 +168,24 @@ import Testing
         #expect(scrub.isGray(80, 199))  // the scrub fill
         #expect(scrub.isDark(148, 199))  // the diamond at the fill's end
         #expect(scrub.isLight(230, 199))
+    }
+
+    @Test func nowPlayingSliders() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
+        s.stack.append(Frame(screen: .now))
+        s.nowMode = .shuffle
+        s.shuffle = true
+        let on = try render(s, "now-shuffle")
+        // The slider fills the 42 points over the bottom padding. The knob sits on its 6 point track.
+        let right: Int = Self.screenLeft + 12 + 6 + 216, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 196
+        #expect(on.isBlue(right - 2, knobY))  // Songs
+        #expect(!on.isBlue(left + 2, knobY))
+        s.nowMode = .repeatMode
+        s.repeatMode = .one
+        let one = try render(s, "now-repeat")
+        #expect(one.isBlue((left + right) / 2, knobY))  // Off, One, All: One is in the middle
+        #expect(!one.isBlue(right - 2, knobY))
     }
 
     @Test func messageAndToast() throws {

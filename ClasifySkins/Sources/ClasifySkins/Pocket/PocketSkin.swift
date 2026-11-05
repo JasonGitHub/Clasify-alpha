@@ -15,6 +15,8 @@ public struct PocketSkin: View {
     var pressed: ClickWheel.Zone?
 
     @FocusState private var focused: Bool
+    /// Quick wheel steps move more rows. ClasifyCore holds the rule.
+    @State private var speed = WheelSpeed()
 
     public init(state: AppState, send: @escaping @MainActor (Action) -> Void) {
         self.state = state
@@ -62,10 +64,12 @@ public struct PocketSkin: View {
         }
         .onAppear { focused = true }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses.")
+        .accessibilityLabel(
+            "Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
     }
 
-    /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back, Space plays.
+    /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back,
+    /// Space plays, S and R change shuffle and repeat.
     static func action(for key: KeyEquivalent) -> Action? {
         switch key {
         case .upArrow: .wheel(-1)
@@ -75,6 +79,8 @@ public struct PocketSkin: View {
         case .space: .play
         case .rightArrow: .next
         case .leftArrow: .prev
+        case "s", "S": .toggleShuffle
+        case "r", "R": .cycleRepeat
         default: nil
         }
     }
@@ -84,9 +90,13 @@ public struct PocketSkin: View {
         if case .wheel = action { true } else { false }
     }
 
-    /// Clicks when the Clicker setting is on, then sends the action.
+    /// Clicks when the Clicker setting is on, then sends the action. A quick wheel step moves more rows.
     private func input(_ action: Action) {
         if state.clicker { Clicker.shared.click() }
-        send(action)
+        if case .wheel(let detents) = action {
+            send(.wheel(detents * speed.rows(at: ProcessInfo.processInfo.systemUptime)))
+        } else {
+            send(action)
+        }
     }
 }
