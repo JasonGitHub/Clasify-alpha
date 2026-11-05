@@ -37,11 +37,11 @@ import Testing
     }
 
     func render(
-        _ state: AppState, _ name: String, pressed: ClickWheel.Zone? = nil, artwork: Artwork = .none
+        _ state: AppState, _ name: String, pressed: ClickWheel.Zone? = nil, artwork: Artwork = .none, time: Double = 1
     ) throws -> Snapshot {
         let skin = PocketSkin(state: state, interactive: false, pressed: pressed)
             .environment(\.artwork, artwork)
-            .environment(\.animationTime, 1)  // the main menu's first cover, just faded in
+            .environment(\.animationTime, time)  // 1: the main menu's first cover, just faded in
         let renderer = ImageRenderer(content: skin)
         renderer.scale = CGFloat(Snapshot.scale)
         let image = try #require(renderer.cgImage)
@@ -109,6 +109,32 @@ import Testing
         #expect(MainArt.pose(at: 27, delay: 0) == MainArt.pose(at: 3, delay: 0))  // it loops
         let end = MainArt.pose(at: 6.96, delay: 0)  // 29 %
         #expect(close(end.scale, 1.22) && close(end.dx, 0.03) && close(end.dy, 0.02))
+    }
+
+    @Test func aLongSelectedLabelScrolls() throws {
+        var s = sampleState()
+        let name = "The Longest Road Trip Playlist Ever Made"  // 40 characters: 296 points, a 14 s loop
+        s.library.append(Playlist(id: "spotify:playlist:c", name: name, tracks: []))
+        s.stack.append(Frame(screen: .playlists))
+        s.top.sel = 2
+        let loop = Labels.marqueeLoop(name)
+        let still = try render(s, "marquee-start")  // 1 s: the hold at the start
+        let moved = try render(s, "marquee-moved", time: loop * 0.59)  // half of one copy's width
+        func changed(_ y: Int) -> Int {
+            stride(from: Self.screenLeft + 12, to: Self.screenLeft + 230, by: 1)
+                .filter { still.rgb($0, y) != moved.rgb($0, y) }.count
+        }
+        #expect(changed(Self.rowCenter(2)) > 10)  // the selected label moved
+        #expect(changed(Self.rowCenter(0)) == 0)  // the other rows stay still
+        #expect(Marquee.shift(at: 1, loop: 14) == 0)
+        #expect(abs(Marquee.shift(at: 14 * 0.59, loop: 14) - 0.5) < 1e-9)
+        #expect(Marquee.shift(at: 15, loop: 14) == 0)  // it loops
+        // With "Road Trip" selected: it fits, so it stays still, and the long label is cut and stays still.
+        s.top.sel = 0
+        let a = try render(s, "marquee-unselected"), b = try render(s, "marquee-unselected-later", time: loop * 0.59)
+        for row in [0, 2] {
+            #expect((Self.screenLeft + 12 ..< Self.screenLeft + 230).allSatisfy { a.rgb($0, Self.rowCenter(row)) == b.rgb($0, Self.rowCenter(row)) })
+        }
     }
 
     @Test func fiveSongRowsFillTheList() throws {

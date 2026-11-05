@@ -215,9 +215,16 @@ struct PocketRow: View {
     var body: some View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
-                Text(text.label)
-                    .font(.helvetica(13, bold: true))
-                    .lineLimit(1)
+                let label = Text(text.label).font(.helvetica(13, bold: true))
+                if selected {
+                    // The label as it is when it fits the room left by the row's other parts, else the marquee.
+                    ViewThatFits(in: .horizontal) {
+                        label.lineLimit(1)
+                        Marquee(text: label, loop: Labels.marqueeLoop(text.label))
+                    }
+                } else {
+                    label.lineLimit(1)
+                }
                 if !text.detail.isEmpty {
                     Text(text.detail)
                         .font(.helvetica(11))
@@ -245,6 +252,38 @@ struct PocketRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The mockup's `mq2` marquee: two copies of the label, each with 28 points after it.
+/// They hold still for the first 18 % of a loop, then move left by one copy, and the loop starts again.
+/// A new selection makes a new view, so it starts from the left. With Reduce Motion it stays still.
+struct Marquee: View {
+    let text: Text
+    let loop: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.animationTime) private var fixedTime
+    @State private var start = Date.timeIntervalSinceReferenceDate
+
+    /// How far the copies have moved at time `t`, as a part of one copy's width.
+    static func shift(at t: Double, loop: Double) -> Double {
+        let p = max(0, t).truncatingRemainder(dividingBy: loop) / loop
+        return p < 0.18 ? 0 : (p - 0.18) / 0.82
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
+            let t = reduceMotion ? 0 : fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
+            let shift = Self.shift(at: t, loop: loop)
+            HStack(spacing: 0) {
+                text.padding(.trailing, 28)
+                text.padding(.trailing, 28).accessibilityHidden(true)
+            }
+            .fixedSize()
+            .visualEffect { content, geo in content.offset(x: -shift * geo.size.width / 2) }
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)  // minWidth 0: else the frame is as wide as both copies
+        }
+        .clipped()
     }
 }
 

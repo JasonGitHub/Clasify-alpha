@@ -160,4 +160,15 @@ enum Labels {
         for unit in artist.utf16 { h = h &* 31 &+ UInt32(unit) }  // the mockup's hash, over UTF-16 like JavaScript
         return covers[Int(h % UInt32(covers.count))]
     }
+
+    /// The seconds of one loop of the mockup's marquee on the selected row: max(5, round(width / 28 + 3)).
+    /// Width is the mockup's estimate: 7.4 points a character, 13 for a CJK character.
+    /// The row itself measures if the label fits, so only a label that is cut scrolls.
+    static func marqueeLoop(_ label: String) -> Double {
+        let wide: (Unicode.Scalar) -> Bool = {
+            (0x3000...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) || (0xFF00...0xFFEF).contains($0.value)
+        }
+        let estimate = label.unicodeScalars.reduce(0.0) { $0 + (wide($1) ? 13 : 7.4) }
+        return max(5, (estimate / 28 + 3).rounded())
+    }
 }

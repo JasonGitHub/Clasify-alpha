@@ -160,4 +160,11 @@ func sampleState() -> AppState {
         #expect(wav.prefix(4) == Data("RIFF".utf8))
         #expect(samples.contains { $0 != 0 })
     }
+
+    @Test func theMarqueeLoopFollowsTheLabelLength() {
+        #expect(Labels.marqueeLoop(String(repeating: "x", count: 30)) == 11)  // 222 points: round(222 / 28 + 3)
+        #expect(Labels.marqueeLoop(String(repeating: "夏", count: 17)) == 11)  // a CJK character counts as 13 points
+        #expect(Labels.marqueeLoop("The Longest Road Trip Playlist Ever Made") == 14)  // 296 points
+        #expect(Labels.marqueeLoop("Short") == 5)  // the shortest loop
+    }
 }
