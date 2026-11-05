@@ -36,6 +36,8 @@ final class SpotifyConnectPlayer: Player {
     /// Next and Prev pressed while loading, in order, sent once the load plays. They are not
     /// summed, because at a list's start or with shuffle, Prev then Next is not "no move".
     private var pendingSkips: [Int32] = []
+    /// The newest seek pressed while loading, sent once the load plays.
+    private var pendingSeek: Double?
     /// The Spotify app's device on this Mac, once a load found it.
     private var device: String?
     /// The context of the newest load, as Spotify knows it.
@@ -172,6 +174,7 @@ final class SpotifyConnectPlayer: Player {
         loading = true
         wantsRunning = autoplay
         pendingSkips = []
+        pendingSeek = nil
         loaded = nil
         lastTrack = ""
         rejoinUntil = nil
@@ -223,6 +226,7 @@ final class SpotifyConnectPlayer: Player {
         loading = true
         wantsRunning = true
         pendingSkips = []
+        pendingSeek = nil
         beforeLoad = nil  // not a load from the store: a pick meanwhile takes a new snapshot
         storeLoad = false
         Task {
@@ -235,8 +239,10 @@ final class SpotifyConnectPlayer: Player {
                 }
                 // The transfer keeps the other device's play state, so set the wanted one.
                 client.fire(wantsRunning ? LSB_COMMAND_RESUME : LSB_COMMAND_PAUSE, to: device)
+                if let seek = pendingSeek { client.fireSeek(device: device, seconds: seek) }
                 for command in pendingSkips { client.fire(command, to: device) }
                 pendingSkips = []
+                pendingSeek = nil
                 client.fireVolume(device: device, percent: volume)  // as after a load: the sound now comes from this Mac
                 loading = false
                 ours = true
@@ -289,6 +295,7 @@ final class SpotifyConnectPlayer: Player {
         self.generation = generation
         position = seconds  // so a quit before the next state keeps the new place
         resumePoint?.position = seconds  // a scrub after a quit moves the place too
+        if loading { pendingSeek = seconds }
         resend { [client] in client.fireSeek(device: $0, seconds: seconds) }
     }
 
@@ -470,7 +477,12 @@ final class SpotifyConnectPlayer: Player {
                 if resumePoint == nil { resumePoint = (trackID, playlist, self.position) }
                 return fail("Spotify quit. Press Play to go on", id, started: true)
             }
-            if let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
+            if let seek = pendingSeek {
+                client.fireSeek(device: found, seconds: seek)  // a scrub during the load wins
+            } else if let position, position >= 1 {
+                client.fireSeek(device: found, seconds: position)
+            }
+            pendingSeek = nil
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
             for command in pendingSkips { client.fire(command, to: found) }
             client.fireVolume(device: found, percent: volume)
