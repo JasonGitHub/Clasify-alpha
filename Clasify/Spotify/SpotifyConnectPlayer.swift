@@ -161,7 +161,8 @@ final class SpotifyConnectPlayer: Player {
         loadID += 1  // a load in flight must not start Spotify after this
         loading = false
         // Queued at once, so it goes out before the logout that can come next.
-        fire(LSB_COMMAND_PAUSE)
+        // The retry after a reconnect must still go out, though `ours` is false by then.
+        fire(LSB_COMMAND_PAUSE, evenAfterStop: true)
         ours = false
         resumePoint = nil
         ticker?.cancel()
@@ -253,17 +254,19 @@ final class SpotifyConnectPlayer: Player {
         send(.playbackFailed(message, generation: generation))
     }
 
-    private func fire(_ command: Int32) {
-        resend { [client] in client.fire(command, to: $0) }
+    private func fire(_ command: Int32, evenAfterStop: Bool = false) {
+        resend(evenAfterStop: evenAfterStop) { [client] in client.fire(command, to: $0) }
     }
 
     /// Sends one fire-and-forget command to our device. When the session dropped, it logs in
     /// again and sends the command once more. `call` gets the device ID and returns the status.
-    private func resend(_ call: @escaping @MainActor (String) -> Int32) {
+    /// The retry is dropped after a new load. `evenAfterStop` keeps it after a stop.
+    private func resend(evenAfterStop: Bool = false, _ call: @escaping @MainActor (String) -> Int32) {
         guard ours, let device else { return }
         guard call(device) == LSB_ERR_NOT_LOGGED_IN else { return }
+        let id = loadID
         Task {
-            guard await reconnect(), ours, let device = self.device else { return }
+            guard await reconnect(), id == loadID, ours || evenAfterStop, let device = self.device else { return }
             _ = call(device)
         }
     }
