@@ -303,6 +303,8 @@ final class SpotifyConnectPlayer: Player {
         resumePoint = nil
         loaded = nil
         lastTrack = ""  // so the store gets the track and its play state
+        // Shuffle or repeat can have changed in Spotify while the session was down.
+        Task { await applyOptions() }
     }
 
     /// Runs one session call, and after a dropped session logs in again and runs it once more.
