@@ -122,6 +122,10 @@ int32_t lsb_read_playlists(LsbBridge *bridge, LsbPlaylistsCallback on_result, vo
 // tracks without details are left out.
 int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
                         LsbTracksCallback on_result, void *context);
+// The details of one track ("spotify:track:<id>"), for a track that plays from outside
+// the library. The callback gets one track, or count 0 when Spotify has none for it.
+int32_t lsb_read_track(LsbBridge *bridge, const char *track_uri,
+                       LsbTracksCallback on_result, void *context);
 
 // Spotify Connect. Clasify plays no audio: it tells the Spotify app's Connect device
 // what to play. Before the first call of each login, the bridge registers this session

@@ -171,6 +171,11 @@ final class LibrespotLibrary: Library {
         await withSession { try await self.readTracks(playlist) }
     }
 
+    func track(_ id: String) async -> Track? {
+        let client = self.client
+        return await withSession { try await client.track(uri: id) } ?? nil
+    }
+
     /// Two reads at a time: Liked Songs and the playlist list. A screen that opens meanwhile
     /// joins the running read.
     func prefetch() async {

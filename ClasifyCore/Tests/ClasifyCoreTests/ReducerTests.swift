@@ -336,6 +336,38 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .trackChanged("f1", playing: true, generation: 0)) == [] && s.current == nil)
     }
 
+    @Test func trackChangedReadsAnUnknownTrackOnce() {
+        var s = playing()
+        let radio = "spotify:track:radio"
+        #expect(send(&s, .trackChanged("f1", playing: true, generation: 1)) == [])  // in the list
+        #expect(send(&s, .trackChanged("zz", playing: true, generation: 1)) == [])  // not a track URI
+        #expect(send(&s, .trackChanged(radio, playing: true, generation: 1)) == [.readTrack(radio)])
+        #expect(send(&s, .trackChanged("f1", playing: true, generation: 1), .trackChanged(radio, playing: true, generation: 1)) == [])  // in flight
+        send(&s, .trackRead(radio, nil))  // failed
+        #expect(send(&s, .trackChanged("f2", playing: true, generation: 1), .trackChanged(radio, playing: true, generation: 1)) == [])  // no retry
+        #expect(s.track(s.current!) == nil)
+    }
+
+    @Test func trackReadKeepsTheTrackForTheSession() {
+        var s = playing()
+        let radio = Track(id: "spotify:track:radio", title: "Radio", artist: "Band", duration: 200, coverID: "ab")
+        send(&s, .trackRead(radio.id, radio))  // not asked for: ignored
+        #expect(s.extraTracks.isEmpty)
+        send(&s, .trackChanged(radio.id, playing: true, generation: 1), .trackRead(radio.id, radio))
+        #expect(s.track(s.current!) == radio && s.trackReads.isEmpty)
+        #expect(send(&s, .trackChanged("f1", playing: true, generation: 1), .trackChanged(radio.id, playing: true, generation: 1)) == [])  // known now
+        for i in 0..<extraTrackLimit {  // the oldest goes first
+            let id = "spotify:track:\(i)"
+            send(&s, .trackChanged(id, playing: true, generation: 1), .trackRead(id, Track(id: id, title: "", artist: "", duration: 1)))
+        }
+        #expect(s.extraTracks.count == extraTrackLimit && !s.extraTracks.contains(radio))
+        send(&s, .trackChanged("spotify:track:late", playing: true, generation: 1))
+        send(&s, .expire)  // signs out
+        #expect(!s.signedIn && s.extraTracks.isEmpty && s.trackReads.isEmpty)
+        send(&s, .trackRead("spotify:track:late", radio))  // from before the sign-out
+        #expect(s.extraTracks.isEmpty)
+    }
+
     @Test func playbackFailedPausesAndShowsToast() {
         var s = playing()
         send(&s, .playbackFailed("Old", generation: 0))  // stale load
@@ -527,11 +559,23 @@ func playing(_ i: Int = 0) -> AppState {
     func tracks(of playlist: String) async -> [Track]? {
         fetches.append(playlist); return library.first { $0.id == playlist }?.tracks
     }
+    var extra: [String: Track] = [:]
+    func track(_ id: String) async -> Track? { fetches.append(id); return extra[id] }
     func prefetch() async { calls.append("prefetch") }
     func logIn() async -> Bool { calls.append("logIn"); return loginResult }
     func cancelLogIn() async { calls.append("cancelLogIn") }
     func restoreSession() async -> Bool { calls.append("restoreSession"); return loginResult }
     func logOut() { calls.append("logOut") }
+}
+
+@MainActor @Test func storeReadsAnUnknownTrack() async {
+    let lib = FakeLibrary()
+    let radio = Track(id: "spotify:track:radio", title: "Radio", artist: "Band", duration: 200)
+    lib.extra[radio.id] = radio
+    let store = Store(player: FakePlayer(), library: lib, state: playing(), env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    store.send(.trackChanged(radio.id, playing: true, generation: 1))
+    while store.state.extraTracks.isEmpty { await Task.yield() }
+    #expect(store.state.track(store.state.current!) == radio && lib.fetches.last == radio.id)
 }
 
 @MainActor @Test func storeRunsLoginEffects() async {

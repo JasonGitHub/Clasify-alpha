@@ -108,7 +108,8 @@ enum Labels {
         guard let ref = state.current else { return nil }
         let tracks = state.tracks(in: ref.playlist)
         let index = tracks.firstIndex { $0.id == ref.track }
-        let track = index.map { tracks[$0] }
+        // A track from outside the list shows its details once `.trackRead` has them.
+        let track = index.map { tracks[$0] } ?? state.track(ref)
         return NowText(
             // A track that is not in our copy of the list, such as Spotify's autoplay after the
             // list ends, shows as "Spotify" with no artist. Never show a raw track ID.
