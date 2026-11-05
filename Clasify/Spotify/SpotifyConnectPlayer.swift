@@ -460,10 +460,11 @@ final class SpotifyConnectPlayer: Player {
     }
 
     private func handle(_ state: SpotifyPlayerState) {
-        if state.dealerReconnects != dealerReconnects {
-            dealerReconnects = state.dealerReconnects
+        // A lower count is a new login: it only sets the new baseline.
+        if state.dealerReconnects > dealerReconnects {
             log.notice("dealer reconnected: \(state.dealerReconnects, privacy: .public) in this login")
         }
+        dealerReconnects = state.dealerReconnects
         guard let device else { return }
         if state.activeDeviceID == device {
             deviceOptions = [
