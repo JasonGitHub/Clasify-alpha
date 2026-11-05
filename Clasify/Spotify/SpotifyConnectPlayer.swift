@@ -559,6 +559,8 @@ final class SpotifyConnectPlayer: Player {
                 LSB_OPTION_REPEAT_TRACK: state.repeatTrack,
             ]
             rejoin(state)
+        } else if !state.activeDeviceID.isEmpty {
+            rejoinUntil = nil  // it plays elsewhere: a later move to this Mac is not ours to take
         }
         guard ours else { return }
         if let loaded, ContinuousClock.now - loaded.at < .seconds(3),
