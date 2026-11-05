@@ -4,7 +4,7 @@ import SwiftUI
 /// The main menu's right side: four covers that take turns, each with a slow zoom and drift.
 /// This is the mockup's `kbx` keyframes: 24 s a loop, and each layer starts 6 s after the one before.
 struct MainArt: View {
-    let tracks: [Track]
+    let tracks: [ClasifyCore.Track]  // not the skin's Track view
     @Environment(\.artwork) private var artwork
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
@@ -58,7 +58,7 @@ struct MainArt: View {
         .accessibilityHidden(true)
     }
 
-    private func layer(_ track: Track?) -> some View {
+    private func layer(_ track: ClasifyCore.Track?) -> some View {
         CoverArt(artist: track?.artist ?? "", coverID: track?.coverID,
                  image: track?.coverID.flatMap { artwork.lookup($0) }, noteSize: 40, notesSize: 60)
     }
