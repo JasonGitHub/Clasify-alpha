@@ -160,4 +160,21 @@ enum Labels {
         for unit in artist.utf16 { h = h &* 31 &+ UInt32(unit) }  // the mockup's hash, over UTF-16 like JavaScript
         return covers[Int(h % UInt32(covers.count))]
     }
+
+    /// The mockup's marquee on the selected row: when its label is wider than the row has room for,
+    /// the label scrolls. It gives the seconds for one loop, or nil when the label fits.
+    /// Width is the mockup's estimate: 7.4 points a character, 13 for a CJK character.
+    static func marquee(_ text: RowText, narrow: Bool, scrolls: Bool) -> Double? {
+        let wide: (Unicode.Scalar) -> Bool = {
+            (0x3000...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) || (0xFF00...0xFFEF).contains($0.value)
+        }
+        let estimate = text.label.unicodeScalars.reduce(0.0) { $0 + (wide($1) ? 13 : 7.4) }
+        // Room: the pane, less the row's padding, the chevron, a value or speaker, and the scroll bar.
+        var room = (narrow ? 136.0 : 252.0) - 20
+        if text.opens { room -= 12 }
+        if !text.value.isEmpty || text.playing { room -= 16 }
+        if scrolls { room -= 6 }
+        guard estimate > room else { return nil }
+        return max(5, (estimate / 28 + 3).rounded())
+    }
 }
