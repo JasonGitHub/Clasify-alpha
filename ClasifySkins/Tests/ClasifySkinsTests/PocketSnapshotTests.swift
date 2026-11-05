@@ -234,9 +234,20 @@ import Testing
     @Test func theLastCoverStaysWhileTheNextOneLoads() throws {
         let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
-        #expect(CoverArt.shown(fresh: blue, pending: false, last: red) === blue)
-        #expect(CoverArt.shown(fresh: nil, pending: true, last: red) === red)  // no flash to the square
-        #expect(CoverArt.shown(fresh: nil, pending: false, last: red) == nil)  // no cover, or it failed
+        let last = CoverArt.Shown(coverID: "a", image: red)
+        #expect(CoverArt.shown(fresh: blue, coverID: "b", pending: false, last: last) === blue)
+        #expect(CoverArt.shown(fresh: nil, coverID: "b", pending: true, last: last) === red)  // no flash to the square
+        #expect(CoverArt.shown(fresh: nil, coverID: "b", pending: false, last: last) == nil)  // no cover, or it failed
+        #expect(CoverArt.shown(fresh: nil, coverID: nil, pending: false, last: last) == nil)  // the track has no cover
+    }
+
+    /// The cover dropped out of memory, and is not loading yet: the same cover stays.
+    @Test func theSameCoverNeverBlinksToTheSquare() throws {
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let last = CoverArt.Shown(coverID: "a", image: red)
+        #expect(CoverArt.shown(fresh: nil, coverID: "a", pending: false, last: last) === red)
+        #expect(CoverArt.shown(fresh: nil, coverID: "a", pending: true, last: last) === red)
+        #expect(CoverArt.shown(fresh: nil, coverID: "a", pending: false, last: nil) == nil)
     }
 
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.

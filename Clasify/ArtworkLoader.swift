@@ -16,6 +16,14 @@ final class ArtworkLoader {
     /// Bumped when a cover arrives. `image(for:)` reads it, so a skin that asked redraws.
     private var arrived = 0
     private let cache = NSCache<NSString, CGImage>()
+    /// TEMP (cover blink): logs when NSCache drops a cover. Kept here, because the delegate is weak.
+    @ObservationIgnored private let evictionLog = EvictionLog()
+    /// The covers of the playing track and the next track, held outside the NSCache. NSCache can
+    /// drop any cover at any time, for example under memory pressure. When it dropped the playing
+    /// cover, each redraw loaded it again and showed the square for a moment: the blink.
+    @ObservationIgnored private var kept: [String: CGImage] = [:]
+    /// The cover IDs that `kept` holds: the playing track's and the next track's.
+    @ObservationIgnored private var wanted: Set<String> = []
     @ObservationIgnored private var loading: Set<String> = []
     /// When a cover last failed, so it is not asked for again on every redraw.
     @ObservationIgnored private var failedAt: [String: ContinuousClock.Instant] = [:]
@@ -31,6 +39,7 @@ final class ArtworkLoader {
 
     init() {
         cache.countLimit = 50
+        cache.delegate = evictionLog
     }
 
     /// For the skins: `.environment(\.artwork, loader.artwork)`.
@@ -41,7 +50,7 @@ final class ArtworkLoader {
     /// The cover if it is in memory. Else it starts the load and returns nil.
     func image(for coverID: String) -> CGImage? {
         _ = arrived
-        if let image = cache.object(forKey: coverID as NSString) { return image }
+        if let image = cached(coverID) { return image }
         load(coverID)
         return nil
     }
@@ -52,15 +61,37 @@ final class ArtworkLoader {
         return loading.contains(coverID)
     }
 
-    /// Loads the cover of the track after the current one, so it shows at once on Next.
+    /// Keeps the playing track's cover, and loads the cover of the track after it, so it shows
+    /// at once on Next. The app's ticker calls it every 250 ms.
     func prefetchNext(in state: AppState) {
         logChange(in: state)
-        guard let ref = state.current else { return }
+        let ids = Self.wantedCovers(in: state)
+        if ids != wanted {
+            wanted = ids
+            kept = kept.filter { ids.contains($0.key) }
+        }
+        for id in ids where cached(id) == nil { load(id) }
+    }
+
+    /// The cover IDs of the playing track and of the track after it.
+    static func wantedCovers(in state: AppState) -> Set<String> {
+        guard let ref = state.current else { return [] }
+        var ids: Set<String> = []
+        if let id = state.track(ref)?.coverID { ids.insert(id) }
         let tracks = state.tracks(in: ref.playlist)
-        guard let index = tracks.firstIndex(where: { $0.id == ref.track }), index + 1 < tracks.count,
-              let next = tracks[index + 1].coverID, cache.object(forKey: next as NSString) == nil
-        else { return }
-        load(next)
+        if let index = tracks.firstIndex(where: { $0.id == ref.track }), index + 1 < tracks.count,
+           let next = tracks[index + 1].coverID {
+            ids.insert(next)
+        }
+        return ids
+    }
+
+    /// The cover from `kept` or the NSCache. A wanted cover found only in the NSCache goes into `kept`.
+    private func cached(_ coverID: String) -> CGImage? {
+        if let image = kept[coverID] { return image }
+        guard let image = cache.object(forKey: coverID as NSString) else { return nil }
+        if wanted.contains(coverID) { kept[coverID] = image }
+        return image
     }
 
     private func load(_ coverID: String) {
@@ -77,6 +108,7 @@ final class ArtworkLoader {
                let source = CGImageSourceCreateWithData(data as CFData, nil),
                let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
                 cache.setObject(image, forKey: coverID as NSString)
+                if wanted.contains(coverID) { kept[coverID] = image }
                 failedAt[coverID] = nil
                 timing.notice("cover: loaded in \(Self.ms(since: start), privacy: .public) ms")
             } else {
@@ -94,7 +126,7 @@ final class ArtworkLoader {
         let cover: String
         if let track = state.track(ref) {
             if let id = track.coverID {
-                cover = cache.object(forKey: id as NSString) != nil ? "cover in memory" : loading.contains(id) ? "cover loading" : "cover not loaded"
+                cover = cached(id) != nil ? "cover in memory" : loading.contains(id) ? "cover loading" : "cover not loaded"
             } else {
                 cover = "no cover"
             }
@@ -117,5 +149,13 @@ final class ArtworkLoader {
               (result.1 as? HTTPURLResponse)?.statusCode == 200
         else { return nil }
         return result.0
+    }
+}
+
+/// TEMP (cover blink): logs each cover that the NSCache drops. Only the fact, never an ID.
+private final class EvictionLog: NSObject, NSCacheDelegate {
+    // NSCache can call this on any thread. It only writes to `Logger`, which is thread-safe.
+    func cache(_ cache: NSCache<AnyObject, AnyObject>, willEvictObject obj: Any) {
+        timing.notice("cover: NSCache dropped a cover")
     }
 }

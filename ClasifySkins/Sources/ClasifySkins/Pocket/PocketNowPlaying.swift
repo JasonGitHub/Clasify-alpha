@@ -7,9 +7,9 @@ struct PocketNowPlaying: View {
     let state: AppState
     let input: @MainActor (Action) -> Void
     @Environment(\.artwork) private var artwork
-    /// The last cover that showed. It stays while the next track's cover loads, so the
-    /// square does not flash between two covers.
-    @State private var lastCover: CGImage?
+    /// The last cover that showed, by cover ID. It stays while the next track's cover loads,
+    /// and while the same cover loads again, so the square does not flash.
+    @State private var lastCover: CoverArt.Shown?
 
     var body: some View {
         if let now = Labels.now(in: state) {
@@ -60,7 +60,8 @@ struct PocketNowPlaying: View {
     /// The 84 point cover with its reflection, turned in 3D as in the mockup.
     private func cover(_ now: Labels.NowText) -> some View {
         let fresh = artwork.image(for: now.coverID)
-        let shown = CoverArt.shown(fresh: fresh, pending: artwork.isPending(now.coverID), last: lastCover)
+        let shown = CoverArt.shown(
+            fresh: fresh, coverID: now.coverID, pending: artwork.isPending(now.coverID), last: lastCover)
         let art = CoverArt(artist: now.artist, coverID: now.coverID, image: shown)
         return VStack(spacing: 1) {
             art.frame(width: 84, height: 84).clipped()
@@ -70,7 +71,7 @@ struct PocketNowPlaying: View {
         .modifier(Tilt())
         .accessibilityHidden(true)
         .onChange(of: fresh.map(ObjectIdentifier.init), initial: true) {
-            if let fresh { lastCover = fresh }
+            if let fresh, let id = now.coverID { lastCover = CoverArt.Shown(coverID: id, image: fresh) }
         }
     }
 
