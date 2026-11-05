@@ -136,7 +136,7 @@ final class SpotifyConnectPlayer: Player {
         // A load that replaces one still in flight keeps that one's snapshot: the old track plays.
         let before = loading && storeLoad ? beforeLoad : startedTrack.isEmpty ? nil : Snapshot(
             ours: ours, movedAway: movedAway, followedOther: followedOther, startedTrack: startedTrack,
-            lastTrack: lastTrack, lastRunning: lastRunning, playlist: playlist, context: context,
+            lastTrack: lastTrack, lastRunning: lastRunning, playlist: playlist, context: self.context,
             position: position, resumePoint: resumePoint, loaded: loaded)
         start(trackID, context: context, autoplay: autoplay, at: nil)
         beforeLoad = before
