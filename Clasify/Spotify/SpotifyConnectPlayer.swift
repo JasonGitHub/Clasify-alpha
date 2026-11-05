@@ -48,6 +48,8 @@ final class SpotifyConnectPlayer: Player {
     /// States before that can be from an older session or another device, so they are ignored.
     private var ours = false
     private var lastTrack = "", lastRunning = false
+    /// Spotify moved on to a context that the bridge cannot load, such as a station.
+    private var followedOther = false
     /// The dealer reconnects that the newest state reported, so each new one is logged once.
     private var dealerReconnects = 0
     /// TEMP (cover blink, 2026-11-05): the track before `lastTrack`, and when the newest play
@@ -239,7 +241,9 @@ final class SpotifyConnectPlayer: Player {
     private func spotifyQuit() {
         device = nil
         deviceOptions = [:]
-        if ours { lose("Spotify quit. Press Play to go on", resumable: true, reason: "Spotify quit") }
+        // After following Spotify into a station or album, there is no place to go on from.
+        let message = followedOther ? "Spotify quit. Pick a track to play" : "Spotify quit. Press Play to go on"
+        if ours { lose(message, resumable: true, reason: "Spotify quit") }
     }
 
     /// Our playback ended outside Clasify. A resumable end keeps the place for Play.
@@ -248,7 +252,7 @@ final class SpotifyConnectPlayer: Player {
         log.notice("lost control: \(reason, privacy: .public)")
         ours = false
         ticker?.cancel()
-        if resumable { resumePoint = (lastTrack.isEmpty ? startedTrack : lastTrack, playlist, position) }
+        if resumable && !followedOther { resumePoint = (lastTrack.isEmpty ? startedTrack : lastTrack, playlist, position) }
         send(.playbackFailed(message, generation: generation))
     }
 
@@ -299,6 +303,7 @@ final class SpotifyConnectPlayer: Player {
             for command in pendingSkips { client.fire(command, to: found) }
             client.fireVolume(device: found, percent: volume)
             context = contextURI
+            followedOther = false
             loaded = (pendingSkips.isEmpty ? trackID : nil, ContinuousClock.now)
             playedAt = ContinuousClock.now
             pendingSkips = []
@@ -479,16 +484,24 @@ final class SpotifyConnectPlayer: Player {
             return  // still what played before the load
         }
         loaded = nil
-        // Liked Songs can come back as a playlist URI, so only a playlist context is compared.
-        let otherContext = !context.hasSuffix(":collection") && !state.contextURI.isEmpty && state.contextURI != context
-        guard state.activeDeviceID == device, !otherContext else {
-            // The user moved playback to another device or list, or Spotify quit. Do not fight it.
+        guard state.activeDeviceID == device else {
+            // The user moved playback to another device, or Spotify quit. Do not fight it.
             // With no active device, nothing plays elsewhere, so Play may continue here.
             let stopped = state.activeDeviceID.isEmpty
-            let reason = stopped ? "no active device"
-                : state.activeDeviceID != device ? "other device"
-                : "other context (\(Self.contextKind(state.contextURI)))"
+            let reason = stopped ? "no active device" : "other device"
             return lose(stopped ? "Spotify stopped playing" : "Playing elsewhere now", resumable: stopped, reason: reason)
+        }
+        // Our Spotify app moved to another context: autoplay after the playlist ended, or a
+        // list picked in Spotify itself. Follow it and keep control. Liked Songs can come back
+        // as a playlist URI, so only a playlist context is compared.
+        if !context.hasSuffix(":collection") && !state.contextURI.isEmpty && state.contextURI != context {
+            log.notice("following Spotify into another context (\(Self.contextKind(state.contextURI), privacy: .public))")
+            context = state.contextURI
+            // So Play after a quit loads the track in its own context. The bridge can load only
+            // a playlist, so a station or album keeps no place to go on from.
+            let likedSongs = state.contextURI.hasSuffix(":collection")
+            followedOther = !likedSongs && !state.contextURI.hasPrefix("spotify:playlist:")
+            if !followedOther { playlist = likedSongs ? Playlist.likedSongsID : state.contextURI }
         }
         let gen = generation
         if !state.hasTrack {
