@@ -59,6 +59,8 @@ final class SpotifyConnectPlayer: Player {
     private var rejoinUntil: ContinuousClock.Instant?
     /// The user moved our playback to another device. A login does not take it back then.
     private var movedAway = false
+    /// When Play took playback back. For up to 3 s, states can still show the other device.
+    private var takenBackAt: ContinuousClock.Instant?
     /// The newest state from the bridge. At launch it can come before the pre-warm found our
     /// device, so the pre-warm handles it again.
     private var latest: SpotifyPlayerState?
@@ -163,6 +165,7 @@ final class SpotifyConnectPlayer: Player {
     private func start(_ trackID: String, context: String?, autoplay: Bool, at position: Double?) {
         beforeLoad = nil
         storeLoad = false
+        takenBackAt = nil
         loadID += 1
         let id = loadID
         ours = false
@@ -199,12 +202,54 @@ final class SpotifyConnectPlayer: Player {
         if !ours, let point = resumePoint {
             return start(point.track, context: point.playlist, autoplay: true, at: point.position)
         }
-        // After a move away, the pick is gone here. Ask for a new one, do not take it back.
+        // After a move to another device, Play takes playback back to this Mac.
+        if !ours, movedAway, let device, let other = latest?.activeDeviceID, !other.isEmpty, other != device {
+            return takeBack(from: other, to: device)
+        }
+        // Nothing to go on from here. Ask for a new pick.
         guard ours else {
             log.notice("play: no control and no place to go on from")
             return send(.playbackFailed("Pick a track to play it here", generation: generation))
         }
         fire(LSB_COMMAND_RESUME)
+    }
+
+    /// Moves playback from another device (for example a phone) back to this Mac with a Connect
+    /// transfer. The song and its place carry over. Pause, Next and Prev pressed meanwhile follow.
+    private func takeBack(from other: String, to device: String) {
+        log.notice("play: taking playback back from another device")
+        loadID += 1
+        let id = loadID
+        loading = true
+        wantsRunning = true
+        pendingSkips = []
+        beforeLoad = nil  // not a load from the store: a pick meanwhile takes a new snapshot
+        storeLoad = false
+        Task {
+            do {
+                try await again { try await client.transfer(from: other, to: device) }
+                guard id == loadID, let device = self.device else { return }
+                // The transfer keeps the other device's play state, so set the wanted one.
+                client.fire(wantsRunning ? LSB_COMMAND_RESUME : LSB_COMMAND_PAUSE, to: device)
+                for command in pendingSkips { client.fire(command, to: device) }
+                pendingSkips = []
+                client.fireVolume(device: device, percent: volume)  // as after a load: the sound now comes from this Mac
+                loading = false
+                ours = true
+                movedAway = false
+                resumePoint = nil
+                loaded = nil
+                lastTrack = ""  // so the store gets the track that plays now
+                takenBackAt = .now
+                // States from the transfer came while it was not ours yet: handle the newest again.
+                if let latest, latest.activeDeviceID == device { handle(latest, receivedAt: latestAt) }
+            } catch {
+                Self.logFailure("transfer", error)
+                guard id == loadID else { return }
+                loading = false
+                send(.playbackFailed("Can’t move playback to this Mac. Pick a track to play it here", generation: generation))
+            }
+        }
     }
 
     func stop() {
@@ -622,6 +667,10 @@ final class SpotifyConnectPlayer: Player {
             return  // still what played before the load
         }
         loaded = nil
+        if let takenBackAt, state.activeDeviceID != device, ContinuousClock.now - takenBackAt < .seconds(3) {
+            return  // still from before the transfer
+        }
+        takenBackAt = nil
         guard state.activeDeviceID == device else {
             // The user moved playback to another device, or Spotify quit. Do not fight it.
             // With no active device, nothing plays elsewhere, so Play may continue here.
