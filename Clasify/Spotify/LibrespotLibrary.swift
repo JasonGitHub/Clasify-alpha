@@ -51,6 +51,8 @@ final class LibrespotLibrary: Library {
     /// The running `restoreSession`. Two refreshes with one refresh token can fail,
     /// because Spotify can replace the token, so callers share one.
     private var restoring: Task<Restore, Never>?
+    /// Runs after each background login that worked, from a library read or from `SessionKeeper`.
+    var restored: @MainActor () -> Void = {}
     /// The newest bridge login (it may be done). Bridge logins run one at a time. Each event also
     /// carries its login id, so a late event of an older login is ignored.
     private var bridgeLogin: Task<Void, Never>?
@@ -115,7 +117,12 @@ final class LibrespotLibrary: Library {
     /// because two refreshes with one refresh token can fail.
     func reconnect() async -> Restore {
         if let restoring { return await restoring.value }
-        let task = Task { await self.refreshAndStart() }
+        let task = Task {
+            let result = await self.refreshAndStart()
+            // Inside the task, so it runs once for each login, whichever caller started it.
+            if result == .done { self.restored() }
+            return result
+        }
         restoring = task
         let result = await task.value
         if restoring == task { restoring = nil }

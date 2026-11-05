@@ -26,6 +26,12 @@ final class SessionKeeper {
         self.library = library
         self.player = player
         self.store = store
+        // A library read can log in again on its own. Each path registers the player again.
+        library.restored = { [weak self, weak player] in
+            self?.backoff.reset()
+            self?.notBefore = .now  // a player command can succeed during a wait: end that wait
+            player?.sessionRestored()
+        }
         Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
@@ -71,10 +77,7 @@ final class SessionKeeper {
         switch result {
         case .done:
             log.notice("logged in again: \(ms, privacy: .public) ms")
-            backoff.reset()
-            notBefore = .now  // a player command can succeed during a wait: end that wait
-            player.sessionRestored()
-            return true
+            return true  // `library.restored` registered the player again
         case .refused:
             log.error("login refused after \(ms, privacy: .public) ms; signing out")
             store?.send(.expire)
