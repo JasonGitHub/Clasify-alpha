@@ -1,7 +1,7 @@
 import Observation
 
 /// Playback engine (the Spotify desktop app, controlled through Spotify Connect, in 1.0). Code above it doesn't know which engine is playing.
-/// The engine reports `.position`, `.trackEnded`, `.trackChanged` and `.playbackFailed` back to the store,
+/// The engine reports `.position`, `.trackEnded`, `.trackChanged`, `.adopted`, `.playbackFailed` and `.loadFailed` back to the store,
 /// each with the generation of the newest `load`, `seek`, `next` or `prev`.
 /// It reports only the state of its own device and context, so playback that the user moves elsewhere is not followed.
 @MainActor

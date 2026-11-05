@@ -62,6 +62,18 @@ final class SpotifyConnectPlayer: Player {
     /// The newest state from the bridge. At launch it can come before the pre-warm found our
     /// device, so the pre-warm handles it again.
     private var latest: SpotifyPlayerState?
+    private var latestAt = ContinuousClock.now
+    /// What Clasify controlled before the newest load from the store. If that load fails
+    /// before it plays, Spotify still plays the old track, so control goes back to it.
+    private var beforeLoad: Snapshot?
+    /// The newest load came from the store, not from Play after a quit.
+    private var storeLoad = false
+    private struct Snapshot {
+        var ours: Bool, movedAway: Bool, followedOther: Bool
+        var startedTrack: String, lastTrack: String, lastRunning: Bool
+        var playlist: String?, context: String, position: Double
+        var resumePoint: (track: String, playlist: String?, position: Double)?
+    }
     /// TEMP (cover blink, 2026-11-05): the track before `lastTrack`, and when the newest play
     /// command succeeded, for the track-change log. Remove once the cause of the blink is known.
     private var trackBefore = "", playedAt = ContinuousClock.now
@@ -120,11 +132,35 @@ final class SpotifyConnectPlayer: Player {
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
+        let before = Snapshot(
+            ours: ours, movedAway: movedAway, followedOther: followedOther, startedTrack: startedTrack,
+            lastTrack: lastTrack, lastRunning: lastRunning, playlist: playlist, context: context,
+            position: position, resumePoint: resumePoint)
         start(trackID, context: context, autoplay: autoplay, at: nil)
+        beforeLoad = before.startedTrack.isEmpty ? nil : before
+        storeLoad = true
+    }
+
+    /// The load from the store did not start. Take back what played before it.
+    private func restoreBeforeLoad() {
+        guard let b = beforeLoad else { return }
+        beforeLoad = nil
+        (movedAway, followedOther, startedTrack) = (b.movedAway, b.followedOther, b.startedTrack)
+        (lastTrack, lastRunning, playlist, context) = (b.lastTrack, b.lastRunning, b.playlist, b.context)
+        (position, resumePoint) = (b.position, b.resumePoint)
+        guard b.ours else { return }
+        guard device != nil else {
+            // Spotify quit during the load: Play goes on with the old track.
+            resumePoint = (b.lastTrack.isEmpty ? b.startedTrack : b.lastTrack, b.playlist, b.position)
+            return
+        }
+        ours = true
     }
 
     /// Starts a load. `position` is where to seek once it plays.
     private func start(_ trackID: String, context: String?, autoplay: Bool, at position: Double?) {
+        beforeLoad = nil
+        storeLoad = false
         loadID += 1
         let id = loadID
         ours = false
@@ -232,7 +268,7 @@ final class SpotifyConnectPlayer: Player {
                 Self.logTime("prewarm: device found", since: start)
                 if device == nil {
                     device = found
-                    if let latest { handle(latest) }  // so a launch can pick up what plays here
+                    if let latest { handle(latest, receivedAt: latestAt) }  // so a launch can pick up what plays here
                 }
                 return found
             } catch {
@@ -376,7 +412,7 @@ final class SpotifyConnectPlayer: Player {
             // Spotify quit after it took the play command. The continuation stays for Play.
             guard let found = device else {
                 if resumePoint == nil { resumePoint = (trackID, playlist, self.position) }
-                return fail("Spotify quit. Press Play to go on", id)
+                return fail("Spotify quit. Press Play to go on", id, started: true)
             }
             if let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
@@ -390,6 +426,7 @@ final class SpotifyConnectPlayer: Player {
             loading = false
             ours = true
             resumePoint = nil
+            beforeLoad = nil
         } catch let error as PlayerError {
             fail(error.message, id)
         } catch {
@@ -398,10 +435,19 @@ final class SpotifyConnectPlayer: Player {
         }
     }
 
-    private func fail(_ message: String, _ id: Int) {
+    /// `started` is true when Spotify took the play command, so the old track is gone.
+    private func fail(_ message: String, _ id: Int, started: Bool = false) {
         guard id == loadID else { return }
         loading = false
-        send(.playbackFailed(message, generation: generation))
+        guard storeLoad, !started else {
+            beforeLoad = nil
+            return send(.playbackFailed(message, generation: generation))
+        }
+        restoreBeforeLoad()
+        send(.loadFailed(message, generation: generation))
+        // After the store shows the old track again: it can have changed, or moved away, during
+        // the load. Cluster updates come only on changes, so handle the newest state again.
+        if ours, let latest { handle(latest, receivedAt: latestAt) }
     }
 
     /// `Playlist.likedSongsID` plays the user's Liked Songs. Other IDs are Spotify playlist URIs.
@@ -545,8 +591,10 @@ final class SpotifyConnectPlayer: Player {
         return known.contains(String(parts[1])) ? String(parts[1]) : "other"
     }
 
-    private func handle(_ state: SpotifyPlayerState) {
+    /// `receivedAt` is when the bridge sent the state, so the position moves on from then.
+    private func handle(_ state: SpotifyPlayerState, receivedAt: ContinuousClock.Instant = .now) {
         latest = state
+        latestAt = receivedAt
         // A lower count is a new login: it only sets the new baseline.
         if state.dealerReconnects > dealerReconnects {
             log.notice("dealer reconnected: \(state.dealerReconnects, privacy: .public) in this login")
@@ -604,13 +652,13 @@ final class SpotifyConnectPlayer: Player {
         lastRunning = state.hasTrack && state.isRunning
         position = state.position
         send(.position(state.position, generation: gen))
-        tick(from: state)
+        tick(from: state, since: receivedAt)
     }
 
-    private func tick(from state: SpotifyPlayerState) {
+    private func tick(from state: SpotifyPlayerState, since start: ContinuousClock.Instant = .now) {
         ticker?.cancel()
         guard state.hasTrack, state.isRunning else { return }
-        let start = ContinuousClock.now, gen = generation
+        let gen = generation
         ticker = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))

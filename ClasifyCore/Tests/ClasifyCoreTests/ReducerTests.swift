@@ -392,6 +392,24 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.current == nil)
     }
 
+    @Test func loadFailedShowsWhatPlayedBeforeTheLoad() {
+        var s = playing(2)
+        send(&s, .position(40, generation: 1))
+        send(&s, .menu, .wheel(3), .select)  // Focus track 5
+        #expect(s.current?.track == "f5" && s.t == 0 && s.beforeLoad != nil)
+        send(&s, .loadFailed("Old", generation: 1))  // from an earlier load
+        #expect(s.current?.track == "f5")
+        #expect(send(&s, .loadFailed("Can’t start Spotify playback", generation: 2)) == [])
+        #expect(s.current == TrackRef(playlist: "focus", track: "f2") && s.t == 40 && s.isPlaying)
+        #expect(s.toast == "Can’t start Spotify playback" && s.beforeLoad == nil)
+        send(&s, .play)  // paused before the load: it stays paused after the failure
+        send(&s, .menu, .wheel(1), .select, .loadFailed("x", generation: 3))
+        #expect(s.current?.track == "f2" && !s.isPlaying)
+        s = playing()  // the first load fails: nothing plays, so nothing shows
+        #expect(send(&s, .loadFailed("Install the Spotify app to play music", generation: 1)) == [])
+        #expect(s.current == nil && !s.isPlaying && s.t == 0 && s.toast == "Install the Spotify app to play music")
+    }
+
     @Test func playbackFailedPausesAndShowsToast() {
         var s = playing()
         send(&s, .playbackFailed("Old", generation: 0))  // stale load

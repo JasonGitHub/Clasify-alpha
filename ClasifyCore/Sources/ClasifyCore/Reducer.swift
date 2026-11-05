@@ -37,6 +37,9 @@ public enum Action: Equatable, Sendable {
     case adopted(track: String, playlist: String?, playing: Bool, position: Double, generation: Int)
     /// The engine can't play the load with this `generation`. The message is shown as a toast.
     case playbackFailed(String, generation: Int)
+    /// The load with this `generation`, which `.select` started, did not start to play.
+    /// Clasify shows again what it showed before the load, or nothing. The message is a toast.
+    case loadFailed(String, generation: Int)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -130,6 +133,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
     func skip(_ forward: Bool) { s.playGen += 1; fx.append(forward ? .next(generation: s.playGen) : .prev(generation: s.playGen)) }  // and from before the skip
     func play(_ pl: String, _ id: String) {
+        s.beforeLoad = s.current.map { BeforeLoad(current: $0, t: s.t, isPlaying: s.isPlaying) }
         s.current = TrackRef(playlist: pl, track: id)
         s.t = 0; s.isPlaying = true; s.nowMode = .volume
         s.stack.append(Frame(screen: .now))
@@ -145,7 +149,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     func stop() {
         if s.current != nil { fx.append(.stop) }
-        s.isPlaying = false; s.current = nil; s.t = 0
+        s.isPlaying = false; s.current = nil; s.t = 0; s.beforeLoad = nil
     }
     func signOut(_ msg: String) {
         stop()
@@ -312,6 +316,18 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .playbackFailed(let msg, let gen):
             guard s.current != nil, gen == s.playGen else { return }
             s.isPlaying = false
+            toast(msg)
+
+        case .loadFailed(let msg, let gen):
+            guard s.current != nil, gen == s.playGen else { return }
+            // Show what really plays: the track from before the load, or nothing. If Spotify
+            // does not play it as shown, the engine's next report corrects it.
+            if let before = s.beforeLoad {
+                s.current = before.current; s.t = before.t; s.isPlaying = before.isPlaying
+            } else {
+                s.current = nil; s.t = 0; s.isPlaying = false
+            }
+            s.beforeLoad = nil
             toast(msg)
 
         case .playlistsLoaded(let token, let playlists):
