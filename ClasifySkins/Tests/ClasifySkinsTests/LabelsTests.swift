@@ -53,10 +53,10 @@ func sampleState() -> AppState {
         let screen = Screen.tracks(playlist: "spotify:playlist:a")
         s.current = TrackRef(playlist: "spotify:playlist:a", track: "spotify:track:r2")
         s.isPlaying = true
-        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s) == .init(label: "Song 2", mark: .playing))
+        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s) == .init(label: "Song 2", playing: true))
         #expect(Labels.row(.track("spotify:track:r3"), on: screen, in: s) == .init(label: "Song 3"))
         s.isPlaying = false
-        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s).mark == .paused)
+        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s).playing)  // paused: still the speaker
     }
 
     @Test func messagesCoverTheScreensWithNoList() {
@@ -103,14 +103,7 @@ func sampleState() -> AppState {
         #expect(Labels.slider(in: s) == .init(name: "Repeat", stops: ["Off", "One", "All"], index: 2))
     }
 
-    @Test func flagsAndTimes() {
-        var s = sampleState()
-        #expect(Labels.flags(in: s) == "")
-        s.shuffle = true
-        s.repeatMode = .all
-        #expect(Labels.flags(in: s) == "SHUFFLE REPEAT")
-        s.repeatMode = .one
-        #expect(Labels.flags(in: s) == "SHUFFLE REPEAT 1")
+    @Test func times() {
         #expect(Labels.time(0) == "0:00")
         #expect(Labels.time(65.9) == "1:05")
         #expect(Labels.time(-3) == "0:00")

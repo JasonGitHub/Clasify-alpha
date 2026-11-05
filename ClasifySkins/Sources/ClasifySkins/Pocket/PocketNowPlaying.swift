@@ -1,9 +1,11 @@
 import ClasifyCore
 import SwiftUI
 
-/// Now Playing: the place in the list, the cover, the track, and the progress or volume bar.
+/// Now Playing: the shuffle and repeat icons, the tilted cover, the track, and the progress,
+/// volume or slider row.
 struct PocketNowPlaying: View {
     let state: AppState
+    let input: @MainActor (Action) -> Void
     @Environment(\.artwork) private var artwork
     /// The last cover that showed. It stays while the next track's cover loads, so the
     /// square does not flash between two covers.
@@ -11,73 +13,92 @@ struct PocketNowPlaying: View {
 
     var body: some View {
         if let now = Labels.now(in: state) {
-            VStack(spacing: 0) {
-                HStack {
-                    Text(now.count)
-                    Spacer()
-                    Text(Labels.flags(in: state))
-                }
-                .font(.helvetica(10))
-                .foregroundStyle(Pocket.gray)
-                HStack(spacing: 10) {
-                    if state.showArt {
-                        let fresh = artwork.image(for: now.coverID)
-                        let shown = Cover.shown(fresh: fresh, pending: artwork.isPending(now.coverID), last: lastCover)
-                        Cover(artist: now.artist, image: shown)
-                            .onChange(of: fresh.map(ObjectIdentifier.init), initial: true) {
-                                if let fresh { lastCover = fresh }
-                            }
-                    }
+            VStack(spacing: 2) {
+                icons
+                HStack(alignment: .top, spacing: 12) {
+                    if state.showArt { cover(now) }
                     VStack(alignment: state.showArt ? .leading : .center, spacing: 3) {
                         Text(now.title).font(.helvetica(14, bold: true))
-                        Text(now.artist).font(.helvetica(12))
-                        Text(now.list).font(.helvetica(11)).foregroundStyle(Pocket.gray)
+                        Text(now.artist).font(.helvetica(12)).foregroundStyle(Pocket.gray)
+                        Text(now.list).font(.helvetica(12)).foregroundStyle(Pocket.gray)
+                        Text(now.count).font(.helvetica(11)).foregroundStyle(Color(hex: 0x4b535c)).padding(.top, 6)
                     }
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: state.showArt ? .leading : .center)
                 }
-                .frame(maxHeight: .infinity)
-                // The reducer sets overlayUntil when the wheel changes the volume and clears it on a later tick.
-                if let slider = Labels.slider(in: state) {
-                    SliderView(slider: slider)
-                } else if state.nowMode == .volume && state.overlayUntil > 0 {
-                    volume
-                } else {
-                    progress(now)
-                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                bottom(now)
             }
-            .padding(EdgeInsets(top: 8, leading: 12, bottom: 10, trailing: 12))
+            .padding(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
         }
     }
 
-    private var volume: some View {
-        HStack(spacing: 6) {
-            IconView(.speaker, width: 10, height: 10)
-            Meter(fraction: Double(state.volume) / 100, fill: AnyShapeStyle(Pocket.selection))
-            IconView(.speakerLoud, width: 12, height: 10)
+    /// Shuffle and repeat, dark when on and dimmed when off. A click changes them.
+    private var icons: some View {
+        HStack(spacing: 10) {
+            Button { input(.toggleShuffle) } label: {
+                IconView(.shuffle, width: 14, height: 12).foregroundStyle(iconColor(state.shuffle))
+            }
+            .accessibilityLabel(state.shuffle ? "Shuffle on" : "Shuffle off")
+            Button { input(.cycleRepeat) } label: {
+                IconView(.repeatMode, width: 14, height: 12)
+                    .foregroundStyle(iconColor(state.repeatMode != .off))
+                    .overlay(alignment: .topTrailing) {
+                        if state.repeatMode == .one {
+                            Text("1").font(.helvetica(8, bold: true)).foregroundStyle(Pocket.ink).offset(x: 4, y: -4)
+                        }
+                    }
+            }
+            .accessibilityLabel("Repeat \(state.repeatMode.rawValue)")
         }
-        .frame(height: 22)
-        .accessibilityElement()
-        .accessibilityLabel("Volume \(state.volume) percent")
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 14, alignment: .trailing)
     }
 
-    private func progress(_ now: Labels.NowText) -> some View {
-        let scrub = state.nowMode == .scrub
-        let fraction = now.duration > 0 ? state.t / now.duration : 0
-        return VStack(spacing: 3) {
-            Meter(fraction: fraction, fill: scrub ? AnyShapeStyle(Color(hex: 0x9aa6b2)) : AnyShapeStyle(Pocket.selection),
-                  marker: scrub)
-            HStack {
-                Text(Labels.time(state.t))
-                Spacer()
-                if scrub { Text("SCRUB") }
-                Spacer()
-                Text("-" + Labels.time(now.duration - state.t))
+    private func iconColor(_ on: Bool) -> Color { on ? Pocket.ink : Color(hex: 0x9aa3ad) }
+
+    /// The 84 point cover with its reflection, turned in 3D as in the mockup.
+    private func cover(_ now: Labels.NowText) -> some View {
+        let fresh = artwork.image(for: now.coverID)
+        let shown = CoverArt.shown(fresh: fresh, pending: artwork.isPending(now.coverID), last: lastCover)
+        let art = CoverArt(artist: now.artist, coverID: now.coverID, image: shown)
+        return VStack(spacing: 1) {
+            art.frame(width: 84, height: 84).clipped()
+            art.reflection(side: 84, height: 24)
+        }
+        .animation(.easeInOut(duration: 0.2), value: shown.map(ObjectIdentifier.init))
+        .modifier(Tilt())
+        .accessibilityHidden(true)
+        .onChange(of: fresh.map(ObjectIdentifier.init), initial: true) {
+            if let fresh { lastCover = fresh }
+        }
+    }
+
+    /// The slider, the volume bar after a volume turn, or the progress bar.
+    @ViewBuilder private func bottom(_ now: Labels.NowText) -> some View {
+        if let slider = Labels.slider(in: state) {
+            SliderView(slider: slider)
+        } else if state.nowMode == .volume && state.overlayUntil > 0 {
+            // The reducer sets overlayUntil when the wheel changes the volume and clears it on a later tick.
+            HStack(spacing: 6) {
+                IconView(.speaker, width: 10, height: 10)
+                Meter(fraction: Double(state.volume) / 100)
+                IconView(.speakerLoud, width: 12, height: 10)
             }
-            .font(.helvetica(10))
+            .frame(height: 24)
+            .accessibilityElement()
+            .accessibilityLabel("Volume \(state.volume) percent")
+        } else {
+            let fraction = now.duration > 0 ? state.t / now.duration : 0
+            HStack(spacing: 6) {
+                Text(Labels.time(state.t)).frame(width: 28, alignment: .leading)
+                if state.nowMode == .scrub { ScrubTrack(fraction: fraction) } else { Meter(fraction: fraction) }
+                Text("-" + Labels.time(now.duration - state.t)).frame(width: 32, alignment: .trailing)
+            }
+            .font(.helvetica(10, bold: true))
             .monospacedDigit()
+            .frame(height: 24)
         }
-        .frame(height: 22)
     }
 }
 
@@ -94,18 +115,12 @@ struct SliderView: View {
                 }
             }
             .font(.helvetica(10, bold: true))
-            GeometryReader { geo in
-                let fraction = slider.stops.count > 1 ? CGFloat(slider.index) / CGFloat(slider.stops.count - 1) : 0
-                Capsule().fill(LinearGradient.vertical(.white, Color(hex: 0xe3e8ed)))
-                    .overlay { Capsule().strokeBorder(Color(hex: 0xb7c0c9), lineWidth: 1) }
-                    .overlay(alignment: .leading) {
-                        Circle().fill(Pocket.gloss)
-                            .overlay { Circle().strokeBorder(Color(hex: 0x1f5fb8), lineWidth: 1) }
-                            .frame(width: 14, height: 14)
-                            .offset(x: geo.size.width * fraction - 7)
-                    }
+            let fraction = slider.stops.count > 1 ? Double(slider.index) / Double(slider.stops.count - 1) : 0
+            Track(fraction: fraction) {
+                Circle().fill(Pocket.gloss)
+                    .overlay { Circle().strokeBorder(Color(hex: 0x1f5fb8), lineWidth: 1) }
+                    .frame(width: 14, height: 14)
             }
-            .frame(height: 6)
             .padding(.horizontal, 6)
             Text(slider.name).font(.helvetica(10)).foregroundStyle(Pocket.gray)
         }
@@ -115,28 +130,48 @@ struct SliderView: View {
     }
 }
 
-/// An 8 px bar with a fill, and a diamond at the fill's end while scrubbing.
+/// The 8 point progress and volume bar: a light groove with a glossy blue fill.
 struct Meter: View {
     let fraction: Double
-    let fill: AnyShapeStyle
-    var marker = false
 
     var body: some View {
         GeometryReader { geo in
-            let width = geo.size.width * min(max(fraction, 0), 1)
-            ZStack(alignment: .leading) {
-                Rectangle().fill(.white)
-                Rectangle().fill(fill).frame(width: width)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 2))
-            .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(Pocket.frame, lineWidth: 1) }
-            .overlay(alignment: .leading) {
-                if marker {
-                    Diamond().fill(Pocket.ink).frame(width: 10, height: 12).offset(x: width - 5)
+            LinearGradient.vertical(Color(hex: 0xf6f8fa), Color(hex: 0xdfe5ea))
+                .overlay(alignment: .leading) {
+                    Pocket.gloss.frame(width: geo.size.width * min(max(fraction, 0), 1))
                 }
-            }
+                .overlay { Rectangle().strokeBorder(Color(hex: 0xaab4be), lineWidth: 1) }
         }
         .frame(height: 8)
+    }
+}
+
+/// The scrub bar: a blue diamond on a thin light track.
+struct ScrubTrack: View {
+    let fraction: Double
+
+    var body: some View {
+        Track(fraction: fraction) {
+            Diamond().fill(Pocket.gloss).frame(width: 12, height: 14)
+        }
+        .accessibilityLabel("Scrubbing")
+    }
+}
+
+/// A 6 point rounded track with a marker centered at `fraction` of its width.
+struct Track<Marker: View>: View {
+    let fraction: Double
+    @ViewBuilder let marker: () -> Marker
+
+    var body: some View {
+        GeometryReader { geo in
+            Capsule().fill(LinearGradient.vertical(.white, Color(hex: 0xe3e8ed)))
+                .overlay { Capsule().strokeBorder(Color(hex: 0xb7c0c9), lineWidth: 1) }
+                .overlay(alignment: .leading) {
+                    marker().fixedSize().frame(width: 0).offset(x: geo.size.width * min(max(fraction, 0), 1))
+                }
+        }
+        .frame(height: 6)
     }
 }
 
@@ -149,39 +184,5 @@ struct Diamond: Shape {
             ])
             p.closeSubpath()
         }
-    }
-}
-
-/// The album cover. Until it has loaded, or when it cannot load, the mockup's square shows:
-/// a color from the artist’s name with a music note on it.
-struct Cover: View {
-    let artist: String
-    var image: CGImage?
-
-    /// The image to draw: the track's cover, or while it loads the last cover that showed.
-    /// A track with no cover, or whose cover failed, gets the square at once.
-    static func shown(fresh: CGImage?, pending: Bool, last: CGImage?) -> CGImage? {
-        fresh ?? (pending ? last : nil)
-    }
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 2)
-            .fill(Color(hex: Labels.cover(for: artist)))
-            .overlay {
-                if let image {
-                    // A new image fades in over 0.2 s instead of a hard cut.
-                    Image(decorative: image, scale: 1).resizable().scaledToFill()
-                        .id(ObjectIdentifier(image))
-                        .transition(.opacity)
-                } else {
-                    IconView(.note, width: 26, height: 26).foregroundStyle(.white.opacity(0.85))
-                }
-            }
-            .animation(.easeInOut(duration: 0.2), value: image.map(ObjectIdentifier.init))
-            .clipShape(RoundedRectangle(cornerRadius: 2))
-            .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(Pocket.frame, lineWidth: 1) }
-            .frame(width: 76, height: 76)
-            .shadow(color: .black.opacity(0.25), radius: 2, y: 2)
-            .accessibilityHidden(true)
     }
 }

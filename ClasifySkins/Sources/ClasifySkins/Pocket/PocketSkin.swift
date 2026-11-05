@@ -30,7 +30,7 @@ public struct PocketSkin: View {
 
     public var body: some View {
         VStack(spacing: 32) {
-            PocketScreen(state: state)
+            PocketScreen(state: state, input: input)
             ClickWheel(input: input, catchesScroll: interactive, pressed: pressed)
         }
         // The mockup's padding starts inside the 1 point border.
