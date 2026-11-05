@@ -177,6 +177,7 @@ typedef struct LsbPlayerState {
     const char *context_uri;
     uint32_t position_ms;         // At the time of the callback.
     uint32_t duration_ms;
+    uint32_t dealer_reconnects;   // Dealer reconnects in this session, for the app's log.
     bool is_playing;              // A track is loaded. It can be paused.
     bool is_paused;
     bool shuffle;
