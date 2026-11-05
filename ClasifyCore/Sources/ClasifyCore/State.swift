@@ -110,6 +110,8 @@ public struct AppState: Equatable, Sendable {
     public var current: TrackRef?
     /// What `current` showed before the newest load, so a load that fails can show it again.
     public var beforeLoad: BeforeLoad?
+    /// A load started and the engine did not report it yet. A new load then keeps `beforeLoad`.
+    public var loadPending = false
     /// Tracks that Spotify played from outside our copy of the list, read one at a time.
     /// Memory only, at most `extraTrackLimit`, the oldest goes first. Emptied at sign-out.
     public var extraTracks: [Track] = []

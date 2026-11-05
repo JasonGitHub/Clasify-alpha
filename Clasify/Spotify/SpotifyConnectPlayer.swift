@@ -133,12 +133,13 @@ final class SpotifyConnectPlayer: Player {
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
-        let before = Snapshot(
+        // A load that replaces one still in flight keeps that one's snapshot: the old track plays.
+        let before = loading && storeLoad ? beforeLoad : startedTrack.isEmpty ? nil : Snapshot(
             ours: ours, movedAway: movedAway, followedOther: followedOther, startedTrack: startedTrack,
             lastTrack: lastTrack, lastRunning: lastRunning, playlist: playlist, context: context,
             position: position, resumePoint: resumePoint, loaded: loaded)
         start(trackID, context: context, autoplay: autoplay, at: nil)
-        beforeLoad = before.startedTrack.isEmpty ? nil : before
+        beforeLoad = before
         storeLoad = true
     }
 

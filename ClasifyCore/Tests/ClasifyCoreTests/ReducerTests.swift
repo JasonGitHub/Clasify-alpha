@@ -411,7 +411,11 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.screen == .tracks(playlist: "focus"))  // no empty Now Playing: back to the list
         s = playing(2)
         send(&s, .menu, .wheel(1), .select, .position(1, generation: 2))  // the second load plays
-        #expect(s.beforeLoad == nil)
+        #expect(s.beforeLoad == nil && !s.loadPending)
+        s = playing(2)  // a second pick while the first load is in flight
+        send(&s, .position(40, generation: 1), .menu, .wheel(1), .select, .menu, .wheel(1), .select)
+        send(&s, .loadFailed("x", generation: 3))
+        #expect(s.current?.track == "f2" && s.t == 40)  // what still plays, not the first pick
     }
 
     @Test func playbackFailedPausesAndShowsToast() {
