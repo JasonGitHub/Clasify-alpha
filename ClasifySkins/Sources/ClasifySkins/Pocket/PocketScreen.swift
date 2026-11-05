@@ -29,7 +29,17 @@ struct PocketScreen: View {
     let state: AppState
     var input: @MainActor (Action) -> Void = { _ in }
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     private var top: Frame { state.top }
+
+    /// The mockup's push and pop: a new screen slides in over 0.22 s, from the right when it
+    /// opens and from the left on a way back. The old screen goes at once. No slide with Reduce Motion.
+    private var slide: AnyTransition {
+        if reduceMotion { return .identity }
+        return .asymmetric(insertion: .move(edge: state.navForward ? .trailing : .leading),
+                           removal: .opacity.animation(.linear(duration: 0)))
+    }
 
     var body: some View {
         // The main menu is a 136 point pane with a shadow, over covers on the right.
@@ -40,7 +50,13 @@ struct PocketScreen: View {
             VStack(spacing: 0) {
                 header
                 Pocket.line.frame(height: 1)
-                content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                ZStack {
+                    content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .id(state.navSeq)
+                        .transition(slide)
+                }
+                .clipped()
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: state.navSeq)
                 if state.showsBar, let now = Labels.now(in: state) {
                     Pocket.line.frame(height: 1)
                     bar(now)
