@@ -1,7 +1,7 @@
 //! Spotify Connect commands through librespot's session. Clasify plays no audio: it
 //! registers itself as a Connect device that cannot play, then tells the Spotify app's
-//! device what to do. Only the requests that `request` builds can be sent. The app
-//! cannot pass an endpoint path.
+//! device what to do. Only the requests that `request` builds, and librespot's own
+//! transfer, can be sent. The app cannot pass an endpoint path.
 
 use std::ffi::{c_char, c_void};
 use std::sync::atomic::{AtomicI64, AtomicU32, Ordering};
@@ -10,7 +10,8 @@ use std::sync::{Arc, RwLock};
 use futures_util::StreamExt;
 use http::header::{HeaderValue, CONTENT_TYPE};
 use http::{HeaderMap, Method};
-use librespot_core::dealer::protocol::Message as DealerMessage;
+use librespot_core::dealer::protocol::{Message as DealerMessage, TransferOptions};
+use librespot_core::spclient::TransferRequest;
 use librespot_core::Session;
 use librespot_protocol::connect::{
     Capabilities, Cluster, ClusterUpdate, Device, DeviceInfo, MemberType, PutStateReason,
@@ -51,6 +52,11 @@ pub(crate) enum Command {
     Shuffle(bool),
     RepeatContext(bool),
     RepeatTrack(bool),
+    /// Moves playback from device `from` to the target device. The song, the context and
+    /// the place carry over.
+    Transfer {
+        from: String,
+    },
 }
 
 impl Command {
@@ -158,6 +164,7 @@ pub(crate) fn request(
             format!(r#"{{"command":{{"value":{ms},{logging},"endpoint":"seek_to"}}}}"#)
         }
         Command::Volume(_) => unreachable!("handled above"),
+        Command::Transfer { .. } => unreachable!("`send` sends it through SpClient::transfer"),
     };
     let path = format!("/connect-state/v1/player/command/from/{from}/to/{to}");
     (Method::POST, path, body)
@@ -459,7 +466,26 @@ async fn register(
     Ok(cluster)
 }
 
+/// The transfer body. `restore_paused: "restore"` keeps the other device's play or pause
+/// state. Spotify does not document the values, so a test on a Mac confirms it.
+pub(crate) fn transfer_request() -> TransferRequest {
+    TransferRequest {
+        transfer_options: TransferOptions {
+            restore_paused: Some("restore".to_owned()),
+            ..Default::default()
+        },
+    }
+}
+
 async fn send(session: &Session, command: &Command, to: &str) -> Result<(), String> {
+    if let Command::Transfer { from } = command {
+        // librespot's own transfer call, the one that Spirc uses.
+        let body = transfer_request();
+        let result = session.spclient().transfer(from, to, Some(&body)).await;
+        return result
+            .map(|_| ())
+            .map_err(|e| format!("Spotify Connect transfer failed: {e}"));
+    }
     let (method, path, body) = request(command, session.device_id(), to, &command_id());
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
@@ -800,4 +826,26 @@ pub unsafe extern "C" fn lsb_connect_watch(
     let sink = on_state.map(|callback| StateSink { callback, context });
     set_sink(&bridge.state_sink, sink);
     LSB_OK
+}
+
+/// Moves playback from device `from_device_id` (the active one, such as a phone) to
+/// `to_device_id` (the Spotify app on this Mac). The song, the context and the place carry
+/// over, and the play or pause state stays as it was.
+///
+/// # Safety
+/// As for `lsb_connect_command`. `from_device_id` must be NUL-terminated.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_transfer(
+    bridge: *mut crate::LsbBridge,
+    from_device_id: *const c_char,
+    to_device_id: *const c_char,
+    on_result: Option<LsbCommandCallback>,
+    context: *mut c_void,
+) -> i32 {
+    let command = read_str(from_device_id)
+        .filter(|id| valid_device_id(id))
+        .map(|from| Command::Transfer {
+            from: from.to_owned(),
+        });
+    queue_command(bridge, to_device_id, command, on_result, context)
 }

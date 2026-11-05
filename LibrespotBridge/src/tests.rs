@@ -1275,4 +1275,36 @@ mod connect_tests {
             lsb_free(bridge);
         }
     }
+
+    #[test]
+    fn transfer_checks_its_arguments_and_keeps_the_play_state() {
+        let recorder = Recorder::default();
+        let context = &recorder as *const Recorder as *mut c_void;
+        let bridge = lsb_new(Some(record_event), context);
+        let (phone, app, ctx) = (c"phone-1".as_ptr(), c"app".as_ptr(), std::ptr::null_mut());
+        let status = Some(record_status as LsbCommandCallback);
+        unsafe {
+            let ok = lsb_connect_transfer(bridge, phone, app, status, ctx);
+            assert_eq!(ok, LSB_ERR_NOT_LOGGED_IN);
+            let (none, slash) = (std::ptr::null(), c"a/b".as_ptr());
+            let invalid = [
+                lsb_connect_transfer(bridge, none, app, status, ctx),
+                lsb_connect_transfer(bridge, phone, none, status, ctx),
+                lsb_connect_transfer(bridge, slash, app, status, ctx),
+                lsb_connect_transfer(bridge, phone, slash, status, ctx),
+                lsb_connect_transfer(bridge, phone, app, None, ctx),
+                lsb_connect_transfer(std::ptr::null_mut(), phone, app, status, ctx),
+            ];
+            assert_eq!(invalid, [LSB_ERR_INVALID_ARGUMENT; 6]);
+            lsb_free(bridge);
+        }
+        let options = transfer_request().transfer_options;
+        assert_eq!(options.restore_paused.as_deref(), Some("restore"));
+        assert!(options.restore_position.is_none() && options.restore_track.is_none());
+        assert!(options.retain_session.is_none());
+        let transfer = Command::Transfer {
+            from: "phone-1".to_owned(),
+        };
+        assert!(transfer.can_retry());
+    }
 }
