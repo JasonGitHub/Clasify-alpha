@@ -8,6 +8,8 @@ struct MainArt: View {
     @Environment(\.artwork) private var artwork
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
+    /// When this view appeared. Leaving the main menu ends the view, so a return starts over.
+    @State private var start = Date.timeIntervalSinceReferenceDate
 
     static let loop = 24.0
 
@@ -29,7 +31,8 @@ struct MainArt: View {
     var body: some View {
         // 30 frames a second is smooth for a 24 s drift, and costs less than the display rate.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
-            let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
+            // Time since the menu appeared, so it always starts with the playing track's cover.
+            let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
             GeometryReader { geo in
                 ZStack {
                     if tracks.isEmpty { layer(nil).frame(width: geo.size.width, height: geo.size.height) }  // nothing read yet: the blue-grey square
