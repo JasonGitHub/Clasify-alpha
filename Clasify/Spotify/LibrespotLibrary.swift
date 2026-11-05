@@ -246,7 +246,7 @@ final class LibrespotLibrary: Library {
     private func startSession(_ token: String) async throws {
         session += 1
         let mine = session
-        let previous = username
+        let previousName = username
         // Chain this login after the one before it, so the two never overlap.
         let (client, previous) = (self.client, bridgeLogin)
         let attempt = Task {
@@ -258,7 +258,7 @@ final class LibrespotLibrary: Library {
         bridgeLogin = Task { _ = await attempt.result }
         let name = try await attempt.value
         guard session == mine else { throw BridgeError.cancelled }  // a logout or newer login came first
-        if name != previous { clearCache() }
+        if name != previousName { clearCache() }
         username = name
     }
 }

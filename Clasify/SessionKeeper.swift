@@ -58,7 +58,7 @@ final class SessionKeeper {
         let task = Task { await run() }
         running = task
         let ok = await task.value
-        running = nil
+        if running == task { running = nil }
         return ok
     }
 
