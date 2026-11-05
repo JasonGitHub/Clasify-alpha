@@ -20,6 +20,8 @@ final class SpotifyConnectPlayer: Player {
 
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in }
+    /// Logs in again after the session dropped. Returns true when the session works again.
+    var reconnect: () async -> Bool = { false }
 
     private let client: LibrespotClient
     private let library: LibrespotLibrary
@@ -254,7 +256,23 @@ final class SpotifyConnectPlayer: Player {
 
     private func fire(_ command: Int32) {
         guard ours, let device else { return }
-        client.fire(command, to: device)
+        guard client.fire(command, to: device) == LSB_ERR_NOT_LOGGED_IN else { return }
+        // The session dropped. Log in again, then send the command once more.
+        Task {
+            guard await reconnect(), ours, let device = self.device else { return }
+            client.fire(command, to: device)
+        }
+    }
+
+    /// The session was logged in again. Register it, so the cluster watch delivers states again.
+    func sessionRestored() {
+        Task { _ = try? await client.devices() }
+        // The playback thread adds here: take control again when our device is active.
+    }
+
+    /// Runs one session call, and after a dropped session logs in again and runs it once more.
+    private func again<T>(_ call: () async throws -> T) async throws -> T {
+        try await retryOnce(after: reconnect, when: { ($0 as? BridgeError)?.status == LSB_ERR_NOT_LOGGED_IN }, call)
     }
 
     // MARK: Playing
@@ -272,7 +290,7 @@ final class SpotifyConnectPlayer: Player {
             }
             for attempt in 0..<2 {
                 let found: String
-                if let known { found = known } else { found = try await appDevice { id == loadID } }
+                if let known { found = known } else { found = try await again { try await appDevice { id == loadID } } }
                 guard id == loadID else { return }
                 Self.logTime("load: device found", since: start)
                 device = found
@@ -280,7 +298,7 @@ final class SpotifyConnectPlayer: Player {
                 Self.logTime("load: options set", since: start)
                 guard id == loadID else { return }
                 do {
-                    try await client.play(device: found, context: contextURI, track: trackID)
+                    try await again { try await client.play(device: found, context: contextURI, track: trackID) }
                     Self.logTime("load: play acknowledged", since: start)
                     break
                 } catch where attempt == 0 && known != nil {

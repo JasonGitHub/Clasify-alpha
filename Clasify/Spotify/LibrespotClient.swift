@@ -110,6 +110,10 @@ final class LibrespotClient: @unchecked Sendable {
         pendingLogin.withLock { pending in pending.id == id ? pending.take() : nil }?.resume(throwing: error)
     }
 
+    /// False when there is no session or it dropped, for example after sleep or a network
+    /// change. librespot does not reconnect by itself. A cheap check.
+    var sessionAlive: Bool { lsb_session_status(handle) == LSB_OK }
+
     /// Ends the bridge session. A login that still waits throws `BridgeError.cancelled`.
     func logout() {
         pendingLogin.withLock { $0.take() }?.resume(throwing: BridgeError.cancelled)

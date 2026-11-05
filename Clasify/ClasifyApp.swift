@@ -89,6 +89,8 @@ final class AppModel {
     @ObservationIgnored private var ticker: Task<Void, Never>?
     /// TEST: trackpad ticks that follow the wheel.
     @ObservationIgnored private var haptics: Haptics?
+    /// Logs in again in the background when the librespot session drops.
+    @ObservationIgnored private var keeper: SessionKeeper?
 
     init() {
         guard let client = LibrespotClient() else {
@@ -101,6 +103,9 @@ final class AppModel {
         player.send = { [weak store] action in store?.send(action) }
         self.store = store
         haptics = Haptics(store: store)
+        let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
+        player.reconnect = { [weak keeper] in await keeper?.reconnect() ?? false }
+        self.keeper = keeper
         store.send(.launch)  // restores the stored login
         // The reducer's toast, overlay and scroll bar timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.

@@ -59,8 +59,10 @@ extension LibrespotClient {
     // The calls below queue at once and do not wait. The bridge runs them in call order,
     // so a pause that is queued before `logout` still goes out first. A failure is only logged.
 
-    /// `command` is one of `LSB_COMMAND_*`.
-    func fire(_ command: Int32, to device: String) {
+    /// `command` is one of `LSB_COMMAND_*`. Returns LSB_ERR_NOT_LOGGED_IN at once when the
+    /// session dropped: then the command was not queued.
+    @discardableResult
+    func fire(_ command: Int32, to device: String) -> Int32 {
         lsb_connect_command(handle, device, UInt32(command), loggedCallback, nil)
     }
 
