@@ -99,6 +99,8 @@ typedef struct LsbTrack {
     const char *uri;             // Like "spotify:track:<id>".
     const char *title;
     const char *artist;          // All artists, joined with ", ".
+    const char *cover_id;        // Album cover file ID, 40 lowercase hex digits, or "".
+                                 // The image is at https://i.scdn.co/image/<cover_id>.
     uint32_t duration_ms;
 } LsbTrack;
 

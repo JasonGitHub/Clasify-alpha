@@ -456,6 +456,12 @@ func playing(_ i: Int = 0) -> AppState {
     #expect(lib.calls == ["restoreSession", "prefetch"] && lib.fetches.isEmpty)
 }
 
+@Test func trackKeepsACoverIDAndDropsAnEmptyOne() {
+    #expect(Track(id: "t", title: "T", artist: "A", duration: 1, coverID: "ab67").coverID == "ab67")
+    #expect(Track(id: "t", title: "T", artist: "A", duration: 1, coverID: "").coverID == nil)
+    #expect(Track(id: "t", title: "T", artist: "A", duration: 1).coverID == nil)
+}
+
 @Suite struct SpotifyAppDeviceTests {
     typealias D = SpotifyAppDevice.Candidate
 

@@ -3,9 +3,12 @@ public struct Track: Equatable, Sendable {
     public var title: String
     public var artist: String
     public var duration: Double  // seconds
+    /// The album cover's Spotify image file ID (hex), or nil when the track has none.
+    public var coverID: String?
 
-    public init(id: String, title: String, artist: String, duration: Double) {
+    public init(id: String, title: String, artist: String, duration: Double, coverID: String? = nil) {
         self.id = id; self.title = title; self.artist = artist; self.duration = duration
+        self.coverID = coverID.flatMap { $0.isEmpty ? nil : $0 }
     }
 }
 
