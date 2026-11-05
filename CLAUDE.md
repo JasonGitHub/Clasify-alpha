@@ -28,6 +28,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 - IMPORTANT: no dependencies beyond Apple frameworks and librespot. Don't add a Swift package, CocoaPod or Rust crate without asking first.
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
 - Network calls go only to Spotify and to the GitHub Releases API for the update check. No analytics. No crash reporting in 1.0.
+- Album covers come only from Spotify's image CDN, `https://i.scdn.co/image/<coverID>`. `ArtworkLoader` keeps them in memory only: an NSCache and a URLSession with no URL cache. Never write a cover to disk. Skins get covers through the `artwork` environment value and never load them.
 - Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk. Run librespot with no credentials cache and no audio cache. Write no log files.
 - The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
 - librespot is linked as a static Rust library over a C FFI, not run as a separate helper process.

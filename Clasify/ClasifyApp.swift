@@ -60,6 +60,7 @@ struct AppContent: View {
                 .background(Color(nsColor: .windowBackgroundColor))
         } else if let store = model.store {
             PocketSkin(state: store.state) { store.send($0) }
+                .environment(\.artwork, model.artwork.artwork)
         }
     }
 }
@@ -83,6 +84,8 @@ final class AppModel {
     let store: Store?
     /// TEMPORARY: shows TestWindow in place of the skin.
     var showsTestWindow = false
+    /// The album covers that the skin draws.
+    let artwork = ArtworkLoader()
     @ObservationIgnored private var ticker: Task<Void, Never>?
 
     init() {
@@ -100,7 +103,7 @@ final class AppModel {
         // so send it only when a timer has run out. The overlay never runs out while scrubbing.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
         // and resets the player when the session signs out.
-        ticker = Task { [weak store, weak player] in
+        ticker = Task { [weak store, weak player, artwork] in
             var signedIn = false
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
@@ -108,6 +111,7 @@ final class AppModel {
                 if state.signedIn && !signedIn { player?.prewarm() }
                 if !state.signedIn && signedIn { player?.reset() }
                 signedIn = state.signedIn
+                artwork.prefetchNext(in: state)
                 let now = Dependencies.live.now()
                 let toastDone = state.toastUntil > 0 && now > state.toastUntil
                 let overlayDone = state.overlayUntil > 0 && now > state.overlayUntil && state.nowMode != .scrub

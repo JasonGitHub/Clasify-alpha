@@ -13,7 +13,8 @@ func sampleState() -> AppState {
     s.library = [
         Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: [
             Track(id: "spotify:track:1", title: "Paper Planes", artist: "M.I.A.", duration: 205),
-            Track(id: "spotify:track:2", title: "Hey Ya!", artist: "OutKast", duration: 235),
+            Track(id: "spotify:track:2", title: "Hey Ya!", artist: "OutKast", duration: 235,
+                  coverID: String(repeating: "ab", count: 20)),
         ]),
         Playlist(id: "spotify:playlist:a", name: "Road Trip", tracks: (1...12).map {
             Track(id: "spotify:track:r\($0)", title: "Song \($0)", artist: "Band \($0)", duration: 180)
