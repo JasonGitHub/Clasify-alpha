@@ -14,6 +14,12 @@ public enum Action: Equatable, Sendable {
     /// failed: the old rows stay.
     case playlistsRefreshed([Playlist]?)
     case tracksRefreshed(playlist: String, tracks: [Track]?)
+    /// The app came to the front. The list on screen and the playlist list are read again
+    /// when they are older than `activationStaleAfter`, so a change made in Spotify shows.
+    case activated
+    /// The session came back after a drop, so changes can be missed. Every read counts as
+    /// old, and the lists on screen are read again at once.
+    case libraryStale
     /// The app started. It tries to log in again with the stored login.
     case launch
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
@@ -99,6 +105,8 @@ public let trackRows = 5
 public let sliderTimeout = 6.0
 /// Seconds after a read when opening its screen reads it again in the background.
 public let staleAfter = 120.0
+/// Seconds after a read when the app coming to the front reads that list again.
+public let activationStaleAfter = 30.0
 /// The most tracks from outside the library that `AppState.extraTracks` keeps.
 public let extraTrackLimit = 50
 /// Seconds that a list's scroll bar shows after a wheel step or a screen change.
@@ -150,12 +158,18 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         loadTrack(id, autoplay: true)
     }
     /// Reads a list again in the background when its read is older than `staleAfter`.
-    /// Only a screen opening calls this, so a wheel turn never starts a read.
-    func refreshIfStale(_ screen: Screen) {
+    /// Only a screen opening, `.activated` and `.libraryStale` call this, so a wheel turn never starts a read.
+    func refreshIfStale(_ screen: Screen, after limit: Double = staleAfter) {
         let key = AppState.readKey(screen)
-        guard !s.offline, now - (s.readAt[key] ?? 0) >= staleAfter, !s.refreshing.contains(key) else { return }
+        guard !s.offline, now - (s.readAt[key] ?? 0) >= limit, !s.refreshing.contains(key) else { return }
         s.refreshing.insert(key)
         if case .tracks(let id) = screen { fx.append(.refreshTracks(playlist: id)) } else { fx.append(.refreshPlaylists) }
+    }
+    /// Reads the song list on screen and the playlist list again, when they were read before.
+    func refreshShown() {
+        guard s.signedIn else { return }
+        if case .tracks = s.top.screen, s.isLoaded(s.top.screen) { refreshIfStale(s.top.screen, after: activationStaleAfter) }
+        if s.playlistsLoaded { refreshIfStale(.playlists, after: activationStaleAfter) }
     }
     /// After new rows came in, each frame on `screen` keeps its selected row by ID. A row that
     /// left keeps the index, clamped. The scroll offset moves with the selection.
@@ -378,6 +392,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let old = s.rows(for: Frame(screen: .playlists))
             setPlaylists(playlists)
             keepSelection(on: .playlists, old: old)
+
+        case .activated: refreshShown()
+
+        case .libraryStale:
+            s.readAt = [:]
+            refreshShown()
 
         case .tracksRefreshed(let id, let tracks):
             guard s.refreshing.remove(id) != nil, let tracks,
