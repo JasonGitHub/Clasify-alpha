@@ -392,6 +392,32 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.current == nil)
     }
 
+    @Test func loadFailedShowsWhatPlayedBeforeTheLoad() {
+        var s = playing(2)
+        send(&s, .position(40, generation: 1))
+        send(&s, .menu, .wheel(3), .select)  // Focus track 5
+        #expect(s.current?.track == "f5" && s.t == 0 && s.beforeLoad != nil)
+        send(&s, .loadFailed("Old", generation: 1))  // from an earlier load
+        #expect(s.current?.track == "f5")
+        #expect(send(&s, .loadFailed("Can’t start Spotify playback", generation: 2)) == [])
+        #expect(s.current == TrackRef(playlist: "focus", track: "f2") && s.t == 40 && s.isPlaying)
+        #expect(s.toast == "Can’t start Spotify playback" && s.beforeLoad == nil)
+        send(&s, .play)  // paused before the load: it stays paused after the failure
+        send(&s, .menu, .wheel(1), .select, .loadFailed("x", generation: 3))
+        #expect(s.current?.track == "f2" && !s.isPlaying)
+        s = playing()  // the first load fails: nothing plays, so nothing shows
+        #expect(send(&s, .loadFailed("Install the Spotify app to play music", generation: 1)) == [])
+        #expect(s.current == nil && !s.isPlaying && s.t == 0 && s.toast == "Install the Spotify app to play music")
+        #expect(s.top.screen == .tracks(playlist: "focus"))  // no empty Now Playing: back to the list
+        s = playing(2)
+        send(&s, .menu, .wheel(1), .select, .position(1, generation: 2))  // the second load plays
+        #expect(s.beforeLoad == nil && !s.loadPending)
+        s = playing(2)  // a second pick while the first load is in flight
+        send(&s, .position(40, generation: 1), .menu, .wheel(1), .select, .menu, .wheel(1), .select)
+        send(&s, .loadFailed("x", generation: 3))
+        #expect(s.current?.track == "f2" && s.t == 40)  // what still plays, not the first pick
+    }
+
     @Test func openingAStaleListReadsItAgainInTheBackground() {
         var s = mainMenu()
         send(&s, openFocus(1))  // read at 100

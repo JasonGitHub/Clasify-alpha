@@ -66,6 +66,11 @@ public struct TrackRef: Equatable, Sendable {
     public init(playlist: String, track: String) { self.playlist = playlist; self.track = track }
 }
 
+/// The playing track and its play state before a load.
+public struct BeforeLoad: Equatable, Sendable {
+    public var current: TrackRef, t: Double, isPlaying: Bool
+}
+
 /// What the wheel changes on Now Playing. A center press steps through them in this order.
 public enum NowMode: CaseIterable, Sendable { case volume, scrub, shuffle, repeatMode }
 public enum RepeatMode: String, CaseIterable, Sendable {
@@ -103,6 +108,10 @@ public struct AppState: Equatable, Sendable {
     /// The playlists (and `Playlist.likedSongsID`) whose tracks were read in this session.
     public var loadedTracks: Set<String> = []
     public var current: TrackRef?
+    /// What `current` showed before the newest load, so a load that fails can show it again.
+    public var beforeLoad: BeforeLoad?
+    /// A load started and the engine did not report it yet. A new load then keeps `beforeLoad`.
+    public var loadPending = false
     /// Tracks that Spotify played from outside our copy of the list, read one at a time.
     /// Memory only, at most `extraTrackLimit`, the oldest goes first. Emptied at sign-out.
     public var extraTracks: [Track] = []
