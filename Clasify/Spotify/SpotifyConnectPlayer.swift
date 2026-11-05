@@ -228,7 +228,11 @@ final class SpotifyConnectPlayer: Player {
         Task {
             do {
                 try await again { try await client.transfer(from: other, to: device) }
-                guard id == loadID, let device = self.device else { return }
+                guard id == loadID, let device = self.device else {
+                    // Stop came meanwhile, but the transfer can still have moved playback here.
+                    if !loading, let device = self.device { client.fire(LSB_COMMAND_PAUSE, to: device) }
+                    return
+                }
                 // The transfer keeps the other device's play state, so set the wanted one.
                 client.fire(wantsRunning ? LSB_COMMAND_RESUME : LSB_COMMAND_PAUSE, to: device)
                 for command in pendingSkips { client.fire(command, to: device) }
@@ -241,8 +245,13 @@ final class SpotifyConnectPlayer: Player {
                 loaded = nil
                 lastTrack = ""  // so the store gets the track that plays now
                 takenBackAt = .now
+                Task { await applyOptions() }  // the other device's shuffle and repeat came along
                 // States from the transfer came while it was not ours yet: handle the newest again.
                 if let latest, latest.activeDeviceID == device { handle(latest, receivedAt: latestAt) }
+                // A real move away within the 3 s was ignored. States come only on changes, so
+                // check the newest one again after the 3 s.
+                try? await Task.sleep(for: .seconds(3))
+                if id == loadID, ours, let latest { handle(latest, receivedAt: latestAt) }
             } catch {
                 Self.logFailure("transfer", error)
                 guard id == loadID else { return }
