@@ -337,8 +337,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .reset:
             stop()
             let (tok, gen, auth) = (s.tok, s.playGen, s.authAttempt)  // keep counters so callbacks from before the reset stay stale
+            let nav = s.navSeq  // keep the screen's identity, so the skin does not slide the reset screen in
             s = AppState()
-            s.tok = tok; s.playGen = gen; s.authAttempt = auth
+            s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.navSeq = nav
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)

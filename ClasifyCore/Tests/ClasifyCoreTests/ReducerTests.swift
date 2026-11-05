@@ -474,8 +474,8 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(send(&s, .reset) == [.stop])
         var fresh = AppState()
-        fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt
-        #expect(s == fresh && s.tok == 2)
+        fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt; fresh.navSeq = s.navSeq
+        #expect(s == fresh && s.tok == 2 && s.navSeq > 0)  // the reset keeps the screen identity: no slide
         send(&s, .select, .authDone(token: 2, ok: true), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
     }
