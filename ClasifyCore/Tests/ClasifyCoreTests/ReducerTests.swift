@@ -220,6 +220,14 @@ func playing(_ i: Int = 0) -> AppState {
         let quick = (0..<16).map { speed.rows(at: Double($0) * 0.1) }
         #expect(quick == [1, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4])
         #expect(speed.rows(at: 10) == 1)  // a pause ends the streak
+
+        var s = mainMenu()
+        send(&s, openFocus(1))
+        for i in 0..<6 { send(&s, .wheel(1), now: 200 + Double(i) * 0.05) }
+        #expect(s.top.sel == 7)  // five steps of 1, then one of 2
+        s = playing()
+        for i in 0..<8 { send(&s, .wheel(1), now: 200 + Double(i) * 0.05) }
+        #expect(s.volume == 100)  // 60 + 8 x 5: on Now Playing each step stays one step
     }
 
     @Test func theBarTakesARowExceptOnNowPlaying() {

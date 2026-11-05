@@ -1,7 +1,7 @@
 import Foundation
 
 public enum Action: Equatable, Sendable {
-    case wheel(Int)  // detents, + is clockwise
+    case wheel(Int)  // detents, + is clockwise. Quick steps on a list move more rows: see `WheelSpeed`.
     case select, menu, play, next, prev
     /// The shuffle and repeat icons on Now Playing, and the S and R keys.
     case toggleShuffle, cycleRepeat
@@ -172,7 +172,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
-            let sel = clamp(s.top.sel + d, 0, n - 1)
+            // On a list, quick steps move more rows. On Now Playing, a step stays one step.
+            let sel = clamp(s.top.sel + d * s.wheelSpeed.rows(at: now), 0, n - 1)
             s.top.off = clamp(s.top.off, sel - s.shownRows + 1, sel)
             s.top.sel = sel
 

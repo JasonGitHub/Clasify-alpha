@@ -1,8 +1,8 @@
 /// A fast wheel moves further, as in the mockup. Wheel steps that come less than `gap`
 /// seconds apart build a streak, and a longer streak moves more rows for each step:
 /// 1, then 2 after 5 quick steps, 3 after 9, and 4 after 15.
-/// Skins keep one and multiply each wheel step by `rows(at:)`.
-public struct WheelSpeed: Sendable {
+/// `AppState` keeps one, and the reducer applies it to wheel steps on lists.
+public struct WheelSpeed: Equatable, Sendable {
     public static let gap = 0.11
 
     private var last = -Double.infinity
