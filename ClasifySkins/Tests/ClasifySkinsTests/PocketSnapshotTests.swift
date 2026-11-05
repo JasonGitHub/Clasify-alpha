@@ -71,7 +71,7 @@ import Testing
         #expect(shot.isBlue(150, Self.rowCenter(0)))  // "Log in with Spotify" is selected
         let headerTop = shot.rgb(50, 28), want = try reference(0xffffff)
         #expect(near(headerTop, want), "header top \(headerTop)")  // no glass shadow over the header
-        #expect(shot.isLight(50, 37))  // the header, left of the title
+        #expect(shot.isLight(150, 37))  // the header, right of the title
     }
 
     @Test func mainMenuWithTheBar() throws {
@@ -234,7 +234,7 @@ import Testing
         // The header mark: two blue bars, 2.6 points wide with a 1.8 point gap, at the right of the header.
         let left: Int = Self.screenLeft + 252 - 8 - 9, midY: Int = 25 + 2 + 10
         #expect(shot.isBlue(left + 2, midY))  // the first bar
-        #expect(!shot.isBlue(left + 4, midY))  // the gap
+        #expect(!shot.isBlue(left + 5, midY))  // the gap
         #expect(shot.isBlue(left + 7, midY))  // the second bar
     }
 
