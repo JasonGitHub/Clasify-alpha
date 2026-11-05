@@ -284,7 +284,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.scrollUntil > 0 && now > s.scrollUntil { s.scrollUntil = 0 }
 
         case .position(let t, let gen):
-            if s.current != nil && gen == s.playGen { s.t = t }
+            if s.current != nil && gen == s.playGen { s.t = t; s.beforeLoad = nil }  // the load plays
 
         case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end
             guard s.isPlaying, s.current != nil, gen == s.playGen else { return }
@@ -293,7 +293,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .trackChanged(let id, let playing, let gen):
             // Same playlist. A track that is not in our copy of it still shows as current, by ID.
             guard s.current != nil, gen == s.playGen else { return }
-            s.isPlaying = playing
+            s.isPlaying = playing; s.beforeLoad = nil  // the load plays
             if s.current?.track != id { s.current?.track = id; s.t = 0 }
             readIfUnknown(id)
 
@@ -326,6 +326,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.current = before.current; s.t = before.t; s.isPlaying = before.isPlaying
             } else {
                 s.current = nil; s.t = 0; s.isPlaying = false
+                // No empty Now Playing: back to the list the load came from, with the toast there.
+                if s.top.screen == .now && s.stack.count > 1 { s.stack.removeLast(); s.nowMode = .volume; s.overlayUntil = 0 }
             }
             s.beforeLoad = nil
             toast(msg)

@@ -408,6 +408,10 @@ func playing(_ i: Int = 0) -> AppState {
         s = playing()  // the first load fails: nothing plays, so nothing shows
         #expect(send(&s, .loadFailed("Install the Spotify app to play music", generation: 1)) == [])
         #expect(s.current == nil && !s.isPlaying && s.t == 0 && s.toast == "Install the Spotify app to play music")
+        #expect(s.top.screen == .tracks(playlist: "focus"))  // no empty Now Playing: back to the list
+        s = playing(2)
+        send(&s, .menu, .wheel(1), .select, .position(1, generation: 2))  // the second load plays
+        #expect(s.beforeLoad == nil)
     }
 
     @Test func playbackFailedPausesAndShowsToast() {
