@@ -5,6 +5,9 @@ import SwiftUI
 struct PocketNowPlaying: View {
     let state: AppState
     @Environment(\.artwork) private var artwork
+    /// The last cover that showed. It stays while the next track's cover loads, so the
+    /// square does not flash between two covers.
+    @State private var lastCover: CGImage?
 
     var body: some View {
         if let now = Labels.now(in: state) {
@@ -17,7 +20,14 @@ struct PocketNowPlaying: View {
                 .font(.helvetica(10))
                 .foregroundStyle(Pocket.gray)
                 HStack(spacing: 10) {
-                    if state.showArt { Cover(artist: now.artist, image: artwork.image(for: now.coverID)) }
+                    if state.showArt {
+                        let fresh = artwork.image(for: now.coverID)
+                        let shown = Cover.shown(fresh: fresh, pending: artwork.isPending(now.coverID), last: lastCover)
+                        Cover(artist: now.artist, image: shown)
+                            .onChange(of: fresh.map(ObjectIdentifier.init), initial: true) {
+                                if let fresh { lastCover = fresh }
+                            }
+                    }
                     VStack(alignment: state.showArt ? .leading : .center, spacing: 3) {
                         Text(now.title).font(.helvetica(14, bold: true))
                         Text(now.artist).font(.helvetica(12))
@@ -148,16 +158,26 @@ struct Cover: View {
     let artist: String
     var image: CGImage?
 
+    /// The image to draw: the track's cover, or while it loads the last cover that showed.
+    /// A track with no cover, or whose cover failed, gets the square at once.
+    static func shown(fresh: CGImage?, pending: Bool, last: CGImage?) -> CGImage? {
+        fresh ?? (pending ? last : nil)
+    }
+
     var body: some View {
         RoundedRectangle(cornerRadius: 2)
             .fill(Color(hex: Labels.cover(for: artist)))
             .overlay {
                 if let image {
+                    // A new image fades in over 0.2 s instead of a hard cut.
                     Image(decorative: image, scale: 1).resizable().scaledToFill()
+                        .id(ObjectIdentifier(image))
+                        .transition(.opacity)
                 } else {
                     IconView(.note, width: 26, height: 26).foregroundStyle(.white.opacity(0.85))
                 }
             }
+            .animation(.easeInOut(duration: 0.2), value: image.map(ObjectIdentifier.init))
             .clipShape(RoundedRectangle(cornerRadius: 2))
             .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(Pocket.frame, lineWidth: 1) }
             .frame(width: 76, height: 76)

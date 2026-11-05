@@ -48,6 +48,9 @@ final class SpotifyConnectPlayer: Player {
     /// States before that can be from an older session or another device, so they are ignored.
     private var ours = false
     private var lastTrack = "", lastRunning = false
+    /// TEMP (cover blink, 2026-11-05): the track before `lastTrack`, and when the newest play
+    /// command succeeded, for the track-change log. Remove once the cause of the blink is known.
+    private var trackBefore = "", playedAt = ContinuousClock.now
     /// The track of the newest load, and when its play command succeeded. Until Spotify shows
     /// that track, for up to 3 s, states can still show what played before the load.
     /// The track is nil when skips pressed during the load were sent: then any track in the
@@ -285,6 +288,7 @@ final class SpotifyConnectPlayer: Player {
             client.fireVolume(device: found, percent: volume)
             context = contextURI
             loaded = (pendingSkips.isEmpty ? trackID : nil, ContinuousClock.now)
+            playedAt = ContinuousClock.now
             pendingSkips = []
             loading = false
             ours = true
@@ -437,6 +441,7 @@ final class SpotifyConnectPlayer: Player {
         guard ours else { return }
         if let loaded, ContinuousClock.now - loaded.at < .seconds(3),
            state.activeDeviceID != device || !isLoaded(state, track: loaded.track) {
+            Self.logTime("track state: ignored, still the track before the load", since: playedAt)
             return  // still what played before the load
         }
         loaded = nil
@@ -452,6 +457,11 @@ final class SpotifyConnectPlayer: Player {
         if !state.hasTrack {
             if lastRunning { send(.trackEnded(generation: gen)) }  // Spotify stopped at the end of the context
         } else if state.trackURI != lastTrack || state.isRunning != lastRunning {
+            if state.trackURI != lastTrack {
+                let kind = state.trackURI == trackBefore ? "back to the track before" : "new track"
+                Self.logTime("track change: \(kind)", since: playedAt)
+                trackBefore = lastTrack
+            }
             send(.trackChanged(state.trackURI, playing: state.isRunning, generation: gen))
         }
         lastTrack = state.trackURI

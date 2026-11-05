@@ -139,6 +139,14 @@ import Testing
         #expect(got.r > 200 && got.g < 60 && got.b < 60, "cover \(got)")
     }
 
+    @Test func theLastCoverStaysWhileTheNextOneLoads() throws {
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        #expect(Cover.shown(fresh: blue, pending: false, last: red) === blue)
+        #expect(Cover.shown(fresh: nil, pending: true, last: red) === red)  // no flash to the square
+        #expect(Cover.shown(fresh: nil, pending: false, last: red) == nil)  // no cover, or it failed
+    }
+
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.
     static func solidImage(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGImage? {
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
