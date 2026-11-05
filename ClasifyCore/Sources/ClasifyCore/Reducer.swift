@@ -80,6 +80,8 @@ public let visibleRows = 8
 public let trackRows = 5
 /// Seconds without a wheel turn before a scrub, shuffle or repeat slider goes back to the progress bar.
 public let sliderTimeout = 6.0
+/// Seconds that a list's scroll bar shows after a wheel step or a screen change.
+public let scrollBarTime = 1.5
 
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { max(lo, min(hi, v)) }
 
@@ -178,6 +180,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let sel = clamp(s.top.sel + d * s.wheelSpeed.rows(at: now), 0, n - 1)
             s.top.off = clamp(s.top.off, sel - s.shownRows + 1, sel)
             s.top.sel = sel
+            s.scrollUntil = now + scrollBarTime
 
         case .select:
             if s.top.screen == .now {
@@ -255,6 +258,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
             // The volume bar hides, and a slider goes back to the progress bar.
             if s.overlayUntil > 0 && now > s.overlayUntil { s.overlayUntil = 0; s.nowMode = .volume }
+            if s.scrollUntil > 0 && now > s.scrollUntil { s.scrollUntil = 0 }
 
         case .position(let t, let gen):
             if s.current != nil && gen == s.playGen { s.t = t }
@@ -337,7 +341,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.tok = tok; s.playGen = gen; s.authAttempt = auth
         }
     }
+    let before = (s.stack.count, s.top.screen, s.top.loading)
     apply()
+    // A list shows its scroll bar for a moment when it appears: on a new screen, or when its
+    // load ends. A reset starts with no bar.
+    let listShows = s.top.screen.isList && !s.top.loading && !s.top.error
+    if case .reset = action {} else if listShows && (s.stack.count, s.top.screen, s.top.loading) != before {
+        s.scrollUntil = now + scrollBarTime
+    }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.
     if s.top.screen.isList { s.top.off = clamp(s.top.off, s.top.sel - s.shownRows + 1, s.top.sel) }
     return fx

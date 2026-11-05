@@ -247,6 +247,29 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .prev) == [.prev(generation: 3)] && s.current?.track == "f2")
     }
 
+    @Test func theScrollBarShowsAfterAStepOrAScreenChange() {
+        var s = mainMenu()
+        send(&s, .tick, now: 102)
+        #expect(s.scrollUntil == 0)
+        send(&s, .wheel(1))
+        #expect(s.scrollUntil == 100 + scrollBarTime)
+        send(&s, .tick, now: 101)
+        #expect(s.scrollUntil == 101.5)  // still showing
+        send(&s, .tick, now: 102)
+        #expect(s.scrollUntil == 0)
+        send(&s, .select, now: 200)  // Liked Songs opens, and loads first: no list yet
+        #expect(s.top.loading && s.scrollUntil == 0)
+        send(&s, .tracksLoaded(token: s.top.token, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 203)
+        #expect(s.scrollUntil == 204.5)  // the list shows
+        send(&s, .tick, now: 205)
+        send(&s, .menu, now: 300)  // back to the main menu
+        #expect(s.scrollUntil == 301.5)
+        s = playing()
+        send(&s, .tick, now: 200)
+        send(&s, .wheel(1), now: 300)  // volume on Now Playing: no scroll bar
+        #expect(s.scrollUntil == 0)
+    }
+
     @Test func tickExpiresToastAndOverlay() {
         var s = playing()
         s.toast = "hi"; s.toastUntil = 101; s.overlayUntil = 101
