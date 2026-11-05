@@ -54,6 +54,9 @@ final class SpotifyConnectPlayer: Player {
     private var followedOther = false
     /// The dealer reconnects that the newest state reported, so each new one is logged once.
     private var dealerReconnects = 0
+    /// Until when, after a new login, a state from our device can give control back.
+    /// While the session was down, a load or a command can have failed and given control away.
+    private var rejoinUntil: ContinuousClock.Instant?
     /// TEMP (cover blink, 2026-11-05): the track before `lastTrack`, and when the newest play
     /// command succeeded, for the track-change log. Remove once the cause of the blink is known.
     private var trackBefore = "", playedAt = ContinuousClock.now
@@ -125,6 +128,7 @@ final class SpotifyConnectPlayer: Player {
         pendingSkips = []
         loaded = nil
         lastTrack = ""
+        rejoinUntil = nil
         // A continuation keeps its point until it plays, so a failed relaunch can be retried.
         if position == nil { resumePoint = nil }
         self.position = position ?? 0
@@ -167,6 +171,8 @@ final class SpotifyConnectPlayer: Player {
         fire(LSB_COMMAND_PAUSE, evenAfterStop: true)
         ours = false
         resumePoint = nil
+        rejoinUntil = nil
+        startedTrack = ""
         ticker?.cancel()
     }
 
@@ -236,6 +242,8 @@ final class SpotifyConnectPlayer: Player {
         device = nil
         deviceOptions = [:]
         resumePoint = nil
+        rejoinUntil = nil
+        startedTrack = ""
     }
 
     /// Spotify quit. Its device must be found again after the next launch. While it played
@@ -278,7 +286,23 @@ final class SpotifyConnectPlayer: Player {
     /// The session was logged in again. Register it, so the cluster watch delivers states again.
     func sessionRestored() {
         Task { _ = try? await client.devices() }
-        // The playback thread adds here: take control again when our device is active.
+        // The new registration makes the cluster watch send the current state. If our device
+        // has a track and Clasify still shows our last load, `handle` takes control again.
+        // At launch there was no load yet, so nothing is taken.
+        rejoinUntil = ContinuousClock.now + .seconds(10)
+    }
+
+    /// Takes control again after a new login, when our device still has a track and no load
+    /// or stop came after our last load. The state then goes to the store as a track change.
+    private func rejoin(_ state: SpotifyPlayerState) {
+        guard let until = rejoinUntil, ContinuousClock.now < until, !ours, !loading, !startedTrack.isEmpty,
+              state.hasTrack else { return }
+        rejoinUntil = nil
+        log.notice("took control again after a new login")
+        ours = true
+        resumePoint = nil
+        loaded = nil
+        lastTrack = ""  // so the store gets the track and its play state
     }
 
     /// Runs one session call, and after a dropped session logs in again and runs it once more.
@@ -502,6 +526,7 @@ final class SpotifyConnectPlayer: Player {
                 LSB_OPTION_SHUFFLE: state.shuffle, LSB_OPTION_REPEAT_CONTEXT: state.repeatContext,
                 LSB_OPTION_REPEAT_TRACK: state.repeatTrack,
             ]
+            rejoin(state)
         }
         guard ours else { return }
         if let loaded, ContinuousClock.now - loaded.at < .seconds(3),
