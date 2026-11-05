@@ -62,10 +62,12 @@ public struct PocketSkin: View {
         }
         .onAppear { focused = true }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses.")
+        .accessibilityLabel(
+            "Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
     }
 
-    /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back, Space plays.
+    /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back,
+    /// Space plays, S and R change shuffle and repeat.
     static func action(for key: KeyEquivalent) -> Action? {
         switch key {
         case .upArrow: .wheel(-1)
@@ -75,6 +77,8 @@ public struct PocketSkin: View {
         case .space: .play
         case .rightArrow: .next
         case .leftArrow: .prev
+        case "s", "S": .toggleShuffle
+        case "r", "R": .cycleRepeat
         default: nil
         }
     }

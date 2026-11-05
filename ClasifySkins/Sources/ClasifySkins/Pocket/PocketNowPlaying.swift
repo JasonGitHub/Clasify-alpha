@@ -28,7 +28,9 @@ struct PocketNowPlaying: View {
                 }
                 .frame(maxHeight: .infinity)
                 // The reducer sets overlayUntil when the wheel changes the volume and clears it on a later tick.
-                if state.nowMode == .volume && state.overlayUntil > 0 {
+                if let slider = Labels.slider(in: state) {
+                    SliderView(slider: slider)
+                } else if state.nowMode == .volume && state.overlayUntil > 0 {
                     volume
                 } else {
                     progress(now)
@@ -66,6 +68,40 @@ struct PocketNowPlaying: View {
             .monospacedDigit()
         }
         .frame(height: 22)
+    }
+}
+
+/// The shuffle or repeat slider: the stops over a thin track with a round knob, and the name under it.
+struct SliderView: View {
+    let slider: Labels.Slider
+
+    var body: some View {
+        VStack(spacing: 5) {
+            HStack {
+                ForEach(Array(slider.stops.enumerated()), id: \.offset) { i, stop in
+                    if i > 0 { Spacer(minLength: 0) }
+                    Text(stop)
+                }
+            }
+            .font(.helvetica(10, bold: true))
+            GeometryReader { geo in
+                let fraction = slider.stops.count > 1 ? CGFloat(slider.index) / CGFloat(slider.stops.count - 1) : 0
+                Capsule().fill(LinearGradient.vertical(.white, Color(hex: 0xe3e8ed)))
+                    .overlay { Capsule().strokeBorder(Color(hex: 0xb7c0c9), lineWidth: 1) }
+                    .overlay(alignment: .leading) {
+                        Circle().fill(Pocket.gloss)
+                            .overlay { Circle().strokeBorder(Color(hex: 0x1f5fb8), lineWidth: 1) }
+                            .frame(width: 14, height: 14)
+                            .offset(x: geo.size.width * fraction - 7)
+                    }
+            }
+            .frame(height: 6)
+            .padding(.horizontal, 6)
+            Text(slider.name).font(.helvetica(10)).foregroundStyle(Pocket.gray)
+        }
+        .frame(height: 42)
+        .accessibilityElement()
+        .accessibilityLabel("\(slider.name): \(slider.stops[slider.index])")
     }
 }
 

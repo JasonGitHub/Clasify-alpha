@@ -93,6 +93,16 @@ func sampleState() -> AppState {
         #expect(Labels.playMark(in: s) == .playing)
     }
 
+    @Test func slidersFollowTheNowPlayingMode() {
+        var s = sampleState()
+        #expect(Labels.slider(in: s) == nil)
+        s.nowMode = .shuffle
+        #expect(Labels.slider(in: s) == .init(name: "Shuffle", stops: ["Off", "Songs"], index: 0))
+        s.nowMode = .repeatMode
+        s.repeatMode = .all
+        #expect(Labels.slider(in: s) == .init(name: "Repeat", stops: ["Off", "One", "All"], index: 2))
+    }
+
     @Test func flagsAndTimes() {
         var s = sampleState()
         #expect(Labels.flags(in: s) == "")
@@ -123,6 +133,8 @@ func sampleState() -> AppState {
         #expect(PocketSkin.action(for: .delete) == .menu)
         #expect(PocketSkin.action(for: .space) == .play)
         #expect(PocketSkin.action(for: .rightArrow) == .next)
+        #expect(PocketSkin.action(for: "s") == .toggleShuffle)
+        #expect(PocketSkin.action(for: "R") == .cycleRepeat)
         #expect(PocketSkin.action(for: .leftArrow) == .prev)
         #expect(PocketSkin.action(for: "x") == nil)
         #expect(PocketSkin.repeats(.wheel(1)))

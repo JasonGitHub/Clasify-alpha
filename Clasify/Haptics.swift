@@ -46,8 +46,8 @@ final class Haptics {
 
     /// The tick for one state change, or nil for none.
     /// - The selected row moves on the same screen: `.generic`.
-    /// - The volume or the scrub position steps: `.generic`.
-    /// - The wheel turns past the end of the volume or the scrub bar: `.alignment`.
+    /// - The volume, the scrub position, or the shuffle or repeat slider steps: `.generic`.
+    /// - The wheel turns past the end of the volume or scrub bar or a slider: `.alignment`.
     /// A turn past the first or last row of a list leaves the state the same,
     /// so it cannot be found from state and gets no tick.
     static func pattern(from old: AppState, to new: AppState) -> NSHapticFeedbackManager.FeedbackPattern? {
@@ -60,7 +60,13 @@ final class Haptics {
         guard new.top.screen == .now, old.nowMode == new.nowMode,
             new.overlayUntil > old.overlayUntil
         else { return nil }
-        let stepped = new.nowMode == .volume ? old.volume != new.volume : old.t != new.t
+        let stepped =
+            switch new.nowMode {
+            case .volume: old.volume != new.volume
+            case .scrub: old.t != new.t
+            case .shuffle: old.shuffle != new.shuffle
+            case .repeatMode: old.repeatMode != new.repeatMode
+            }
         return stepped ? .generic : .alignment
     }
 }

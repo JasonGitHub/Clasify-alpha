@@ -8,6 +8,15 @@ enum Pocket {
     static let line = Color(hex: 0x8f99a3)
     static let frame = Color(hex: 0x4b5056)
     static var selection: LinearGradient { .vertical(Color(hex: 0x5aa3f0), Color(hex: 0x1f6fd1)) }
+    /// The glossy blue of the progress fill and the slider knobs.
+    static var gloss: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: Color(hex: 0x9fd0ff), location: 0), .init(color: Color(hex: 0x3d8ae8), location: 0.55),
+                .init(color: Color(hex: 0x2a73d4), location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom)
+    }
     static let offline = Color(hex: 0xa3261c)
 }
 
@@ -16,15 +25,13 @@ struct PocketScreen: View {
     let state: AppState
 
     private var top: Frame { state.top }
-    /// The bar shows the playing track on every screen but Now Playing and the login wait.
-    private var hasBar: Bool { state.current != nil && top.screen != .now && top.screen != .auth }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             Pocket.line.frame(height: 1)
             content.frame(maxWidth: .infinity, maxHeight: .infinity)
-            if hasBar, let now = Labels.now(in: state) {
+            if state.showsBar, let now = Labels.now(in: state) {
                 Pocket.line.frame(height: 1)
                 bar(now)
             }
@@ -66,7 +73,7 @@ struct PocketScreen: View {
         }
         .font(.helvetica(11, bold: true))
         .padding(.horizontal, 8)
-        .frame(height: 20)
+        .frame(height: 19)  // 20 with the line under it, as in the mockup
         .background(LinearGradient.vertical(.white, Color(hex: 0xc9d2db)))
     }
 
@@ -91,7 +98,7 @@ struct PocketScreen: View {
         }
         .font(.helvetica(10))
         .padding(.horizontal, 8)
-        .frame(height: 20)
+        .frame(height: 19)  // 20 with the line over it
         .background(Color(hex: 0xe8eef3))
     }
 
@@ -119,10 +126,12 @@ struct PocketList: View {
         let first = top.off  // the reducer keeps the selection inside state.shownRows
         let shown = Array(rows.indices.dropFirst(first).prefix(state.shownRows))
         let scrolls = rows.count > state.shownRows
+        // The rows fill the list exactly: 180 points under the title bar, 160 over the bar.
+        let height = (state.showsBar ? 160 : 180) / CGFloat(state.shownRows)
         VStack(spacing: 0) {
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),
-                          selected: index == top.sel, scrolls: scrolls)
+                          selected: index == top.sel, scrolls: scrolls, height: height)
             }
             if top.screen == .login {
                 Text("Opens your browser to sign in. Playlists are read-only.")
@@ -159,6 +168,7 @@ struct PocketRow: View {
     let selected: Bool
     /// A scroll bar shows, so the row leaves room for it.
     let scrolls: Bool
+    var height: CGFloat = 22.5
 
     var body: some View {
         HStack(spacing: 6) {
@@ -175,7 +185,7 @@ struct PocketRow: View {
         }
         .padding(.leading, 10)
         .padding(.trailing, scrolls ? 14 : 10)
-        .frame(height: 24)
+        .frame(height: height)
         .foregroundStyle(selected ? Color.white : Pocket.ink)
         .background { if selected { Pocket.selection } }
         .accessibilityAddTraits(selected ? .isSelected : [])

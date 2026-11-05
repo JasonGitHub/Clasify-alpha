@@ -1,8 +1,10 @@
 import Foundation
 
 public enum Action: Equatable, Sendable {
-    case wheel(Int)  // detents, + is clockwise
+    case wheel(Int)  // detents, + is clockwise. Quick steps on a list move more rows: see `WheelSpeed`.
     case select, menu, play, next, prev
+    /// The shuffle and repeat icons on Now Playing, and the S and R keys.
+    case toggleShuffle, cycleRepeat
     case tick  // drives toast and overlay timers
     /// The playlist list was read: names and track counts, no tracks. nil when the read failed.
     case playlistsLoaded(token: Int, playlists: [Playlist]?)
@@ -72,7 +74,10 @@ public struct Dependencies: Sendable {
         random: { Int.random(in: 0..<$0) })
 }
 
-public let visibleRows = 6
+/// Rows of 22.5 points fill the list under the title bar, as in the mockup.
+public let visibleRows = 8
+/// Seconds without a wheel turn before a scrub, shuffle or repeat slider goes back to the progress bar.
+public let sliderTimeout = 6.0
 
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { max(lo, min(hi, v)) }
 
@@ -133,18 +138,31 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         play(Playlist.likedSongsID, liked[env.random(liked.count)].id)
     }
     let offlineStart = "Offline. Can’t start playback"
+    func toggleShuffle() { s.shuffle.toggle(); fx.append(.setShuffle(s.shuffle)) }
+    func setRepeat(_ mode: RepeatMode) {
+        if mode != s.repeatMode { s.repeatMode = mode; fx.append(.setRepeat(mode)) }
+    }
 
     func apply() {
         switch action {
         case .wheel(let d):
             if s.top.screen == .now {
                 guard let c = s.current else { return }
-                if s.nowMode == .scrub {
+                switch s.nowMode {
+                case .scrub:
                     let end = s.track(c).map { max($0.duration - 1, 0) } ?? .infinity  // unknown track: the engine clamps
                     s.t = clamp(s.t + Double(d * 5), 0, end)
-                    s.overlayUntil = now + 2.5
+                    s.overlayUntil = now + sliderTimeout
                     seek(s.t)
-                } else {
+                case .shuffle:  // the slider: Off on the left, Songs on the right
+                    s.overlayUntil = now + sliderTimeout
+                    if d != 0 && (d > 0) != s.shuffle { toggleShuffle() }
+                case .repeatMode:  // the slider: Off, One, All
+                    s.overlayUntil = now + sliderTimeout
+                    let order = RepeatMode.sliderOrder
+                    let i = order.firstIndex(of: s.repeatMode) ?? 0
+                    setRepeat(order[clamp(i + d.signum(), 0, order.count - 1)])
+                case .volume:
                     s.volume = clamp(s.volume + d * 5, 0, 100)
                     s.overlayUntil = now + 1.5
                     fx.append(.setVolume(s.volume))
@@ -154,14 +172,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
-            let sel = clamp(s.top.sel + d, 0, n - 1)
+            // On a list, quick steps move more rows. On Now Playing, a step stays one step.
+            let sel = clamp(s.top.sel + d * s.wheelSpeed.rows(at: now), 0, n - 1)
             s.top.off = clamp(s.top.off, sel - s.shownRows + 1, sel)
             s.top.sel = sel
 
         case .select:
             if s.top.screen == .now {
-                s.nowMode = s.nowMode == .volume ? .scrub : .volume
-                s.overlayUntil = now + 2.5
+                s.nowMode = s.nowMode.next  // volume, scrub, shuffle, repeat, then volume again
+                s.overlayUntil = now + (s.nowMode == .volume ? 1.5 : sliderTimeout)
                 return
             }
             if s.top.error {  // retry
@@ -194,8 +213,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
                 if case .tracks(let pl) = s.top.screen { play(pl, id) }
-            case .shuffle: s.shuffle.toggle(); fx.append(.setShuffle(s.shuffle))
-            case .repeatMode: s.repeatMode = s.repeatMode.next; fx.append(.setRepeat(s.repeatMode))
+            case .shuffle: toggleShuffle()
+            case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
             case .albumArt: s.showArt.toggle()
             case .clicker: s.clicker.toggle()
@@ -206,11 +225,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             }
 
         case .menu:
-            if s.top.screen == .now && s.nowMode == .scrub { s.nowMode = .volume; s.overlayUntil = 0; return }
+            if s.top.screen == .now && s.nowMode != .volume { s.nowMode = .volume; s.overlayUntil = 0; return }
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
             if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
             if s.stack.count < 2 { return }
             s.stack.removeLast(); s.nowMode = .volume
+
+        case .toggleShuffle: toggleShuffle()
+        case .cycleRepeat: setRepeat(s.repeatMode.next)
 
         case .play:
             guard s.current != nil else { return toast("Nothing playing yet") }
@@ -229,7 +251,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
-            if s.overlayUntil > 0 && now > s.overlayUntil && s.nowMode != .scrub { s.overlayUntil = 0 }
+            // The volume bar hides, and a slider goes back to the progress bar.
+            if s.overlayUntil > 0 && now > s.overlayUntil { s.overlayUntil = 0; s.nowMode = .volume }
 
         case .position(let t, let gen):
             if s.current != nil && gen == s.playGen { s.t = t }

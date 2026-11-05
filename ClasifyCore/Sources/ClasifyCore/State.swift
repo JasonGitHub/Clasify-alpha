@@ -66,8 +66,14 @@ public struct TrackRef: Equatable, Sendable {
     public init(playlist: String, track: String) { self.playlist = playlist; self.track = track }
 }
 
-public enum NowMode: Sendable { case volume, scrub }
-public enum RepeatMode: String, CaseIterable, Sendable { case off = "Off", all = "All", one = "One" }
+/// What the wheel changes on Now Playing. A center press steps through them in this order.
+public enum NowMode: CaseIterable, Sendable { case volume, scrub, shuffle, repeatMode }
+public enum RepeatMode: String, CaseIterable, Sendable {
+    case off = "Off", all = "All", one = "One"
+
+    /// The repeat slider on Now Playing, from left to right.
+    public static let sliderOrder: [RepeatMode] = [.off, .one, .all]
+}
 public enum Skin: String, CaseIterable, Sendable { case pocket = "Pocket", aqua = "Aqua", dark = "Dark" }
 
 extension CaseIterable where Self: Equatable {
@@ -106,7 +112,11 @@ public struct AppState: Equatable, Sendable {
     public var showArt = true
     public var clicker = true
     public var nowMode = NowMode.volume
+    /// When the volume bar hides, or when a scrub, shuffle or repeat slider goes back to the
+    /// progress bar. 0 when nothing is timed.
     public var overlayUntil: Double = 0
+    /// Quick wheel steps on a list move more rows.
+    public var wheelSpeed = WheelSpeed()
     public var toast = ""
     public var toastUntil: Double = 0
     public var offline = false
@@ -118,9 +128,17 @@ public struct AppState: Equatable, Sendable {
         set { stack[stack.count - 1] = newValue }
     }
 
-    /// The list rows that show at once: `visibleRows`, or one less while the bar for the
-    /// playing track shows under the list.
-    public var shownRows: Int { current == nil ? visibleRows : visibleRows - 1 }
+    /// The bar for the playing track shows under every screen but Now Playing and the login wait.
+    public var showsBar: Bool {
+        guard current != nil else { return false }
+        switch top.screen {
+        case .now, .auth: return false
+        default: return true
+        }
+    }
+
+    /// The list rows that show at once: `visibleRows`, or one less while the bar shows.
+    public var shownRows: Int { showsBar ? visibleRows - 1 : visibleRows }
 
     /// The screen's list is already in the state, so it opens without a read.
     public func isLoaded(_ screen: Screen) -> Bool {

@@ -124,6 +124,26 @@ enum Labels {
         state.current == nil ? nil : state.isPlaying ? .playing : .paused
     }
 
+    /// The shuffle or repeat slider on Now Playing: its name, its stops and the stop that is on.
+    struct Slider: Equatable {
+        var name: String
+        var stops: [String]
+        var index: Int
+    }
+
+    /// Nil unless the wheel sets shuffle or repeat.
+    static func slider(in state: AppState) -> Slider? {
+        switch state.nowMode {
+        case .shuffle:
+            return Slider(name: "Shuffle", stops: ["Off", "Songs"], index: state.shuffle ? 1 : 0)
+        case .repeatMode:
+            let order = RepeatMode.sliderOrder
+            return Slider(name: "Repeat", stops: order.map(\.rawValue), index: order.firstIndex(of: state.repeatMode) ?? 0)
+        case .volume, .scrub:
+            return nil
+        }
+    }
+
     /// "SHUFFLE", "REPEAT" and "REPEAT 1", as Now Playing shows them.
     static func flags(in state: AppState) -> String {
         var flags: [String] = []
