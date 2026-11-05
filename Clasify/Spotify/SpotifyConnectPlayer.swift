@@ -165,6 +165,7 @@ final class SpotifyConnectPlayer: Player {
 
     func seek(to seconds: Double, generation: Int) {
         self.generation = generation
+        position = seconds  // so a quit before the next state keeps the new place
         guard ours, let device else { return }
         client.fireSeek(device: device, seconds: seconds)
     }
