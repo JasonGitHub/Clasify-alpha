@@ -79,7 +79,7 @@ enum Labels {
                 title: "Waiting for browser…", body: "Approve Clasify in your browser. Spotify Premium required.",
                 spinner: true)
         case .about:
-            return Message(title: "Clasify \(version)", body: "Open source · MIT. Not affiliated with Spotify.")
+            return Message(title: "Clasify \(version)", body: "Not affiliated with Spotify.")
         case .now where state.current == nil:
             return Message(title: "")
         default:

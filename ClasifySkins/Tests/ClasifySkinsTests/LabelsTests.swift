@@ -69,7 +69,7 @@ func sampleState() -> AppState {
         #expect(Labels.message(for: Frame(screen: .playlists), in: s) == nil)
         #expect(Labels.message(for: Frame(screen: .tracks(playlist: "spotify:playlist:b")), in: s)?.title == "No songs")
         #expect(Labels.message(for: Frame(screen: .auth), in: s)?.spinner == true)
-        #expect(Labels.message(for: Frame(screen: .about), in: s)?.body == "Open source · MIT. Not affiliated with Spotify.")
+        #expect(Labels.message(for: Frame(screen: .about), in: s)?.body == "Not affiliated with Spotify.")
         s.restoring = true
         #expect(Labels.message(for: Frame(screen: .login), in: s)?.title == "Signing in…")
     }

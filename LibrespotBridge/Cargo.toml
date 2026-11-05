@@ -3,7 +3,6 @@ name = "librespot-bridge"
 version = "0.1.0"
 edition = "2021"
 publish = false
-license = "MIT"
 description = "C FFI over librespot for the Clasify macOS app"
 
 [lib]
