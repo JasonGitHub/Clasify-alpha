@@ -76,6 +76,8 @@ public struct Dependencies: Sendable {
 
 /// Rows of 22.5 points fill the list under the title bar, as in the mockup.
 public let visibleRows = 8
+/// Song lists show two lines a row (title and artist), so fewer rows fit.
+public let trackRows = 5
 /// Seconds without a wheel turn before a scrub, shuffle or repeat slider goes back to the progress bar.
 public let sliderTimeout = 6.0
 

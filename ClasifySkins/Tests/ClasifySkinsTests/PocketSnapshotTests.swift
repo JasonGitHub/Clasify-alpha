@@ -27,10 +27,12 @@ import Testing
 
     // Points in the mockup layout: the device border 1, its padding 24 x 20, the screen border 2,
     // the header 20 with its line, and 8 rows of 22.5 (7 of 160 / 7 over the bar).
+    // Song lists have 5 two-line rows of 36 (4 of 40 over the bar).
     static let screenLeft = 23, listTop = 47
 
-    static func rowCenter(_ index: Int, bar: Bool = false) -> Int {
-        let height = bar ? 160.0 / 7 : 22.5
+    static func rowCenter(_ index: Int, bar: Bool = false, songs: Bool = false) -> Int {
+        let rows = (songs ? 5.0 : 8.0) - (bar ? 1 : 0)
+        let height = (bar ? 160 : 180) / rows
         return listTop + Int((Double(index) + 0.5) * height)
     }
 
@@ -84,21 +86,44 @@ import Testing
         #expect(shot.isBlue(150, Self.rowCenter(1, bar: true)))
     }
 
-    @Test func eightRowsFillTheList() throws {
+    @Test func fiveSongRowsFillTheList() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
-        s.top.sel = 7
+        s.top.sel = 4
         let shot = try render(s, "tracks-last-row")
-        #expect(shot.isBlue(100, Self.rowCenter(7)))  // the 8th row ends at the screen's bottom
+        #expect(shot.isBlue(100, Self.rowCenter(4, songs: true)))  // the 5th row ends at the screen's bottom
         #expect(shot.isBlue(100, 225))
-        #expect(!shot.isBlue(100, Self.rowCenter(6)))
+        #expect(!shot.isBlue(100, Self.rowCenter(3, songs: true)))
     }
 
-    @Test func longListShowsTheScrollBar() throws {
+    @Test func onlyTheSelectedRowShowsAChevron() throws {
+        var s = sampleState()
+        s.top.sel = 1  // Liked Songs; Playlists above it also opens a screen
+        let shot = try render(s, "main-chevron")
+        // The chevron is 8 points wide, 10 points in from the right edge of the 252 point list.
+        let xs = Self.screenLeft + 232...Self.screenLeft + 244
+        func box(_ row: Int) -> [(Int, Int)] {
+            let c = Self.rowCenter(row)
+            return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
+        }
+        #expect(box(0).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Playlists
+        #expect(box(1).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+    }
+
+    @Test func songListShowsArtistsAndTheScrollBar() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
         let shot = try render(s, "tracks")
-        #expect(shot.isBlue(100, Self.rowCenter(0)))
+        #expect(shot.isBlue(100, Self.rowCenter(0, songs: true)))
+        // The second row is not selected. Its lower half holds the gray artist line, "Band 2".
+        let top = Self.listTop + 36
+        let artist = (top + 21...top + 31).contains { y in
+            (Self.screenLeft + 10...Self.screenLeft + 50).contains { x in
+                let c = shot.rgb(x, y)
+                return max(c.r, c.g, c.b) < 170
+            }
+        }
+        #expect(artist)
         let thumbX: Int = Self.screenLeft + 248, thumbY: Int = Self.listTop + 8
         let thumb = shot.rgb(thumbX, thumbY), want = try reference(0x5d6772)
         #expect(near(thumb, want), "thumb \(thumb), want \(want)")

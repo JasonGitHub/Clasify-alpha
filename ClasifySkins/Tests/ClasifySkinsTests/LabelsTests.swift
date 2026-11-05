@@ -53,8 +53,8 @@ func sampleState() -> AppState {
         let screen = Screen.tracks(playlist: "spotify:playlist:a")
         s.current = TrackRef(playlist: "spotify:playlist:a", track: "spotify:track:r2")
         s.isPlaying = true
-        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s) == .init(label: "Song 2", playing: true))
-        #expect(Labels.row(.track("spotify:track:r3"), on: screen, in: s) == .init(label: "Song 3"))
+        #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s) == .init(label: "Song 2", detail: "Band 2", playing: true))
+        #expect(Labels.row(.track("spotify:track:r3"), on: screen, in: s) == .init(label: "Song 3", detail: "Band 3"))
         s.isPlaying = false
         #expect(Labels.row(.track("spotify:track:r2"), on: screen, in: s).playing)  // paused: still the speaker
     }

@@ -137,8 +137,13 @@ public struct AppState: Equatable, Sendable {
         }
     }
 
-    /// The list rows that show at once: `visibleRows`, or one less while the bar shows.
-    public var shownRows: Int { showsBar ? visibleRows - 1 : visibleRows }
+    /// The list rows that show at once: `visibleRows`, or `trackRows` for the taller two-line
+    /// song rows, and one less while the bar shows.
+    public var shownRows: Int {
+        var rows = visibleRows
+        if case .tracks = top.screen { rows = trackRows }
+        return showsBar ? rows - 1 : rows
+    }
 
     /// The screen's list is already in the state, so it opens without a read.
     public func isLoaded(_ screen: Screen) -> Bool {
