@@ -112,7 +112,9 @@ final class SpotifyConnectPlayer: Player {
         pendingSkips = []
         loaded = nil
         lastTrack = ""
-        resumePoint = nil
+        // A continuation keeps its point until it plays, so a failed relaunch can be retried.
+        if position == nil { resumePoint = nil }
+        self.position = position ?? 0
         startedTrack = trackID
         playlist = context
         ticker?.cancel()
@@ -279,6 +281,7 @@ final class SpotifyConnectPlayer: Player {
             pendingSkips = []
             loading = false
             ours = true
+            resumePoint = nil
         } catch let error as PlayerError {
             fail(error.message, id)
         } catch {
