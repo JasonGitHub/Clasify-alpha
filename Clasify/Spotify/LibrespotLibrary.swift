@@ -169,12 +169,16 @@ final class LibrespotLibrary: Library {
             return try await read()
         } catch let error as BridgeError where error == .cancelled {
             return nil  // The account changed while it read. The reducer drops this load.
-        } catch {
+        } catch let error as BridgeError where error.status == LSB_ERR_NOT_LOGGED_IN {
             // The account changed while it read. A restore now would log the old account in again.
             guard session == mine else { return nil }
-            // The session can drop. Log in again once, then try once more.
+            // The session dropped. Log in again once, then try once more.
             guard await restoreSession() else { return nil }
             return try? await read()
+        } catch {
+            // Any other failure (a deleted playlist, a network error) would fail again after a
+            // login, and a login empties the cache. The screen offers a retry.
+            return nil
         }
     }
 

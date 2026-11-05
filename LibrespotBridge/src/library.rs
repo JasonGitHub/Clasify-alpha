@@ -14,7 +14,9 @@ use librespot_protocol::metadata::Track as TrackMessage;
 use librespot_protocol::playlist4_external::SelectedListContent;
 use protobuf::{EnumOrUnknown, Message};
 
-use crate::{read_str, with_session, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_READ, LSB_OK};
+use crate::{
+    read_str, with_session, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_NOT_LOGGED_IN, LSB_ERR_READ, LSB_OK,
+};
 
 /// Rootlist items to ask for in one request.
 const ROOTLIST_PAGE: usize = 500;
@@ -282,10 +284,21 @@ pub(crate) fn c_text(text: &str) -> CString {
     CString::new(text.replace('\0', " ")).unwrap_or_default()
 }
 
+/// The status of a failed read: LSB_ERR_NOT_LOGGED_IN when the session dropped, so the
+/// app logs in again, else LSB_ERR_READ (for example, a deleted playlist), so it does not.
+pub(crate) fn read_error(dropped: bool) -> i32 {
+    if dropped {
+        LSB_ERR_NOT_LOGGED_IN
+    } else {
+        LSB_ERR_READ
+    }
+}
+
 pub(crate) fn deliver_playlists(
     callback: LsbPlaylistsCallback,
     context: *mut c_void,
     result: Result<Vec<Playlist>, String>,
+    dropped: bool,
 ) {
     match result {
         Ok(playlists) => {
@@ -306,7 +319,8 @@ pub(crate) fn deliver_playlists(
         }
         Err(message) => {
             let message = c_text(&message);
-            callback(context, LSB_ERR_READ, message.as_ptr(), std::ptr::null(), 0);
+            let status = read_error(dropped);
+            callback(context, status, message.as_ptr(), std::ptr::null(), 0);
         }
     }
 }
@@ -315,6 +329,7 @@ pub(crate) fn deliver_tracks(
     callback: LsbTracksCallback,
     context: *mut c_void,
     result: Result<Vec<Track>, String>,
+    dropped: bool,
 ) {
     match result {
         Ok(tracks) => {
@@ -336,15 +351,21 @@ pub(crate) fn deliver_tracks(
         }
         Err(message) => {
             let message = c_text(&message);
-            callback(context, LSB_ERR_READ, message.as_ptr(), std::ptr::null(), 0);
+            let status = read_error(dropped);
+            callback(context, status, message.as_ptr(), std::ptr::null(), 0);
         }
     }
 }
 
+/// The current session. A session that dropped counts as no login.
 pub(crate) unsafe fn session(bridge: *mut crate::LsbBridge) -> Result<Session, i32> {
     let mut session = None;
     let status = with_session(bridge, |s| session = Some(s.clone()));
-    session.ok_or(status)
+    match session {
+        Some(session) if session.is_invalid() => Err(LSB_ERR_NOT_LOGGED_IN),
+        Some(session) => Ok(session),
+        None => Err(status),
+    }
 }
 
 /// Reads the user's playlists. The result comes once through `on_result`, on a
@@ -369,7 +390,7 @@ pub unsafe extern "C" fn lsb_read_playlists(
     (*bridge).runtime.spawn(async move {
         let context = context;
         let result = read_playlists(&session).await;
-        deliver_playlists(callback, context.0, result);
+        deliver_playlists(callback, context.0, result, session.is_invalid());
     });
     LSB_OK
 }
@@ -405,7 +426,7 @@ pub unsafe extern "C" fn lsb_read_tracks(
         let context = context;
         let uri = uri.unwrap_or_else(|| liked_songs_uri(&session.username()));
         let result = read_tracks(&session, &uri).await;
-        deliver_tracks(callback, context.0, result);
+        deliver_tracks(callback, context.0, result, session.is_invalid());
     });
     LSB_OK
 }
