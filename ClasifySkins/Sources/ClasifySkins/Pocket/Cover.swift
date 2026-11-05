@@ -12,10 +12,20 @@ struct CoverArt: View {
     var noteSize: CGFloat = 26
     var notesSize: CGFloat = 54
 
-    /// The image to draw: the track's cover, or while it loads the last cover that showed.
-    /// A track with no cover, or whose cover failed, gets the square at once.
-    static func shown(fresh: CGImage?, pending: Bool, last: CGImage?) -> CGImage? {
-        fresh ?? (pending ? last : nil)
+    /// A cover that showed, with the cover ID it belongs to.
+    struct Shown {
+        let coverID: String
+        let image: CGImage
+    }
+
+    /// The image to draw: the track's cover, or the last cover that showed. The last cover stays
+    /// while the next one loads, and always when it is the same cover, so a cover that drops out
+    /// of memory never blinks to the square. A track with no cover, or whose cover failed, gets
+    /// the square at once.
+    static func shown(fresh: CGImage?, coverID: String?, pending: Bool, last: Shown?) -> CGImage? {
+        if let fresh { return fresh }
+        guard let last, pending || last.coverID == coverID else { return nil }
+        return last.image
     }
 
     var body: some View {
