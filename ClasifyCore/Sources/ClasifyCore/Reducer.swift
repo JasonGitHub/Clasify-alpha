@@ -149,8 +149,6 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         fx.append(.setShuffle(s.shuffle)); fx.append(.setRepeat(s.repeatMode))
         loadTrack(id, autoplay: true)
     }
-    /// A current track from outside our copy of the list, such as Spotify's autoplay: read its
-    /// details once. A read in flight or a failed read is not started again.
     /// Reads a list again in the background when its read is older than `staleAfter`.
     /// Only a screen opening calls this, so a wheel turn never starts a read.
     func refreshIfStale(_ screen: Screen) {
@@ -191,6 +189,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.playlistsLoaded = true
         s.readAt[AppState.readKey(.playlists)] = now
     }
+    /// A current track from outside our copy of the list, such as Spotify's autoplay: read its
+    /// details once. A read in flight or a failed read is not started again.
     func readIfUnknown(_ id: String) {
         guard let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) else { return }
         s.trackReads.insert(id)

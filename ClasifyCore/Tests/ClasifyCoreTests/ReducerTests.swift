@@ -433,7 +433,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func playlistsRefreshedKeepsTheSelectedPlaylist() {
         var s = mainMenu()
-        send(&s, openFocus(1), .menu)  // on Playlists, Focus selected
+        send(&s, openFocus(1) + [.menu])  // on Playlists, Focus selected
         let mix = Playlist(id: "mix", name: "Mix", tracks: [], trackCount: 3)
         s.refreshing = [""]
         send(&s, .playlistsRefreshed([mix, focusInfo]), now: 600)
