@@ -36,6 +36,8 @@ final class SpotifyConnectPlayer: Player {
     /// Next and Prev pressed while loading, in order, sent once the load plays. They are not
     /// summed, because at a list's start or with shuffle, Prev then Next is not "no move".
     private var pendingSkips: [Int32] = []
+    /// The newest seek pressed while loading, sent once the load plays.
+    private var pendingSeek: Double?
     /// The Spotify app's device on this Mac, once a load found it.
     private var device: String?
     /// The context of the newest load, as Spotify knows it.
@@ -59,6 +61,8 @@ final class SpotifyConnectPlayer: Player {
     private var rejoinUntil: ContinuousClock.Instant?
     /// The user moved our playback to another device. A login does not take it back then.
     private var movedAway = false
+    /// When Play took playback back. For up to 3 s, states can still show the other device.
+    private var takenBackAt: ContinuousClock.Instant?
     /// The newest state from the bridge. At launch it can come before the pre-warm found our
     /// device, so the pre-warm handles it again.
     private var latest: SpotifyPlayerState?
@@ -163,12 +167,14 @@ final class SpotifyConnectPlayer: Player {
     private func start(_ trackID: String, context: String?, autoplay: Bool, at position: Double?) {
         beforeLoad = nil
         storeLoad = false
+        takenBackAt = nil
         loadID += 1
         let id = loadID
         ours = false
         loading = true
         wantsRunning = autoplay
         pendingSkips = []
+        pendingSeek = nil
         loaded = nil
         lastTrack = ""
         rejoinUntil = nil
@@ -199,12 +205,66 @@ final class SpotifyConnectPlayer: Player {
         if !ours, let point = resumePoint {
             return start(point.track, context: point.playlist, autoplay: true, at: point.position)
         }
-        // After a move away, the pick is gone here. Ask for a new one, do not take it back.
+        // After a move to another device, Play takes playback back to this Mac.
+        if !ours, movedAway, let device, let other = latest?.activeDeviceID, !other.isEmpty, other != device {
+            return takeBack(from: other, to: device)
+        }
+        // Nothing to go on from here. Ask for a new pick.
         guard ours else {
             log.notice("play: no control and no place to go on from")
             return send(.playbackFailed("Pick a track to play it here", generation: generation))
         }
         fire(LSB_COMMAND_RESUME)
+    }
+
+    /// Moves playback from another device (for example a phone) back to this Mac with a Connect
+    /// transfer. The song and its place carry over. Pause, Next and Prev pressed meanwhile follow.
+    private func takeBack(from other: String, to device: String) {
+        log.notice("play: taking playback back from another device")
+        loadID += 1
+        let id = loadID
+        loading = true
+        wantsRunning = true
+        pendingSkips = []
+        pendingSeek = nil
+        beforeLoad = nil  // not a load from the store: a pick meanwhile takes a new snapshot
+        storeLoad = false
+        Task {
+            do {
+                try await again { try await client.transfer(from: other, to: device) }
+                guard id == loadID, let device = self.device else {
+                    // Stop came meanwhile, but the transfer can still have moved playback here.
+                    if !loading, let device = self.device { client.fire(LSB_COMMAND_PAUSE, to: device) }
+                    return
+                }
+                // The transfer keeps the other device's play state, so set the wanted one.
+                client.fire(wantsRunning ? LSB_COMMAND_RESUME : LSB_COMMAND_PAUSE, to: device)
+                for command in pendingSkips { client.fire(command, to: device) }
+                if let seek = pendingSeek { client.fireSeek(device: device, seconds: seek) }  // after the skips, as pressed
+                pendingSkips = []
+                pendingSeek = nil
+                client.fireVolume(device: device, percent: volume)  // as after a load: the sound now comes from this Mac
+                loading = false
+                ours = true
+                movedAway = false
+                resumePoint = nil
+                loaded = nil
+                lastTrack = ""  // so the store gets the track that plays now
+                takenBackAt = .now
+                Task { await applyOptions() }  // the other device's shuffle and repeat came along
+                // States from the transfer came while it was not ours yet: handle the newest again.
+                if let latest, latest.activeDeviceID == device { handle(latest, receivedAt: latestAt) }
+                // A real move away within the 3 s was ignored. States come only on changes, so
+                // check the newest one again after the 3 s.
+                try? await Task.sleep(for: .seconds(3))
+                if id == loadID, ours, let latest { handle(latest, receivedAt: latestAt) }
+            } catch {
+                Self.logFailure("transfer", error)
+                guard id == loadID else { return }
+                loading = false
+                send(.playbackFailed("Can’t move playback to this Mac. Pick a track to play it here", generation: generation))
+            }
+        }
     }
 
     func stop() {
@@ -223,18 +283,19 @@ final class SpotifyConnectPlayer: Player {
 
     func next(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(LSB_COMMAND_NEXT) } else { fire(LSB_COMMAND_NEXT) }
+        if loading { pendingSkips.append(LSB_COMMAND_NEXT); pendingSeek = nil } else { fire(LSB_COMMAND_NEXT) }
     }
 
     func prev(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(LSB_COMMAND_PREV) } else { fire(LSB_COMMAND_PREV) }
+        if loading { pendingSkips.append(LSB_COMMAND_PREV); pendingSeek = nil } else { fire(LSB_COMMAND_PREV) }  // a seek before it was for the old track
     }
 
     func seek(to seconds: Double, generation: Int) {
         self.generation = generation
         position = seconds  // so a quit before the next state keeps the new place
         resumePoint?.position = seconds  // a scrub after a quit moves the place too
+        if loading { pendingSeek = seconds }
         resend { [client] in client.fireSeek(device: $0, seconds: seconds) }
     }
 
@@ -416,9 +477,12 @@ final class SpotifyConnectPlayer: Player {
                 if resumePoint == nil { resumePoint = (trackID, playlist, self.position) }
                 return fail("Spotify quit. Press Play to go on", id, started: true)
             }
-            if let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
+            if pendingSeek == nil, let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
             for command in pendingSkips { client.fire(command, to: found) }
+            // A scrub during the load came after any skip, because a skip clears it.
+            if let seek = pendingSeek { client.fireSeek(device: found, seconds: seek) }
+            pendingSeek = nil
             client.fireVolume(device: found, percent: volume)
             context = contextURI
             followedOther = false
@@ -622,6 +686,10 @@ final class SpotifyConnectPlayer: Player {
             return  // still what played before the load
         }
         loaded = nil
+        if let takenBackAt, state.activeDeviceID != device, ContinuousClock.now - takenBackAt < .seconds(3) {
+            return  // still from before the transfer
+        }
+        takenBackAt = nil
         guard state.activeDeviceID == device else {
             // The user moved playback to another device, or Spotify quit. Do not fight it.
             // With no active device, nothing plays elsewhere, so Play may continue here.
