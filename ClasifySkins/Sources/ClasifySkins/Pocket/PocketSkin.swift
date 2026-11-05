@@ -90,10 +90,11 @@ public struct PocketSkin: View {
         if case .wheel = action { true } else { false }
     }
 
-    /// Clicks when the Clicker setting is on, then sends the action. A quick wheel step moves more rows.
+    /// Clicks when the Clicker setting is on, then sends the action. On a list, a quick wheel
+    /// step moves more rows. On Now Playing, each step stays one step of volume, time or a slider.
     private func input(_ action: Action) {
         if state.clicker { Clicker.shared.click() }
-        if case .wheel(let detents) = action {
+        if case .wheel(let detents) = action, state.top.screen.isList {
             send(.wheel(detents * speed.rows(at: ProcessInfo.processInfo.systemUptime)))
         } else {
             send(action)
