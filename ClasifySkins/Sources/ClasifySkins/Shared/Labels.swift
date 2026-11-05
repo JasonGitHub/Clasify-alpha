@@ -110,7 +110,9 @@ enum Labels {
         let index = tracks.firstIndex { $0.id == ref.track }
         let track = index.map { tracks[$0] }
         return NowText(
-            title: track?.title ?? ref.track,  // a track that is not in the list shows by its ID
+            // A track that is not in our copy of the list, such as Spotify's autoplay after the
+            // list ends, shows as "Spotify" with no artist. Never show a raw track ID.
+            title: track?.title ?? "Spotify",
             artist: track?.artist ?? "",
             list: title(.tracks(playlist: ref.playlist), in: state),
             count: index.map { "\($0 + 1) of \(tracks.count)" } ?? "",
