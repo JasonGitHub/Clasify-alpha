@@ -72,6 +72,7 @@ final class SessionKeeper {
         case .done:
             log.notice("logged in again: \(ms, privacy: .public) ms")
             backoff.reset()
+            notBefore = .now  // a player command can succeed during a wait: end that wait
             player.sessionRestored()
             return true
         case .refused:

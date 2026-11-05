@@ -181,14 +181,13 @@ final class SpotifyConnectPlayer: Player {
         self.generation = generation
         position = seconds  // so a quit before the next state keeps the new place
         resumePoint?.position = seconds  // a scrub after a quit moves the place too
-        guard ours, let device else { return }
-        client.fireSeek(device: device, seconds: seconds)
+        resend { [client] in client.fireSeek(device: $0, seconds: seconds) }
     }
 
     func setVolume(_ percent: Int) {
         volume = percent
-        guard ours, let device else { return }
-        client.fireVolume(device: device, percent: percent)
+        // The retry reads `volume` again, so it sends the newest value.
+        resend { [client] in client.fireVolume(device: $0, percent: self.volume) }
     }
 
     func setShuffle(_ on: Bool) {
@@ -255,12 +254,17 @@ final class SpotifyConnectPlayer: Player {
     }
 
     private func fire(_ command: Int32) {
+        resend { [client] in client.fire(command, to: $0) }
+    }
+
+    /// Sends one fire-and-forget command to our device. When the session dropped, it logs in
+    /// again and sends the command once more. `call` gets the device ID and returns the status.
+    private func resend(_ call: @escaping @MainActor (String) -> Int32) {
         guard ours, let device else { return }
-        guard client.fire(command, to: device) == LSB_ERR_NOT_LOGGED_IN else { return }
-        // The session dropped. Log in again, then send the command once more.
+        guard call(device) == LSB_ERR_NOT_LOGGED_IN else { return }
         Task {
             guard await reconnect(), ours, let device = self.device else { return }
-            client.fire(command, to: device)
+            _ = call(device)
         }
     }
 
@@ -363,7 +367,8 @@ final class SpotifyConnectPlayer: Player {
             else { return }
             let (option, on) = next
             do {
-                try await client.setOption(option, on, device: device)
+                // After a dropped session, this logs in again and sends the option once more.
+                try await again { try await client.setOption(option, on, device: device) }
                 // After a sign-out (`reset`), the value belongs to the old account. The next
                 // account can get the same device ID, so the session is compared, not the device.
                 guard session == self.session else { return }
