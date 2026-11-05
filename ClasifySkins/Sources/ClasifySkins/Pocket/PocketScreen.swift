@@ -170,8 +170,7 @@ struct PocketList: View {
         VStack(spacing: 0) {
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),
-                          selected: index == top.sel, scrolls: scrolls, height: height,
-                          narrow: top.screen == .main && state.showArt)
+                          selected: index == top.sel, scrolls: scrolls, height: height)
             }
             if top.screen == .login {
                 Text("Opens your browser to sign in. Playlists are read-only.")
@@ -212,15 +211,17 @@ struct PocketRow: View {
     /// A scroll bar shows, so the row leaves room for it.
     let scrolls: Bool
     var height: CGFloat = 22.5
-    /// The row is in the main menu's 136 point pane.
-    var narrow = false
 
     var body: some View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
                 let label = Text(text.label).font(.helvetica(13, bold: true))
-                if selected, let loop = Labels.marquee(text, narrow: narrow, scrolls: scrolls) {
-                    Marquee(text: label, loop: loop)
+                if selected {
+                    // The label as it is when it fits the room left by the row's other parts, else the marquee.
+                    ViewThatFits(in: .horizontal) {
+                        label.lineLimit(1)
+                        Marquee(text: label, loop: Labels.marqueeLoop(text.label))
+                    }
                 } else {
                     label.lineLimit(1)
                 }

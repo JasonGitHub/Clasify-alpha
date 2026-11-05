@@ -117,8 +117,7 @@ import Testing
         s.library.append(Playlist(id: "spotify:playlist:c", name: name, tracks: []))
         s.stack.append(Frame(screen: .playlists))
         s.top.sel = 2
-        let loop = try #require(Labels.marquee(Labels.RowText(label: name, opens: true), narrow: false, scrolls: false))
-        #expect(loop == 14)
+        let loop = Labels.marqueeLoop(name)
         let still = try render(s, "marquee-start")  // 1 s: the hold at the start
         let moved = try render(s, "marquee-moved", time: loop * 0.59)  // half of one copy's width
         func changed(_ y: Int) -> Int {
@@ -130,9 +129,12 @@ import Testing
         #expect(Marquee.shift(at: 1, loop: 14) == 0)
         #expect(abs(Marquee.shift(at: 14 * 0.59, loop: 14) - 0.5) < 1e-9)
         #expect(Marquee.shift(at: 15, loop: 14) == 0)  // it loops
-        s.top.sel = 0  // not selected: the long label is cut and does not move
+        // With "Road Trip" selected: it fits, so it stays still, and the long label is cut and stays still.
+        s.top.sel = 0
         let a = try render(s, "marquee-unselected"), b = try render(s, "marquee-unselected-later", time: loop * 0.59)
-        #expect((Self.screenLeft + 12 ..< Self.screenLeft + 230).allSatisfy { a.rgb($0, Self.rowCenter(2)) == b.rgb($0, Self.rowCenter(2)) })
+        for row in [0, 2] {
+            #expect((Self.screenLeft + 12 ..< Self.screenLeft + 230).allSatisfy { a.rgb($0, Self.rowCenter(row)) == b.rgb($0, Self.rowCenter(row)) })
+        }
     }
 
     @Test func fiveSongRowsFillTheList() throws {

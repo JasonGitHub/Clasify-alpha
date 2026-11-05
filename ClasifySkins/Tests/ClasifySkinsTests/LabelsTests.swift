@@ -161,18 +161,10 @@ func sampleState() -> AppState {
         #expect(samples.contains { $0 != 0 })
     }
 
-    @Test func onlyALabelWiderThanItsRoomScrolls() {
-        let fits = Labels.RowText(label: "Road Trip", opens: true)
-        #expect(Labels.marquee(fits, narrow: false, scrolls: false) == nil)
-        // 30 characters: 222 points, over the 220 a full-width row with a chevron has.
-        let long = Labels.RowText(label: String(repeating: "x", count: 30), opens: true)
-        #expect(Labels.marquee(long, narrow: false, scrolls: false) == 11)  // round(222 / 28 + 3)
-        #expect(Labels.marquee(Labels.RowText(label: long.label), narrow: false, scrolls: false) == nil)  // no chevron: 232
-        #expect(Labels.marquee(Labels.RowText(label: "Shuffle Songs"), narrow: true, scrolls: false) == nil)  // 96 of 116
-        #expect(Labels.marquee(Labels.RowText(label: "Shuffle Songs", value: "On"), narrow: true, scrolls: true) == 6)  // 96 of 94
-        // A CJK character counts as 13 points: 17 of them are 221.
-        #expect(Labels.marquee(Labels.RowText(label: String(repeating: "夏", count: 17), opens: true), narrow: false, scrolls: false) == 11)
-        #expect(Labels.marquee(Labels.RowText(label: "xxxxxxxxxx"), narrow: true, scrolls: true) == nil)  // 74 of 110
-        #expect(Labels.marquee(Labels.RowText(label: String(repeating: "x", count: 16)), narrow: true, scrolls: false) == 7)  // 118 of 116
+    @Test func theMarqueeLoopFollowsTheLabelLength() {
+        #expect(Labels.marqueeLoop(String(repeating: "x", count: 30)) == 11)  // 222 points: round(222 / 28 + 3)
+        #expect(Labels.marqueeLoop(String(repeating: "夏", count: 17)) == 11)  // a CJK character counts as 13 points
+        #expect(Labels.marqueeLoop("The Longest Road Trip Playlist Ever Made") == 14)  // 296 points
+        #expect(Labels.marqueeLoop("Short") == 5)  // the shortest loop
     }
 }
