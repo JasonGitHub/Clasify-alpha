@@ -59,7 +59,9 @@ struct PocketScreen: View {
         .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(Pocket.frame, lineWidth: 2) }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .foregroundStyle(Pocket.ink)
-        .accessibilityElement(children: .combine)
+        // .contain, not .combine: the shuffle and repeat buttons on Now Playing must stay
+        // separate VoiceOver controls.
+        .accessibilityElement(children: .contain)
     }
 
     private var header: some View {
