@@ -499,8 +499,9 @@ final class SpotifyConnectPlayer: Player {
             context = state.contextURI
             // So Play after a quit loads the track in its own context. The bridge can load only
             // a playlist, so a station or album keeps no place to go on from.
-            followedOther = !state.contextURI.hasPrefix("spotify:playlist:")
-            if !followedOther { playlist = state.contextURI }
+            let likedSongs = state.contextURI.hasSuffix(":collection")
+            followedOther = !likedSongs && !state.contextURI.hasPrefix("spotify:playlist:")
+            if !followedOther { playlist = likedSongs ? Playlist.likedSongsID : state.contextURI }
         }
         let gen = generation
         if !state.hasTrack {
