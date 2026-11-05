@@ -341,10 +341,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.tok = tok; s.playGen = gen; s.authAttempt = auth
         }
     }
-    let screenBefore = (s.stack.count, s.top.screen)
+    let before = (s.stack.count, s.top.screen, s.top.loading)
     apply()
-    // A new screen shows its scroll bar for a moment, as in the mockup.
-    if (s.stack.count, s.top.screen) != screenBefore { s.scrollUntil = now + scrollBarTime }
+    // A list shows its scroll bar for a moment when it appears: on a new screen, or when its
+    // load ends. A reset starts with no bar.
+    let listShows = s.top.screen.isList && !s.top.loading && !s.top.error
+    if case .reset = action {} else if listShows && (s.stack.count, s.top.screen, s.top.loading) != before {
+        s.scrollUntil = now + scrollBarTime
+    }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.
     if s.top.screen.isList { s.top.off = clamp(s.top.off, s.top.sel - s.shownRows + 1, s.top.sel) }
     return fx

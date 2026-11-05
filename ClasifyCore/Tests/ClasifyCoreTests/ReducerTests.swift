@@ -257,9 +257,11 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.scrollUntil == 101.5)  // still showing
         send(&s, .tick, now: 102)
         #expect(s.scrollUntil == 0)
-        send(&s, .select, now: 200)  // Liked Songs opens
-        #expect(s.scrollUntil == 201.5)
-        send(&s, .tick, now: 202)
+        send(&s, .select, now: 200)  // Liked Songs opens, and loads first: no list yet
+        #expect(s.top.loading && s.scrollUntil == 0)
+        send(&s, .tracksLoaded(token: s.top.token, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 203)
+        #expect(s.scrollUntil == 204.5)  // the list shows
+        send(&s, .tick, now: 205)
         send(&s, .menu, now: 300)  // back to the main menu
         #expect(s.scrollUntil == 301.5)
         s = playing()
