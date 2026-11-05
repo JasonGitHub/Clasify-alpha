@@ -445,8 +445,11 @@ final class SpotifyConnectPlayer: Player {
             beforeLoad = nil
             return send(.playbackFailed(message, generation: generation))
         }
+        let restored = beforeLoad != nil
         restoreBeforeLoad()
         send(.loadFailed(message, generation: generation))
+        // The old track shows again, but Spotify quit or it was not ours: show it paused, so Play goes on.
+        if restored && !ours { send(.trackChanged(lastTrack.isEmpty ? startedTrack : lastTrack, playing: false, generation: generation)) }
         // After the store shows the old track again: it can have changed, or moved away, during
         // the load. Cluster updates come only on changes, so handle the newest state again.
         if ours, let latest { handle(latest, receivedAt: latestAt) }
