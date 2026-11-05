@@ -98,6 +98,8 @@ enum Labels {
         /// "3 of 12", or empty when the track is not in Clasify's copy of the list.
         var count: String
         var duration: Double
+        /// The album cover's ID, nil when the track has none.
+        var coverID: String? = nil
     }
 
     static func now(in state: AppState) -> NowText? {
@@ -110,7 +112,8 @@ enum Labels {
             artist: track?.artist ?? "",
             list: title(.tracks(playlist: ref.playlist), in: state),
             count: index.map { "\($0 + 1) of \(tracks.count)" } ?? "",
-            duration: track?.duration ?? 0)
+            duration: track?.duration ?? 0,
+            coverID: track?.coverID)
     }
 
     /// The mark beside the playing track: ▶ while it plays, two bars while it is paused.

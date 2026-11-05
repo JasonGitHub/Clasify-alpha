@@ -35,8 +35,11 @@ import Testing
 
     static func rowCenter(_ index: Int) -> Int { listTop + index * rowHeight + rowHeight / 2 }
 
-    func render(_ state: AppState, _ name: String, pressed: ClickWheel.Zone? = nil) throws -> Snapshot {
-        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false, pressed: pressed))
+    func render(
+        _ state: AppState, _ name: String, pressed: ClickWheel.Zone? = nil, artwork: Artwork = .none
+    ) throws -> Snapshot {
+        let skin = PocketSkin(state: state, interactive: false, pressed: pressed).environment(\.artwork, artwork)
+        let renderer = ImageRenderer(content: skin)
         renderer.scale = CGFloat(Snapshot.scale)
         let image = try #require(renderer.cgImage)
         #expect(image.width == Int(PocketSkin.size.width) * Snapshot.scale)
@@ -110,6 +113,28 @@ import Testing
         let want = try reference(Labels.cover(for: "OutKast"))
         let got = shot.rgb(Self.screenLeft + 12 + 8, 131)  // left part of the cover, beside the note
         #expect(near(got, want), "cover \(got), want \(want)")
+    }
+
+    @Test func nowPlayingShowsTheLoadedCover() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
+        s.stack.append(Frame(screen: .now))
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let wanted = String(repeating: "ab", count: 20)
+        let shot = try render(s, "now-cover", artwork: Artwork { $0 == wanted ? red : nil })
+        let got = shot.rgb(Self.screenLeft + 12 + 38, 131)  // the middle of the cover, where the note was
+        #expect(got.r > 200 && got.g < 60 && got.b < 60, "cover \(got)")
+    }
+
+    /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.
+    static func solidImage(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGImage? {
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        let context = CGContext(
+            data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        context?.setFillColor(CGColor(srgbRed: red, green: green, blue: blue, alpha: 1))
+        context?.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        return context?.makeImage()
     }
 
     @Test func nowPlayingVolumeAndScrub() throws {

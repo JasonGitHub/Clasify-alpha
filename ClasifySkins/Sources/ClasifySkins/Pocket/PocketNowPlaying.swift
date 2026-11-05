@@ -4,6 +4,7 @@ import SwiftUI
 /// Now Playing: the place in the list, the cover, the track, and the progress or volume bar.
 struct PocketNowPlaying: View {
     let state: AppState
+    @Environment(\.artwork) private var artwork
 
     var body: some View {
         if let now = Labels.now(in: state) {
@@ -16,7 +17,7 @@ struct PocketNowPlaying: View {
                 .font(.helvetica(10))
                 .foregroundStyle(Pocket.gray)
                 HStack(spacing: 10) {
-                    if state.showArt { Cover(artist: now.artist) }
+                    if state.showArt { Cover(artist: now.artist, image: artwork.image(for: now.coverID)) }
                     VStack(alignment: state.showArt ? .leading : .center, spacing: 3) {
                         Text(now.title).font(.helvetica(14, bold: true))
                         Text(now.artist).font(.helvetica(12))
@@ -105,15 +106,24 @@ struct Diamond: Shape {
     }
 }
 
-/// The cover, as in the mockup: a color from the artist’s name with a music note on it.
+/// The album cover. Until it has loaded, or when it cannot load, the mockup's square shows:
+/// a color from the artist’s name with a music note on it.
 struct Cover: View {
     let artist: String
+    var image: CGImage?
 
     var body: some View {
         RoundedRectangle(cornerRadius: 2)
             .fill(Color(hex: Labels.cover(for: artist)))
+            .overlay {
+                if let image {
+                    Image(decorative: image, scale: 1).resizable().scaledToFill()
+                } else {
+                    IconView(.note, width: 26, height: 26).foregroundStyle(.white.opacity(0.85))
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 2))
             .overlay { RoundedRectangle(cornerRadius: 2).strokeBorder(Pocket.frame, lineWidth: 1) }
-            .overlay { IconView(.note, width: 26, height: 26).foregroundStyle(.white.opacity(0.85)) }
             .frame(width: 76, height: 76)
             .shadow(color: .black.opacity(0.25), radius: 2, y: 2)
             .accessibilityHidden(true)
