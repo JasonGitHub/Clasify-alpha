@@ -9,7 +9,7 @@ Maintainer notes (stripped before Claude sees this file):
 
 # Clasify
 
-Native macOS player for Spotify playlists and Liked Songs, styled after early-2000s pocket players. Free, open source, MIT.
+Native macOS player for Spotify playlists and Liked Songs, styled after early-2000s pocket players.
 
 Design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjogMQiJGJjKdAjpoY8
 
