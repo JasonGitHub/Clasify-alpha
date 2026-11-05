@@ -166,6 +166,7 @@ final class SpotifyConnectPlayer: Player {
     func seek(to seconds: Double, generation: Int) {
         self.generation = generation
         position = seconds  // so a quit before the next state keeps the new place
+        resumePoint?.position = seconds  // a scrub after a quit moves the place too
         guard ours, let device else { return }
         client.fireSeek(device: device, seconds: seconds)
     }
@@ -272,7 +273,12 @@ final class SpotifyConnectPlayer: Player {
                     known = nil
                 }
             }
-            guard id == loadID, let found = device else { return }
+            guard id == loadID else { return }
+            // Spotify quit after it took the play command. The continuation stays for Play.
+            guard let found = device else {
+                if resumePoint == nil { resumePoint = (trackID, playlist, self.position) }
+                return fail("Spotify quit. Press Play to go on", id)
+            }
             if let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
             for command in pendingSkips { client.fire(command, to: found) }
