@@ -26,6 +26,7 @@ fn header_matches_rust() {
         ("LSB_ERR_OAUTH", LSB_ERR_OAUTH as u32),
         ("LSB_ERR_READ", LSB_ERR_READ as u32),
         ("LSB_ERR_CONNECT", LSB_ERR_CONNECT as u32),
+        ("LSB_ERR_REFUSED", LSB_ERR_REFUSED as u32),
         ("LSB_COMMAND_PAUSE", LSB_COMMAND_PAUSE),
         ("LSB_COMMAND_RESUME", LSB_COMMAND_RESUME),
         ("LSB_COMMAND_NEXT", LSB_COMMAND_NEXT),
@@ -44,6 +45,7 @@ fn header_matches_rust() {
     for line in [
         "    uint64_t login_id;",
         "int32_t lsb_login(LsbBridge *bridge, const char *access_token, uint64_t login_id);",
+        "int32_t lsb_session_status(LsbBridge *bridge);",
     ] {
         assert!(header.contains(line), "header is missing: {line}");
     }
@@ -78,6 +80,35 @@ fn bad_arguments_return_invalid_argument() {
     }
     assert!(lsb_new(None, context).is_null());
     assert!(recorder.events.lock().unwrap().is_empty());
+}
+
+#[test]
+fn session_status_reports_a_dropped_session() {
+    let recorder = Recorder::default();
+    let context = &recorder as *const Recorder as *mut c_void;
+    unsafe {
+        assert_eq!(
+            lsb_session_status(std::ptr::null_mut()),
+            LSB_ERR_INVALID_ARGUMENT
+        );
+        let bridge = lsb_new(Some(record_event), context);
+        assert_eq!(lsb_session_status(bridge), LSB_ERR_NOT_LOGGED_IN);
+        // A session that is not connected is enough: the status reads only the flag.
+        let session = {
+            let _guard = (*bridge).runtime.enter();
+            Session::new(SessionConfig::default(), None)
+        };
+        *(*bridge).connected.lock().unwrap() = Some(Connected {
+            session: session.clone(),
+        });
+        assert_eq!(lsb_session_status(bridge), LSB_OK);
+        {
+            let _guard = (*bridge).runtime.enter();
+            session.shutdown(); // what librespot does when the connection drops
+        }
+        assert_eq!(lsb_session_status(bridge), LSB_ERR_NOT_LOGGED_IN);
+        lsb_free(bridge);
+    }
 }
 
 #[test]
@@ -505,6 +536,24 @@ mod library_tests {
         assert_eq!(failed.status, LSB_ERR_OAUTH);
         assert_eq!((failed.access_token, failed.refresh_token), (None, None));
         assert_eq!(failed.message.as_deref(), Some("denied"));
+        // The text that librespot-oauth makes from Spotify's answer to a revoked token.
+        let revoked = "Failed to exchange code for access token \
+            (Server returned error response: invalid_grant: Invalid refresh token)";
+        assert_eq!(
+            TokenResult::refreshed(Err(revoked.to_owned()), now).status,
+            LSB_ERR_REFUSED
+        );
+        let offline = "Failed to exchange code for access token (Request failed)";
+        assert_eq!(
+            TokenResult::refreshed(Err(offline.to_owned()), now).status,
+            LSB_ERR_OAUTH
+        );
+        // In a browser login, `invalid_grant` is about the code, not a saved token.
+        assert_eq!(
+            TokenResult::new(Err(revoked.to_owned()), now).status,
+            LSB_ERR_OAUTH
+        );
+        assert_eq!(TokenResult::refreshed(Ok(token("r")), now).status, LSB_OK);
     }
 
     type Delivered = Mutex<Vec<(i32, Option<String>, Vec<Vec<String>>)>>;

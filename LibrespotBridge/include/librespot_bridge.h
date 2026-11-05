@@ -22,6 +22,8 @@
 #define LSB_ERR_OAUTH 3
 #define LSB_ERR_READ 4
 #define LSB_ERR_CONNECT 5
+// Spotify rejected the refresh token: log in again through the browser.
+#define LSB_ERR_REFUSED 6
 
 #define LSB_EVENT_LOGGED_IN 0
 #define LSB_EVENT_ERROR 1
@@ -54,15 +56,20 @@ int32_t lsb_login(LsbBridge *bridge, const char *access_token, uint64_t login_id
 // lsb_login. Returns LSB_OK even with no session.
 int32_t lsb_logout(LsbBridge *bridge);
 
+// LSB_OK while the session works. LSB_ERR_NOT_LOGGED_IN when there is no session or it
+// dropped (for example after sleep or a network change). librespot does not reconnect:
+// refresh the token and call lsb_login again. A cheap check, safe to call often.
+int32_t lsb_session_status(LsbBridge *bridge);
+
 // OAuth with PKCE through librespot-oauth, with librespot's own client ID and
 // read-only scopes. The bridge stores no token: keep the refresh token in the Keychain.
 // Never log or store the access token.
 typedef struct LsbToken {
-    int32_t status;              // LSB_OK or LSB_ERR_OAUTH.
+    int32_t status;              // LSB_OK, LSB_ERR_OAUTH, or LSB_ERR_REFUSED (lsb_oauth_refresh only).
     uint32_t expires_in_s;       // LSB_OK: seconds until the access token expires.
     const char *access_token;    // LSB_OK only, else NULL.
     const char *refresh_token;   // LSB_OK and Spotify sent one, else NULL.
-    const char *message;         // LSB_ERR_OAUTH only, else NULL.
+    const char *message;         // An error only, else NULL.
     // The strings are valid only during the callback.
 } LsbToken;
 

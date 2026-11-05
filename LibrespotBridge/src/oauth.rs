@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use librespot_core::SessionConfig;
 use librespot_oauth::{OAuthClient, OAuthClientBuilder, OAuthToken};
 
-use crate::{read_str, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_OAUTH, LSB_OK};
+use crate::{read_str, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_OAUTH, LSB_ERR_REFUSED, LSB_OK};
 
 /// The loopback redirect URI. librespot's CLI uses `http://127.0.0.1:<port>/login`,
 /// and the keymaster client ID accepts it. The spike confirmed port 8898.
@@ -95,6 +95,25 @@ impl TokenResult {
     }
 }
 
+impl TokenResult {
+    /// A refresh result. LSB_ERR_REFUSED when Spotify rejected the refresh token, for example
+    /// a revoked or replaced one: the oauth2 crate puts the OAuth error code `invalid_grant`
+    /// in its error text. Any other failure (offline, a timeout, a server error) can pass on
+    /// a later try. Only a refresh maps it: for a browser login, `invalid_grant` is about the
+    /// authorization code, not a saved token.
+    pub(crate) fn refreshed(result: Result<OAuthToken, String>, now: Instant) -> Self {
+        let mut token = Self::new(result, now);
+        if token
+            .message
+            .as_deref()
+            .is_some_and(|m| m.contains("invalid_grant"))
+        {
+            token.status = LSB_ERR_REFUSED;
+        }
+        token
+    }
+}
+
 fn seconds_until(time: Instant, now: Instant) -> u32 {
     let seconds = time.saturating_duration_since(now).as_secs();
     u32::try_from(seconds).unwrap_or(u32::MAX)
@@ -121,13 +140,15 @@ fn deliver(target: Target, result: TokenResult) {
     (target.callback)(target.context, &raw);
 }
 
+/// `map` is `TokenResult::new` for a login and `TokenResult::refreshed` for a refresh.
 fn run(
     target: Target,
+    map: fn(Result<OAuthToken, String>, Instant) -> TokenResult,
     work: impl FnOnce() -> Result<OAuthToken, String> + Send + 'static,
 ) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let result = work();
-        deliver(target, TokenResult::new(result, Instant::now()));
+        deliver(target, map(result, Instant::now()));
     })
 }
 
@@ -199,7 +220,7 @@ pub(crate) struct Login {
 fn start_login(target: Target) -> Login {
     let state = LoginState::new();
     let thread_state = state.clone();
-    let handle = run(target, move || {
+    let handle = run(target, TokenResult::new, move || {
         // `finish` must run on every path, so that the login stops counting as listening.
         let result = client().and_then(|c| c.get_access_token().map_err(|e| e.to_string()));
         thread_state.finish(result)
@@ -314,8 +335,10 @@ pub unsafe extern "C" fn lsb_oauth_refresh(
         return LSB_ERR_INVALID_ARGUMENT;
     }
     let token = token.to_owned();
-    run(Target { callback, context }, move || {
-        client()?.refresh_token(&token).map_err(|e| e.to_string())
-    });
+    run(
+        Target { callback, context },
+        TokenResult::refreshed,
+        move || client()?.refresh_token(&token).map_err(|e| e.to_string()),
+    );
     LSB_OK
 }

@@ -34,6 +34,7 @@ pub const LSB_ERR_NOT_LOGGED_IN: i32 = 2;
 pub const LSB_ERR_OAUTH: i32 = 3;
 pub const LSB_ERR_READ: i32 = 4;
 pub const LSB_ERR_CONNECT: i32 = 5;
+pub const LSB_ERR_REFUSED: i32 = 6;
 
 pub const LSB_EVENT_LOGGED_IN: u32 = 0;
 pub const LSB_EVENT_ERROR: u32 = 1;
@@ -221,6 +222,19 @@ pub unsafe extern "C" fn lsb_logout(bridge: *mut LsbBridge) -> i32 {
         old.session.shutdown();
     }
     LSB_OK
+}
+
+/// LSB_OK while the session works. LSB_ERR_NOT_LOGGED_IN when there is none or it
+/// dropped, for example after sleep or a network change. librespot does not reconnect.
+///
+/// # Safety
+/// `bridge` must be valid or NULL.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_session_status(bridge: *mut LsbBridge) -> i32 {
+    match library::session(bridge) {
+        Ok(_) => LSB_OK,
+        Err(status) => status,
+    }
 }
 
 /// Runs `action` with the logged-in session.
