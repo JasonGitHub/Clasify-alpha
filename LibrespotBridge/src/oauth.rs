@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use librespot_core::SessionConfig;
 use librespot_oauth::{OAuthClient, OAuthClientBuilder, OAuthToken};
 
-use crate::{read_str, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_OAUTH, LSB_OK};
+use crate::{read_str, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_OAUTH, LSB_ERR_REFUSED, LSB_OK};
 
 /// The loopback redirect URI. librespot's CLI uses `http://127.0.0.1:<port>/login`,
 /// and the keymaster client ID accepts it. The spike confirmed port 8898.
@@ -85,7 +85,11 @@ impl TokenResult {
                 message: None,
             },
             Err(message) => TokenResult {
-                status: LSB_ERR_OAUTH,
+                status: if is_refused(&message) {
+                    LSB_ERR_REFUSED
+                } else {
+                    LSB_ERR_OAUTH
+                },
                 expires_in_s: 0,
                 access_token: None,
                 refresh_token: None,
@@ -93,6 +97,13 @@ impl TokenResult {
             },
         }
     }
+}
+
+/// Spotify rejected the grant, for example a revoked or replaced refresh token. The
+/// oauth2 crate puts the OAuth error code `invalid_grant` in its error text. Any other
+/// failure (offline, a timeout, a server error) can pass on a later try.
+pub(crate) fn is_refused(message: &str) -> bool {
+    message.contains("invalid_grant")
 }
 
 fn seconds_until(time: Instant, now: Instant) -> u32 {
