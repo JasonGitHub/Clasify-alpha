@@ -448,9 +448,9 @@ import Testing
         s.nowMode = .shuffle
         s.shuffle = true
         let on = try render(s, "now-shuffle")
-        // The slider's 13.2 point bar starts 170 points under the title bar (y 221.4), 54.6 from the
-        // screen's left, and is 191.4 wide. The 16 point knob is centered on it, at y 228.
-        let right: Int = Self.screenLeft + 55 + 191, left: Int = Self.screenLeft + 55, knobY: Int = 228
+        // The slider's 13.2 point bar is where the progress bar is: 174.8 points under the title bar
+        // (y 226.2), 54.6 from the screen's left, and 191.4 wide. The 16 point knob is centered on it, at y 233.
+        let right: Int = Self.screenLeft + 55 + 191, left: Int = Self.screenLeft + 55, knobY: Int = 233
         #expect(on.isBlue(right - 2, knobY))  // Songs
         #expect(!on.isBlue(left + 2, knobY))
         s.nowMode = .repeatMode

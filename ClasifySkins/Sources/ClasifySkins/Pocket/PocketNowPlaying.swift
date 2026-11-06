@@ -143,7 +143,7 @@ struct PocketNowPlaying: View {
     }
 }
 
-/// The shuffle or repeat slider, at the progress bar's place: the stops over the bar, each
+/// The shuffle or repeat slider, with its bar exactly where the progress bar is (Jason, 22:16 JST): the stops over the bar, each
 /// centered on its place and black when chosen, a round knob, and the name under the bar.
 struct SliderView: View {
     let slider: Labels.Slider
@@ -160,7 +160,7 @@ struct SliderView: View {
                     .foregroundStyle(i == slider.index ? Color.black : Color(hex: 0x8a9099))
                     .fixedSize()
                     .frame(width: 0, height: 11.7)  // centered on x
-                    .offset(x: x, y: 154.5)
+                    .offset(x: x, y: 159.3)
             }
             Pocket.barTrack
                 .frame(width: width, height: Pocket.softBarHeight)
@@ -171,12 +171,12 @@ struct SliderView: View {
                         .frame(width: 0)
                         .offset(x: width * fraction)
                 }
-                .offset(x: left, y: 170)
+                .offset(x: left, y: 174.8)
             Text(slider.name)
                 .font(.helvetica(11.7, bold: true))
                 .foregroundStyle(Color(hex: 0x1e1e1e))
                 .frame(width: Pocket.screenWidth, height: 11.7)
-                .offset(y: 188.5)
+                .offset(y: 191.5)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement()
