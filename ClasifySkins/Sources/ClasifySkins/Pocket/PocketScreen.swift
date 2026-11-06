@@ -93,7 +93,7 @@ struct PocketScreen: View {
 
     var body: some View {
         ZStack {
-            // Between the main menu and Now Playing, the whole screen moves, with its title bar,
+            // Between a half screen and a full one, the whole screen moves, with its title bar,
             // the pane and the covers. Other moves slide only the content (`parts`).
             parts.frame(width: 252, height: 200, alignment: .leading)
                 .id(state.wholeSeq)

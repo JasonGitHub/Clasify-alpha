@@ -533,7 +533,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     if case .reset = action {} else if (s.stack.count, s.top.screen) != (before.0, before.1) {
         s.navSeq += 1
         s.navForward = s.stack.count >= before.0 || (wasAuth && s.top.screen == .main)
-        if (before.1, s.top.screen) == (.main, .now) || (before.1, s.top.screen) == (.now, .main) { s.wholeSeq += 1 }
+        // Between a half screen and a full one, the whole screen moves; otherwise only the content.
+        if s.isHalf(before.1) != s.isHalf(s.top.screen) { s.wholeSeq += 1 }
     }
     // A list shows its scroll bar for a moment when it appears: on a new screen, or when its
     // load ends. A reset starts with no bar.
