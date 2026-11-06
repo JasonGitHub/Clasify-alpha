@@ -7,8 +7,6 @@ enum Icon: Sendable {
     case notes
     /// The title bar's play and pause marks.
     case play, pause
-    /// The Now Playing status icons.
-    case shuffle, repeatMode
 
     var viewBox: CGSize {
         switch self {
@@ -19,7 +17,6 @@ enum Icon: Sendable {
         case .speakerLoud: CGSize(width: 16, height: 14)
         case .notes: CGSize(width: 24, height: 24)
         case .play, .pause: CGSize(width: 8, height: 9)
-        case .shuffle, .repeatMode: CGSize(width: 16, height: 14)
         }
     }
 
@@ -27,7 +24,7 @@ enum Icon: Sendable {
     var fill: Path {
         var p = Path()
         switch self {
-        case .chevron, .shuffle, .repeatMode:
+        case .chevron:
             break
         case .notes:
             p.addEllipse(in: CGRect(x: 3.2, y: 15.2, width: 6, height: 6))
@@ -83,23 +80,6 @@ enum Icon: Sendable {
             p.move(to: CGPoint(x: 12.5, y: 2.5))
             p.addArc(center: CGPoint(x: 8.09, y: 7), radius: 6.3, startAngle: .degrees(-45.6), endAngle: .degrees(45.6), clockwise: false)
             return (p, 1.3)
-        case .shuffle:  // "M1 3h3l7 8h3 M1 11h3l2-2.3 M9 5.3L11 3h3 M12 1l2 2-2 2 M12 9l2 2-2 2"
-            p.addLines([CGPoint(x: 1, y: 3), CGPoint(x: 4, y: 3), CGPoint(x: 11, y: 11), CGPoint(x: 14, y: 11)])
-            p.addLines([CGPoint(x: 1, y: 11), CGPoint(x: 4, y: 11), CGPoint(x: 6, y: 8.7)])
-            p.addLines([CGPoint(x: 9, y: 5.3), CGPoint(x: 11, y: 3), CGPoint(x: 14, y: 3)])
-            p.addLines([CGPoint(x: 12, y: 1), CGPoint(x: 14, y: 3), CGPoint(x: 12, y: 5)])
-            p.addLines([CGPoint(x: 12, y: 9), CGPoint(x: 14, y: 11), CGPoint(x: 12, y: 13)])
-            return (p, 1.5)
-        case .repeatMode:  // two arrows with rounded corners, from the SVG
-            p.move(to: CGPoint(x: 3, y: 6))
-            p.addArc(tangent1End: CGPoint(x: 3, y: 3), tangent2End: CGPoint(x: 4.5, y: 3), radius: 1.5)
-            p.addLine(to: CGPoint(x: 13, y: 3))
-            p.addLines([CGPoint(x: 11, y: 1), CGPoint(x: 13, y: 3), CGPoint(x: 11, y: 5)])
-            p.move(to: CGPoint(x: 13, y: 8))
-            p.addArc(tangent1End: CGPoint(x: 13, y: 11), tangent2End: CGPoint(x: 11.5, y: 11), radius: 1.5)
-            p.addLine(to: CGPoint(x: 3, y: 11))
-            p.addLines([CGPoint(x: 5, y: 13), CGPoint(x: 3, y: 11), CGPoint(x: 5, y: 9)])
-            return (p, 1.5)
         case .prev, .next, .playPause, .speaker, .notes, .play, .pause:
             return nil
         }
@@ -108,7 +88,7 @@ enum Icon: Sendable {
     /// The SVG gives these strokes round ends.
     var roundCaps: Bool {
         switch self {
-        case .chevron, .shuffle, .repeatMode: true
+        case .chevron: true
         default: false
         }
     }
