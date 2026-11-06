@@ -29,18 +29,18 @@ struct ClickWheel: View {
         }
     }
 
-    static let size: CGFloat = 196
+    static let size: CGFloat = 225
     /// A turn of this many degrees sends one detent. A turn of more than `clickSlop` cancels the click.
     static let detent = 24.0, clickSlop = 12.0
 
     /// The mockup's button rectangles, in the wheel's coordinates.
     private static let zones: [(Zone, CGRect)] = [
-        (.menu, CGRect(x: 68, y: 12, width: 60, height: 30)),
-        (.prev, CGRect(x: 8, y: 78, width: 40, height: 40)),
-        (.next, CGRect(x: 148, y: 78, width: 40, height: 40)),
-        (.play, CGRect(x: 73, y: 154, width: 50, height: 32)),
+        (.menu, CGRect(x: 82.5, y: 4, width: 60, height: 29)),
+        (.prev, CGRect(x: 4, y: 92.5, width: 40, height: 40)),
+        (.next, CGRect(x: 181, y: 92.5, width: 40, height: 40)),
+        (.play, CGRect(x: 87.5, y: 190.4, width: 50, height: 32)),
     ]
-    private static let centerRadius: CGFloat = 34
+    private static let centerRadius: CGFloat = 40.8
 
     static func zone(at point: CGPoint) -> Zone? {
         let r = hypot(point.x - size / 2, point.y - size / 2)
@@ -66,28 +66,17 @@ struct ClickWheel: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
+            // Flat white, as in the photo: no gradient and no ring line. The mockup's shadows
+            // are a faint 1 point line around it and a white line under it.
             Circle()
-                .fill(RadialGradient(
-                    stops: [
-                        .init(color: .white, location: 0), .init(color: Color(hex: 0xe9ecef), location: 0.55),
-                        .init(color: Color(hex: 0xdadee3), location: 1),
-                    ],
-                    center: UnitPoint(x: 0.5, y: 0.35), startRadius: 0, endRadius: 161))
-                // The mockup's inset shadows: a white glow at the top, a faint shade at the bottom.
-                .overlay {
-                    Circle().stroke(Color.white.opacity(0.9), lineWidth: 4).blur(radius: 2).offset(y: 2)
-                        .clipShape(Circle())
-                }
-                .overlay {
-                    Circle().stroke(Color.black.opacity(0.06), lineWidth: 6).blur(radius: 3).offset(y: -3)
-                        .clipShape(Circle())
-                }
-                .overlay { Circle().strokeBorder(Color(hex: 0xc3c9d0), lineWidth: 1) }
+                .fill(Color(hex: 0xfefefe))
+                .background { Circle().fill(Color.white.opacity(0.8)).offset(y: 1).blur(radius: 0.5) }
+                .background { Circle().fill(Color.black.opacity(0.06)).padding(-1) }
                 .frame(width: Self.size, height: Self.size)
-            key(.menu) { Text("MENU").font(.helvetica(11, bold: true)).tracking(1) }
-            key(.prev) { IconView(.prev, width: 18, height: 12) }
-            key(.next) { IconView(.next, width: 18, height: 12) }
-            key(.play) { IconView(.playPause, width: 20, height: 12) }
+            key(.menu) { Text("MENU").font(.helvetica(14, weight: .medium)).tracking(0.7) }
+            key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
+            key(.next) { IconView(.next, width: 19.8, height: 10.2) }
+            key(.play) { IconView(.playPause, width: 24.6, height: 9.6) }
             center
         }
         .frame(width: Self.size, height: Self.size)
@@ -116,21 +105,22 @@ struct ClickWheel: View {
     private func key<Label: View>(_ zone: Zone, @ViewBuilder label: () -> Label) -> some View {
         let rect = Self.zones.first { $0.0 == zone }?.1 ?? .zero
         return label()
-            .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? 0x3f454d : 0x7d838c))
+            .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? 0x6c7076 : 0x9f9f9f))
             .frame(width: rect.width, height: rect.height)
             .offset(x: rect.minX, y: rect.minY)
     }
 
     private var center: some View {
+        // Pressed in, as in the photo: dark at the top, with a faint inner shadow and no ring
+        // line. Pressed, it gets a little darker.
         let down = pressed == .center
-        let light = Color(hex: 0xf3f5f7), dark = Color(hex: 0xdfe3e8)
         return Circle()
-            .fill(LinearGradient.vertical(down ? dark : light, down ? light : dark))
-            .overlay {  // the mockup's 1 point white line inside the top edge
-                Circle().stroke(Color.white, lineWidth: 1).offset(y: 1).clipShape(Circle()).padding(1)
+            .fill(down ? LinearGradient.vertical(Color(hex: 0xbcbcbc), Color(hex: 0xdcdcdc))
+                       : LinearGradient.vertical(Color(hex: 0xc8c8c8), Color(hex: 0xe9e9e9)))
+            .overlay {
+                Circle().stroke(Color.black.opacity(0.12), lineWidth: 2).blur(radius: 1).offset(y: 1)
+                    .clipShape(Circle())
             }
-            .overlay { Circle().strokeBorder(Color(hex: 0xc3c9d0), lineWidth: 1) }
-            .shadow(color: .black.opacity(0.12), radius: 1, y: 1)
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
             .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)
     }

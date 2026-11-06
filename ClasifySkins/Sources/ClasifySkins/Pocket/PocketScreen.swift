@@ -3,16 +3,24 @@ import SwiftUI
 
 /// The Pocket colors, from the mockup's inline styles.
 enum Pocket {
-    /// The LCD in points: the iPod's 4:3 shape, a 22.5 point title bar over 9 rows of 22.5.
+    /// The LCD in points: the iPod's 4:3 shape, a 19 point title bar over 9 rows of 22.9.
     static let screenWidth: CGFloat = 300, screenHeight: CGFloat = 225
     /// A half screen's list pane: half the screen, as on the iPod. The covers take the rest.
     static let paneWidth: CGFloat = 150
-    /// The title bar and the bar for the playing track: 22.5 points with their line, like a row.
-    static let barHeight: CGFloat = 21.5
+    /// The title bar: 19 points with its line, as in the photo.
+    static let headerHeight: CGFloat = 18
+    /// The bar for the playing track: 22.9 points with its line, like a row.
+    static let barHeight: CGFloat = 21.9
+    /// The list under the title bar.
+    static let listHeight: CGFloat = 206
+    /// The dark gray bezel around the screen.
+    static let bezel = Color(hex: 0x4a4e53)
+    /// The title bar's play and pause marks: glossy blue with a thin dark blue edge.
+    static var markGloss: LinearGradient { .vertical(Color(hex: 0x9fd0f5), Color(hex: 0x3f8fd8)) }
+    static let markEdge = Color(hex: 0x3a7ab8)
     static let ink = Color(hex: 0x1b1f24)
     static let gray = Color(hex: 0x3d454e)
     static let line = Color(hex: 0x8f99a3)
-    static let frame = Color(hex: 0x4b5056)
     /// The LCD's glass, behind the lists.
     static var glass: LinearGradient { .vertical(Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec)) }
     static var selection: LinearGradient { .vertical(Color(hex: 0x5aa3f0), Color(hex: 0x1f6fd1)) }
@@ -112,21 +120,15 @@ struct PocketScreen: View {
             if !state.toast.isEmpty { toast }
         }
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
+        .background(Pocket.glass)  // the photo's glass has no inner shadow
+        .clipShape(RoundedRectangle(cornerRadius: 2))
+        // The bezel: 6.6 points at the sides and the top, 7.8 at the bottom, with a thin white
+        // highlight under it.
+        .padding(EdgeInsets(top: 6.6, leading: 6.6, bottom: 7.8, trailing: 6.6))
         .background {
-            // The glass and its inset shadow. As in the mockup, the header, the selected row,
-            // the bar and the scroll bar paint over the shadow.
-            Pocket.glass
-                .overlay {
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(Color.black.opacity(0.25), lineWidth: 6)
-                        .blur(radius: 3)
-                        .offset(y: 2)
-                }
+            RoundedRectangle(cornerRadius: 7.8).fill(Pocket.bezel)
+                .shadow(color: .white.opacity(0.7), radius: 0, y: 1)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 4))
-        .padding(2)
-        .overlay { RoundedRectangle(cornerRadius: 6).strokeBorder(Pocket.frame, lineWidth: 2) }
-        .clipShape(RoundedRectangle(cornerRadius: 6))
         .foregroundStyle(Pocket.ink)
         // .contain, not .combine: the shuffle and repeat buttons on Now Playing must stay
         // separate VoiceOver controls.
@@ -143,15 +145,27 @@ struct PocketScreen: View {
                 Text("OFF").font(.helvetica(9, bold: true)).foregroundStyle(Pocket.offline)
             }
             switch Labels.playMark(in: state) {
-            case .playing: IconView(.play, width: 9, height: 10, label: "Playing").foregroundStyle(Pocket.blue)
-            case .paused: IconView(.pause, width: 9, height: 10, label: "Paused").foregroundStyle(Pocket.blue)
+            case .playing: mark(.play, label: "Playing")
+            case .paused: mark(.pause, label: "Paused")
             case nil: EmptyView()
             }
         }
-        .font(.helvetica(11, bold: true))
-        .padding(.horizontal, 8)
-        .frame(height: Pocket.barHeight)  // 22.5 with the line under it, as in the mockup
+        .font(.helvetica(11.7, bold: true))
+        .padding(EdgeInsets(top: 1, leading: 9, bottom: 0, trailing: 8))
+        .frame(height: Pocket.headerHeight)  // 19 with the line under it, as in the mockup
         .background(LinearGradient.vertical(.white, Color(hex: 0xc9d2db)))
+    }
+
+    /// A 10 x 11 play or pause mark, glossy blue with a dark blue edge.
+    private func mark(_ icon: Icon, label: String) -> some View {
+        let shape = icon.fill.applying(CGAffineTransform(scaleX: 10 / icon.viewBox.width, y: 11 / icon.viewBox.height))
+        return ZStack {
+            shape.fill(Pocket.markGloss)
+            shape.stroke(Pocket.markEdge, lineWidth: 0.6)
+        }
+        .frame(width: 10, height: 11, alignment: .topLeading)
+        .accessibilityElement()
+        .accessibilityLabel(label)
     }
 
     @ViewBuilder private var content: some View {
@@ -176,7 +190,7 @@ struct PocketScreen: View {
         }
         .font(.helvetica(10))
         .padding(.horizontal, 8)
-        .frame(height: Pocket.barHeight)  // 22.5 with the line over it
+        .frame(height: Pocket.barHeight)  // 22.9 with the line over it, like a row
         .background(Color(hex: 0xe8eef3))
     }
 
@@ -204,10 +218,11 @@ struct PocketList: View {
         let first = top.off  // the reducer keeps the selection inside state.shownRows
         let shown = Array(rows.indices.dropFirst(first).prefix(state.shownRows))
         let scrolls = rows.count > state.shownRows
-        // The rows fill the list exactly: 202.5 points under the title bar, 180 over the bar
-        // (only song lists show it). Menus show 9 rows of 22.5. Song rows have two lines, so
-        // 5 of them fit: 36 points over the bar, 40.5 with no bar.
-        let height = (state.showsBar ? 180 : 202.5) / CGFloat(state.shownRows)
+        // The rows fill the list exactly: 206 points under the title bar, 183.1 over the bar
+        // (only song lists show it). Menus show 9 rows of 22.9. Song rows have two lines, so
+        // 5 of them fit: 36.6 points over the bar, 41.2 with no bar.
+        let height = (state.showsBar ? Pocket.listHeight - Pocket.barHeight - 1 : Pocket.listHeight)
+            / CGFloat(state.shownRows)
         VStack(spacing: 0) {
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),
@@ -263,7 +278,7 @@ struct PocketRow: View {
     let selected: Bool
     /// A scroll bar shows, so the row leaves room for it.
     let scrolls: Bool
-    var height: CGFloat = 22.5
+    var height: CGFloat = 22.9
 
     var body: some View {
         HStack(spacing: 6) {
@@ -297,7 +312,7 @@ struct PocketRow: View {
             }
             .fixedSize()
         }
-        .padding(.leading, 10)
+        .padding(.leading, 9)
         .padding(.trailing, scrolls ? 14 : 10)
         .frame(height: height)
         .foregroundStyle(selected ? Color.white : Pocket.ink)

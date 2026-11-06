@@ -137,18 +137,20 @@ func sampleState() -> AppState {
     }
 
     @Test func wheelZonesFollowTheMockup() {
-        #expect(ClickWheel.zone(at: CGPoint(x: 98, y: 98)) == .center)
-        #expect(ClickWheel.zone(at: CGPoint(x: 98, y: 25)) == .menu)
-        #expect(ClickWheel.zone(at: CGPoint(x: 25, y: 98)) == .prev)
-        #expect(ClickWheel.zone(at: CGPoint(x: 170, y: 98)) == .next)
-        #expect(ClickWheel.zone(at: CGPoint(x: 98, y: 170)) == .play)
-        #expect(ClickWheel.zone(at: CGPoint(x: 60, y: 40)) == nil)  // the ring between buttons
+        // The 225 point wheel: its center is at 112.5, and the center button's radius is 40.8.
+        #expect(ClickWheel.zone(at: CGPoint(x: 112.5, y: 112.5)) == .center)
+        #expect(ClickWheel.zone(at: CGPoint(x: 140, y: 140)) == .center)
+        #expect(ClickWheel.zone(at: CGPoint(x: 112.5, y: 18)) == .menu)
+        #expect(ClickWheel.zone(at: CGPoint(x: 24, y: 112.5)) == .prev)
+        #expect(ClickWheel.zone(at: CGPoint(x: 201, y: 112.5)) == .next)
+        #expect(ClickWheel.zone(at: CGPoint(x: 112.5, y: 206)) == .play)
+        #expect(ClickWheel.zone(at: CGPoint(x: 70, y: 45)) == nil)  // the ring between buttons
         #expect(ClickWheel.zone(at: CGPoint(x: 2, y: 2)) == nil)  // outside the circle
     }
 
     @Test func clockwiseAnglesGrow() {
-        let right = ClickWheel.angle(of: CGPoint(x: 190, y: 98))
-        let below = ClickWheel.angle(of: CGPoint(x: 98, y: 190))
+        let right = ClickWheel.angle(of: CGPoint(x: 220, y: 112.5))
+        let below = ClickWheel.angle(of: CGPoint(x: 112.5, y: 220))
         #expect(abs(right) < 0.001)
         #expect(abs(below - 90) < 0.001)  // a quarter turn clockwise
     }
