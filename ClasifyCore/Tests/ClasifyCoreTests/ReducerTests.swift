@@ -395,6 +395,8 @@ func playing(_ i: Int = 0) -> AppState {
             send(&s, actions)
             return s.wholeSeq - seq
         }
+        // Selects a row directly: quick wheel steps move more than one row.
+        func pick(_ row: Row) { s.top.sel = s.rows(for: s.top).firstIndex(of: row) ?? -1 }
         // Half to half, and full to full: only the content.
         #expect(move(.select, .playlistsLoaded(token: 1, playlists: [focusInfo])) == 0)  // main to Playlists
         #expect(s.top.screen == .playlists)
@@ -404,18 +406,24 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(move(.menu) == 1 && s.top.screen == .playlists)  // back to Playlists: push
         #expect(move(.menu) == 0 && s.top.screen == .main)
         // The main menu to a full screen and back: push both ways.
-        #expect(move(.wheel(-9), .wheel(4), .select) == 1 && s.top.screen == .settings)
+        pick(.settings)
+        #expect(move(.select) == 1 && s.top.screen == .settings)
         #expect(move(.menu) == 1)
-        #expect(move(.wheel(-9), .wheel(2), .select) == 1 && s.top.screen == .tracks(playlist: Playlist.likedSongsID))
+        pick(.likedSongs)
+        #expect(move(.select) == 1 && s.top.screen == .tracks(playlist: Playlist.likedSongsID))
         #expect(move(.menu) == 1)
-        #expect(move(.wheel(-9), .select) == 1 && s.top.screen == .now)
+        pick(.nowPlaying)
+        #expect(move(.select) == 1 && s.top.screen == .now)
         #expect(move(.menu) == 1)
         // With Album Art off, no screen is a half screen: only the content slides.
         s.showArt = false
-        #expect(move(.wheel(-9), .wheel(1), .select) == 0 && s.top.screen == .playlists)
+        pick(.playlists)
+        #expect(move(.select) == 0 && s.top.screen == .playlists)
+        pick(.playlist("focus"))
         #expect(move(.select) == 0 && s.top.screen == .tracks(playlist: "focus"))
         #expect(move(.menu, .menu) == 0 && s.top.screen == .main)
-        #expect(move(.wheel(-9), .select, .menu) == 0)
+        pick(.nowPlaying)
+        #expect(move(.select, .menu) == 0)
         #expect(move(.reset) == 0)  // the reset keeps it, so the skin does not push
     }
 
@@ -805,7 +813,8 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(send(&s, .reset) == [.stop])
         var fresh = AppState()
-        fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt; fresh.navSeq = s.navSeq
+        fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt
+        (fresh.navSeq, fresh.wholeSeq) = (s.navSeq, s.wholeSeq)
         #expect(s == fresh && s.tok == 2 && s.navSeq > 0)  // the reset keeps the screen identity: no slide
         send(&s, .select, .authDone(token: 2, ok: true), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
