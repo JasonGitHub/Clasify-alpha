@@ -156,6 +156,46 @@ import Testing
         #expect(m.r > 90 && m.b > 90, "mid fade \(m)")  // red under half blue: no dark dip
     }
 
+    @Test func theMainArtPanKeepsItsStartWithinATurn() {
+        // Within one cover's turn the pan is the same value, so a view update never restarts it.
+        let first = MainArt.motion(at: 0.5, index: 1, count: 3)
+        #expect(first == MainArt.motion(at: 5, index: 1, count: 3))
+        // The next turn of the same layer is a new pan, in the other direction (3 covers: odd turns).
+        let next = MainArt.motion(at: 0.5 + 3 * MainArt.slot, index: 1, count: 3)
+        #expect(next.turn == first.turn + 3 && next.from == -first.from && next.start == first.start + 3 * MainArt.slot)
+        // Every frame of a turn gives the same value, also at a large time with rounding errors.
+        let late = MainArt.motion(at: 975, index: 2, count: 8)  // shown from 975 to 984
+        for frame in 1...240 {
+            #expect(MainArt.motion(at: 975 + Double(frame) / 30, index: 2, count: 8) == late)
+        }
+        // The pose follows the same pan, at a constant speed from `from` to `to`.
+        let m = MainArt.motion(at: 9, index: 1, count: 3)
+        let span = MainArt.slot + MainArt.fade
+        for t in stride(from: m.start, through: m.start + span, by: 0.5) {
+            let dx = MainArt.pose(at: t, index: 1, count: 3).dx
+            #expect(abs(dx - (m.from + (m.to - m.from) * (t - m.start) / span)) < 1e-9)
+        }
+    }
+
+    @Test func thePanningCoverMovesItsLayerWithCoreAnimation() throws {
+        let image = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let view = PanView(frame: NSRect(x: 0, y: 0, width: 116, height: 180))
+        let m = MainArt.motion(at: 0, index: 0, count: 3)
+        view.update(image: image, scale: MainArt.baseScale, pan: m, elapsed: 0)
+        view.layout()
+        #expect(abs(view.cover.bounds.width - 116 * MainArt.baseScale) < 1e-9)
+        #expect(view.cover.position == CGPoint(x: 58, y: 90))
+        let move = try #require(view.cover.animation(forKey: "pan") as? CABasicAnimation)
+        #expect(move.keyPath == "position.x")
+        #expect(abs(((move.fromValue as? NSNumber)?.doubleValue ?? 0) - (58 + m.from * 116)) < 1e-9)
+        #expect(abs(((move.toValue as? NSNumber)?.doubleValue ?? 0) - (58 + m.to * 116)) < 1e-9)
+        #expect(move.duration == MainArt.slot + MainArt.fade)
+        // Reduce Motion: no animation, the cover stays at the center.
+        view.update(image: image, scale: MainArt.baseScale, pan: nil, elapsed: 0)
+        view.layout()
+        #expect(view.cover.animation(forKey: "pan") == nil)
+    }
+
     @Test func aMissingMainArtCoverShowsTheOneBeforeIt() {
         #expect(MainArt.filled([nil, "A", nil, "B"]) == ["B", "A", "A", "B"])
         #expect(MainArt.filled([String?]([nil, nil])) == [nil, nil])  // all nil stays nil
