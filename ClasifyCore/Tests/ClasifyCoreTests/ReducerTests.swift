@@ -346,7 +346,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.artRow == .playlist("focus") && s.mainArt == shown)  // the covers stay while it loads
         #expect(send(&s, .tick, now: 201).isEmpty)  // read once
         send(&s, .artTracksRead(playlist: "focus", tracks: nil), now: 202)  // the read failed
-        #expect(s.mainArt == shown && !s.loadedTracks.contains("focus") && s.artReads.isEmpty)
+        #expect(s.mainArt == shown && !s.loadedTracks.contains("focus") && !s.artReads.contains("focus"))
         #expect(send(&s, .tick, now: 203).isEmpty)  // not read again on each tick
 
         send(&s, .wheel(1), now: 210)  // Mix
@@ -375,6 +375,27 @@ func playing(_ i: Int = 0) -> AppState {
         s.albumArt = .off
         send(&s, .wheel(1), .wheel(-1), now: 250)
         #expect(send(&s, .tick, now: 251).isEmpty && s.halfRow == nil)
+    }
+
+    /// At first open, nothing has read Liked Songs into the state yet, so the main menu reads it
+    /// for its covers. The Playlists list keeps one row per playlist.
+    @Test func theMainMenuReadsLikedSongsForItsCoversAtFirstOpen() {
+        var s = AppState()
+        #expect(send(&s, .launch, .restored(token: 1, ok: true)).last == .readArtTracks(playlist: Playlist.likedSongsID))
+        #expect(s.artRow == .playlists && s.mainArt.isEmpty)
+        #expect(send(&s, .wheel(1), .tick, now: 101).isEmpty)  // Liked Songs: the read already runs
+        send(&s, .artTracksRead(playlist: Playlist.likedSongsID, tracks: Self.likedCovers.tracks), now: 102)
+        #expect(s.loadedTracks == [Playlist.likedSongsID] && s.library.map(\.id) == [Playlist.likedSongsID])
+        #expect(s.mainArt.count == mainArtCount && s.mainArt.allSatisfy { $0.id.hasPrefix("l") })
+        send(&s, .select, now: 103)  // Liked Songs opens with no read
+        #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && !s.top.loading)
+        send(&s, .menu, .wheel(-1), .select, .playlistsLoaded(token: s.tok + 1, playlists: [focusInfo]), now: 104)
+        #expect(s.library.map(\.id) == [Playlist.likedSongsID, "focus"] && s.rows(for: s.top) == [.playlist("focus")])
+        #expect(s.tracks(in: Playlist.likedSongsID) == Self.likedCovers.tracks)  // the list load keeps the read
+        // Offline at first open, nothing is read.
+        s = AppState()
+        send(&s, .offline(true))
+        #expect(!send(&s, .launch, .restored(token: 1, ok: true)).contains(.readArtTracks(playlist: Playlist.likedSongsID)))
     }
 
     @Test func screenChangesSlideInFromTheRightOrTheLeft() {
@@ -737,9 +758,9 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func loginAndRestorePrefetchTheLibrary() {
         var s = AppState()
-        #expect(send(&s, .select, .authDone(token: 1, ok: true)) == [.logIn(token: 1), .prefetch])
+        #expect(send(&s, .select, .authDone(token: 1, ok: true)) == [.logIn(token: 1), .prefetch, .readArtTracks(playlist: Playlist.likedSongsID)])
         s = AppState()
-        #expect(send(&s, .launch, .restored(token: 1, ok: true)) == [.restoreSession(token: 1), .prefetch])
+        #expect(send(&s, .launch, .restored(token: 1, ok: true)) == [.restoreSession(token: 1), .prefetch, .readArtTracks(playlist: Playlist.likedSongsID)])
         s = AppState()
         #expect(send(&s, .launch, .restored(token: 1, ok: false)) == [.restoreSession(token: 1)])
     }
@@ -986,7 +1007,10 @@ func playing(_ i: Int = 0) -> AppState {
     let store = Store(player: FakePlayer(), library: lib, env: Dependencies(now: { 0 }, random: { _ in 0 }))
     store.send(.launch)
     while !lib.calls.contains("prefetch") { await Task.yield() }
-    #expect(lib.calls == ["restoreSession", "prefetch"] && lib.fetches.isEmpty)
+    #expect(lib.calls == ["restoreSession", "prefetch"])
+    // The main menu reads Liked Songs for its covers, once.
+    while !store.state.loadedTracks.contains(Playlist.likedSongsID) { await Task.yield() }
+    #expect(lib.fetches == [Playlist.likedSongsID] && store.state.tracks(in: Playlist.likedSongsID) == liked.tracks)
 }
 
 @Test func trackKeepsACoverIDAndDropsAnEmptyOne() {

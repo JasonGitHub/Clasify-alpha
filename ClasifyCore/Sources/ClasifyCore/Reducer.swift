@@ -465,11 +465,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             keepSelection(on: screen, old: old)
 
         case .artTracksRead(let id, let tracks):
-            guard s.artReads.remove(id) != nil, let tracks, !s.loadedTracks.contains(id),
-                let i = s.library.firstIndex(where: { $0.id == id })  // the playlist is gone
-            else { return }
+            guard s.artReads.remove(id) != nil, let tracks, !s.loadedTracks.contains(id) else { return }
             // Kept like an open's read, so opening the playlist later needs no read.
-            s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+            if let i = s.library.firstIndex(where: { $0.id == id }) {
+                s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+            } else if id == Playlist.likedSongsID {  // first, as an open's read puts it; not a Playlists row
+                s.library.insert(Playlist(id: id, name: "Liked Songs", tracks: tracks), at: 0)
+            } else {
+                return  // the playlist is gone
+            }
             s.loadedTracks.insert(id)
             s.readAt[id] = now
 
@@ -557,9 +561,16 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if opened || (s.artRow, s.current, s.loadedTracks) != (artBefore.0, artBefore.2, artBefore.3) || s.library != artBefore.1 || s.extraTracks != artBefore.4 {
             s.refreshArt()
         }
-        // Read when the covers move to a playlist or the app comes back online, not on each
-        // tick, so a failed read is tried again only when the playlist is selected again.
-        if case .playlist(let id)? = s.artRow, opened || s.artRow != artBefore.0 || (wasOffline && !s.offline),
+        // The list that the covers come from: the selected playlist, or Liked Songs for the main
+        // menu's rows (see `refreshArt`), which nothing else reads at first open.
+        let artList: String? = switch s.artRow {
+        case .playlist(let id)?: id
+        case .nowPlaying?, nil: nil
+        default: s.top.screen == .main ? Playlist.likedSongsID : nil  // Playlists picks a playlist soon
+        }
+        // Read when the covers move to a list or the app comes back online, not on each
+        // tick, so a failed read is tried again only when the row is selected again.
+        if let id = artList, opened || s.artRow != artBefore.0 || (wasOffline && !s.offline),
             !s.loadedTracks.contains(id), !s.offline, s.artReads.insert(id).inserted {
             fx.append(.readArtTracks(playlist: id))
         }
