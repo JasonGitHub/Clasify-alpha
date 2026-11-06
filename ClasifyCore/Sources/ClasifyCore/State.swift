@@ -192,22 +192,18 @@ public struct AppState: Equatable, Sendable {
         set { stack[stack.count - 1] = newValue }
     }
 
-    /// The bar for the playing track shows under every screen but the main menu, Now Playing
-    /// and the login wait. The main menu shows covers on its right instead.
+    /// The bar for the playing track shows only under song lists. Menus, Playlists and Now
+    /// Playing show no bar, so the menus keep all their rows.
     public var showsBar: Bool {
-        guard current != nil else { return false }
-        switch top.screen {
-        case .main, .now, .auth: return false
-        default: return true
-        }
+        guard current != nil, case .tracks = top.screen else { return false }
+        return true
     }
 
     /// The list rows that show at once: `visibleRows`, or `trackRows` for the taller two-line
-    /// song rows, and one less while the bar shows.
+    /// song rows. The bar takes no row: the song rows get shorter while it shows.
     public var shownRows: Int {
-        var rows = visibleRows
-        if case .tracks = top.screen { rows = trackRows }
-        return showsBar ? rows - 1 : rows
+        if case .tracks = top.screen { return trackRows }
+        return visibleRows
     }
 
     /// The selected row of the main menu, or nil on another screen.

@@ -3,10 +3,12 @@ import SwiftUI
 
 /// The Pocket colors, from the mockup's inline styles.
 enum Pocket {
-    /// The LCD in points: the iPod's 4:3 shape at the mockup's height.
-    static let screenWidth: CGFloat = 266, screenHeight: CGFloat = 200
+    /// The LCD in points: the iPod's 4:3 shape, a 22.5 point title bar over 9 rows of 22.5.
+    static let screenWidth: CGFloat = 300, screenHeight: CGFloat = 225
     /// A half screen's list pane: half the screen, as on the iPod. The covers take the rest.
-    static let paneWidth: CGFloat = 133
+    static let paneWidth: CGFloat = 150
+    /// The title bar and the bar for the playing track: 22.5 points with their line, like a row.
+    static let barHeight: CGFloat = 21.5
     static let ink = Color(hex: 0x1b1f24)
     static let gray = Color(hex: 0x3d454e)
     static let line = Color(hex: 0x8f99a3)
@@ -57,7 +59,7 @@ struct PocketScreen: View {
     /// The screen's parts: the title bar, the content and the bar, and on a half screen (the
     /// main menu and Playlists) the covers beside the pane.
     @ViewBuilder private var parts: some View {
-        // A half screen (the main menu, Playlists) is a 133 point pane (half the screen) with a shadow, over
+        // A half screen (the main menu, Playlists) is a 150 point pane (half the screen) with a shadow, over
         // covers on the right. The panel stays between them, so it does not start again.
         // With Album Art set to Now Playing or Off, they are full-width lists and load no covers.
         let split = state.isHalf(top.screen)
@@ -148,7 +150,7 @@ struct PocketScreen: View {
         }
         .font(.helvetica(11, bold: true))
         .padding(.horizontal, 8)
-        .frame(height: 19)  // 20 with the line under it, as in the mockup
+        .frame(height: Pocket.barHeight)  // 22.5 with the line under it, as in the mockup
         .background(LinearGradient.vertical(.white, Color(hex: 0xc9d2db)))
     }
 
@@ -174,7 +176,7 @@ struct PocketScreen: View {
         }
         .font(.helvetica(10))
         .padding(.horizontal, 8)
-        .frame(height: 19)  // 20 with the line over it
+        .frame(height: Pocket.barHeight)  // 22.5 with the line over it
         .background(Color(hex: 0xe8eef3))
     }
 
@@ -202,9 +204,10 @@ struct PocketList: View {
         let first = top.off  // the reducer keeps the selection inside state.shownRows
         let shown = Array(rows.indices.dropFirst(first).prefix(state.shownRows))
         let scrolls = rows.count > state.shownRows
-        // The rows fill the list exactly: 180 points under the title bar, 160 over the bar.
-        // Song rows have two lines, so only state.shownRows of them fit: 36 or 40 points each.
-        let height = (state.showsBar ? 160 : 180) / CGFloat(state.shownRows)
+        // The rows fill the list exactly: 202.5 points under the title bar, 180 over the bar
+        // (only song lists show it). Menus show 9 rows of 22.5. Song rows have two lines, so
+        // 5 of them fit: 36 points over the bar, 40.5 with no bar.
+        let height = (state.showsBar ? 180 : 202.5) / CGFloat(state.shownRows)
         VStack(spacing: 0) {
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),

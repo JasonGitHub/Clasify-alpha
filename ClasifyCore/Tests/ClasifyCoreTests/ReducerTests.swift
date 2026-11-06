@@ -53,8 +53,8 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.sel == 3)  // clamped to last row
 
         s = playing()
-        send(&s, .menu, .wheel(7))  // back to Focus tracks, where the bar leaves 4 rows
-        #expect(s.top.sel == 7 && s.top.off == 4)
+        send(&s, .menu, .wheel(7))  // back to Focus tracks: 5 rows, with the bar too
+        #expect(s.top.sel == 7 && s.top.off == 3)
         send(&s, .menu, .menu, .select)  // Now Playing
         #expect(send(&s, .wheel(-2)) == [.setVolume(50)])
         #expect(s.overlayUntil == 101.5)
@@ -66,10 +66,10 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, openFocus(1))
         send(&s, .wheel(7))
         #expect(s.shownRows == 5 && s.top.sel == 7 && s.top.off == 3)
-        send(&s, .select, .menu)  // play track 7, then back: the bar now takes a row
-        #expect(s.shownRows == 4 && s.top.sel == 7 && s.top.off == 4)
+        send(&s, .select, .menu)  // play track 7, then back: the bar shows, the rows stay
+        #expect(s.showsBar && s.shownRows == 5 && s.top.sel == 7 && s.top.off == 3)
         send(&s, .wheel(-1))  // the selection moves up, the rows stay
-        #expect(s.top.sel == 6 && s.top.off == 4)
+        #expect(s.top.sel == 6 && s.top.off == 3)
         send(&s, .wheel(-6))
         #expect(s.top.sel == 0 && s.top.off == 0)
     }
@@ -235,15 +235,18 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.volume == 100)  // 60 + 8 x 5: on Now Playing each step stays one step
     }
 
-    @Test func theBarTakesARowExceptOnNowPlaying() {
+    @Test func theBarShowsOnlyOnSongLists() {
         var s = playing()
-        #expect(!s.showsBar && s.shownRows == 8)  // Now Playing
+        #expect(!s.showsBar && s.shownRows == 9)  // Now Playing
         send(&s, .menu)
-        #expect(s.showsBar && s.shownRows == 4)  // five two-line song rows, less one
+        #expect(s.showsBar && s.shownRows == 5)  // five two-line song rows over the bar
         send(&s, .menu)
-        #expect(s.showsBar && s.shownRows == 7)  // Playlists
+        #expect(!s.showsBar && s.shownRows == 9)  // Playlists: 9 rows, no bar
         send(&s, .menu)
-        #expect(!s.showsBar && s.shownRows == 8)  // the main menu shows covers instead
+        #expect(!s.showsBar && s.shownRows == 9)  // the main menu
+        s = mainMenu()
+        send(&s, openFocus(1))  // a song list with nothing playing: 5 taller rows
+        #expect(s.top.screen == .tracks(playlist: "focus") && !s.showsBar && s.shownRows == 5)
     }
 
     @Test func prevRestartsAfterThreeSecondsElseGoesBack() {

@@ -26,14 +26,14 @@ import Testing
     }
 
     // Points in the mockup layout: the device border 1, its padding 24 x 20, the screen border 2,
-    // the header 20 with its line, and 8 rows of 22.5 (7 of 160 / 7 over the bar).
-    // Song lists have 5 two-line rows of 36 (4 of 40 over the bar).
-    static let screenLeft = 23, listTop = 47, screenWidth = 266
+    // the header 22.5 with its line (the list starts at 49.5), and 9 rows of 22.5.
+    // Song lists have 5 two-line rows: 40.5 with no bar, 36 over the bar. Only song lists show the bar.
+    // The screen is 300 x 225, so its bottom is at 252.
+    static let screenLeft = 23, listTop = 50, screenWidth = 300, screenBottom = 252
 
     static func rowCenter(_ index: Int, bar: Bool = false, songs: Bool = false) -> Int {
-        let rows = (songs ? 5.0 : 8.0) - (bar ? 1 : 0)
-        let height = (bar ? 160 : 180) / rows
-        return listTop + Int((Double(index) + 0.5) * height)
+        let height = songs ? (bar ? 180 : 202.5) / 5 : 22.5
+        return Int(49.5 + (Double(index) + 0.5) * height)
     }
 
     func render(
@@ -86,12 +86,12 @@ import Testing
         s.artRow = .nowPlaying
         s.refreshArt()
         let shot = try render(s, "main")
-        // A 133 point pane (x 24 to 157) with 8 rows of 22.5 and no bar.
+        // A 150 point pane (x 23 to 173) with 9 rows of 22.5 and no bar.
         #expect(shot.isLight(125, Self.rowCenter(0)))  // right of "Now Playing"
         #expect(shot.isBlue(125, Self.rowCenter(1)))
         // On the right, the playing track's cover: no image is loaded, so the blue-grey square.
         // Its gradient runs from d5dee8 at the top to a9b8c8 at the bottom; the point is low in it.
-        let art = shot.rgb(Self.screenLeft + 170, Self.listTop + 150)  // past the pane's shadow
+        let art = shot.rgb(Self.screenLeft + 170, Self.listTop + 168)  // past the pane's shadow, 83 % down
         let want = try reference(0xb0bece)
         #expect(near(art, want), "art \(art), want \(want)")
 
@@ -275,7 +275,7 @@ import Testing
         s.top.sel = 4
         let shot = try render(s, "tracks-last-row")
         #expect(shot.isBlue(100, Self.rowCenter(4, songs: true)))  // the 5th row ends at the screen's bottom
-        #expect(shot.isBlue(100, 225))
+        #expect(shot.isBlue(100, Self.screenBottom - 2))
         #expect(!shot.isBlue(100, Self.rowCenter(3, songs: true)))
     }
 
@@ -300,9 +300,9 @@ import Testing
         s.scrollUntil = 1  // a wheel step or a screen change just happened
         let shot = try render(s, "tracks")
         #expect(shot.isBlue(100, Self.rowCenter(0, songs: true)))
-        // The second row is not selected. Its lower half holds the gray artist line, "Band 2".
-        let top = Self.listTop + 36
-        let artist = (top + 21...top + 31).contains { y in
+        // The second row (40.5 points, no bar) is not selected. Its lower half holds the gray artist line, "Band 2".
+        let top = Self.listTop + 40
+        let artist = (top + 21...top + 35).contains { y in
             (Self.screenLeft + 10...Self.screenLeft + 50).contains { x in
                 let c = shot.rgb(x, y)
                 return max(c.r, c.g, c.b) < 170
@@ -345,7 +345,7 @@ import Testing
         s.stack.append(Frame(screen: .now))
         let shot = try render(s, "now")
         // The cover is not loaded, so it is the same blue-grey square as a track with no cover.
-        let got = shot.rgb(Self.screenLeft + 12 + 6, 75), want = try reference(0xd5dee8)
+        let got = shot.rgb(Self.screenLeft + 12 + 6, 78), want = try reference(0xd5dee8)
         #expect(near(got, want), "cover \(got), want \(want)")
     }
 
@@ -354,8 +354,8 @@ import Testing
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")  // no cover ID
         s.stack.append(Frame(screen: .now))
         let shot = try render(s, "now-no-cover")
-        // The cover's top starts under the 14 point icon row: 47 + 6 + 14 + 2.
-        let got = shot.rgb(Self.screenLeft + 12 + 6, 75), want = try reference(0xd5dee8)
+        // The cover's top starts under the 14 point icon row: 49.5 + 6 + 14 + 2.
+        let got = shot.rgb(Self.screenLeft + 12 + 6, 78), want = try reference(0xd5dee8)
         #expect(near(got, want), "placeholder \(got), want \(want)")
     }
 
@@ -366,7 +366,7 @@ import Testing
         let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let wanted = String(repeating: "ab", count: 20)
         let shot = try render(s, "now-cover", artwork: Artwork { $0 == wanted ? red : nil })
-        let got = shot.rgb(Self.screenLeft + 12 + 38, 131)  // the middle of the cover, where the note was
+        let got = shot.rgb(Self.screenLeft + 12 + 38, 134)  // the middle of the cover, where the note was
         #expect(got.r > 200 && got.g < 60 && got.b < 60, "cover \(got)")
     }
 
@@ -423,18 +423,18 @@ import Testing
         s.overlayUntil = 1
         s.volume = 60
         let volume = try render(s, "now-volume")
-        // The bottom row is 24 points high over the 6 point padding, so bars center at y 209.
-        #expect(volume.isBlue(80, 209))  // inside the 60% glossy fill
-        #expect(volume.isLight(230, 209))  // past it
+        // The bottom row is 24 points high over the 6 point padding, so bars center at y 234.
+        #expect(volume.isBlue(80, 234))  // inside the 60% glossy fill
+        #expect(volume.isLight(260, 234))  // past it
         s.nowMode = .scrub
         s.albumArt = .off
         s.t = 102.5  // half of the track
         let scrub = try render(s, "now-scrub")
         // The times sit on the bar's line: 28 + 6 points on the left, 6 + 32 on the right.
         let start: Int = Self.screenLeft + 12 + 34, end: Int = Self.screenLeft + Self.screenWidth - 12 - 38
-        #expect(scrub.isBlue((start + end) / 2, 209))  // the blue diamond at the half
-        #expect(scrub.isLight(start + 10, 209))  // a thin light track, no fill
-        #expect(scrub.isLight(end - 10, 209))
+        #expect(scrub.isBlue((start + end) / 2, 234))  // the blue diamond at the half
+        #expect(scrub.isLight(start + 10, 234))  // a thin light track, no fill
+        #expect(scrub.isLight(end - 10, 234))
     }
 
     @Test func nowPlayingSliders() throws {
@@ -445,7 +445,7 @@ import Testing
         s.shuffle = true
         let on = try render(s, "now-shuffle")
         // The slider fills the 42 points over the bottom padding. The knob sits on its 6 point track.
-        let right: Int = Self.screenLeft + Self.screenWidth - 12 - 6, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 200
+        let right: Int = Self.screenLeft + Self.screenWidth - 12 - 6, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 225
         #expect(on.isBlue(right - 2, knobY))  // Songs
         #expect(!on.isBlue(left + 2, knobY))
         s.nowMode = .repeatMode
@@ -463,12 +463,12 @@ import Testing
         s.stack = [Frame(screen: .login)]
         s.toast = "Logged out"
         let shot = try render(s, "toast")
-        let toastX: Int = Self.screenLeft + 24, toastY: Int = 195  // 6 points above the toast's bottom, 26 above the screen's
+        let toastX: Int = Self.screenLeft + 24, toastY: Int = 220  // 6 points above the toast's bottom, 26 above the screen's
         #expect(shot.isDark(toastX, toastY))  // the toast's dark box
     }
 
     @Test func pressedCenterFlipsItsGradient() throws {
-        let wheelTop: Int = 261  // device border 1, padding 24, screen 204, gap 32
+        let wheelTop: Int = 286  // device border 1, padding 24, screen 229, gap 32
         let nearTop: Int = wheelTop + 98 - 30, nearBottom: Int = wheelTop + 98 + 30
         let x = Int(PocketSkin.size.width) / 2  // the wheel's center
         let up = try render(AppState(), "wheel")
@@ -483,10 +483,10 @@ import Testing
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
         s.isPlaying = false
-        s.stack.append(Frame(screen: .settings))  // a full-width header; on the half screens it is 133 points
+        s.stack.append(Frame(screen: .settings))  // a full-width header; on the half screens it is 150 points
         let shot = try render(s, "paused")
         // The header mark: two blue bars, 2.6 points wide with a 1.8 point gap, at the right of the header.
-        let left: Int = Self.screenLeft + Self.screenWidth - 8 - 9, midY: Int = 25 + 2 + 10
+        let left: Int = Self.screenLeft + Self.screenWidth - 8 - 9, midY: Int = 25 + 2 + 11
         #expect(shot.isBlue(left + 2, midY))  // the first bar
         #expect(!shot.isBlue(left + 5, midY))  // the gap
         #expect(shot.isBlue(left + 7, midY))  // the second bar
@@ -495,16 +495,16 @@ import Testing
     @Test func theBarShowsANoteThatStaysWhenPaused() throws {
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
-        s.stack.append(Frame(screen: .playlists))
+        s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))  // only song lists show the bar
         s.isPlaying = true
         let playing = try render(s, "bar-playing")
         s.isPlaying = false
         let paused = try render(s, "bar-paused")
-        // The bar is the screen's last 19 points; the note is its first 10 x 10, after 8 of padding.
+        // The bar is the screen's last 21.5 points; the note is its first 10 x 10, after 8 of padding.
         // The text starts 4 points after the note, so this box holds only the note.
         var ink = 0
         for x in (Self.screenLeft + 7)...(Self.screenLeft + 19) {
-            for y in 206...226 {
+            for y in (Self.screenBottom - 20)...(Self.screenBottom - 2) {
                 #expect(playing.rgb(x, y) == paused.rgb(x, y), "at \(x), \(y)")  // no change on pause
                 if playing.isDark(x, y) { ink += 1 }
             }

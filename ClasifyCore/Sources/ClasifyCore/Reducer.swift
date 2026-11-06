@@ -107,9 +107,10 @@ public struct Dependencies: Sendable {
         random: { Int.random(in: 0..<$0) })
 }
 
-/// Rows of 22.5 points fill the list under the title bar, as in the mockup.
-public let visibleRows = 8
-/// Song lists show two lines a row (title and artist), so fewer rows fit.
+/// Rows of 22.5 points fill the list under the 22.5 point title bar, as in the mockup.
+public let visibleRows = 9
+/// Song lists show two lines a row (title and artist), so fewer rows fit. The count stays
+/// the same when the bar shows: the rows get shorter instead.
 public let trackRows = 5
 /// Seconds after a seek in which `.position` ignores a position far from the seek target.
 let seekSettle = 3.0

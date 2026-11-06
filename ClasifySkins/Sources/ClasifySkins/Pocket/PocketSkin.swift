@@ -4,8 +4,9 @@ import SwiftUI
 /// The Pocket skin from the mockup: a white pocket player with an LCD and a click wheel.
 /// It renders `state` and sends input actions. It holds no logic.
 public struct PocketSkin: View {
-    /// The device's size in points, as in the mockup.
-    public static let size = CGSize(width: 314, height: 540)
+    /// The device's size in points, as in the mockup: the 300 x 225 screen with its 2 point
+    /// frame, the padding of 21 and 25, the gap and the wheel, and the 1 point border.
+    public static let size = CGSize(width: 348, height: 565)
 
     let state: AppState
     let send: @MainActor (Action) -> Void
