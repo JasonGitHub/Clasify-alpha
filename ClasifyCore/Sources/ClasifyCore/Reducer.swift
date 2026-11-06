@@ -525,6 +525,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let wasAuth = s.top.screen == .auth
     let rowBefore = s.halfRow
+    let wasOffline = s.offline
     let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
     apply()
     // A new screen slides in: from the right when it opens, from the left on a way back.
@@ -554,9 +555,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if opened || (s.artRow, s.current, s.loadedTracks) != (artBefore.0, artBefore.2, artBefore.3) || s.library != artBefore.1 || s.extraTracks != artBefore.4 {
             s.refreshArt()
         }
-        // Read when the covers move to a playlist, not on each tick, so a failed read is
-        // tried again only when the playlist is selected again.
-        if case .playlist(let id)? = s.artRow, opened || s.artRow != artBefore.0,
+        // Read when the covers move to a playlist or the app comes back online, not on each
+        // tick, so a failed read is tried again only when the playlist is selected again.
+        if case .playlist(let id)? = s.artRow, opened || s.artRow != artBefore.0 || (wasOffline && !s.offline),
             !s.loadedTracks.contains(id), !s.offline, s.artReads.insert(id).inserted {
             fx.append(.readArtTracks(playlist: id))
         }

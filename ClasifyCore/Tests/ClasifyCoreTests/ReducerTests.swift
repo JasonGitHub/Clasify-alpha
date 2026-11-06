@@ -366,7 +366,8 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .wheel(-1), now: 241)
         s.artReads = []
         #expect(send(&s, .tick, now: 241.4).isEmpty && s.artRow == .playlist("focus"))
-        s.offline = false; s.showArt = false
+        #expect(send(&s, .offline(false), now: 242).contains(.readArtTracks(playlist: "focus")))  // online again
+        s.showArt = false
         send(&s, .wheel(1), .wheel(-1), now: 250)
         #expect(send(&s, .tick, now: 251).isEmpty && s.halfRow == nil)
     }
