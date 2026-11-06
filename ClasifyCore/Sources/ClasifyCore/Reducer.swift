@@ -334,7 +334,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .shuffle: toggleShuffle()
             case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
-            case .albumArt: s.showArt.toggle()
+            case .albumArt: s.albumArt = s.albumArt.next
             case .clicker: s.clicker.toggle()
             case .about: s.stack.append(Frame(screen: .about))
             case .logOut: s.stack.append(Frame(screen: .confirm))

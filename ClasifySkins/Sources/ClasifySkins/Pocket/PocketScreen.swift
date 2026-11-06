@@ -59,7 +59,7 @@ struct PocketScreen: View {
     @ViewBuilder private var parts: some View {
         // A half screen (the main menu, Playlists) is a 133 point pane (half the screen) with a shadow, over
         // covers on the right. The panel stays between them, so it does not start again.
-        // With Album Art off, they are full-width lists and load no covers.
+        // With Album Art set to Now Playing or Off, they are full-width lists and load no covers.
         let split = state.isHalf(top.screen)
         let width: CGFloat = split ? Pocket.paneWidth : Pocket.screenWidth
         ZStack(alignment: .leading) {

@@ -16,15 +16,15 @@ struct PocketNowPlaying: View {
             VStack(spacing: 2) {
                 icons
                 HStack(alignment: .top, spacing: 12) {
-                    if state.showArt { cover(now) }
-                    VStack(alignment: state.showArt ? .leading : .center, spacing: 3) {
+                    if state.showsNowPlayingArt { cover(now) }
+                    VStack(alignment: state.showsNowPlayingArt ? .leading : .center, spacing: 3) {
                         Text(now.title).font(.helvetica(14, bold: true))
                         Text(now.artist).font(.helvetica(12)).foregroundStyle(Pocket.gray)
                         Text(now.list).font(.helvetica(12)).foregroundStyle(Pocket.gray)
                         Text(now.count).font(.helvetica(11)).foregroundStyle(Color(hex: 0x4b535c)).padding(.top, 6)
                     }
                     .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: state.showArt ? .leading : .center)
+                    .frame(maxWidth: .infinity, alignment: state.showsNowPlayingArt ? .leading : .center)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
                 bottom(now)
