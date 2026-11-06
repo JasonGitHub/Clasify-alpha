@@ -14,6 +14,10 @@ extension Font {
     static func helvetica(_ size: CGFloat, bold: Bool = false) -> Font {
         .custom("Helvetica Neue", size: size).weight(bold ? .bold : .regular)
     }
+
+    static func helvetica(_ size: CGFloat, weight: Font.Weight) -> Font {
+        .custom("Helvetica Neue", size: size).weight(weight)
+    }
 }
 
 extension LinearGradient {

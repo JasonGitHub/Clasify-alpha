@@ -13,12 +13,12 @@ enum Icon: Sendable {
     var viewBox: CGSize {
         switch self {
         case .chevron: CGSize(width: 8, height: 12)
-        case .prev, .next: CGSize(width: 18, height: 12)
-        case .playPause: CGSize(width: 20, height: 12)
+        case .prev, .next: CGSize(width: 16, height: 8.4)
+        case .playPause: CGSize(width: 20, height: 8)
         case .speaker: CGSize(width: 14, height: 14)
         case .speakerLoud: CGSize(width: 16, height: 14)
         case .notes: CGSize(width: 24, height: 24)
-        case .play, .pause: CGSize(width: 9, height: 10)
+        case .play, .pause: CGSize(width: 8, height: 9)
         case .shuffle, .repeatMode: CGSize(width: 16, height: 14)
         }
     }
@@ -37,26 +37,28 @@ enum Icon: Sendable {
             p.addLines([CGPoint(x: 7.6, y: 4.8), CGPoint(x: 20.4, y: 1.9), CGPoint(x: 20.4, y: 5.3), CGPoint(x: 7.6, y: 8.2)])
             p.closeSubpath()
         case .play:
-            p.addLines([CGPoint(x: 1, y: 0.5), CGPoint(x: 8.5, y: 5), CGPoint(x: 1, y: 9.5)])
+            p.addLines([CGPoint(x: 0.5, y: 0.5), CGPoint(x: 7.5, y: 4.5), CGPoint(x: 0.5, y: 8.5)])
             p.closeSubpath()
         case .pause:
-            p.addRect(CGRect(x: 1, y: 0.5, width: 2.6, height: 9))
-            p.addRect(CGRect(x: 5.4, y: 0.5, width: 2.6, height: 9))
-        case .prev:  // the SVG's vertical line has no stroke, so only the two triangles show
-            p.addLines([CGPoint(x: 10, y: 1), CGPoint(x: 3, y: 6), CGPoint(x: 10, y: 11)])
+            p.addRect(CGRect(x: 0.75, y: 0.5, width: 2.5, height: 8))
+            p.addRect(CGRect(x: 4.75, y: 0.5, width: 2.5, height: 8))
+        case .prev:  // the bar on the outside, as in the photo
+            p.addRect(CGRect(x: 0, y: 0, width: 1.8, height: 8.4))
+            p.addLines([CGPoint(x: 8.8, y: 0), CGPoint(x: 1.8, y: 4.2), CGPoint(x: 8.8, y: 8.4)])
             p.closeSubpath()
-            p.addLines([CGPoint(x: 17, y: 1), CGPoint(x: 10, y: 6), CGPoint(x: 17, y: 11)])
+            p.addLines([CGPoint(x: 16, y: 0), CGPoint(x: 9, y: 4.2), CGPoint(x: 16, y: 8.4)])
             p.closeSubpath()
         case .next:
-            p.addLines([CGPoint(x: 8, y: 1), CGPoint(x: 15, y: 6), CGPoint(x: 8, y: 11)])
+            p.addLines([CGPoint(x: 0, y: 0), CGPoint(x: 7, y: 4.2), CGPoint(x: 0, y: 8.4)])
             p.closeSubpath()
-            p.addLines([CGPoint(x: 1, y: 1), CGPoint(x: 8, y: 6), CGPoint(x: 1, y: 11)])
+            p.addLines([CGPoint(x: 7.2, y: 0), CGPoint(x: 14.2, y: 4.2), CGPoint(x: 7.2, y: 8.4)])
             p.closeSubpath()
+            p.addRect(CGRect(x: 14.2, y: 0, width: 1.8, height: 8.4))
         case .playPause:
-            p.addLines([CGPoint(x: 1, y: 1), CGPoint(x: 8, y: 6), CGPoint(x: 1, y: 11)])
+            p.addLines([CGPoint(x: 0, y: 0), CGPoint(x: 7.5, y: 4), CGPoint(x: 0, y: 8)])
             p.closeSubpath()
-            p.addRect(CGRect(x: 11, y: 1, width: 3, height: 10))
-            p.addRect(CGRect(x: 16, y: 1, width: 3, height: 10))
+            p.addRect(CGRect(x: 11, y: 0, width: 3, height: 8))
+            p.addRect(CGRect(x: 16.5, y: 0, width: 3, height: 8))
         case .speaker, .speakerLoud:
             p.addLines([
                 CGPoint(x: 2, y: 5), CGPoint(x: 5, y: 5), CGPoint(x: 8, y: 2), CGPoint(x: 8, y: 12),

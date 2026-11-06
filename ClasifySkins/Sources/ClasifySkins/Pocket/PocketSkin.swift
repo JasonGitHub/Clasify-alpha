@@ -4,9 +4,8 @@ import SwiftUI
 /// The Pocket skin from the mockup: a white pocket player with an LCD and a click wheel.
 /// It renders `state` and sends input actions. It holds no logic.
 public struct PocketSkin: View {
-    /// The device's size in points, as in the mockup: the 300 x 225 screen with its 2 point
-    /// frame, the padding of 21 and 25, the gap and the wheel, and the 1 point border.
-    public static let size = CGSize(width: 348, height: 565)
+    /// The device's size in points, as in the mockup: the photo's shape.
+    public static let size = CGSize(width: 366, height: 613)
 
     let state: AppState
     let send: @MainActor (Action) -> Void
@@ -30,24 +29,32 @@ public struct PocketSkin: View {
     }
 
     public var body: some View {
-        VStack(spacing: 32) {
+        // The bezel and the wheel, centered, with the mockup's 55.8 point gap between them.
+        VStack(spacing: 55.8) {
             PocketScreen(state: state, input: input)
             ClickWheel(input: input, catchesScroll: interactive, pressed: pressed)
         }
-        // The mockup's padding starts inside the 1 point border.
-        .padding(.vertical, 25)
-        .padding(.horizontal, 21)
+        // The mockup's 24.8 point padding starts inside the 1 point border.
+        .padding(.top, 25.8)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
-            RoundedRectangle(cornerRadius: 28)
+            // Neutral silver, with a white line inside the top edge and fainter ones at the sides.
+            RoundedRectangle(cornerRadius: 34)
                 .fill(LinearGradient(
                     stops: [
-                        .init(color: .white, location: 0), .init(color: Color(hex: 0xeef0f2), location: 0.6),
-                        .init(color: Color(hex: 0xdfe2e6), location: 1),
+                        .init(color: Color(hex: 0xf4f4f4), location: 0), .init(color: Color(hex: 0xe4e4e4), location: 0.55),
+                        .init(color: Color(hex: 0xc8c8c8), location: 1),
                     ],
                     startPoint: .top, endPoint: .bottom))
-                .overlay { RoundedRectangle(cornerRadius: 28).strokeBorder(Color(hex: 0xa9b0b8), lineWidth: 1) }
-                .shadow(color: Color(hex: 0x28323c, opacity: 0.3), radius: 20, y: 20)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(0.5), lineWidth: 1).padding(1)
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white, lineWidth: 1).padding(1)
+                        .mask(LinearGradient.vertical(.white, .clear, .clear))
+                }
+                .overlay { RoundedRectangle(cornerRadius: 34).strokeBorder(Color(hex: 0x9c9c9c), lineWidth: 1) }
+                .shadow(color: Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
         }
         .focusable()
         .focused($focused)
