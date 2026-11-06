@@ -479,7 +479,7 @@ import Testing
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
         s.isPlaying = false
-        s.stack.append(Frame(screen: .playlists))  // a full-width header; the main menu's is 136 points
+        s.stack.append(Frame(screen: .settings))  // a full-width header; on the half screens it is 136 points
         let shot = try render(s, "paused")
         // The header mark: two blue bars, 2.6 points wide with a 1.8 point gap, at the right of the header.
         let left: Int = Self.screenLeft + 252 - 8 - 9, midY: Int = 25 + 2 + 10
