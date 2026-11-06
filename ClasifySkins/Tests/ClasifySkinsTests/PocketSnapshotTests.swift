@@ -145,6 +145,7 @@ import Testing
             Track(id: "spotify:track:b", title: "B", artist: "y", duration: 200, coverID: b),
         ]
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:a")
+        s.mainArt = s.library[0].tracks  // the playing cover first, then one more
         let art = Artwork { $0 == a ? red : $0 == b ? blue : nil }
         let point = (Self.screenLeft + 190, Self.listTop + 90)
         let first = try render(s, "main-art-first", artwork: art, time: 0)

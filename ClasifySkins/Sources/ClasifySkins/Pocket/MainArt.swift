@@ -56,8 +56,9 @@ struct MainArt: View {
     }
 
     var body: some View {
-        // 30 frames a second: the pan moves about 1.4 points a second (12 % of 104 points in
-        // 9 s), so each frame moves about 0.05 point, and SwiftUI draws the offset smoothly.
+        // 30 frames a second. The pan moves about 1.4 points a second (12 % of 104 points in
+        // 9 s). The offset is never rounded here, so it moves smoothly unless the drawing
+        // snaps it to whole pixels. Check that on a Mac.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
             let loaded = tracks.compactMap { track in track.coverID.flatMap { artwork.lookup($0) } }
