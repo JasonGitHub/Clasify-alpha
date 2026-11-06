@@ -30,6 +30,8 @@ final class ArtworkLoader {
     /// The set before `mainShown`, kept while the panel fades from it, until `fadeEnds`.
     @ObservationIgnored private var mainFading: Set<String> = []
     @ObservationIgnored private var fadeEnds = ContinuousClock.now
+    /// When the main menu closed. Its covers stay on screen while the next screen slides in.
+    @ObservationIgnored private var leftMainAt: ContinuousClock.Instant?
     @ObservationIgnored private var loading: Set<String> = []
     /// When a cover last failed, so it is not asked for again on every redraw.
     @ObservationIgnored private var failedAt: [String: ContinuousClock.Instant] = [:]
@@ -84,10 +86,14 @@ final class ArtworkLoader {
     /// it switches to a new set once one of its covers is loaded, then fades over 1 s.
     private func heldMainCovers(in state: AppState) -> Set<String> {
         guard state.top.screen == .main && state.showArt else {
+            let left = leftMainAt ?? .now
+            leftMainAt = left
+            if ContinuousClock.now - left < .milliseconds(500) { return mainShown.union(mainFading) }  // the 0.22 s slide, with a margin
             mainShown = []
             mainFading = []
             return []
         }
+        leftMainAt = nil
         let ids = Set(state.mainArt.compactMap(\.coverID))
         if ids != mainShown && (ids.contains { cached($0) != nil } || !mainShown.contains { cached($0) != nil }) {
             mainFading = mainShown
