@@ -352,7 +352,7 @@ func playing(_ i: Int = 0) -> AppState {
 
         s = playing()
         s.repeatMode = .one
-        send(&s, .select, .wheel(5))  // seek to 25, near the end of the 30 s track
+        send(&s, .select, .wheel(6))  // seek to 29, the end of the 30 s track
         send(&s, .position(0.3, generation: 2), now: 100.5)  // Repeat One wrapped to the start
         #expect(s.current?.track == "f0" && s.t == 0.3)
         s.repeatMode = .off
