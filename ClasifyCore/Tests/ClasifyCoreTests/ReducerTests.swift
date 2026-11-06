@@ -729,6 +729,49 @@ func playing(_ i: Int = 0) -> AppState {
     #expect(player.calls == ["pause", "volume 65", "next", "prev"])
 }
 
+/// The wheel clicks only when a step moves something. Past an end it is silent.
+@MainActor @Test func wheelClicksOnlyWhenSomethingMoves() {
+    var s = mainMenu()  // four rows
+    let store = Store(player: FakePlayer(), library: FakeLibrary(), state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    var clicks = 0
+    store.onWheelStep = { clicks += 1 }
+    store.send(.wheel(-1))  // already at the top
+    #expect(clicks == 0)
+    store.send(.wheel(1)); store.send(.wheel(1)); store.send(.wheel(1))
+    #expect(clicks == 3 && store.state.top.sel == 3)
+    store.send(.wheel(1))  // already at the bottom
+    #expect(clicks == 3)
+    store.send(.select)  // a button press is not a wheel step
+    #expect(clicks == 3)
+
+    s = playing()
+    s.volume = 100
+    #expect(!wheelMoved(from: s, to: { var n = s; send(&n, .wheel(1)); return n }()))  // the volume bar is full
+    #expect(wheelMoved(from: s, to: { var n = s; send(&n, .wheel(-1)); return n }()))
+    send(&s, .select)  // the scrub bar, at 0 s
+    #expect(!wheelMoved(from: s, to: { var n = s; send(&n, .wheel(-1)); return n }()))
+    #expect(wheelMoved(from: s, to: { var n = s; send(&n, .wheel(1)); return n }()))
+}
+
+/// The shuffle slider has two stops and the repeat slider three. Past the end stops, no click.
+@Test func sliderEndsAreSilent() {
+    var s = playing()
+    send(&s, .select, .select)  // the shuffle slider, at Off
+    func moves(_ d: Int) -> Bool {
+        var n = s; send(&n, .wheel(d))
+        defer { s = n }
+        return wheelMoved(from: s, to: n)
+    }
+    #expect(!moves(-1))  // Off is the left end
+    #expect(moves(1))  // Songs
+    #expect(!moves(1))  // Songs is the right end
+    send(&s, .select)  // the repeat slider: Off, One, All
+    #expect(!moves(-1))
+    #expect(moves(1) && moves(1))  // One, then All
+    #expect(!moves(1))
+    #expect(moves(-1))
+}
+
 @MainActor final class FakeLibrary: Library {
     var fetches: [String] = []
     var loginResult = true

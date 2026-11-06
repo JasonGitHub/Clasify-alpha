@@ -61,6 +61,9 @@ public final class Store {
     @ObservationIgnored private let library: any Library
     @ObservationIgnored private let env: Dependencies
     @ObservationIgnored private var fetches: [Int: Task<Void, Never>] = [:]  // in flight, by token
+    /// Called after each `.wheel` step that moved something (see `wheelMoved`). The app clicks
+    /// and ticks the trackpad here.
+    @ObservationIgnored public var onWheelStep: (@MainActor () -> Void)?
 
     public init(player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live) {
         self.player = player; self.library = library; self.state = state; self.env = env
@@ -72,7 +75,10 @@ public final class Store {
     }
 
     public func send(_ action: Action) {
-        for effect in reduce(&state, action, env) {
+        let before = state
+        let effects = reduce(&state, action, env)
+        if case .wheel = action, wheelMoved(from: before, to: state) { onWheelStep?() }
+        for effect in effects {
             switch effect {
             case .load(let id, let context, let autoplay, let gen):
                 player.load(trackID: id, context: context, autoplay: autoplay, generation: gen)

@@ -88,9 +88,10 @@ public struct PocketSkin: View {
         if case .wheel = action { true } else { false }
     }
 
-    /// Clicks when the Clicker setting is on, then sends the action.
+    /// A button press clicks when the Clicker setting is on. A wheel step clicks in the app,
+    /// and only when it moved something. Then it sends the action.
     private func input(_ action: Action) {
-        if state.clicker { Clicker.shared.click() }
+        if state.clicker, !Self.repeats(action) { Clicker.shared.click() }
         send(action)
     }
 }
