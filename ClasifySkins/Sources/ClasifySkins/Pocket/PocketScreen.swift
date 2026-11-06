@@ -46,7 +46,7 @@ struct PocketScreen: View {
         // With Album Art off, it is a full-width list and loads no covers.
         let split = top.screen == .main && state.showArt
         ZStack(alignment: .leading) {
-            if split { MainArt(tracks: state.mainArt).padding(.leading, 136) }
+            if split { MainArtPanel(tracks: state.mainArt).padding(.leading, 136) }
             VStack(spacing: 0) {
                 header
                 Pocket.line.frame(height: 1)

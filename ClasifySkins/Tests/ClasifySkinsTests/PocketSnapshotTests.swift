@@ -156,6 +156,39 @@ import Testing
         #expect(m.r > 90 && m.b > 90, "mid fade \(m)")  // red under half blue: no dark dip
     }
 
+    @Test func aMissingMainArtCoverShowsTheOneBeforeIt() {
+        #expect(MainArt.filled([nil, "A", nil, "B"]) == ["B", "A", "A", "B"])
+        #expect(MainArt.filled([String?]([nil, nil])) == [nil, nil])  // all nil stays nil
+        #expect(MainArt.sources([false, true, false]) == [1, 1, 1])
+    }
+
+    @Test func aLateCoverDoesNotCutTheMainArt() throws {
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        let a = String(repeating: "aa", count: 20), b = String(repeating: "bb", count: 20)
+        var s = sampleState()
+        s.mainArt = [
+            Track(id: "spotify:track:a", title: "A", artist: "x", duration: 200, coverID: a),
+            Track(id: "spotify:track:b", title: "B", artist: "y", duration: 200, coverID: b),
+        ]
+        let point = (Self.screenLeft + 190, Self.listTop + 90)
+        // Only the second cover is loaded: it stands in for the first, not the square.
+        let early = try render(s, "main-art-late", artwork: Artwork { $0 == b ? blue : nil }, time: 0)
+        let e = early.rgb(point.0, point.1)
+        #expect(e.b > 150 && e.r < 100, "stand-in \(e)")
+        let loaded = try render(s, "main-art-loaded", artwork: Artwork { $0 == a ? red : $0 == b ? blue : nil }, time: 0)
+        let l = loaded.rgb(point.0, point.1)
+        #expect(l.r > 150 && l.b < 100, "own cover \(l)")
+    }
+
+    @Test func aRowChangeSwitchesTheMainArtOnlyWhenItCanShowACover() {
+        let loaded: (String?) -> Bool = { $0 == "a" || $0 == "b" }
+        #expect(!MainArtPanel.switches(to: ["a"], from: ["a"], loaded: loaded))  // same covers
+        #expect(MainArtPanel.switches(to: ["b", "x"], from: ["a"], loaded: loaded))  // a new cover is loaded
+        #expect(!MainArtPanel.switches(to: ["x"], from: ["a"], loaded: loaded))  // keep the shown cover
+        #expect(MainArtPanel.switches(to: ["x"], from: ["y"], loaded: loaded))  // nothing shows anyway
+    }
+
     @Test func aLongSelectedLabelScrolls() throws {
         var s = sampleState()
         let name = "The Longest Road Trip Playlist Ever Made"  // 40 characters: 296 points, a 14 s loop
