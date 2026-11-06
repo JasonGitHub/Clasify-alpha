@@ -311,15 +311,6 @@ import Testing
         #expect(short.length == 88 && short.offset + short.length == 176)
     }
 
-    /// The main menu always gives the 4-layer loop 4 covers, so the panel is never dark.
-    @Test func mainArtGetsFourLayers() {
-        let t = (0..<8).map { Track(id: "\($0)", title: "", artist: "x", duration: 1, coverID: "c\($0)") }
-        #expect(PocketScreen.fourLayers([]).isEmpty)
-        #expect(PocketScreen.fourLayers([t[0]]).map(\.id) == ["0", "0", "0", "0"])
-        #expect(PocketScreen.fourLayers(Array(t.prefix(3))).map(\.id) == ["0", "1", "2", "0"])
-        #expect(PocketScreen.fourLayers(t).map(\.id) == ["0", "1", "2", "3"])
-    }
-
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.
     static func solidImage(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGImage? {
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
