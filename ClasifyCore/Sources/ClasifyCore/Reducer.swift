@@ -16,7 +16,8 @@ public enum Action: Equatable, Sendable {
     case tracksRefreshed(playlist: String, tracks: [Track]?)
     /// The tracks of the playlist selected on the Playlists screen were read for its covers,
     /// as `.readArtTracks` asked. nil when the read failed: the covers that show stay.
-    case artTracksRead(playlist: String, tracks: [Track]?)
+    /// A stale `token` (from before a logout or reset) is ignored.
+    case artTracksRead(token: Int, playlist: String, tracks: [Track]?)
     /// The app came to the front. The list on screen and the playlist list are read again
     /// when they are older than `activationStaleAfter`, so a change made in Spotify shows.
     case activated
@@ -76,7 +77,7 @@ public enum Effect: Equatable, Sendable {
     case refreshTracks(playlist: String)
     /// Read one playlist's tracks, through the library's memory cache, for the Playlists
     /// screen's covers. The result comes back as `.artTracksRead`.
-    case readArtTracks(playlist: String)
+    case readArtTracks(token: Int, playlist: String)
     /// Read Liked Songs and the playlist list in the background after a login, so that the
     /// first open is fast. Nothing comes back: the library keeps the result for the next fetch.
     case prefetch
@@ -245,7 +246,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
-        s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = []
+        s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         toast(msg)
     }
     func shuffleLiked() {
@@ -464,8 +465,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.readAt[id] = now
             keepSelection(on: screen, old: old)
 
-        case .artTracksRead(let id, let tracks):
-            guard s.artReads.remove(id) != nil, let tracks, !s.loadedTracks.contains(id) else { return }
+        case .artTracksRead(let token, let id, let tracks):
+            guard s.artReads[id] == token else { return }  // a read from before a logout or reset
+            s.artReads[id] = nil
+            guard let tracks, !s.loadedTracks.contains(id) else { return }
             // Kept like an open's read, so opening the playlist later needs no read.
             if let i = s.library.firstIndex(where: { $0.id == id }) {
                 s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
@@ -520,11 +523,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .reset:
             stop()
-            let (tok, gen, auth) = (s.tok, s.playGen, s.authAttempt)  // keep counters so callbacks from before the reset stay stale
+            let (tok, gen, auth, art) = (s.tok, s.playGen, s.authAttempt, s.artTok)  // keep counters so callbacks from before the reset stay stale
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
             s = AppState()
-            s.tok = tok; s.playGen = gen; s.authAttempt = auth; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
+            s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
@@ -571,8 +574,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         // Read when the covers move to a list or the app comes back online, not on each
         // tick, so a failed read is tried again only when the row is selected again.
         if let id = artList, opened || s.artRow != artBefore.0 || (wasOffline && !s.offline),
-            !s.loadedTracks.contains(id), !s.offline, s.artReads.insert(id).inserted {
-            fx.append(.readArtTracks(playlist: id))
+            !s.loadedTracks.contains(id), !s.offline, s.artReads[id] == nil {
+            s.artTok += 1; s.artReads[id] = s.artTok
+            fx.append(.readArtTracks(token: s.artTok, playlist: id))
         }
     }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.

@@ -150,8 +150,11 @@ public struct AppState: Equatable, Sendable {
     public var readAt: [String: Double] = [:]
     /// The `readKey`s whose background re-read runs, so each runs once at a time.
     public var refreshing: Set<String> = []
-    /// Playlists whose tracks are read for the Playlists screen's covers, so each is read once.
-    public var artReads: Set<String> = []
+    /// Playlists whose tracks are read for the covers, with the token of each read, so each is
+    /// read once and a late result from before a logout or reset is ignored.
+    public var artReads: [String: Int] = [:]
+    /// The token of the last cover read. Kept apart from `tok`, so cover reads do not change list tokens.
+    public var artTok = 0
     public var t: Double = 0
     public var isPlaying = false
     public var volume = 60
