@@ -2,7 +2,8 @@ import ClasifyCore
 import SwiftUI
 
 /// The main menu's right side: the covers take turns, as on the classic pocket players. Each
-/// cover stays `slot` seconds and pans slowly in its own direction, with only a small zoom.
+/// cover stays `slot` seconds and pans slowly sideways at a fixed scale: left to right, then
+/// right to left for the next cover.
 /// The next cover fades in on top of it, and the one under stays fully shown until the fade
 /// ends, so the dark background never shows through. A cover that is not loaded yet is
 /// skipped. Only when no cover is loaded does the colored square show.
@@ -16,15 +17,11 @@ struct MainArt: View {
 
     /// Seconds that each cover shows, and seconds of the fade to the next.
     static let slot = 8.0, fade = 1.0
-    /// The scale at the start of a pan, and how much it changes over the pan (at most 3 %).
-    static let baseScale = 1.15, zoom = 0.03
-    /// The farthest a cover moves from the center on each axis, as a part of the size. It stays
-    /// inside the margin that `baseScale` gives, (1.15 - 1) / 2 = 7.5 %, so no edge shows.
-    static let pan = 0.05
-    /// The pan directions. Neighbors differ, so two covers in a row never move the same way.
-    static let directions: [(x: Double, y: Double)] = [
-        (1, 0), (-1, 1), (0, -1), (1, 1), (-1, 0), (1, -1), (0, 1), (-1, -1),
-    ]
+    /// The fixed scale of each cover.
+    static let baseScale = 1.15
+    /// The farthest a cover moves from the center, as a part of its width. It stays inside the
+    /// margin that `baseScale` gives, (1.15 - 1) / 2 = 7.5 %, so no edge shows.
+    static let pan = 0.06
 
     /// One layer at time `t`: opacity, scale, the pan as a part of the size, and its order.
     struct Pose: Equatable {
@@ -38,30 +35,29 @@ struct MainArt: View {
         let span = slot + fade
         let u: Double  // seconds since this layer started to fade in
         let opacity: Double
+        let turn: Int  // counts the covers shown so far, so the direction alternates
         if count <= 1 {
             // One cover: it always shows, and pans to and fro.
             let cycle = (t / span).truncatingRemainder(dividingBy: 2)
             u = (cycle < 1 ? cycle : 2 - cycle) * span
             opacity = 1
+            turn = 0
         } else {
             let period = slot * Double(count)
-            let local = (t + fade - Double(index) * slot).truncatingRemainder(dividingBy: period)
-            u = local < 0 ? local + period : local
+            let shifted = t + fade - Double(index) * slot
+            let loops = (shifted / period).rounded(.down)
+            u = shifted - loops * period
             opacity = u < fade ? u / fade : u < span ? 1 : 0
+            turn = Int(loops) * count + index
         }
-        let p = min(u, span) / span  // 0 to 1 over the pan
-        let d = directions[index % directions.count]
-        let zoomIn = index % 2 == 0
-        return Pose(
-            opacity: opacity,
-            scale: baseScale + zoom * (zoomIn ? p : 1 - p),
-            dx: d.x * pan * (2 * p - 1), dy: d.y * pan * (2 * p - 1),
-            order: -u)
+        let p = min(u, span) / span  // 0 to 1 over the pan, at a constant speed
+        let toRight = turn % 2 == 0
+        return Pose(opacity: opacity, scale: baseScale, dx: pan * (toRight ? 2 * p - 1 : 1 - 2 * p), dy: 0, order: -u)
     }
 
     var body: some View {
-        // 30 frames a second: the pan moves under 1 point a second, so each frame moves a
-        // small part of a point and the motion does not step.
+        // 30 frames a second: the pan moves about 1.4 points a second (12 % of 104 points in
+        // 9 s), so each frame moves about 0.05 point, and SwiftUI draws the offset smoothly.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
             let loaded = tracks.compactMap { track in track.coverID.flatMap { artwork.lookup($0) } }

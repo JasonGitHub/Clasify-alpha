@@ -114,22 +114,25 @@ import Testing
         }
     }
 
-    @Test func mainArtPansEachCoverItsOwnWayWithNoEdge() {
-        let start = (0..<8).map { MainArt.pose(at: Double($0) * MainArt.slot - MainArt.fade, index: $0, count: 8) }
-        let end = (0..<8).map { MainArt.pose(at: Double($0) * MainArt.slot + MainArt.slot, index: $0, count: 8) }
-        let moves = zip(start, end).map { (($1.dx - $0.dx).sign, ($1.dy - $0.dy).sign, $1.dx == $0.dx, $1.dy == $0.dy) }
-        for i in 0..<8 {
-            let a = moves[i], b = moves[(i + 1) % 8]
-            #expect(a.0 != b.0 || a.1 != b.1 || a.2 != b.2 || a.3 != b.3, "covers \(i) and \(i + 1) move the same way")
+    @Test func mainArtPansSidewaysInTurnWithNoEdge() {
+        // Where each of 10 covers in a row starts and ends its pan, with 3 covers in the loop.
+        let moves = (0..<10).map { n -> Double in
+            let start = Double(n) * MainArt.slot - MainArt.fade, end = Double(n) * MainArt.slot + MainArt.slot
+            return MainArt.pose(at: end, index: n % 3, count: 3).dx - MainArt.pose(at: start, index: n % 3, count: 3).dx
         }
-        for i in 0..<8 {
-            for t in stride(from: 0.0, to: 64, by: 0.5) {
-                let f = MainArt.pose(at: t, index: i, count: 8)
-                let margin = (f.scale - 1) / 2
-                #expect(abs(f.dx) <= margin && abs(f.dy) <= margin)  // no edge shows
-                #expect(f.scale >= MainArt.baseScale && f.scale <= MainArt.baseScale + 0.03 + 1e-9)
+        for n in 0..<9 { #expect((moves[n] > 0) != (moves[n + 1] > 0)) }  // right, then left, also across the loop
+        #expect(moves[0] > 0)  // the first cover moves to the right
+        for i in 0..<3 {
+            for t in stride(from: 0.0, to: 48, by: 0.25) {
+                let f = MainArt.pose(at: t, index: i, count: 3)
+                #expect(f.dy == 0 && f.scale == MainArt.baseScale)  // sideways only, no zoom
+                #expect(abs(f.dx) <= (f.scale - 1) / 2)  // no edge shows
             }
         }
+        // Constant speed: equal time steps move the same distance.
+        let a = MainArt.pose(at: 2, index: 0, count: 3).dx, b = MainArt.pose(at: 3, index: 0, count: 3).dx
+        let c = MainArt.pose(at: 4, index: 0, count: 3).dx
+        #expect(abs((b - a) - (c - b)) < 1e-12)
     }
 
     @Test func mainMenuShowsALoadedCoverAtOnceAndNoDarkDip() throws {
