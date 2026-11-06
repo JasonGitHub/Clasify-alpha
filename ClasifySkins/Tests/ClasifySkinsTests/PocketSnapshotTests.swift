@@ -250,6 +250,13 @@ import Testing
         #expect(CoverArt.shown(fresh: nil, coverID: "a", pending: false, last: nil) == nil)
     }
 
+    /// The wider hit area of the shuffle and repeat icons does not change their size.
+    @Test func widerHitAreaKeepsTheLayout() throws {
+        let plain = try #require(ImageRenderer(content: Color.red.frame(width: 14, height: 12)).cgImage)
+        let wide = try #require(ImageRenderer(content: Color.red.frame(width: 14, height: 12).widerHitArea()).cgImage)
+        #expect(wide.width == plain.width && wide.height == plain.height)
+    }
+
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.
     static func solidImage(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGImage? {
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
