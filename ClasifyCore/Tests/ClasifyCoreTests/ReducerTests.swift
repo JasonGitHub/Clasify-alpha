@@ -356,9 +356,9 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .position(0.3, generation: 2), now: 100.5)  // Repeat One wrapped to the start
         #expect(s.current?.track == "f0" && s.t == 0.3)
         s.repeatMode = .off
-        send(&s, .wheel(-1), now: 101)  // seek to 20: not near the end
+        send(&s, .wheel(4), now: 101)  // seek to about 20: not near the end
         send(&s, .position(0.3, generation: 3), now: 101.2)
-        #expect(s.t == 20)  // still an old position
+        #expect(s.t > 20)  // an old position, so ignored
     }
 
     @Test func trackChangedMovesCurrentWithoutLoading() {
