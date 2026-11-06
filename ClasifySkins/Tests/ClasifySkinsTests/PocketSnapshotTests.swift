@@ -189,6 +189,16 @@ import Testing
         #expect(MainArtPanel.switches(to: ["x"], from: ["y"], loaded: loaded))  // nothing shows anyway
     }
 
+    @Test func aScreenChangePushesTheOldScreenOutTheOtherSide() {
+        // Forward: the new screen comes from the right, and the old one goes out to the left.
+        #expect(Push.offset(side: 1, forward: true) == 1)
+        #expect(Push.offset(side: -1, forward: true) == -1)
+        // Back: the mirror.
+        #expect(Push.offset(side: 1, forward: false) == -1)
+        #expect(Push.offset(side: -1, forward: false) == 1)
+        #expect(Push.offset(side: 0, forward: true) == 0 && Push.offset(side: 0, forward: false) == 0)
+    }
+
     @Test func aLongSelectedLabelScrolls() throws {
         var s = sampleState()
         let name = "The Longest Road Trip Playlist Ever Made"  // 40 characters: 296 points, a 14 s loop

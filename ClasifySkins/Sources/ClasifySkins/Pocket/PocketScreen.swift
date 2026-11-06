@@ -33,42 +33,60 @@ struct PocketScreen: View {
 
     private var top: Frame { state.top }
 
-    /// The mockup's push and pop: a new screen slides in over 0.22 s, from the right when it
-    /// opens and from the left on a way back. The old screen goes at once. No slide with Reduce Motion.
+    /// The mockup's push and pop over 0.22 s. The new screen slides in from the right when it
+    /// opens and from the left on a way back, and pushes the old screen out to the other side.
+    /// The pane's width moves in the same animation. No slide with Reduce Motion.
     private var slide: AnyTransition {
         if reduceMotion { return .identity }
-        return .asymmetric(insertion: .move(edge: state.navForward ? .trailing : .leading),
-                           removal: .opacity.animation(.linear(duration: 0)))
+        return .asymmetric(insertion: .modifier(active: Push(side: 1), identity: Push(side: 0)),
+                           removal: .modifier(active: Push(side: -1), identity: Push(side: 0)))
+    }
+
+    static let slideAnimation = Animation.timingCurve(0.2, 0.7, 0.3, 1, duration: 0.22)
+
+    /// Shows at once, and on removal stays until the slide ends.
+    private var stay: AnyTransition {
+        if reduceMotion { return .identity }
+        return .asymmetric(insertion: .identity, removal: .opacity.animation(.linear(duration: 0).delay(0.22)))
     }
 
     var body: some View {
         // The main menu is a 136 point pane with a shadow, over covers on the right.
         // With Album Art off, it is a full-width list and loads no covers.
         let split = top.screen == .main && state.showArt
+        let width: CGFloat = split ? 136 : 252
         ZStack(alignment: .leading) {
-            if split { MainArtPanel(tracks: state.mainArt).padding(.leading, 136) }
+            if split {
+                // On the way out, the covers stay until the pane has widened over them.
+                MainArtPanel(tracks: state.mainArt).padding(.leading, 136).transition(stay)
+            }
             VStack(spacing: 0) {
                 header
                 Pocket.line.frame(height: 1)
-                ZStack {
-                    content.frame(maxWidth: .infinity, maxHeight: .infinity)
+                ZStack(alignment: .leading) {
+                    // Each screen keeps its own width while it slides, so its text does not reflow.
+                    content.frame(width: width).frame(maxHeight: .infinity)
                         .id(state.navSeq)
                         .transition(slide)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .clipped()
-                .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: state.navSeq)
+                .environment(\.navForward, state.navForward)
                 if state.showsBar, let now = Labels.now(in: state) {
                     Pocket.line.frame(height: 1)
                     bar(now)
                 }
             }
-            .frame(width: split ? 136 : 252)
+            .frame(width: width)
             .background {
                 if split {
+                    // Like the covers, the pane's glass stays while it widens over them.
                     Pocket.glass.shadow(color: .black.opacity(0.4), radius: 5, x: 4, y: 0)
+                        .transition(stay)
                 }
             }
         }
+        .animation(reduceMotion ? nil : Self.slideAnimation, value: state.navSeq)
         .overlay(alignment: .bottom) {
             if !state.toast.isEmpty { toast }
         }
