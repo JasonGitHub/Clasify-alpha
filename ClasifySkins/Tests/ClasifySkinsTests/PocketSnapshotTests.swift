@@ -256,6 +256,15 @@ import Testing
         let wide = try #require(ImageRenderer(content: Color.red.frame(width: 14, height: 12).widerHitArea()).cgImage)
         #expect(wide.width == plain.width && wide.height == plain.height)
     }
+    /// A long list keeps a thumb that you can see, and it still reaches both ends of the track.
+    @Test func scrollThumbHasAMinimumLengthAndReachesTheEnds() {
+        let top = PocketList.thumb(height: 176, shown: 5, count: 1000, first: 0)
+        #expect(top.length == PocketList.minThumb && top.offset == 0)
+        let bottom = PocketList.thumb(height: 176, shown: 5, count: 1000, first: 995)
+        #expect(bottom.offset + bottom.length == 176)
+        let short = PocketList.thumb(height: 176, shown: 5, count: 10, first: 5)  // long enough already
+        #expect(short.length == 88 && short.offset + short.length == 176)
+    }
 
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.
     static func solidImage(red: CGFloat, green: CGFloat, blue: CGFloat) -> CGImage? {
