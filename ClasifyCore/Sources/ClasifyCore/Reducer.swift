@@ -158,7 +158,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     func seek(_ t: Double) {  // callbacks from before the seek go stale
         s.playGen += 1
-        (s.seekTarget, s.seekAt, s.seekGen) = (t, now, s.playGen)
+        (s.seekTarget, s.seekAt, s.seekGen, s.seekTrack) = (t, now, s.playGen, s.current?.track)
         fx.append(.seek(t, generation: s.playGen))
     }
     func skip(_ forward: Bool) { s.playGen += 1; fx.append(forward ? .next(generation: s.playGen) : .prev(generation: s.playGen)) }  // and from before the skip
@@ -365,7 +365,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .position(let t, let gen):
             // Soon after a seek, a position far from the target is from an earlier seek.
             let since = now - s.seekAt
-            if gen == s.seekGen && since < seekSettle && abs(t - s.seekTarget) > seekSlack + since { return }
+            if gen == s.seekGen && s.current?.track == s.seekTrack && since < seekSettle && abs(t - s.seekTarget) > seekSlack + since { return }
             if s.current != nil && gen == s.playGen { s.t = t; s.beforeLoad = nil; s.loadPending = false }  // the load plays
 
         case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end

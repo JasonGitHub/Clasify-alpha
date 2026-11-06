@@ -99,6 +99,9 @@ public struct AppState: Equatable, Sendable {
     public var seekTarget: Double = 0
     public var seekAt: Double = 0
     public var seekGen = -1
+    /// The track of the last seek. A seek near the end can move to the next track in the same
+    /// generation, and the filter must not hold back that track's positions.
+    public var seekTrack: String?
     /// Bumped on every login attempt; `.authDone` echoes it back.
     public var authAttempt = 0
     /// Token of a Liked Songs load that should start a shuffle when it finishes.

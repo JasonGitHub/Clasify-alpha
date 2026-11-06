@@ -344,6 +344,11 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .next)  // generation 3
         send(&s, .position(0.5, generation: 3), now: 100.1)
         #expect(s.t == 0.5)
+
+        s = playing()
+        send(&s, .select, .wheel(5))  // seek to 25, near the end of the track
+        send(&s, .trackChanged("f1", playing: true, generation: 2), .position(0.4, generation: 2), now: 100.5)
+        #expect(s.current?.track == "f1" && s.t == 0.4)  // the next track's position is taken
     }
 
     @Test func trackChangedMovesCurrentWithoutLoading() {
