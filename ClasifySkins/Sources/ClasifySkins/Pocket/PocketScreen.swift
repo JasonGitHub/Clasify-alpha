@@ -265,7 +265,10 @@ struct PocketRow: View {
             }
             Spacer(minLength: 0)
             HStack(spacing: 4) {
-                if !text.value.isEmpty { Text(text.value).font(.helvetica(12)) }
+                if !text.value.isEmpty {
+                    // A setting's value: bold and blue, or white on the selected row.
+                    Text(text.value).font(.helvetica(12, bold: true)).foregroundStyle(selected ? Color.white : Pocket.blue)
+                }
                 if text.playing { IconView(.speakerLoud, width: 13, height: 11, label: "Now playing") }
                 // Only the selected row shows its chevron, in white.
                 if text.opens && selected { IconView(.chevron, width: 8, height: 12) }

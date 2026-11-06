@@ -325,6 +325,13 @@ import Testing
         s.top.sel = 2
         let shot = try render(s, "settings")
         #expect(shot.isBlue(100, Self.rowCenter(2)))
+        // The values on the right are bold blue; on the selected row, white on the blue selection.
+        let right = (Self.screenLeft + 200)...(Self.screenLeft + 244)
+        let rows = { (row: Int, test: (Int, Int) -> Bool) in
+            right.contains { x in (-3...3).contains { dy in test(x, Self.rowCenter(row) + dy) } }
+        }
+        #expect(rows(0) { shot.isBlue($0, $1) })  // "Off" on the Shuffle row
+        #expect(rows(2) { shot.isLight($0, $1) })  // the selected row's value
     }
 
     @Test func nowPlayingShowsTheCover() throws {
