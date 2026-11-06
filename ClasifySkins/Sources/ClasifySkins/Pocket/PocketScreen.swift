@@ -3,6 +3,10 @@ import SwiftUI
 
 /// The Pocket colors, from the mockup's inline styles.
 enum Pocket {
+    /// The LCD in points: the iPod's 4:3 shape at the mockup's height.
+    static let screenWidth: CGFloat = 266, screenHeight: CGFloat = 200
+    /// A half screen's list pane: half the screen, as on the iPod. The covers take the rest.
+    static let paneWidth: CGFloat = 133
     static let ink = Color(hex: 0x1b1f24)
     static let gray = Color(hex: 0x3d454e)
     static let line = Color(hex: 0x8f99a3)
@@ -53,15 +57,15 @@ struct PocketScreen: View {
     /// The screen's parts: the title bar, the content and the bar, and on a half screen (the
     /// main menu and Playlists) the covers beside the pane.
     @ViewBuilder private var parts: some View {
-        // A half screen (the main menu, Playlists) is a 136 point pane with a shadow, over
+        // A half screen (the main menu, Playlists) is a 133 point pane (half the screen) with a shadow, over
         // covers on the right. The panel stays between them, so it does not start again.
         // With Album Art off, they are full-width lists and load no covers.
         let split = state.isHalf(top.screen)
-        let width: CGFloat = split ? 136 : 252
+        let width: CGFloat = split ? Pocket.paneWidth : Pocket.screenWidth
         ZStack(alignment: .leading) {
             if split {
                 // On the way out, the covers stay until the pane has widened over them.
-                MainArtPanel(tracks: state.mainArt).padding(.leading, 136).transition(stay)
+                MainArtPanel(tracks: state.mainArt).padding(.leading, Pocket.paneWidth).transition(stay)
             }
             VStack(spacing: 0) {
                 header
@@ -95,7 +99,7 @@ struct PocketScreen: View {
         ZStack {
             // Between a half screen and a full one, the whole screen moves, with its title bar,
             // the pane and the covers. Other moves slide only the content (`parts`).
-            parts.frame(width: 252, height: 200, alignment: .leading)
+            parts.frame(width: Pocket.screenWidth, height: Pocket.screenHeight, alignment: .leading)
                 .id(state.wholeSeq)
                 .transition(slide)
         }
@@ -105,7 +109,7 @@ struct PocketScreen: View {
         .overlay(alignment: .bottom) {
             if !state.toast.isEmpty { toast }
         }
-        .frame(width: 252, height: 200)
+        .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
         .background {
             // The glass and its inset shadow. As in the mockup, the header, the selected row,
             // the bar and the scroll bar paint over the shadow.
