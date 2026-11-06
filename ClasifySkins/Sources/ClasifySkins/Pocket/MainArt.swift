@@ -32,27 +32,37 @@ struct MainArt: View {
 
     /// Layer `index` of `count` at time `t`. At `t` = 0, the first cover is fully shown.
     static func pose(at t: Double, index: Int, count: Int) -> Pose {
-        let span = slot + fade
-        let u: Double  // seconds since this layer started to fade in
-        let opacity: Double
-        let turn: Int  // counts the covers shown so far, so the direction alternates
-        if count <= 1 {
-            // One cover: it always shows, and pans to and fro.
-            let cycle = (t / span).truncatingRemainder(dividingBy: 2)
-            u = (cycle < 1 ? cycle : 2 - cycle) * span
-            opacity = 1
-            turn = 0
-        } else {
-            let period = slot * Double(count)
-            let shifted = t + fade - Double(index) * slot
-            let loops = (shifted / period).rounded(.down)
-            u = shifted - loops * period
-            opacity = u < fade ? u / fade : u < span ? 1 : 0
-            turn = Int(loops) * count + index
-        }
-        let p = min(u, span) / span  // 0 to 1 over the pan, at a constant speed
-        let toRight = turn % 2 == 0
-        return Pose(opacity: opacity, scale: baseScale, dx: pan * (toRight ? 2 * p - 1 : 1 - 2 * p), dy: 0, order: -u)
+        let (u, opacity, _) = phase(at: t, index: index, count: count)
+        let m = motion(at: t, index: index, count: count)
+        let e = (t - m.start) / (slot + fade)  // 0 to 1 over the pan, at a constant speed
+        let c = e.truncatingRemainder(dividingBy: 2)
+        let q = m.reverses ? (c < 1 ? c : 2 - c) : min(e, 1)
+        return Pose(opacity: opacity, scale: baseScale, dx: m.from + (m.to - m.from) * q, dy: 0, order: -u)
+    }
+
+    /// One layer's pan in its current turn: it starts at time `start`, moves from `from` to `to`
+    /// (parts of the width) at a constant speed over `slot + fade` seconds, then holds. A single
+    /// cover goes to and fro (`reverses`). The app draws it with Core Animation from these
+    /// values, so the pan moves below a pixel. `turn` names the turn.
+    struct Pan: Equatable {
+        var start: Double, from: Double, to: Double, reverses: Bool, turn: Int
+    }
+
+    static func motion(at t: Double, index: Int, count: Int) -> Pan {
+        if count <= 1 { return Pan(start: 0, from: -pan, to: pan, reverses: true, turn: 0) }
+        let (u, _, turn) = phase(at: t, index: index, count: count)
+        let toRight = turn % 2 == 0  // the direction alternates with each cover shown
+        return Pan(start: t - u, from: toRight ? -pan : pan, to: toRight ? pan : -pan, reverses: false, turn: turn)
+    }
+
+    /// Seconds since the layer started to fade in, its opacity, and its turn.
+    private static func phase(at t: Double, index: Int, count: Int) -> (u: Double, opacity: Double, turn: Int) {
+        if count <= 1 { return (t, 1, 0) }  // one cover always shows
+        let period = slot * Double(count)
+        let shifted = t + fade - Double(index) * slot
+        let loops = (shifted / period).rounded(.down)
+        let u = shifted - loops * period
+        return (u, u < fade ? u / fade : u < slot + fade ? 1 : 0, Int(loops) * count + index)
     }
 
     /// Each missing item takes the nearest one before it, wrapping around, so a cover that has
@@ -74,9 +84,9 @@ struct MainArt: View {
     }
 
     var body: some View {
-        // 30 frames a second. The pan moves about 1.4 points a second (12 % of 104 points in
-        // 9 s). The offset is never rounded here, so it moves smoothly unless the drawing
-        // snaps it to whole pixels. Check that on a Mac.
+        // 30 frames a second, for the fades. The pan moves only about 1.4 points a second
+        // (12 % of 116 points in 9 s), and SwiftUI snapped it to whole pixels, so it stepped.
+        // Core Animation draws the pan instead (`PanningCover`).
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
             let images = tracks.map { track in track.coverID.flatMap { artwork.lookup($0) } }
@@ -95,15 +105,13 @@ struct MainArt: View {
                             // When the layer's own cover loads late, it fades in over the cover
                             // that stood in for it, which stays fully shown under it: no cut.
                             ZStack {
-                                layer(tracks.first, image: images[source])
+                                cover(i, image: images[source], pose: f, t: t, count: images.count)
                                     .frame(width: geo.size.width, height: geo.size.height)
                                     .id(source)
                                     .zIndex(source == i ? 1 : 0)
                                     .transition(Self.crossfade)
                             }
                             .animation(.linear(duration: Self.fade), value: source)
-                            .scaleEffect(f.scale)
-                            .offset(x: f.dx * geo.size.width, y: f.dy * geo.size.height)
                             .opacity(f.opacity)
                             .zIndex(f.order)
                         }
@@ -118,6 +126,24 @@ struct MainArt: View {
     /// dark background never shows through.
     static var crossfade: AnyTransition {
         .asymmetric(insertion: .opacity, removal: .opacity.animation(.linear(duration: 0).delay(fade)))
+    }
+
+    /// One layer's cover. In the app, Core Animation pans it, so it moves below a pixel and
+    /// does not step. A snapshot (a fixed time) cannot draw an AppKit view, so it draws the
+    /// same pose in SwiftUI.
+    @ViewBuilder
+    private func cover(_ i: Int, image: CGImage?, pose f: Pose, t: Double, count: Int) -> some View {
+        if fixedTime == nil, let image {
+            let m = Self.motion(at: t, index: i, count: count)
+            PanningCover(image: image, scale: Self.baseScale, pan: reduceMotion ? nil : m, elapsed: t - m.start)
+        } else {
+            GeometryReader { geo in
+                layer(tracks.first, image: image)
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .scaleEffect(f.scale)
+                    .offset(x: f.dx * geo.size.width, y: f.dy * geo.size.height)
+            }
+        }
     }
 
     private func layer(_ track: ClasifyCore.Track?, image: CGImage?) -> some View {
