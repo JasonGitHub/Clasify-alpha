@@ -349,6 +349,16 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .select, .wheel(5))  // seek to 25, near the end of the track
         send(&s, .trackChanged("f1", playing: true, generation: 2), .position(0.4, generation: 2), now: 100.5)
         #expect(s.current?.track == "f1" && s.t == 0.4)  // the next track's position is taken
+
+        s = playing()
+        s.repeatMode = .one
+        send(&s, .select, .wheel(5))  // seek to 25, near the end of the 30 s track
+        send(&s, .position(0.3, generation: 2), now: 100.5)  // Repeat One wrapped to the start
+        #expect(s.current?.track == "f0" && s.t == 0.3)
+        s.repeatMode = .off
+        send(&s, .wheel(-1), now: 101)  // seek to 20: not near the end
+        send(&s, .position(0.3, generation: 3), now: 101.2)
+        #expect(s.t == 20)  // still an old position
     }
 
     @Test func trackChangedMovesCurrentWithoutLoading() {

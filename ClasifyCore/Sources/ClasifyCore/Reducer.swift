@@ -364,8 +364,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .position(let t, let gen):
             // Soon after a seek, a position far from the target is from an earlier seek.
+            // With Repeat One, a seek near the end can wrap to the start of the same track.
             let since = now - s.seekAt
-            if gen == s.seekGen && s.current?.track == s.seekTrack && since < seekSettle && abs(t - s.seekTarget) > seekSlack + since { return }
+            let end = s.current.flatMap { s.track($0)?.duration } ?? .infinity
+            let wrapped = s.repeatMode == .one && s.seekTarget >= end - seekSettle && t <= seekSlack + since
+            if gen == s.seekGen && s.current?.track == s.seekTrack && since < seekSettle && !wrapped
+                && abs(t - s.seekTarget) > seekSlack + since { return }
             if s.current != nil && gen == s.playGen { s.t = t; s.beforeLoad = nil; s.loadPending = false }  // the load plays
 
         case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end
