@@ -507,7 +507,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let wasAuth = s.top.screen == .auth
     let rowBefore = s.mainRow
-    let artBefore = (s.artRow, s.library, s.current, s.loadedTracks)  // copies share storage, so this is cheap
+    let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
     apply()
     // A new screen slides in: from the right when it opens, from the left on a way back.
     // The main menu after the login wait counts as opening. A reset does not slide.
@@ -531,7 +531,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         } else if s.mainRow != rowBefore {
             s.artUntil = now + artDelay
         }
-        if opened || (s.artRow, s.current, s.loadedTracks) != (artBefore.0, artBefore.2, artBefore.3) || s.library != artBefore.1 {
+        if opened || (s.artRow, s.current, s.loadedTracks) != (artBefore.0, artBefore.2, artBefore.3) || s.library != artBefore.1 || s.extraTracks != artBefore.4 {
             s.refreshArt()
         }
     }

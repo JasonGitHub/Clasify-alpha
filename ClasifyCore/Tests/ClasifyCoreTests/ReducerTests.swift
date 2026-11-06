@@ -318,6 +318,14 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .wheel(-1), now: 300)
         send(&s, .tick, now: 301)
         #expect(s.artRow == .playlists && s.mainArt.allSatisfy { $0.id.hasPrefix("f") })  // read playlists
+
+        // A track from outside the library: its cover shows when its read comes back.
+        s.current = TrackRef(playlist: "radio", track: "zz")
+        s.artRow = .nowPlaying; s.refreshArt()
+        #expect(s.mainArt.isEmpty)
+        s.trackReads.insert("zz")  // the read was asked for
+        send(&s, .trackRead("zz", Track(id: "zz", title: "", artist: "x", duration: 30, coverID: "zc")), now: 302)
+        #expect(s.mainArt.map(\.id) == ["zz"])
     }
 
     @Test func screenChangesSlideInFromTheRightOrTheLeft() {
