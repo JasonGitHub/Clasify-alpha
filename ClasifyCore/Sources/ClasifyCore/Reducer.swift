@@ -507,6 +507,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let wasAuth = s.top.screen == .auth
     let rowBefore = s.mainRow
+    let artBefore = (s.artRow, s.library, s.current, s.loadedTracks)  // copies share storage, so this is cheap
     apply()
     // A new screen slides in: from the right when it opens, from the left on a way back.
     // The main menu after the login wait counts as opening. A reset does not slide.
@@ -522,13 +523,17 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     // The main menu's covers: new random ones when the menu opens, and the selected row's
     // covers a moment after the selection changes.
+    // Picking them reads the whole library, so it runs only when something they use changed.
     if case .reset = action {} else if s.top.screen == .main {
-        if before.1 != .main || before.0 != s.stack.count {
+        let opened = before.1 != .main || before.0 != s.stack.count
+        if opened {
             s.artSeed = env.random(1 << 30); s.artRow = s.mainRow; s.artUntil = 0
         } else if s.mainRow != rowBefore {
             s.artUntil = now + artDelay
         }
-        s.refreshArt()
+        if opened || (s.artRow, s.current, s.loadedTracks) != (artBefore.0, artBefore.2, artBefore.3) || s.library != artBefore.1 {
+            s.refreshArt()
+        }
     }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.
     if s.top.screen.isList { s.top.off = clamp(s.top.off, s.top.sel - s.shownRows + 1, s.top.sel) }
