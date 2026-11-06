@@ -18,12 +18,18 @@ final class ArtworkLoader {
     private let cache = NSCache<NSString, CGImage>()
     /// TEMP (cover blink): logs when NSCache drops a cover. Kept here, because the delegate is weak.
     @ObservationIgnored private let evictionLog = EvictionLog()
-    /// The covers of the playing track and the next track, held outside the NSCache. NSCache can
+    /// The covers on screen or next to show, held outside the NSCache. NSCache can
     /// drop any cover at any time, for example under memory pressure. When it dropped the playing
     /// cover, each redraw loaded it again and showed the square for a moment: the blink.
     @ObservationIgnored private var kept: [String: CGImage] = [:]
-    /// The cover IDs that `kept` holds: the playing track's and the next track's.
+    /// The cover IDs that `kept` holds: the playing track's, the next track's, and the main menu's.
     @ObservationIgnored private var wanted: Set<String> = []
+    /// The main menu covers that the panel shows: the last set with a cover in memory. The
+    /// panel keeps them until a cover of the new set loads, so they stay wanted until then.
+    @ObservationIgnored private var mainShown: Set<String> = []
+    /// The set before `mainShown`, kept while the panel fades from it, until `fadeEnds`.
+    @ObservationIgnored private var mainFading: Set<String> = []
+    @ObservationIgnored private var fadeEnds = ContinuousClock.now
     @ObservationIgnored private var loading: Set<String> = []
     /// When a cover last failed, so it is not asked for again on every redraw.
     @ObservationIgnored private var failedAt: [String: ContinuousClock.Instant] = [:]
@@ -65,7 +71,8 @@ final class ArtworkLoader {
     /// at once on Next. The app's ticker calls it every 250 ms.
     func prefetchNext(in state: AppState) {
         logChange(in: state)
-        let ids = Self.wantedCovers(in: state)
+        var ids = Self.wantedCovers(in: state)
+        ids.formUnion(heldMainCovers(in: state))
         if ids != wanted {
             wanted = ids
             kept = kept.filter { ids.contains($0.key) }
@@ -73,10 +80,29 @@ final class ArtworkLoader {
         for id in ids where cached(id) == nil { load(id) }
     }
 
-    /// The cover IDs of the playing track and of the track after it.
+    /// The covers that the main menu panel still shows or fades from, as `MainArtPanel` does:
+    /// it switches to a new set once one of its covers is loaded, then fades over 1 s.
+    private func heldMainCovers(in state: AppState) -> Set<String> {
+        guard state.top.screen == .main && state.showArt else {
+            mainShown = []
+            mainFading = []
+            return []
+        }
+        let ids = Set(state.mainArt.compactMap(\.coverID))
+        if ids != mainShown && (ids.contains { cached($0) != nil } || !mainShown.contains { cached($0) != nil }) {
+            mainFading = mainShown
+            mainShown = ids
+            fadeEnds = .now + .seconds(2)  // the 1 s fade, with a margin
+        }
+        return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
+    }
+
+    /// The cover IDs of the playing track and of the track after it, and on the main menu the
+    /// covers that take turns there, so none of them drops out of memory and blinks.
     static func wantedCovers(in state: AppState) -> Set<String> {
-        guard let ref = state.current else { return [] }
         var ids: Set<String> = []
+        if state.top.screen == .main && state.showArt { ids.formUnion(state.mainArt.compactMap(\.coverID)) }
+        guard let ref = state.current else { return ids }
         if let id = state.track(ref)?.coverID { ids.insert(id) }
         let tracks = state.tracks(in: ref.playlist)
         if let index = tracks.firstIndex(where: { $0.id == ref.track }), index + 1 < tracks.count,

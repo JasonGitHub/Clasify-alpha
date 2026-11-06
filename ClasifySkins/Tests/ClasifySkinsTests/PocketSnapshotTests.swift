@@ -99,18 +99,94 @@ import Testing
         #expect(plain.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
     }
 
-    @Test func mainArtFollowsTheMockupKeyframes() {
+    @Test func mainArtCrossfadesWithNoDarkDip() {
         func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
-        #expect(MainArt.pose(at: 0, delay: 0).opacity == 0)
-        #expect(close(MainArt.pose(at: 0.48, delay: 0).opacity, 0.5))  // 2 % of 24 s
-        #expect(MainArt.pose(at: 3, delay: 0).opacity == 1)
-        #expect(close(MainArt.pose(at: 6.48, delay: 0).opacity, 0.5))  // 27 %
-        #expect(MainArt.pose(at: 12, delay: 0).opacity == 0)
-        #expect(MainArt.pose(at: 3, delay: 6).opacity == 0)  // the second layer has not started
-        #expect(MainArt.pose(at: 9, delay: 6) == MainArt.pose(at: 3, delay: 0))
-        #expect(MainArt.pose(at: 27, delay: 0) == MainArt.pose(at: 3, delay: 0))  // it loops
-        let end = MainArt.pose(at: 6.96, delay: 0)  // 29 %
-        #expect(close(end.scale, 1.22) && close(end.dx, 0.03) && close(end.dy, 0.02))
+        let pose = { (t: Double, i: Int) in MainArt.pose(at: t, index: i, count: 4) }
+        #expect(pose(0, 0).opacity == 1 && pose(0, 3).opacity == 0)  // a cover at once
+        #expect(close(pose(7.5, 1).opacity, 0.5))  // the second cover fades in
+        #expect(pose(7.5, 0).opacity == 1)  // and the first stays fully shown under it
+        #expect(pose(7.5, 1).order > pose(7.5, 0).order)
+        #expect(pose(9, 0).opacity == 0 && pose(9, 1).opacity == 1)
+        #expect(close(pose(31.5, 0).opacity, 0.5) && pose(31.5, 3).opacity == 1)  // the loop wraps on top too
+        #expect(pose(3, 2) == pose(35, 2))  // a 32 s loop
+        for t in stride(from: 0.0, to: 40, by: 0.25) {
+            #expect(MainArt.pose(at: t, index: 0, count: 1).opacity == 1)  // one cover always shows
+        }
+    }
+
+    @Test func mainArtPansSidewaysInTurnWithNoEdge() {
+        // Where each of 10 covers in a row starts and ends its pan, with 3 covers in the loop.
+        let moves = (0..<10).map { n -> Double in
+            let start = Double(n) * MainArt.slot - MainArt.fade, end = Double(n) * MainArt.slot + MainArt.slot
+            return MainArt.pose(at: end, index: n % 3, count: 3).dx - MainArt.pose(at: start, index: n % 3, count: 3).dx
+        }
+        for n in 0..<9 { #expect((moves[n] > 0) != (moves[n + 1] > 0)) }  // right, then left, also across the loop
+        #expect(moves[0] > 0)  // the first cover moves to the right
+        for i in 0..<3 {
+            for t in stride(from: 0.0, to: 48, by: 0.25) {
+                let f = MainArt.pose(at: t, index: i, count: 3)
+                #expect(f.dy == 0 && f.scale == MainArt.baseScale)  // sideways only, no zoom
+                #expect(abs(f.dx) <= (f.scale - 1) / 2)  // no edge shows
+            }
+        }
+        // Constant speed: equal time steps move the same distance.
+        let a = MainArt.pose(at: 2, index: 0, count: 3).dx, b = MainArt.pose(at: 3, index: 0, count: 3).dx
+        let c = MainArt.pose(at: 4, index: 0, count: 3).dx
+        #expect(abs((b - a) - (c - b)) < 1e-12)
+    }
+
+    @Test func mainMenuShowsALoadedCoverAtOnceAndNoDarkDip() throws {
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        let a = String(repeating: "aa", count: 20), b = String(repeating: "bb", count: 20)
+        var s = sampleState()
+        s.library[0].tracks = [
+            Track(id: "spotify:track:a", title: "A", artist: "x", duration: 200, coverID: a),
+            Track(id: "spotify:track:b", title: "B", artist: "y", duration: 200, coverID: b),
+        ]
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:a")
+        s.mainArt = s.library[0].tracks  // the playing cover first, then one more
+        let art = Artwork { $0 == a ? red : $0 == b ? blue : nil }
+        let point = (Self.screenLeft + 190, Self.listTop + 90)
+        let first = try render(s, "main-art-first", artwork: art, time: 0)
+        let c = first.rgb(point.0, point.1)
+        #expect(c.r > 150 && c.b < 100, "first frame \(c)")  // the playing track's cover, fully shown
+        let mid = try render(s, "main-art-fade", artwork: art, time: MainArt.slot - MainArt.fade / 2)
+        let m = mid.rgb(point.0, point.1)
+        #expect(m.r > 90 && m.b > 90, "mid fade \(m)")  // red under half blue: no dark dip
+    }
+
+    @Test func aMissingMainArtCoverShowsTheOneBeforeIt() {
+        #expect(MainArt.filled([nil, "A", nil, "B"]) == ["B", "A", "A", "B"])
+        #expect(MainArt.filled([String?]([nil, nil])) == [nil, nil])  // all nil stays nil
+        #expect(MainArt.sources([false, true, false]) == [1, 1, 1])
+    }
+
+    @Test func aLateCoverDoesNotCutTheMainArt() throws {
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        let a = String(repeating: "aa", count: 20), b = String(repeating: "bb", count: 20)
+        var s = sampleState()
+        s.mainArt = [
+            Track(id: "spotify:track:a", title: "A", artist: "x", duration: 200, coverID: a),
+            Track(id: "spotify:track:b", title: "B", artist: "y", duration: 200, coverID: b),
+        ]
+        let point = (Self.screenLeft + 190, Self.listTop + 90)
+        // Only the second cover is loaded: it stands in for the first, not the square.
+        let early = try render(s, "main-art-late", artwork: Artwork { $0 == b ? blue : nil }, time: 0)
+        let e = early.rgb(point.0, point.1)
+        #expect(e.b > 150 && e.r < 100, "stand-in \(e)")
+        let loaded = try render(s, "main-art-loaded", artwork: Artwork { $0 == a ? red : $0 == b ? blue : nil }, time: 0)
+        let l = loaded.rgb(point.0, point.1)
+        #expect(l.r > 150 && l.b < 100, "own cover \(l)")
+    }
+
+    @Test func aRowChangeSwitchesTheMainArtOnlyWhenItCanShowACover() {
+        let loaded: (String?) -> Bool = { $0 == "a" || $0 == "b" }
+        #expect(!MainArtPanel.switches(to: ["a"], from: ["a"], loaded: loaded))  // same covers
+        #expect(MainArtPanel.switches(to: ["b", "x"], from: ["a"], loaded: loaded))  // a new cover is loaded
+        #expect(!MainArtPanel.switches(to: ["x"], from: ["a"], loaded: loaded))  // keep the shown cover
+        #expect(MainArtPanel.switches(to: ["x"], from: ["y"], loaded: loaded))  // nothing shows anyway
     }
 
     @Test func aLongSelectedLabelScrolls() throws {
@@ -266,15 +342,6 @@ import Testing
         #expect(bottom.offset + bottom.length == 176)
         let short = PocketList.thumb(height: 176, shown: 5, count: 10, first: 5)  // long enough already
         #expect(short.length == 88 && short.offset + short.length == 176)
-    }
-
-    /// The main menu always gives the 4-layer loop 4 covers, so the panel is never dark.
-    @Test func mainArtGetsFourLayers() {
-        let t = (0..<8).map { Track(id: "\($0)", title: "", artist: "x", duration: 1, coverID: "c\($0)") }
-        #expect(PocketScreen.fourLayers([]).isEmpty)
-        #expect(PocketScreen.fourLayers([t[0]]).map(\.id) == ["0", "0", "0", "0"])
-        #expect(PocketScreen.fourLayers(Array(t.prefix(3))).map(\.id) == ["0", "1", "2", "0"])
-        #expect(PocketScreen.fourLayers(t).map(\.id) == ["0", "1", "2", "3"])
     }
 
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.
