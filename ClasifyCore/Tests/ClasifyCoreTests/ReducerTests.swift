@@ -82,7 +82,12 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.shuffle && s.repeatMode == .one)
         s.toast = ""  // the "Signed in" toast from mainMenu()
         send(&s, .wheel(1), .select)
-        #expect(!s.showArt && s.skin == .pocket && s.toast.isEmpty)
+        #expect(s.albumArt == .nowPlaying && s.skin == .pocket && s.toast.isEmpty)  // All, then Now Playing
+        #expect(!s.isHalf(.main) && !s.isHalf(.playlists) && s.showsNowPlayingArt)
+        send(&s, .select)
+        #expect(s.albumArt == .off && !s.isHalf(.main) && !s.showsNowPlayingArt)
+        send(&s, .select)
+        #expect(s.albumArt == .all && s.isHalf(.main) && s.isHalf(.playlists) && s.showsNowPlayingArt)
         #expect(!s.rows(for: s.top).contains(.skin))  // only the Pocket skin in 1.0
         #expect(s.rows(for: s.top).count == 6)  // no Playback engine, EQ or Skin row in 1.0
     }
@@ -367,7 +372,7 @@ func playing(_ i: Int = 0) -> AppState {
         s.artReads = []
         #expect(send(&s, .tick, now: 241.4).isEmpty && s.artRow == .playlist("focus"))
         #expect(send(&s, .offline(false), now: 242).contains(.readArtTracks(playlist: "focus")))  // online again
-        s.showArt = false
+        s.albumArt = .off
         send(&s, .wheel(1), .wheel(-1), now: 250)
         #expect(send(&s, .tick, now: 251).isEmpty && s.halfRow == nil)
     }
@@ -416,7 +421,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(move(.select) == 1 && s.top.screen == .now)
         #expect(move(.menu) == 1)
         // With Album Art off, no screen is a half screen: only the content slides.
-        s.showArt = false
+        s.albumArt = .off
         pick(.playlists)
         #expect(move(.select) == 0 && s.top.screen == .playlists)
         pick(.playlist("focus"))

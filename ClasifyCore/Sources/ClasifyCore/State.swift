@@ -79,6 +79,15 @@ public enum RepeatMode: String, CaseIterable, Sendable {
     /// The repeat slider on Now Playing, from left to right.
     public static let sliderOrder: [RepeatMode] = [.off, .one, .all]
 }
+/// Where album covers show. The Settings row goes All, Now Playing, Off, then All again.
+public enum AlbumArt: String, CaseIterable, Sendable {
+    /// Covers beside the main menu and Playlists, and on Now Playing.
+    case all = "All"
+    /// The cover on Now Playing only. The menus are full width.
+    case nowPlaying = "Now Playing"
+    /// No covers. Now Playing centers its text.
+    case off = "Off"
+}
 public enum Skin: String, CaseIterable, Sendable { case pocket = "Pocket", aqua = "Aqua", dark = "Dark" }
 
 extension CaseIterable where Self: Equatable {
@@ -149,7 +158,9 @@ public struct AppState: Equatable, Sendable {
     public var shuffle = false
     public var repeatMode = RepeatMode.off
     public var skin = Skin.pocket
-    public var showArt = true
+    public var albumArt = AlbumArt.all
+    /// Now Playing shows the playing track's cover.
+    public var showsNowPlayingArt: Bool { albumArt != .off }
     public var clicker = true
     public var nowMode = NowMode.volume
     /// When the volume bar hides, or when a scrub, shuffle or repeat slider goes back to the
@@ -204,9 +215,9 @@ public struct AppState: Equatable, Sendable {
     }
 
     /// The screen is a half screen: a list pane on the left half with the covers on its right. With Album
-    /// Art on, these are the main menu and Playlists.
+    /// Art set to All, these are the main menu and Playlists.
     public func isHalf(_ screen: Screen) -> Bool {
-        showArt && (screen == .main || screen == .playlists)
+        albumArt == .all && (screen == .main || screen == .playlists)
     }
 
     /// The selected row of a half screen, whose covers show. Nil on other screens, and while

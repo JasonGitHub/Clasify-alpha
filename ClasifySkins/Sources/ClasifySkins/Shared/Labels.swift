@@ -47,7 +47,7 @@ enum Labels {
         case .shuffle: return RowText(label: "Shuffle", value: state.shuffle ? "Songs" : "Off")
         case .repeatMode: return RowText(label: "Repeat", value: state.repeatMode.rawValue)
         case .skin: return RowText(label: "Skin", value: state.skin.rawValue)
-        case .albumArt: return RowText(label: "Album Art", value: onOff(state.showArt))
+        case .albumArt: return RowText(label: "Album Art", value: state.albumArt.rawValue)
         case .clicker: return RowText(label: "Clicker", value: onOff(state.clicker))
         case .about: return RowText(label: "About", opens: true)
         case .logOut: return RowText(label: "Log out", opens: true)

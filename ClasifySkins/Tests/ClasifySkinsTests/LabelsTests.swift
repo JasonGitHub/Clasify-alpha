@@ -39,11 +39,15 @@ func sampleState() -> AppState {
         var s = sampleState()
         s.shuffle = true
         s.repeatMode = .one
-        s.showArt = false
+        s.albumArt = .off
         #expect(Labels.row(.shuffle, on: .settings, in: s) == .init(label: "Shuffle", value: "Songs"))
         #expect(Labels.row(.repeatMode, on: .settings, in: s) == .init(label: "Repeat", value: "One"))
         #expect(Labels.row(.skin, on: .settings, in: s) == .init(label: "Skin", value: "Pocket"))
         #expect(Labels.row(.albumArt, on: .settings, in: s) == .init(label: "Album Art", value: "Off"))
+        s.albumArt = .nowPlaying
+        #expect(Labels.row(.albumArt, on: .settings, in: s) == .init(label: "Album Art", value: "Now Playing"))
+        s.albumArt = .all
+        #expect(Labels.row(.albumArt, on: .settings, in: s) == .init(label: "Album Art", value: "All"))
         #expect(Labels.row(.clicker, on: .settings, in: s) == .init(label: "Clicker", value: "On"))
         #expect(Labels.row(.logOut, on: .settings, in: s) == .init(label: "Log out", opens: true))
     }

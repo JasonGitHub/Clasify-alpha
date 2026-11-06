@@ -95,9 +95,12 @@ import Testing
         let want = try reference(0xb0bece)
         #expect(near(art, want), "art \(art), want \(want)")
 
-        s.showArt = false  // Album Art off: a full-width list, with no covers
+        s.albumArt = .off  // Album Art off: a full-width list, with no covers
         let plain = try render(s, "main-no-art")
         #expect(plain.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
+        s.albumArt = .nowPlaying  // the cover on Now Playing only: the menu is full width too
+        let nowOnly = try render(s, "main-now-playing-art")
+        #expect(nowOnly.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
     }
 
     @Test func mainArtCrossfadesWithNoDarkDip() {
@@ -424,7 +427,7 @@ import Testing
         #expect(volume.isBlue(80, 209))  // inside the 60% glossy fill
         #expect(volume.isLight(230, 209))  // past it
         s.nowMode = .scrub
-        s.showArt = false
+        s.albumArt = .off
         s.t = 102.5  // half of the track
         let scrub = try render(s, "now-scrub")
         // The times sit on the bar's line: 28 + 6 points on the left, 6 + 32 on the right.

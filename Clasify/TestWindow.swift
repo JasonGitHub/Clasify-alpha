@@ -140,7 +140,7 @@ private struct TestPanel: View {
         case .shuffle: "Shuffle: \(state.shuffle ? "On" : "Off")"
         case .repeatMode: "Repeat: \(state.repeatMode.rawValue)"
         case .skin: "Skin: \(state.skin.rawValue)"
-        case .albumArt: "Album Art: \(state.showArt ? "On" : "Off")"
+        case .albumArt: "Album Art: \(state.albumArt.rawValue)"
         case .clicker: "Clicker: \(state.clicker ? "On" : "Off")"
         case .about: "About"
         case .logOut: "Log Out"
