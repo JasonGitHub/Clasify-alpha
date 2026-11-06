@@ -499,9 +499,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .reset:
             stop()
             let (tok, gen, auth) = (s.tok, s.playGen, s.authAttempt)  // keep counters so callbacks from before the reset stay stale
-            let nav = s.navSeq  // keep the screen's identity, so the skin does not slide the reset screen in
+            let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             s = AppState()
-            s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.navSeq = nav
+            s.tok = tok; s.playGen = gen; s.authAttempt = auth; (s.navSeq, s.wholeSeq) = nav
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
@@ -514,6 +514,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     if case .reset = action {} else if (s.stack.count, s.top.screen) != (before.0, before.1) {
         s.navSeq += 1
         s.navForward = s.stack.count >= before.0 || (wasAuth && s.top.screen == .main)
+        if (before.1, s.top.screen) == (.main, .now) || (before.1, s.top.screen) == (.now, .main) { s.wholeSeq += 1 }
     }
     // A list shows its scroll bar for a moment when it appears: on a new screen, or when its
     // load ends. A reset starts with no bar.
