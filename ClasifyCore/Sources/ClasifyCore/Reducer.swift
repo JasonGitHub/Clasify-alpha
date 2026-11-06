@@ -104,6 +104,11 @@ public struct Dependencies: Sendable {
 public let visibleRows = 8
 /// Song lists show two lines a row (title and artist), so fewer rows fit.
 public let trackRows = 5
+/// Seconds after a seek in which `.position` ignores a position far from the seek target.
+let seekSettle = 3.0
+/// How far a position can be from the seek target, plus the time since the seek, and still be taken.
+let seekSlack = 2.0
+
 /// Seconds without a wheel turn before a scrub, shuffle or repeat slider goes back to the progress bar.
 public let sliderTimeout = 6.0
 /// Seconds after a read when opening its screen reads it again in the background.
@@ -151,7 +156,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.playGen += 1
         fx.append(.load(trackID: id, context: s.current?.playlist, autoplay: autoplay, generation: s.playGen))
     }
-    func seek(_ t: Double) { s.playGen += 1; fx.append(.seek(t, generation: s.playGen)) }  // callbacks from before the seek go stale
+    func seek(_ t: Double) {  // callbacks from before the seek go stale
+        s.playGen += 1
+        (s.seekTarget, s.seekAt, s.seekGen) = (t, now, s.playGen)
+        fx.append(.seek(t, generation: s.playGen))
+    }
     func skip(_ forward: Bool) { s.playGen += 1; fx.append(forward ? .next(generation: s.playGen) : .prev(generation: s.playGen)) }  // and from before the skip
     func play(_ pl: String, _ id: String) {
         if !s.loadPending { s.beforeLoad = s.current.map { BeforeLoad(current: $0, t: s.t, isPlaying: s.isPlaying) } }
@@ -354,6 +363,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.scrollUntil > 0 && now > s.scrollUntil { s.scrollUntil = 0 }
 
         case .position(let t, let gen):
+            // Soon after a seek, a position far from the target is from an earlier seek.
+            let since = now - s.seekAt
+            if gen == s.seekGen && since < seekSettle && abs(t - s.seekTarget) > seekSlack + since { return }
             if s.current != nil && gen == s.playGen { s.t = t; s.beforeLoad = nil; s.loadPending = false }  // the load plays
 
         case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end
