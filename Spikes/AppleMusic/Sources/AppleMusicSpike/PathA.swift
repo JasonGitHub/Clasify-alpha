@@ -1,5 +1,6 @@
 import Foundation
-import MusicKit
+// Spike: MusicKit response types are not Sendable in the macOS 15.5 SDK. The responses are only read on the main actor.
+@preconcurrency import MusicKit
 import Observation
 
 /// Path A: native MusicKit. Library reads with MusicLibraryRequest, playback with ApplicationMusicPlayer.
