@@ -38,6 +38,7 @@ struct PocketNowPlaying: View {
         HStack(spacing: 10) {
             Button { input(.toggleShuffle) } label: {
                 IconView(.shuffle, width: 14, height: 12).foregroundStyle(iconColor(state.shuffle))
+                    .widerHitArea()
             }
             .accessibilityLabel(state.shuffle ? "Shuffle on" : "Shuffle off")
             Button { input(.cycleRepeat) } label: {
@@ -48,6 +49,7 @@ struct PocketNowPlaying: View {
                             Text("1").font(.helvetica(8, bold: true)).foregroundStyle(Pocket.ink).offset(x: 4, y: -4)
                         }
                     }
+                    .widerHitArea()
             }
             .accessibilityLabel("Repeat \(state.repeatMode.rawValue)")
         }
@@ -185,5 +187,15 @@ struct Diamond: Shape {
             ])
             p.closeSubpath()
         }
+    }
+}
+
+extension View {
+    /// A plain button takes a click only on the drawn pixels of its label. This makes the whole
+    /// box around the label, plus `inset` points on each side, take the click, with no change
+    /// to the layout. The shuffle and repeat icons are 10 points apart, so 5 points on each side
+    /// keep their targets apart: each is 24 x 22 points.
+    func widerHitArea(_ inset: CGFloat = 5) -> some View {
+        padding(inset).contentShape(Rectangle()).padding(-inset)
     }
 }
