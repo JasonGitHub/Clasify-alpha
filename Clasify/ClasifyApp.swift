@@ -102,7 +102,9 @@ final class AppModel {
         let store = Store(player: player, library: library)
         player.send = { [weak store] action in store?.send(action) }
         self.store = store
-        haptics = Haptics(store: store)
+        let haptics = Haptics(store: store)
+        store.onWheelStep = { [weak haptics] in haptics?.step() }
+        self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] in await keeper?.reconnect() ?? false }
         self.keeper = keeper

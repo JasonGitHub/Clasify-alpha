@@ -3,12 +3,12 @@ import AppKit
 /// The click that the wheel and the buttons make when the Clicker setting is on.
 /// It is the mockup's 4 ms synthetic click, made in memory. Nothing is written to disk.
 @MainActor
-final class Clicker {
-    static let shared = Clicker()
+public final class Clicker {
+    public static let shared = Clicker()
 
     private let sound = NSSound(data: Clicker.wav())
 
-    func click() {
+    public func click() {
         // A copy, so a fast turn of the wheel can play clicks that overlap.
         (sound?.copy() as? NSSound)?.play()
     }
