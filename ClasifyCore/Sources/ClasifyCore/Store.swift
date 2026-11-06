@@ -64,9 +64,16 @@ public final class Store {
     /// Called after each `.wheel` step that moved something (see `wheelMoved`). The app clicks
     /// and ticks the trackpad here.
     @ObservationIgnored public var onWheelStep: (@MainActor () -> Void)?
+    /// Where the settings are saved. When set, `init` loads them into the state.
+    @ObservationIgnored private let settingsStore: (any SettingsStore)?
 
-    public init(player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live) {
+    public init(
+        player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live,
+        settings: (any SettingsStore)? = nil
+    ) {
         self.player = player; self.library = library; self.state = state; self.env = env
+        settingsStore = settings
+        if let settings { self.state.settings = Settings(from: settings) }
     }
 
     /// Waits for in-flight library fetches to deliver their results. For tests.
@@ -77,6 +84,7 @@ public final class Store {
     public func send(_ action: Action) {
         let before = state
         let effects = reduce(&state, action, env)
+        if let settingsStore, state.settings != before.settings { state.settings.save(to: settingsStore) }
         if case .wheel = action, wheelMoved(from: before, to: state) { onWheelStep?() }
         for effect in effects {
             switch effect {

@@ -99,7 +99,7 @@ final class AppModel {
         }
         let library = LibrespotLibrary(client: client)
         let player = SpotifyConnectPlayer(client: client, library: library)
-        let store = Store(player: player, library: library)
+        let store = Store(player: player, library: library, settings: UserDefaults.standard)
         player.send = { [weak store] action in store?.send(action) }
         self.store = store
         let haptics = Haptics(store: store)
