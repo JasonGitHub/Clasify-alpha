@@ -88,7 +88,10 @@ final class ArtworkLoader {
         guard state.top.screen == .main && state.showArt else {
             let left = leftMainAt ?? .now
             leftMainAt = left
-            if ContinuousClock.now - left < .milliseconds(500) { return mainShown.union(mainFading) }  // the 0.22 s slide, with a margin
+            // The 0.22 s slide, with a margin. The old set only while its fade still runs.
+            if ContinuousClock.now - left < .milliseconds(500) {
+                return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
+            }
             mainShown = []
             mainFading = []
             return []
