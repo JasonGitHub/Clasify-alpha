@@ -83,6 +83,8 @@ import Testing
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
         s.isPlaying = true
         s.top.sel = 1
+        s.artRow = .nowPlaying
+        s.refreshArt()
         let shot = try render(s, "main")
         // A 136 point pane (x 24 to 160) with 8 rows of 22.5 and no bar.
         #expect(shot.isLight(125, Self.rowCenter(0)))  // right of "Now Playing"
@@ -264,6 +266,15 @@ import Testing
         #expect(bottom.offset + bottom.length == 176)
         let short = PocketList.thumb(height: 176, shown: 5, count: 10, first: 5)  // long enough already
         #expect(short.length == 88 && short.offset + short.length == 176)
+    }
+
+    /// The main menu always gives the 4-layer loop 4 covers, so the panel is never dark.
+    @Test func mainArtGetsFourLayers() {
+        let t = (0..<8).map { Track(id: "\($0)", title: "", artist: "x", duration: 1, coverID: "c\($0)") }
+        #expect(PocketScreen.fourLayers([]).isEmpty)
+        #expect(PocketScreen.fourLayers([t[0]]).map(\.id) == ["0", "0", "0", "0"])
+        #expect(PocketScreen.fourLayers(Array(t.prefix(3))).map(\.id) == ["0", "1", "2", "0"])
+        #expect(PocketScreen.fourLayers(t).map(\.id) == ["0", "1", "2", "3"])
     }
 
     /// A 4 x 4 image of one color, as a stand-in for a loaded album cover.

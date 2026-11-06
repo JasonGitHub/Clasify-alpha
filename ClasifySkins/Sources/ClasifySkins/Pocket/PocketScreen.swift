@@ -41,12 +41,18 @@ struct PocketScreen: View {
                            removal: .opacity.animation(.linear(duration: 0)))
     }
 
+    /// The current MainArt loop has 4 layers. More covers would hide some, and fewer would
+    /// leave the panel dark, so take 4, repeating them when there are fewer.
+    static func fourLayers(_ art: [ClasifyCore.Track]) -> [ClasifyCore.Track] {
+        art.isEmpty ? [] : (0..<4).map { art[$0 % art.count] }
+    }
+
     var body: some View {
         // The main menu is a 136 point pane with a shadow, over covers on the right.
         // With Album Art off, it is a full-width list and loads no covers.
         let split = top.screen == .main && state.showArt
         ZStack(alignment: .leading) {
-            if split { MainArt(tracks: state.mainArt).padding(.leading, 136) }
+            if split { MainArt(tracks: Self.fourLayers(state.mainArt)).padding(.leading, 136) }
             VStack(spacing: 0) {
                 header
                 Pocket.line.frame(height: 1)
