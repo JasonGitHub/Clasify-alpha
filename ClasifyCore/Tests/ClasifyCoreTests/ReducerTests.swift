@@ -272,14 +272,52 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.scrollUntil == 0)
     }
 
-    @Test func theMainMenuCoversStartWithThePlayingTrack() {
+    /// 20 Liked Songs on 10 albums, and 12 Focus tracks, each on its own album.
+    static let likedCovers = Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: (0..<20).map {
+        Track(id: "l\($0)", title: "", artist: "x", duration: 30, coverID: "lc\($0 / 2)")
+    })
+    static let focusCovers = Playlist(id: "focus", name: "Focus", tracks: (0..<12).map {
+        Track(id: "f\($0)", title: "", artist: "x", duration: 30, coverID: "fc\($0)")
+    })
+
+    @Test func theMainMenuCoversAreRandomAlbumsEachOnce() {
         var s = mainMenu()
         #expect(s.mainArt.isEmpty)
-        s.library = library
-        #expect(s.mainArt.map(\.id) == ["l0", "l1", "l0", "l1"])  // two Liked Songs, repeated
-        s = playing(3)
-        s.library = library
-        #expect(s.mainArt.map(\.id) == ["f3", "l0", "l1", "f3"])
+        s.library = library  // no covers in these lists
+        s.refreshArt()
+        #expect(s.mainArt.isEmpty)
+        s.library = [Self.likedCovers, Self.focusCovers]
+        s.refreshArt()  // the Playlists row, before any playlist is read: Liked Songs
+        let art = s.mainArt
+        #expect(art.count == mainArtCount && art.allSatisfy { $0.id.hasPrefix("l") })
+        #expect(Set(art.compactMap(\.coverID)).count == art.count)  // each album once
+        s.refreshArt()
+        #expect(s.mainArt == art)  // the same each time
+        s.artSeed = 12345
+        s.refreshArt()
+        #expect(s.mainArt != art)  // another seed, another order
+    }
+
+    @Test func theMainMenuCoversFollowTheSelectedRow() {
+        var s = playing(3)
+        s.library = [Self.likedCovers, Self.focusCovers]
+        s.loadedTracks = ["focus"]
+        let e = Dependencies(now: { 100 }, random: { _ in 777 })
+        for _ in 0..<3 { reduce(&s, .menu, e) }  // Now Playing, Focus, Playlists, then the main menu
+        #expect(s.top.screen == .main && s.artSeed == 777 && s.artRow == s.mainRow)  // new random covers
+        s.top.sel = 0; s.artRow = .nowPlaying; s.refreshArt()
+        #expect(s.mainArt.map(\.id) == ["f3"])  // Now Playing: the playing cover only
+        send(&s, .wheel(1), now: 200)  // Playlists
+        #expect(s.mainArt.map(\.id) == ["f3"] && s.artUntil == 200 + artDelay)  // not yet
+        send(&s, .wheel(1), now: 200.2)  // Liked Songs: a fast scroll waits again
+        send(&s, .tick, now: 200.4)
+        #expect(s.mainArt.map(\.id) == ["f3"])
+        send(&s, .tick, now: 200.6)
+        #expect(s.artRow == .likedSongs && s.artUntil == 0)
+        #expect(s.mainArt.count == mainArtCount && s.mainArt.allSatisfy { $0.id.hasPrefix("l") })
+        send(&s, .wheel(-1), now: 300)
+        send(&s, .tick, now: 301)
+        #expect(s.artRow == .playlists && s.mainArt.allSatisfy { $0.id.hasPrefix("f") })  // read playlists
     }
 
     @Test func screenChangesSlideInFromTheRightOrTheLeft() {

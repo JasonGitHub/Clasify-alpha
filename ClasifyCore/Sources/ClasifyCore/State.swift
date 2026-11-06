@@ -112,6 +112,16 @@ public struct AppState: Equatable, Sendable {
     public var restoring = false
     /// Liked Songs (once read) first, then the playlists. Each part loads when its screen opens.
     public var library: [Playlist] = []
+    /// The covers that take turns on the main menu's right side. `refreshArt` sets them.
+    public var mainArt: [Track] = []
+    /// The main menu row whose covers show. It follows the selection `artDelay` after the last
+    /// change, so a fast scroll does not flicker.
+    public var artRow: Row?
+    /// When `artRow` takes the selected row. 0 when it already has it.
+    public var artUntil: Double = 0
+    /// Sets the random order of the covers. The reducer picks a new one with `env.random`
+    /// each time the main menu opens.
+    public var artSeed = 0
     /// The playlist list was read in this session.
     public var playlistsLoaded = false
     /// The playlists (and `Playlist.likedSongsID`) whose tracks were read in this session.
@@ -181,16 +191,54 @@ public struct AppState: Equatable, Sendable {
         return showsBar ? rows - 1 : rows
     }
 
-    /// The tracks whose covers take turns on the main menu's right side: the playing track,
-    /// then the first Liked Songs, four in all. Fewer tracks repeat. Empty when there are none.
-    public var mainArt: [Track] {
-        var picks: [Track] = []
-        if let ref = current, let track = track(ref) { picks.append(track) }
-        for track in tracks(in: Playlist.likedSongsID) where picks.count < 4 && !picks.contains(where: { $0.id == track.id }) {
-            picks.append(track)
+    /// The selected row of the main menu, or nil on another screen.
+    public var mainRow: Row? {
+        guard top.screen == .main else { return nil }
+        let rows = rows(for: top)
+        return rows.indices.contains(top.sel) ? rows[top.sel] : nil
+    }
+
+    /// Picks the covers of the main menu's right side for `artRow`, into `mainArt`:
+    /// - Now Playing: the playing track's cover only.
+    /// - Playlists: albums from the playlists already read, or Liked Songs until one is read.
+    /// - Liked Songs, Shuffle Songs and Settings: albums from Liked Songs.
+    /// Up to `mainArtCount` albums, each cover once, in a random order that `artSeed` sets.
+    /// With none of these, the playing track's cover. Tracks with no cover are left out.
+    public mutating func refreshArt() {
+        let playing = current.flatMap { track($0) }.flatMap { $0.coverID == nil ? nil : $0 }
+        let liked = tracks(in: Playlist.likedSongsID)
+        var pool: [Track]
+        switch artRow {
+        case .nowPlaying?:
+            pool = []
+        case .playlists?:
+            pool = library.filter { $0.id != Playlist.likedSongsID && loadedTracks.contains($0.id) }.flatMap(\.tracks)
+            if !pool.contains(where: { $0.coverID != nil }) { pool = liked }
+        default:
+            pool = liked
         }
-        guard !picks.isEmpty else { return [] }
-        return (0..<4).map { picks[$0 % picks.count] }
+        var picks = Self.albums(pool, seed: artSeed, count: mainArtCount)
+        if picks.isEmpty, let playing { picks = [playing] }
+        mainArt = picks
+    }
+
+    /// Up to `count` tracks with distinct covers, in a random order that `seed` sets.
+    static func albums(_ tracks: [Track], seed: Int, count: Int) -> [Track] {
+        var seen: Set<String> = []
+        var pool: [(key: UInt64, id: String, track: Track)] = []
+        for track in tracks {
+            guard let id = track.coverID, seen.insert(id).inserted else { continue }
+            pool.append((mix(seed, id), id, track))
+        }
+        pool.sort { $0.key != $1.key ? $0.key < $1.key : $0.id < $1.id }
+        return pool.prefix(count).map(\.track)
+    }
+
+    /// A stable hash of the seed and a cover ID (FNV-1a). Swift's `Hasher` changes with each launch.
+    static func mix(_ seed: Int, _ id: String) -> UInt64 {
+        var h: UInt64 = 0xcbf2_9ce4_8422_2325 ^ UInt64(truncatingIfNeeded: seed)
+        for byte in id.utf8 { h = (h ^ UInt64(byte)) &* 0x100_0000_01b3 }
+        return h
     }
 
     /// The screen's list is already in the state, so it opens without a read.

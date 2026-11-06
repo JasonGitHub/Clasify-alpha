@@ -133,7 +133,8 @@ final class AppModel {
                 let toastDone = state.toastUntil > 0 && now > state.toastUntil
                 let overlayDone = state.overlayUntil > 0 && now > state.overlayUntil
                 let scrollDone = state.scrollUntil > 0 && now > state.scrollUntil
-                if toastDone || overlayDone || scrollDone { store?.send(.tick) }
+                let artDone = state.artUntil > 0 && now > state.artUntil
+                if toastDone || overlayDone || scrollDone || artDone { store?.send(.tick) }
             }
         }
     }

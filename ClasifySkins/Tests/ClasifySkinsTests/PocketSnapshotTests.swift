@@ -83,6 +83,8 @@ import Testing
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
         s.isPlaying = true
         s.top.sel = 1
+        s.artRow = .nowPlaying
+        s.refreshArt()
         let shot = try render(s, "main")
         // A 136 point pane (x 24 to 160) with 8 rows of 22.5 and no bar.
         #expect(shot.isLight(125, Self.rowCenter(0)))  // right of "Now Playing"

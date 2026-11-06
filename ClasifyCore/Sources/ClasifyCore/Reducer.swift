@@ -109,6 +109,11 @@ let seekSettle = 3.0
 /// How far a position can be from the seek target, plus the time since the seek, and still be taken.
 let seekSlack = 2.0
 
+/// The most covers that take turns on the main menu.
+public let mainArtCount = 8
+/// Seconds after the main menu selection changes before its covers change.
+public let artDelay = 0.3
+
 /// Seconds without a wheel turn before a scrub, shuffle or repeat slider goes back to the progress bar.
 public let sliderTimeout = 6.0
 /// Seconds after a read when opening its screen reads it again in the background.
@@ -358,6 +363,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
+            if s.artUntil > 0 && now > s.artUntil { s.artUntil = 0; s.artRow = s.mainRow }  // the covers follow the row
             // The volume bar hides, and a slider goes back to the progress bar.
             if s.overlayUntil > 0 && now > s.overlayUntil { s.overlayUntil = 0; s.nowMode = .volume }
             if s.scrollUntil > 0 && now > s.scrollUntil { s.scrollUntil = 0 }
@@ -500,6 +506,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let wasAuth = s.top.screen == .auth
+    let rowBefore = s.mainRow
     apply()
     // A new screen slides in: from the right when it opens, from the left on a way back.
     // The main menu after the login wait counts as opening. A reset does not slide.
@@ -512,6 +519,16 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let listShows = s.top.screen.isList && !s.top.loading && !s.top.error
     if case .reset = action {} else if listShows && (s.stack.count, s.top.screen, s.top.loading) != before {
         s.scrollUntil = now + scrollBarTime
+    }
+    // The main menu's covers: new random ones when the menu opens, and the selected row's
+    // covers a moment after the selection changes.
+    if case .reset = action {} else if s.top.screen == .main {
+        if before.1 != .main || before.0 != s.stack.count {
+            s.artSeed = env.random(1 << 30); s.artRow = s.mainRow; s.artUntil = 0
+        } else if s.mainRow != rowBefore {
+            s.artUntil = now + artDelay
+        }
+        s.refreshArt()
     }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.
     if s.top.screen.isList { s.top.off = clamp(s.top.off, s.top.sel - s.shownRows + 1, s.top.sel) }
