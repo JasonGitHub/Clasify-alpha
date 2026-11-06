@@ -51,30 +51,25 @@ struct PocketNowPlaying: View {
     private var icons: some View {
         HStack(spacing: 10) {
             Button { input(.toggleShuffle) } label: {
-                IconView(.shuffle, width: 14, height: 12).foregroundStyle(iconColor(state.shuffle))
+                ModeIcon(kind: .shuffle).foregroundStyle(iconColor(state.shuffle))
                     .widerHitArea()
             }
             .accessibilityLabel(state.shuffle ? "Shuffle on" : "Shuffle off")
             Button { input(.cycleRepeat) } label: {
-                IconView(.repeatMode, width: 14, height: 12)
+                ModeIcon(kind: state.repeatMode == .one ? .repeatOne : .repeatAll)
                     .foregroundStyle(iconColor(state.repeatMode != .off))
-                    .overlay(alignment: .topTrailing) {
-                        if state.repeatMode == .one {
-                            Text("1").font(.helvetica(8, bold: true)).foregroundStyle(Pocket.ink).offset(x: 4, y: -4)
-                        }
-                    }
                     .widerHitArea()
             }
             .accessibilityLabel("Repeat \(state.repeatMode.rawValue)")
         }
         .buttonStyle(.plain)
-        .frame(height: 12)
+        .frame(height: 14)
         .frame(maxWidth: .infinity, alignment: .trailing)
         .padding(.trailing, 12)
         .offset(y: 7)
     }
 
-    private func iconColor(_ on: Bool) -> Color { on ? Pocket.ink : Color(hex: 0x9aa3ad) }
+    private func iconColor(_ on: Bool) -> Color { on ? Color(hex: 0x4f5965) : Color(hex: 0xb4bcc5) }
 
     /// The 126.6 point cover with its 22 point reflection, tilted as in the photo.
     private func cover(_ now: Labels.NowText) -> some View {

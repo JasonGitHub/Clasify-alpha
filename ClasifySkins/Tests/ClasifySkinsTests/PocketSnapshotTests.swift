@@ -396,6 +396,30 @@ import Testing
         #expect(CoverArt.shown(fresh: nil, coverID: "a", pending: false, last: nil) == nil)
     }
 
+    /// Repeat One adds a filled badge at the loop's lower left; Repeat All leaves that spot clear.
+    /// Shuffle shows both arrowheads on the right.
+    @Test func modeIconsDrawTheirShapes() throws {
+        func shot(_ kind: ModeIcon.Kind) throws -> Snapshot {
+            let view = ModeIcon(kind: kind).foregroundStyle(Color(hex: 0x4f5965)).background(ModeIcon.cut)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = CGFloat(Snapshot.scale)
+            return Snapshot(bitmap: NSBitmapImageRep(cgImage: try #require(renderer.cgImage)))
+        }
+        let all = try shot(.repeatAll), one = try shot(.repeatOne), shuffle = try shot(.shuffle)
+        let ink = try reference(0x4f5965), cut = try reference(0xedf2f6)
+        func check(_ shot: Snapshot, _ x: Int, _ y: Int, _ want: (r: Int, g: Int, b: Int)) -> Bool {
+            near(shot.rgb(x, y), want)
+        }
+        #expect(check(all, 2, 13, cut), "\(all.rgb(2, 13))")  // under the loop's bottom edge
+        #expect(check(one, 2, 13, ink), "\(one.rgb(2, 13))")  // inside the badge
+        #expect(check(all, 7, 11, ink), "\(all.rgb(7, 11))")  // the loop's bottom edge
+        #expect(check(shuffle, 13, 3, ink), "\(shuffle.rgb(13, 3))")  // the two arrowheads
+        #expect(check(shuffle, 13, 10, ink), "\(shuffle.rgb(13, 10))")
+        // All three take the same 16 x 14 frame, so they share a top edge in the row.
+        let scale = Snapshot.scale
+        #expect([all, one, shuffle].allSatisfy { $0.bitmap.pixelsWide == 16 * scale && $0.bitmap.pixelsHigh == 14 * scale })
+    }
+
     /// The wider hit area of the shuffle and repeat icons does not change their size.
     @Test func widerHitAreaKeepsTheLayout() throws {
         let plain = try #require(ImageRenderer(content: Color.red.frame(width: 14, height: 12)).cgImage)
@@ -539,7 +563,7 @@ import Testing
         s.shuffle = true
         s.repeatMode = .one
         s.stack.append(Frame(screen: .now))
-        _ = try render(s, "now-icons")  // shuffle dark, repeat dark with its "1"
+        _ = try render(s, "now-icons")  // shuffle dark, repeat dark with its "1" badge
         s.shuffle = false
         s.repeatMode = .off
         _ = try render(s, "now-icons-off")  // both dimmed
