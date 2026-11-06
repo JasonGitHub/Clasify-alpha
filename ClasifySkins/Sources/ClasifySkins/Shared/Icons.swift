@@ -3,7 +3,7 @@ import SwiftUI
 /// The mockup's SVG icons as shapes. Each path uses the SVG's own view box and scales to its frame.
 enum Icon: Sendable {
     case chevron, prev, next, playPause, speaker, speakerLoud
-    /// The joined notes on a track that has no cover.
+    /// The joined notes: on the cover placeholder, and in the now-playing bar.
     case notes
     /// The title bar's play and pause marks.
     case play, pause

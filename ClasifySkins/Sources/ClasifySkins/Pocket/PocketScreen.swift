@@ -146,7 +146,8 @@ struct PocketScreen: View {
     private func bar(_ now: Labels.NowText) -> some View {
         HStack(spacing: 6) {
             HStack(spacing: 4) {
-                PlayMarkView(mark: Labels.playMark(in: state), size: 10)
+                // A music note, the same when paused: play and pause show only in the title bar.
+                IconView(.notes, width: 10, height: 10).accessibilityHidden(true)
                 Text("\(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")").lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -351,28 +352,5 @@ struct Spinner: View {
         .frame(width: 20, height: 20)  // with the 2 point ring: 22 points, as CSS content-box gives
         .padding(1)
         .accessibilityHidden(true)
-    }
-}
-
-/// ▶ while the track plays, or two bars while it is paused. The bars are a shape, because
-/// the "❚❚" glyph falls back to a font that draws one solid square on some Macs.
-struct PlayMarkView: View {
-    let mark: Labels.PlayMark?
-    /// The text size beside it. The bars are this tall.
-    let size: CGFloat
-
-    var body: some View {
-        switch mark {
-        case .playing:
-            Text("▶").font(.helvetica(size, bold: true))
-        case .paused:
-            HStack(spacing: size * 4 / 9) {
-                Rectangle().frame(width: size / 3, height: size)
-                Rectangle().frame(width: size / 3, height: size)
-            }
-            .accessibilityLabel("Paused")
-        case nil:
-            EmptyView()
-        }
     }
 }

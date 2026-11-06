@@ -481,6 +481,26 @@ import Testing
         #expect(shot.isBlue(left + 7, midY))  // the second bar
     }
 
+    @Test func theBarShowsANoteThatStaysWhenPaused() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
+        s.stack.append(Frame(screen: .playlists))
+        s.isPlaying = true
+        let playing = try render(s, "bar-playing")
+        s.isPlaying = false
+        let paused = try render(s, "bar-paused")
+        // The bar is the screen's last 19 points; the note is its first 10 x 10, after 8 of padding.
+        // The text starts 4 points after the note, so this box holds only the note.
+        var ink = 0
+        for x in (Self.screenLeft + 7)...(Self.screenLeft + 19) {
+            for y in 206...226 {
+                #expect(playing.rgb(x, y) == paused.rgb(x, y), "at \(x), \(y)")  // no change on pause
+                if playing.isDark(x, y) { ink += 1 }
+            }
+        }
+        #expect(ink > 0)  // the note is drawn, in the bar's dark text color
+    }
+
     /// The mockup states that the other tests do not draw. Each one must render at full size.
     @Test func otherMockupStates() throws {
         var s = sampleState()
