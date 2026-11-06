@@ -186,14 +186,17 @@ struct PocketScreen: View {
         HStack(spacing: 6) {
             HStack(spacing: 4) {
                 // A music note, the same when paused: play and pause show only in the title bar.
-                IconView(.notes, width: 10, height: 10).accessibilityHidden(true)
+                IconView(.notes, width: 11, height: 11).accessibilityHidden(true)
                 Text("\(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")").lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(Labels.time(state.t)).monospacedDigit()
         }
-        .font(.helvetica(10))
-        .padding(.horizontal, 8)
+        // The note, the song, " — artist" and the time all share one style: 10.5 bold gray.
+        .font(.helvetica(10.5, bold: true))
+        .foregroundStyle(Color(hex: 0x5d6772))
+        .padding(.leading, 9)
+        .padding(.trailing, 8)
         .frame(height: Pocket.barHeight)  // 22.9 with the line over it, like a row
         .background(Color(hex: 0xe8eef3))
     }
@@ -299,7 +302,7 @@ struct PocketRow: View {
                 }
                 if !text.detail.isEmpty {
                     Text(text.detail)
-                        .font(.helvetica(11))
+                        .font(.helvetica(11, bold: true))
                         .lineLimit(1)
                         .foregroundStyle(selected ? Color(hex: 0xe3efff) : Color(hex: 0x6b7580))
                 }
@@ -310,7 +313,11 @@ struct PocketRow: View {
                     // A setting's value: bold and blue, or white on the selected row.
                     Text(text.value).font(.helvetica(12, bold: true)).foregroundStyle(selected ? Color.white : Pocket.blue)
                 }
-                if text.playing { IconView(.speakerLoud, width: 13, height: 11, label: "Now playing") }
+                if text.playing {
+                    // The photo's soft blue, or white on the selected row.
+                    IconView(.speakerLoud, width: 13, height: 11, label: "Now playing")
+                        .foregroundStyle(selected ? Color.white : Color(hex: 0x6993c5))
+                }
                 // Only the selected row shows its chevron, in white.
                 if text.opens && selected { IconView(.chevron, width: 8, height: 12) }
             }

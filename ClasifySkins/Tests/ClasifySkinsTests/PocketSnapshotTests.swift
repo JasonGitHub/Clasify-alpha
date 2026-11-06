@@ -534,16 +534,17 @@ import Testing
         let playing = try render(s, "bar-playing")
         s.isPlaying = false
         let paused = try render(s, "bar-paused")
-        // The bar is the screen's last 21.9 points; the note is its first 10 x 10, after 8 of padding.
+        // The bar is the screen's last 21.9 points; the note is its first 11 x 11, after 9 of padding.
         // The text starts 4 points after the note, so this box holds only the note.
+        let gray = try reference(0x5d6772)
         var ink = 0
         for x in (Self.screenLeft + 7)...(Self.screenLeft + 19) {
             for y in (Self.screenBottom - 20)...(Self.screenBottom - 2) {
                 #expect(playing.rgb(x, y) == paused.rgb(x, y), "at \(x), \(y)")  // no change on pause
-                if playing.isDark(x, y) { ink += 1 }
+                if near(playing.rgb(x, y), gray) { ink += 1 }
             }
         }
-        #expect(ink > 0)  // the note is drawn, in the bar's dark text color
+        #expect(ink > 0)  // the note is drawn, in the bar's gray text color
     }
 
     /// The mockup states that the other tests do not draw. Each one must render at full size.
