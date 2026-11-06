@@ -203,7 +203,7 @@ public struct AppState: Equatable, Sendable {
         return rows.indices.contains(top.sel) ? rows[top.sel] : nil
     }
 
-    /// The screen is a half screen: a 136 point pane with the covers on its right. With Album
+    /// The screen is a half screen: a list pane on the left half with the covers on its right. With Album
     /// Art on, these are the main menu and Playlists.
     public func isHalf(_ screen: Screen) -> Bool {
         showArt && (screen == .main || screen == .playlists)

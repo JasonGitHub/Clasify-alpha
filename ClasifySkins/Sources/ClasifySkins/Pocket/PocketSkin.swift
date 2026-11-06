@@ -5,7 +5,7 @@ import SwiftUI
 /// It renders `state` and sends input actions. It holds no logic.
 public struct PocketSkin: View {
     /// The device's size in points, as in the mockup.
-    public static let size = CGSize(width: 300, height: 540)
+    public static let size = CGSize(width: 314, height: 540)
 
     let state: AppState
     let send: @MainActor (Action) -> Void

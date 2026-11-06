@@ -28,7 +28,7 @@ import Testing
     // Points in the mockup layout: the device border 1, its padding 24 x 20, the screen border 2,
     // the header 20 with its line, and 8 rows of 22.5 (7 of 160 / 7 over the bar).
     // Song lists have 5 two-line rows of 36 (4 of 40 over the bar).
-    static let screenLeft = 23, listTop = 47
+    static let screenLeft = 23, listTop = 47, screenWidth = 266
 
     static func rowCenter(_ index: Int, bar: Bool = false, songs: Bool = false) -> Int {
         let rows = (songs ? 5.0 : 8.0) - (bar ? 1 : 0)
@@ -86,7 +86,7 @@ import Testing
         s.artRow = .nowPlaying
         s.refreshArt()
         let shot = try render(s, "main")
-        // A 136 point pane (x 24 to 160) with 8 rows of 22.5 and no bar.
+        // A 133 point pane (x 24 to 157) with 8 rows of 22.5 and no bar.
         #expect(shot.isLight(125, Self.rowCenter(0)))  // right of "Now Playing"
         #expect(shot.isBlue(125, Self.rowCenter(1)))
         // On the right, the playing track's cover: no image is loaded, so the blue-grey square.
@@ -281,8 +281,8 @@ import Testing
         s.stack.append(Frame(screen: .settings))
         s.top.sel = 4  // About; Log out under it also opens a screen
         let shot = try render(s, "settings-chevron")
-        // The chevron is 8 points wide, 10 points in from the right edge of the 252 point list.
-        let xs = Self.screenLeft + 232...Self.screenLeft + 244
+        // The chevron is 8 points wide, 10 points in from the right edge of the list.
+        let xs = Self.screenLeft + Self.screenWidth - 20...Self.screenLeft + Self.screenWidth - 8
         func box(_ row: Int) -> [(Int, Int)] {
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
@@ -306,7 +306,7 @@ import Testing
             }
         }
         #expect(artist)
-        let thumbX: Int = Self.screenLeft + 248, thumbY: Int = Self.listTop + 8
+        let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, thumbY: Int = Self.listTop + 8
         let thumb = shot.rgb(thumbX, thumbY), want = try reference(0x5d6772)
         #expect(near(thumb, want), "thumb \(thumb), want \(want)")
     }
@@ -315,7 +315,7 @@ import Testing
         var s = sampleState()
         s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
         let shot = try render(s, "tracks-still")
-        let thumbX: Int = Self.screenLeft + 248, thumbY: Int = Self.listTop + 8
+        let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, thumbY: Int = Self.listTop + 8
         #expect(shot.isBlue(thumbX, thumbY))  // the selected row's blue, with no thumb over it
     }
 
@@ -326,7 +326,7 @@ import Testing
         let shot = try render(s, "settings")
         #expect(shot.isBlue(100, Self.rowCenter(2)))
         // The values on the right are bold blue; on the selected row, white on the blue selection.
-        let right = (Self.screenLeft + 200)...(Self.screenLeft + 244)
+        let right = (Self.screenLeft + Self.screenWidth - 52)...(Self.screenLeft + Self.screenWidth - 8)
         let rows = { (row: Int, test: (Int, Int) -> Bool) in
             right.contains { x in (-3...3).contains { dy in test(x, Self.rowCenter(row) + dy) } }
         }
@@ -428,7 +428,7 @@ import Testing
         s.t = 102.5  // half of the track
         let scrub = try render(s, "now-scrub")
         // The times sit on the bar's line: 28 + 6 points on the left, 6 + 32 on the right.
-        let start: Int = Self.screenLeft + 12 + 34, end: Int = Self.screenLeft + 252 - 12 - 38
+        let start: Int = Self.screenLeft + 12 + 34, end: Int = Self.screenLeft + Self.screenWidth - 12 - 38
         #expect(scrub.isBlue((start + end) / 2, 209))  // the blue diamond at the half
         #expect(scrub.isLight(start + 10, 209))  // a thin light track, no fill
         #expect(scrub.isLight(end - 10, 209))
@@ -442,7 +442,7 @@ import Testing
         s.shuffle = true
         let on = try render(s, "now-shuffle")
         // The slider fills the 42 points over the bottom padding. The knob sits on its 6 point track.
-        let right: Int = Self.screenLeft + 12 + 6 + 216, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 200
+        let right: Int = Self.screenLeft + Self.screenWidth - 12 - 6, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 200
         #expect(on.isBlue(right - 2, knobY))  // Songs
         #expect(!on.isBlue(left + 2, knobY))
         s.nowMode = .repeatMode
@@ -467,22 +467,23 @@ import Testing
     @Test func pressedCenterFlipsItsGradient() throws {
         let wheelTop: Int = 261  // device border 1, padding 24, screen 204, gap 32
         let nearTop: Int = wheelTop + 98 - 30, nearBottom: Int = wheelTop + 98 + 30
+        let x = Int(PocketSkin.size.width) / 2  // the wheel's center
         let up = try render(AppState(), "wheel")
         let down = try render(AppState(), "wheel-pressed", pressed: .center)
-        #expect(up.isLight(150, wheelTop + 60))  // the ring
+        #expect(up.isLight(x, wheelTop + 60))  // the ring
         // Up, the button is lighter at the top. Pressed, the gradient flips.
-        #expect(up.rgb(150, nearTop).b > up.rgb(150, nearBottom).b)
-        #expect(down.rgb(150, nearTop).b < down.rgb(150, nearBottom).b)
+        #expect(up.rgb(x, nearTop).b > up.rgb(x, nearBottom).b)
+        #expect(down.rgb(x, nearTop).b < down.rgb(x, nearBottom).b)
     }
 
     @Test func pausedMarkIsTwoBars() throws {
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
         s.isPlaying = false
-        s.stack.append(Frame(screen: .settings))  // a full-width header; on the half screens it is 136 points
+        s.stack.append(Frame(screen: .settings))  // a full-width header; on the half screens it is 133 points
         let shot = try render(s, "paused")
         // The header mark: two blue bars, 2.6 points wide with a 1.8 point gap, at the right of the header.
-        let left: Int = Self.screenLeft + 252 - 8 - 9, midY: Int = 25 + 2 + 10
+        let left: Int = Self.screenLeft + Self.screenWidth - 8 - 9, midY: Int = 25 + 2 + 10
         #expect(shot.isBlue(left + 2, midY))  // the first bar
         #expect(!shot.isBlue(left + 5, midY))  // the gap
         #expect(shot.isBlue(left + 7, midY))  // the second bar
