@@ -118,6 +118,12 @@ public final class Store {
                     let result = await library.reread(id)
                     self?.send(.tracksRefreshed(playlist: id, tracks: result))
                 }
+            case .readArtTracks(let id):
+                let library = self.library
+                Task(priority: .utility) { [weak self] in
+                    let result = await library.tracks(of: id)
+                    self?.send(.artTracksRead(playlist: id, tracks: result))
+                }
             case .readTrack(let id):
                 let library = self.library
                 Task { [weak self] in

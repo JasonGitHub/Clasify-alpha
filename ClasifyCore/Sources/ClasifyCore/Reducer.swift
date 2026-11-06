@@ -14,6 +14,9 @@ public enum Action: Equatable, Sendable {
     /// failed: the old rows stay.
     case playlistsRefreshed([Playlist]?)
     case tracksRefreshed(playlist: String, tracks: [Track]?)
+    /// The tracks of the playlist selected on the Playlists screen were read for its covers,
+    /// as `.readArtTracks` asked. nil when the read failed: the covers that show stay.
+    case artTracksRead(playlist: String, tracks: [Track]?)
     /// The app came to the front. The list on screen and the playlist list are read again
     /// when they are older than `activationStaleAfter`, so a change made in Spotify shows.
     case activated
@@ -71,6 +74,9 @@ public enum Effect: Equatable, Sendable {
     /// screen shows the old rows. The result comes back as `.playlistsRefreshed` or `.tracksRefreshed`.
     case refreshPlaylists
     case refreshTracks(playlist: String)
+    /// Read one playlist's tracks, through the library's memory cache, for the Playlists
+    /// screen's covers. The result comes back as `.artTracksRead`.
+    case readArtTracks(playlist: String)
     /// Read Liked Songs and the playlist list in the background after a login, so that the
     /// first open is fast. Nothing comes back: the library keeps the result for the next fetch.
     case prefetch
@@ -239,7 +245,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
-        s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []
+        s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = []
         toast(msg)
     }
     func shuffleLiked() {
@@ -363,7 +369,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
-            if s.artUntil > 0 && now > s.artUntil { s.artUntil = 0; s.artRow = s.mainRow }  // the covers follow the row
+            if s.artUntil > 0 && now > s.artUntil {  // the covers follow the row
+                s.artUntil = 0
+                if let row = s.halfRow { s.artRow = row }
+            }
             // The volume bar hides, and a slider goes back to the progress bar.
             if s.overlayUntil > 0 && now > s.overlayUntil { s.overlayUntil = 0; s.nowMode = .volume }
             if s.scrollUntil > 0 && now > s.scrollUntil { s.scrollUntil = 0 }
@@ -455,6 +464,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.readAt[id] = now
             keepSelection(on: screen, old: old)
 
+        case .artTracksRead(let id, let tracks):
+            guard s.artReads.remove(id) != nil, let tracks, !s.loadedTracks.contains(id),
+                let i = s.library.firstIndex(where: { $0.id == id })  // the playlist is gone
+            else { return }
+            // Kept like an open's read, so opening the playlist later needs no read.
+            s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+            s.loadedTracks.insert(id)
+            s.readAt[id] = now
+
         case .tracksLoaded(let token, let id, let tracks):
             guard s.top.loading, s.top.token == token else { return }  // stale load
             if let tracks {
@@ -506,7 +524,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let wasAuth = s.top.screen == .auth
-    let rowBefore = s.mainRow
+    let rowBefore = s.halfRow
+    let wasOffline = s.offline
     let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
     apply()
     // A new screen slides in: from the right when it opens, from the left on a way back.
@@ -522,18 +541,25 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     if case .reset = action {} else if listShows && (s.stack.count, s.top.screen, s.top.loading) != before {
         s.scrollUntil = now + scrollBarTime
     }
-    // The main menu's covers: new random ones when the menu opens, and the selected row's
-    // covers a moment after the selection changes.
+    // The covers of a half screen: on the main menu, new random ones when the menu opens.
+    // On both, the selected row's covers a moment after the selection changes. On Playlists,
+    // the covers that show stay until the selected playlist's tracks are read.
     // Picking them reads the whole library, so it runs only when something they use changed.
-    if case .reset = action {} else if s.top.screen == .main {
-        let opened = before.1 != .main || before.0 != s.stack.count
-        if opened {
+    if case .reset = action {} else if s.isHalf(s.top.screen) {
+        let opened = before.1 != s.top.screen || before.0 != s.stack.count
+        if opened && s.top.screen == .main {
             s.artSeed = env.random(1 << 30); s.artRow = s.mainRow; s.artUntil = 0
-        } else if s.mainRow != rowBefore {
+        } else if s.halfRow != rowBefore || opened {
             s.artUntil = now + artDelay
         }
         if opened || (s.artRow, s.current, s.loadedTracks) != (artBefore.0, artBefore.2, artBefore.3) || s.library != artBefore.1 || s.extraTracks != artBefore.4 {
             s.refreshArt()
+        }
+        // Read when the covers move to a playlist or the app comes back online, not on each
+        // tick, so a failed read is tried again only when the playlist is selected again.
+        if case .playlist(let id)? = s.artRow, opened || s.artRow != artBefore.0 || (wasOffline && !s.offline),
+            !s.loadedTracks.contains(id), !s.offline, s.artReads.insert(id).inserted {
+            fx.append(.readArtTracks(playlist: id))
         }
     }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.
