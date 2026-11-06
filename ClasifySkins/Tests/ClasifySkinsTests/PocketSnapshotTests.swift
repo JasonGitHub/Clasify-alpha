@@ -23,6 +23,15 @@ import Testing
         func isBlue(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return c.b > c.r + 60 && c.b > 150 }
         func isLight(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return min(c.r, c.g, c.b) > 180 }
         func isDark(_ x: Int, _ y: Int) -> Bool { let c = rgb(x, y); return max(c.r, c.g, c.b) < 120 }
+        /// How many pixels are dark, to tell "drawn elsewhere" from "not drawn" when a check fails.
+        var darkCount: Int {
+            (0..<bitmap.pixelsHigh).reduce(0) { n, y in
+                n + (0..<bitmap.pixelsWide).filter { x in
+                    let c = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) ?? .clear
+                    return max(c.redComponent, c.greenComponent, c.blueComponent) < 120.0 / 255
+                }.count
+            }
+        }
     }
 
     // Points in the mockup layout: the device border 1, its padding 24.8, the bezel 6.6 (the
@@ -406,10 +415,11 @@ import Testing
             return Snapshot(bitmap: NSBitmapImageRep(cgImage: try #require(renderer.cgImage)))
         }
         let all = try shot(.repeatAll), one = try shot(.repeatOne), shuffle = try shot(.shuffle)
-        #expect(all.isLight(2, 13))  // under the loop's bottom edge
-        #expect(one.isDark(2, 13))  // inside the badge
-        #expect(all.isDark(7, 11))  // the loop's bottom edge
-        #expect(shuffle.isDark(13, 3) && shuffle.isDark(13, 10))  // the two arrowheads
+        #expect(all.isLight(2, 13), "\(all.rgb(2, 13))")  // under the loop's bottom edge
+        #expect(one.isDark(2, 13), "\(one.rgb(2, 13))")  // inside the badge
+        #expect(all.isDark(7, 11), "\(all.rgb(7, 11)), dark pixels \(all.darkCount)")  // the loop's bottom edge
+        #expect(shuffle.isDark(13, 3), "\(shuffle.rgb(13, 3)), dark pixels \(shuffle.darkCount)")  // the arrowheads
+        #expect(shuffle.isDark(13, 10), "\(shuffle.rgb(13, 10))")
         // All three take the same 16 x 14 frame, so they share a top edge in the row.
         let scale = Snapshot.scale
         #expect([all, one, shuffle].allSatisfy { $0.bitmap.pixelsWide == 16 * scale && $0.bitmap.pixelsHigh == 14 * scale })
