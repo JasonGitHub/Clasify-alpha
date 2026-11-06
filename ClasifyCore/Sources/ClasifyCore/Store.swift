@@ -73,7 +73,12 @@ public final class Store {
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
-        if let settings { self.state.settings = Settings(from: settings) }
+        if let settings {
+            self.state.settings = Settings(from: settings)
+            // The player keeps its own shuffle and repeat for when it takes over playback later.
+            player.setShuffle(self.state.shuffle)
+            player.setRepeat(self.state.repeatMode)
+        }
     }
 
     /// Waits for in-flight library fetches to deliver their results. For tests.

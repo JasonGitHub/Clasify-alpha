@@ -30,15 +30,17 @@ final class FakeSettings: SettingsStore {
 
 @MainActor @Test func storeLoadsSettingsAtLaunchAndSavesThemWhenTheyChange() {
     let saved = FakeSettings()
-    saved.values = ["settings.albumArt": "Off", "settings.clicker": "false"]
-    let store = Store(player: FakePlayer(), library: FakeLibrary(), state: mainMenu(), env: Dependencies(now: { 0 }, random: { _ in 0 }), settings: saved)
-    #expect(store.state.albumArt == .off && !store.state.clicker && !store.state.shuffle)
+    saved.values = ["settings.albumArt": "Off", "settings.clicker": "false", "settings.repeat": "One"]
+    let player = FakePlayer()
+    let store = Store(player: player, library: FakeLibrary(), state: mainMenu(), env: Dependencies(now: { 0 }, random: { _ in 0 }), settings: saved)
+    #expect(store.state.albumArt == .off && !store.state.clicker && !store.state.shuffle && store.state.repeatMode == .one)
+    #expect(player.calls == ["shuffle false", "repeat One"])  // the player knows them before it plays
     store.send(.wheel(1))  // no setting changes: nothing is written
     #expect(saved.writes == 0)
     store.send(.toggleShuffle)
     #expect(saved.values["settings.shuffle"] == "true" && saved.values["settings.albumArt"] == "Off")
     store.send(.cycleRepeat)
-    #expect(saved.values["settings.repeat"] == "All")
+    #expect(saved.values["settings.repeat"] == "Off")  // One, then Off
     store.send(.reset)  // the saved settings stay
     #expect(store.state.shuffle && store.state.albumArt == .off)
     #expect(Settings(from: saved) == store.state.settings)
