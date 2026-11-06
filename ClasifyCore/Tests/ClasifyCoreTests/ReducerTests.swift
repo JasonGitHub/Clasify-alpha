@@ -328,6 +328,49 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.mainArt.map(\.id) == ["zz"])
     }
 
+    @Test func thePlaylistsCoversFollowTheSelectedPlaylist() {
+        var s = mainMenu()
+        let mix = Playlist(id: "mix", name: "Mix", tracks: [], trackCount: 12)
+        send(&s, .select, .playlistsLoaded(token: 1, playlists: [focusInfo, mix]), now: 200)
+        #expect(s.top.screen == .playlists && s.halfRow == .playlist("focus"))
+        let shown = Self.likedCovers.tracks
+        s.mainArt = shown  // the main menu's covers
+        #expect(s.artUntil == 200 + artDelay)
+        #expect(send(&s, .tick, now: 200.2).isEmpty)  // not yet
+        #expect(send(&s, .tick, now: 200.4) == [.readArtTracks(playlist: "focus")])
+        #expect(s.artRow == .playlist("focus") && s.mainArt == shown)  // the covers stay while it loads
+        #expect(send(&s, .tick, now: 201).isEmpty)  // read once
+        send(&s, .artTracksRead(playlist: "focus", tracks: nil), now: 202)  // the read failed
+        #expect(s.mainArt == shown && !s.loadedTracks.contains("focus") && s.artReads.isEmpty)
+        #expect(send(&s, .tick, now: 203).isEmpty)  // not read again on each tick
+
+        send(&s, .wheel(1), now: 210)  // Mix
+        #expect(s.mainArt == shown)
+        #expect(send(&s, .tick, now: 210.4) == [.readArtTracks(playlist: "mix")])
+        send(&s, .artTracksRead(playlist: "mix", tracks: Self.focusCovers.tracks), now: 211)
+        #expect(s.loadedTracks.contains("mix") && s.readAt["mix"] == 211)
+        let mixArt = s.mainArt
+        #expect(mixArt.count == mainArtCount && mixArt.allSatisfy { $0.coverID?.hasPrefix("fc") == true })
+
+        send(&s, .wheel(-1), now: 220)  // Focus again: its failed read is tried again
+        #expect(send(&s, .tick, now: 220.4) == [.readArtTracks(playlist: "focus")])
+        #expect(s.mainArt == mixArt)
+        send(&s, .wheel(1), now: 230)  // Mix again: from memory, with no read
+        #expect(send(&s, .tick, now: 230.4).isEmpty && s.mainArt == mixArt)
+        send(&s, .select, now: 231)  // and it opens with no read
+        #expect(s.top.screen == .tracks(playlist: "mix") && !s.top.loading)
+
+        // Offline, or with Album Art off, nothing is read.
+        send(&s, .menu, now: 240)
+        s.offline = true
+        send(&s, .wheel(-1), now: 241)
+        s.artReads = []
+        #expect(send(&s, .tick, now: 241.4).isEmpty && s.artRow == .playlist("focus"))
+        s.offline = false; s.showArt = false
+        send(&s, .wheel(1), .wheel(-1), now: 250)
+        #expect(send(&s, .tick, now: 251).isEmpty && s.halfRow == nil)
+    }
+
     @Test func screenChangesSlideInFromTheRightOrTheLeft() {
         var s = AppState()
         send(&s, .select)  // the login wait opens

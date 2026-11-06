@@ -141,6 +141,8 @@ public struct AppState: Equatable, Sendable {
     public var readAt: [String: Double] = [:]
     /// The `readKey`s whose background re-read runs, so each runs once at a time.
     public var refreshing: Set<String> = []
+    /// Playlists whose tracks are read for the Playlists screen's covers, so each is read once.
+    public var artReads: Set<String> = []
     public var t: Double = 0
     public var isPlaying = false
     public var volume = 60
@@ -201,10 +203,26 @@ public struct AppState: Equatable, Sendable {
         return rows.indices.contains(top.sel) ? rows[top.sel] : nil
     }
 
+    /// The screen is a half screen: a 136 point pane with the covers on its right. With Album
+    /// Art on, these are the main menu and Playlists.
+    public func isHalf(_ screen: Screen) -> Bool {
+        showArt && (screen == .main || screen == .playlists)
+    }
+
+    /// The selected row of a half screen, whose covers show. Nil on other screens, and while
+    /// the list has no rows.
+    public var halfRow: Row? {
+        guard isHalf(top.screen) else { return nil }
+        let rows = rows(for: top)
+        return rows.indices.contains(top.sel) ? rows[top.sel] : nil
+    }
+
     /// Picks the covers of the main menu's right side for `artRow`, into `mainArt`:
     /// - Now Playing: the playing track's cover only.
     /// - Playlists: albums from the playlists already read, or Liked Songs until one is read.
     /// - Liked Songs, Shuffle Songs and Settings: albums from Liked Songs.
+    /// - A playlist on the Playlists screen: albums from that playlist. Until its tracks are
+    ///   read, or when the read failed or has no covers, the covers that show stay.
     /// Up to `mainArtCount` albums, each cover once, in a random order that `artSeed` sets.
     /// With none of these, the playing track's cover. Tracks with no cover are left out.
     public mutating func refreshArt() {
@@ -212,6 +230,10 @@ public struct AppState: Equatable, Sendable {
         let liked = tracks(in: Playlist.likedSongsID)
         var pool: [Track]
         switch artRow {
+        case .playlist(let id)?:
+            let picks = Self.albums(loadedTracks.contains(id) ? tracks(in: id) : [], seed: artSeed, count: mainArtCount)
+            if !picks.isEmpty { mainArt = picks }
+            return
         case .nowPlaying?:
             pool = []
         case .playlists?:

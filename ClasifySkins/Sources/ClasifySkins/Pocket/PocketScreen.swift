@@ -50,12 +50,13 @@ struct PocketScreen: View {
         return .asymmetric(insertion: .identity, removal: .opacity.animation(.linear(duration: 0).delay(0.22)))
     }
 
-    /// The screen's parts: the title bar, the content and the bar, and on the main menu the
-    /// covers beside the pane.
+    /// The screen's parts: the title bar, the content and the bar, and on a half screen (the
+    /// main menu and Playlists) the covers beside the pane.
     @ViewBuilder private var parts: some View {
-        // The main menu is a 136 point pane with a shadow, over covers on the right.
-        // With Album Art off, it is a full-width list and loads no covers.
-        let split = top.screen == .main && state.showArt
+        // A half screen (the main menu, Playlists) is a 136 point pane with a shadow, over
+        // covers on the right. The panel stays between them, so it does not start again.
+        // With Album Art off, they are full-width lists and load no covers.
+        let split = state.isHalf(top.screen)
         let width: CGFloat = split ? 136 : 252
         ZStack(alignment: .leading) {
             if split {

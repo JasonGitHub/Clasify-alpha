@@ -82,10 +82,10 @@ final class ArtworkLoader {
         for id in ids where cached(id) == nil { load(id) }
     }
 
-    /// The covers that the main menu panel still shows or fades from, as `MainArtPanel` does:
+    /// The covers that the half-screen panel (main menu, Playlists) still shows or fades from, as `MainArtPanel` does:
     /// it switches to a new set once one of its covers is loaded, then fades over 1 s.
     private func heldMainCovers(in state: AppState) -> Set<String> {
-        guard state.top.screen == .main && state.showArt else {
+        guard state.isHalf(state.top.screen) else {
             let left = leftMainAt ?? .now
             leftMainAt = left
             // The 0.22 s slide, with a margin. The old set only while its fade still runs.
@@ -106,11 +106,11 @@ final class ArtworkLoader {
         return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
     }
 
-    /// The cover IDs of the playing track and of the track after it, and on the main menu the
-    /// covers that take turns there, so none of them drops out of memory and blinks.
+    /// The cover IDs of the playing track and of the track after it, and on a half screen
+    /// the covers that take turns there, so none of them drops out of memory and blinks.
     static func wantedCovers(in state: AppState) -> Set<String> {
         var ids: Set<String> = []
-        if state.top.screen == .main && state.showArt { ids.formUnion(state.mainArt.compactMap(\.coverID)) }
+        if state.isHalf(state.top.screen) { ids.formUnion(state.mainArt.compactMap(\.coverID)) }
         guard let ref = state.current else { return ids }
         if let id = state.track(ref)?.coverID { ids.insert(id) }
         let tracks = state.tracks(in: ref.playlist)
