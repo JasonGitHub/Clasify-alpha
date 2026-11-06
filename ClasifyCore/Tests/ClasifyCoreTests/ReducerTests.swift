@@ -318,6 +318,49 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .trackEnded(generation: 1)) == [] && !s.isPlaying)
     }
 
+    /// A fast scrub: the engine still reports the position of an earlier seek, with the new generation.
+    @Test func positionFromAnEarlierSeekIsIgnoredForAShortTime() {
+        var s = playing()
+        send(&s, .select, .wheel(1), .wheel(1), .wheel(1))  // scrub to 5, 10, then 15
+        #expect(s.t == 15 && s.playGen == 4)
+        send(&s, .position(5, generation: 4), now: 100.2)  // from the seek to 5
+        #expect(s.t == 15)
+        #expect(send(&s, .wheel(1), now: 100.3) == [.seek(20, generation: 5)])  // the next step starts from 15
+        send(&s, .position(19.8, generation: 5), now: 100.5)  // near the target: taken
+        #expect(s.t == 19.8)
+        send(&s, .position(25, generation: 5), now: 103.4)  // 3 s after the seek: any position is taken
+        #expect(s.t == 25)
+        send(&s, .wheel(-1), now: 104)  // seek to 20
+        send(&s, .position(60, generation: 6), now: 104.1)
+        #expect(s.t == 20)
+        send(&s, .position(22.5, generation: 6), now: 104.5)  // 2 s plus the time since the seek: still taken
+        #expect(s.t == 22.5)
+    }
+
+    /// A position from a later load or skip is not held back by an earlier seek.
+    @Test func seekFilterAppliesOnlyToItsOwnGeneration() {
+        var s = playing()
+        send(&s, .select, .wheel(2))  // seek to 10, generation 2
+        send(&s, .next)  // generation 3
+        send(&s, .position(0.5, generation: 3), now: 100.1)
+        #expect(s.t == 0.5)
+
+        s = playing()
+        send(&s, .select, .wheel(5))  // seek to 25, near the end of the track
+        send(&s, .trackChanged("f1", playing: true, generation: 2), .position(0.4, generation: 2), now: 100.5)
+        #expect(s.current?.track == "f1" && s.t == 0.4)  // the next track's position is taken
+
+        s = playing()
+        s.repeatMode = .one
+        send(&s, .select, .wheel(6))  // seek to 29, the end of the 30 s track
+        send(&s, .position(0.3, generation: 2), now: 100.5)  // Repeat One wrapped to the start
+        #expect(s.current?.track == "f0" && s.t == 0.3)
+        s.repeatMode = .off
+        send(&s, .wheel(4), now: 101)  // seek to about 20: not near the end
+        send(&s, .position(0.3, generation: 3), now: 101.2)
+        #expect(s.t > 20)  // an old position, so ignored
+    }
+
     @Test func trackChangedMovesCurrentWithoutLoading() {
         var s = playing()
         send(&s, .position(12.5, generation: 1))
