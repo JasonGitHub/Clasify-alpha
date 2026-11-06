@@ -344,6 +344,25 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.navSeq == 4)  // the same screen identity, so no slide
     }
 
+    @Test func onlyMovesBetweenTheMainMenuAndNowPlayingPushTheWholeScreen() {
+        var s = AppState()
+        send(&s, .select)
+        send(&s, .authDone(token: 1, ok: true))
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "t")
+        #expect(s.wholeSeq == 0)
+        send(&s, .select)  // the Now Playing row: the whole screen
+        #expect(s.top.screen == .now && s.wholeSeq == 1 && s.navForward)
+        send(&s, .menu)  // back to the main menu: the whole screen
+        #expect(s.top.screen == .main && s.wholeSeq == 2 && !s.navForward)
+        send(&s, .wheel(1))
+        send(&s, .select)  // Playlists: only the content
+        #expect(s.top.screen == .playlists && s.wholeSeq == 2)
+        send(&s, .menu)
+        #expect(s.top.screen == .main && s.wholeSeq == 2)
+        send(&s, .reset)
+        #expect(s.wholeSeq == 2)  // the reset keeps it, so the skin does not push
+    }
+
     @Test func tickExpiresToastAndOverlay() {
         var s = playing()
         s.toast = "hi"; s.toastUntil = 101; s.overlayUntil = 101

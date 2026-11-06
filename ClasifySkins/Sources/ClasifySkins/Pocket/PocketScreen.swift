@@ -50,7 +50,9 @@ struct PocketScreen: View {
         return .asymmetric(insertion: .identity, removal: .opacity.animation(.linear(duration: 0).delay(0.22)))
     }
 
-    var body: some View {
+    /// The screen's parts: the title bar, the content and the bar, and on the main menu the
+    /// covers beside the pane.
+    @ViewBuilder private var parts: some View {
         // The main menu is a 136 point pane with a shadow, over covers on the right.
         // With Album Art off, it is a full-width list and loads no covers.
         let split = top.screen == .main && state.showArt
@@ -86,6 +88,18 @@ struct PocketScreen: View {
                 }
             }
         }
+    }
+
+    var body: some View {
+        ZStack {
+            // Between the main menu and Now Playing, the whole screen moves, with its title bar,
+            // the pane and the covers. Other moves slide only the content (`parts`).
+            parts.frame(width: 252, height: 200, alignment: .leading)
+                .id(state.wholeSeq)
+                .transition(slide)
+        }
+        .clipped()
+        .environment(\.navForward, state.navForward)
         .animation(reduceMotion ? nil : Self.slideAnimation, value: state.navSeq)
         .overlay(alignment: .bottom) {
             if !state.toast.isEmpty { toast }
