@@ -314,6 +314,10 @@ import Testing
         let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, thumbY: Int = Self.listTop + 8
         let thumb = shot.rgb(thumbX, thumbY), want = try reference(0x5d6772)
         #expect(near(thumb, want), "thumb \(thumb), want \(want)")
+        // There is no track: under the thumb, the bar's place shows the row, as 6 points to its left.
+        let below = Self.listTop + 150
+        let bar = shot.rgb(thumbX, below), row = shot.rgb(thumbX - 6, below)
+        #expect(near(bar, row), "bar \(bar), row \(row)")
     }
 
     @Test func theScrollBarHidesWhenTheListIsStill() throws {
