@@ -163,6 +163,11 @@ import Testing
         // The next turn of the same layer is a new pan, in the other direction (3 covers: odd turns).
         let next = MainArt.motion(at: 0.5 + 3 * MainArt.slot, index: 1, count: 3)
         #expect(next.turn == first.turn + 3 && next.from == -first.from && next.start == first.start + 3 * MainArt.slot)
+        // Every frame of a turn gives the same value, also at a large time with rounding errors.
+        let late = MainArt.motion(at: 975, index: 2, count: 8)  // shown from 975 to 984
+        for frame in 1...240 {
+            #expect(MainArt.motion(at: 975 + Double(frame) / 30, index: 2, count: 8) == late)
+        }
         // The pose follows the same pan, at a constant speed from `from` to `to`.
         let m = MainArt.motion(at: 9, index: 1, count: 3)
         let span = MainArt.slot + MainArt.fade

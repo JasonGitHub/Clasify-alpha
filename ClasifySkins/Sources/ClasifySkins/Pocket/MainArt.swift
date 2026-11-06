@@ -50,9 +50,13 @@ struct MainArt: View {
 
     static func motion(at t: Double, index: Int, count: Int) -> Pan {
         if count <= 1 { return Pan(start: 0, from: -pan, to: pan, reverses: true, turn: 0) }
-        let (u, _, turn) = phase(at: t, index: index, count: count)
+        let (_, _, turn) = phase(at: t, index: index, count: count)
         let toRight = turn % 2 == 0  // the direction alternates with each cover shown
-        return Pan(start: t - u, from: toRight ? -pan : pan, to: toRight ? pan : -pan, reverses: false, turn: turn)
+        // From whole numbers only, with no `t`, so it is exactly the same on every frame of the
+        // turn. Else it could differ by a rounding error, and the view would restart the pan.
+        let loops = (turn - index) / count
+        let start = Double(loops) * slot * Double(count) + Double(index) * slot - fade
+        return Pan(start: start, from: toRight ? -pan : pan, to: toRight ? pan : -pan, reverses: false, turn: turn)
     }
 
     /// Seconds since the layer started to fade in, its opacity, and its turn.
