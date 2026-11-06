@@ -99,18 +99,57 @@ import Testing
         #expect(plain.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
     }
 
-    @Test func mainArtFollowsTheMockupKeyframes() {
+    @Test func mainArtCrossfadesWithNoDarkDip() {
         func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
-        #expect(MainArt.pose(at: 0, delay: 0).opacity == 0)
-        #expect(close(MainArt.pose(at: 0.48, delay: 0).opacity, 0.5))  // 2 % of 24 s
-        #expect(MainArt.pose(at: 3, delay: 0).opacity == 1)
-        #expect(close(MainArt.pose(at: 6.48, delay: 0).opacity, 0.5))  // 27 %
-        #expect(MainArt.pose(at: 12, delay: 0).opacity == 0)
-        #expect(MainArt.pose(at: 3, delay: 6).opacity == 0)  // the second layer has not started
-        #expect(MainArt.pose(at: 9, delay: 6) == MainArt.pose(at: 3, delay: 0))
-        #expect(MainArt.pose(at: 27, delay: 0) == MainArt.pose(at: 3, delay: 0))  // it loops
-        let end = MainArt.pose(at: 6.96, delay: 0)  // 29 %
-        #expect(close(end.scale, 1.22) && close(end.dx, 0.03) && close(end.dy, 0.02))
+        let pose = { (t: Double, i: Int) in MainArt.pose(at: t, index: i, count: 4) }
+        #expect(pose(0, 0).opacity == 1 && pose(0, 3).opacity == 0)  // a cover at once
+        #expect(close(pose(7.5, 1).opacity, 0.5))  // the second cover fades in
+        #expect(pose(7.5, 0).opacity == 1)  // and the first stays fully shown under it
+        #expect(pose(7.5, 1).order > pose(7.5, 0).order)
+        #expect(pose(9, 0).opacity == 0 && pose(9, 1).opacity == 1)
+        #expect(close(pose(31.5, 0).opacity, 0.5) && pose(31.5, 3).opacity == 1)  // the loop wraps on top too
+        #expect(pose(3, 2) == pose(35, 2))  // a 32 s loop
+        for t in stride(from: 0.0, to: 40, by: 0.25) {
+            #expect(MainArt.pose(at: t, index: 0, count: 1).opacity == 1)  // one cover always shows
+        }
+    }
+
+    @Test func mainArtPansEachCoverItsOwnWayWithNoEdge() {
+        let start = (0..<8).map { MainArt.pose(at: Double($0) * MainArt.slot - MainArt.fade, index: $0, count: 8) }
+        let end = (0..<8).map { MainArt.pose(at: Double($0) * MainArt.slot + MainArt.slot, index: $0, count: 8) }
+        let moves = zip(start, end).map { (($1.dx - $0.dx).sign, ($1.dy - $0.dy).sign, $1.dx == $0.dx, $1.dy == $0.dy) }
+        for i in 0..<8 {
+            let a = moves[i], b = moves[(i + 1) % 8]
+            #expect(a.0 != b.0 || a.1 != b.1 || a.2 != b.2 || a.3 != b.3, "covers \(i) and \(i + 1) move the same way")
+        }
+        for i in 0..<8 {
+            for t in stride(from: 0.0, to: 64, by: 0.5) {
+                let f = MainArt.pose(at: t, index: i, count: 8)
+                let margin = (f.scale - 1) / 2
+                #expect(abs(f.dx) <= margin && abs(f.dy) <= margin)  // no edge shows
+                #expect(f.scale >= MainArt.baseScale && f.scale <= MainArt.baseScale + 0.03 + 1e-9)
+            }
+        }
+    }
+
+    @Test func mainMenuShowsALoadedCoverAtOnceAndNoDarkDip() throws {
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        let a = String(repeating: "aa", count: 20), b = String(repeating: "bb", count: 20)
+        var s = sampleState()
+        s.library[0].tracks = [
+            Track(id: "spotify:track:a", title: "A", artist: "x", duration: 200, coverID: a),
+            Track(id: "spotify:track:b", title: "B", artist: "y", duration: 200, coverID: b),
+        ]
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:a")
+        let art = Artwork { $0 == a ? red : $0 == b ? blue : nil }
+        let point = (Self.screenLeft + 190, Self.listTop + 90)
+        let first = try render(s, "main-art-first", artwork: art, time: 0)
+        let c = first.rgb(point.0, point.1)
+        #expect(c.r > 150 && c.b < 100, "first frame \(c)")  // the playing track's cover, fully shown
+        let mid = try render(s, "main-art-fade", artwork: art, time: MainArt.slot - MainArt.fade / 2)
+        let m = mid.rgb(point.0, point.1)
+        #expect(m.r > 90 && m.b > 90, "mid fade \(m)")  // red under half blue: no dark dip
     }
 
     @Test func aLongSelectedLabelScrolls() throws {

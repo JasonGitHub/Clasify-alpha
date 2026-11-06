@@ -18,11 +18,11 @@ final class ArtworkLoader {
     private let cache = NSCache<NSString, CGImage>()
     /// TEMP (cover blink): logs when NSCache drops a cover. Kept here, because the delegate is weak.
     @ObservationIgnored private let evictionLog = EvictionLog()
-    /// The covers of the playing track and the next track, held outside the NSCache. NSCache can
+    /// The covers on screen or next to show, held outside the NSCache. NSCache can
     /// drop any cover at any time, for example under memory pressure. When it dropped the playing
     /// cover, each redraw loaded it again and showed the square for a moment: the blink.
     @ObservationIgnored private var kept: [String: CGImage] = [:]
-    /// The cover IDs that `kept` holds: the playing track's and the next track's.
+    /// The cover IDs that `kept` holds: the playing track's, the next track's, and the main menu's.
     @ObservationIgnored private var wanted: Set<String> = []
     @ObservationIgnored private var loading: Set<String> = []
     /// When a cover last failed, so it is not asked for again on every redraw.
@@ -73,10 +73,12 @@ final class ArtworkLoader {
         for id in ids where cached(id) == nil { load(id) }
     }
 
-    /// The cover IDs of the playing track and of the track after it.
+    /// The cover IDs of the playing track and of the track after it, and on the main menu the
+    /// covers that take turns there, so none of them drops out of memory and blinks.
     static func wantedCovers(in state: AppState) -> Set<String> {
-        guard let ref = state.current else { return [] }
         var ids: Set<String> = []
+        if state.top.screen == .main && state.showArt { ids.formUnion(state.mainArt.compactMap(\.coverID)) }
+        guard let ref = state.current else { return ids }
         if let id = state.track(ref)?.coverID { ids.insert(id) }
         let tracks = state.tracks(in: ref.playlist)
         if let index = tracks.firstIndex(where: { $0.id == ref.track }), index + 1 < tracks.count,

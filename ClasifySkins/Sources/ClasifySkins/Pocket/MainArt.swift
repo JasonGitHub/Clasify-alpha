@@ -1,8 +1,11 @@
 import ClasifyCore
 import SwiftUI
 
-/// The main menu's right side: four covers that take turns, each with a slow zoom and drift.
-/// This is the mockup's `kbx` keyframes: 24 s a loop, and each layer starts 6 s after the one before.
+/// The main menu's right side: the covers take turns, as on the classic pocket players. Each
+/// cover stays `slot` seconds and pans slowly in its own direction, with only a small zoom.
+/// The next cover fades in on top of it, and the one under stays fully shown until the fade
+/// ends, so the dark background never shows through. A cover that is not loaded yet is
+/// skipped. Only when no cover is loaded does the colored square show.
 struct MainArt: View {
     let tracks: [ClasifyCore.Track]  // not the skin's Track view
     @Environment(\.artwork) private var artwork
@@ -11,41 +14,73 @@ struct MainArt: View {
     /// When this view appeared. Leaving the main menu ends the view, so a return starts over.
     @State private var start = Date.timeIntervalSinceReferenceDate
 
-    static let loop = 24.0
+    /// Seconds that each cover shows, and seconds of the fade to the next.
+    static let slot = 8.0, fade = 1.0
+    /// The scale at the start of a pan, and how much it changes over the pan (at most 3 %).
+    static let baseScale = 1.15, zoom = 0.03
+    /// The farthest a cover moves from the center on each axis, as a part of the size. It stays
+    /// inside the margin that `baseScale` gives, (1.15 - 1) / 2 = 7.5 %, so no edge shows.
+    static let pan = 0.05
+    /// The pan directions. Neighbors differ, so two covers in a row never move the same way.
+    static let directions: [(x: Double, y: Double)] = [
+        (1, 0), (-1, 1), (0, -1), (1, 1), (-1, 0), (1, -1), (0, 1), (-1, -1),
+    ]
 
-    /// One layer at time `t` of its own loop: opacity, scale, and the drift as a part of the size.
+    /// One layer at time `t`: opacity, scale, the pan as a part of the size, and its order.
     struct Pose: Equatable {
         var opacity: Double, scale: Double, dx: Double, dy: Double
+        /// A newer layer has a higher order, so the incoming cover is on top.
+        var order: Double
     }
 
-    /// 0 %: hidden, scale 1.08, moved (-3 %, -2 %). 4 %: shown. 25 %: still shown.
-    /// 29 %: hidden, scale 1.22, moved (3 %, 2 %). Then hidden until 100 %.
-    static func pose(at t: Double, delay: Double) -> Pose {
-        let local = t - delay
-        let p = local < 0 ? 0 : local.truncatingRemainder(dividingBy: loop) / loop
-        let opacity = p < 0.04 ? p / 0.04 : p < 0.25 ? 1 : p < 0.29 ? 1 - (p - 0.25) / 0.04 : 0
-        let q = min(p / 0.29, 1)
-        return Pose(opacity: opacity, scale: 1.08 + 0.14 * q, dx: -0.03 + 0.06 * q, dy: -0.02 + 0.04 * q)
+    /// Layer `index` of `count` at time `t`. At `t` = 0, the first cover is fully shown.
+    static func pose(at t: Double, index: Int, count: Int) -> Pose {
+        let span = slot + fade
+        let u: Double  // seconds since this layer started to fade in
+        let opacity: Double
+        if count <= 1 {
+            // One cover: it always shows, and pans to and fro.
+            let cycle = (t / span).truncatingRemainder(dividingBy: 2)
+            u = (cycle < 1 ? cycle : 2 - cycle) * span
+            opacity = 1
+        } else {
+            let period = slot * Double(count)
+            let local = (t + fade - Double(index) * slot).truncatingRemainder(dividingBy: period)
+            u = local < 0 ? local + period : local
+            opacity = u < fade ? u / fade : u < span ? 1 : 0
+        }
+        let p = min(u, span) / span  // 0 to 1 over the pan
+        let d = directions[index % directions.count]
+        let zoomIn = index % 2 == 0
+        return Pose(
+            opacity: opacity,
+            scale: baseScale + zoom * (zoomIn ? p : 1 - p),
+            dx: d.x * pan * (2 * p - 1), dy: d.y * pan * (2 * p - 1),
+            order: -u)
     }
 
     var body: some View {
-        // 30 frames a second is smooth for a 24 s drift, and costs less than the display rate.
+        // 30 frames a second: the pan moves under 1 point a second, so each frame moves a
+        // small part of a point and the motion does not step.
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
-            // Time since the menu appeared, so it always starts with the playing track's cover.
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
+            let loaded = tracks.compactMap { track in track.coverID.flatMap { artwork.lookup($0) } }
             GeometryReader { geo in
                 ZStack {
-                    if tracks.isEmpty { layer(nil).frame(width: geo.size.width, height: geo.size.height) }  // nothing read yet: the blue-grey square
-                    ForEach(tracks.indices, id: \.self) { i in
+                    if loaded.isEmpty {
+                        layer(tracks.first, image: nil).frame(width: geo.size.width, height: geo.size.height)
+                    }
+                    ForEach(loaded.indices, id: \.self) { i in
                         // With Reduce Motion on, the first cover stays still.
                         let f = reduceMotion
-                            ? Pose(opacity: i == 0 ? 1 : 0, scale: 1.08, dx: 0, dy: 0)
-                            : Self.pose(at: t, delay: Double(i) * 6)
-                        layer(tracks[i])
+                            ? Pose(opacity: i == 0 ? 1 : 0, scale: Self.baseScale, dx: 0, dy: 0, order: 0)
+                            : Self.pose(at: t, index: i, count: loaded.count)
+                        layer(tracks.first, image: loaded[i])
                             .frame(width: geo.size.width, height: geo.size.height)
                             .scaleEffect(f.scale)
                             .offset(x: f.dx * geo.size.width, y: f.dy * geo.size.height)
                             .opacity(f.opacity)
+                            .zIndex(f.order)
                     }
                 }
             }
@@ -61,9 +96,8 @@ struct MainArt: View {
         .accessibilityHidden(true)
     }
 
-    private func layer(_ track: ClasifyCore.Track?) -> some View {
-        CoverArt(artist: track?.artist ?? "", coverID: track?.coverID,
-                 image: track?.coverID.flatMap { artwork.lookup($0) }, noteSize: 40, notesSize: 60)
+    private func layer(_ track: ClasifyCore.Track?, image: CGImage?) -> some View {
+        CoverArt(artist: track?.artist ?? "", coverID: track?.coverID, image: image, noteSize: 40, notesSize: 60)
     }
 }
 
