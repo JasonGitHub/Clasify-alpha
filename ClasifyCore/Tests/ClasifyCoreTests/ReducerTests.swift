@@ -388,23 +388,35 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.navSeq == 4)  // the same screen identity, so no slide
     }
 
-    @Test func onlyMovesBetweenTheMainMenuAndNowPlayingPushTheWholeScreen() {
-        var s = AppState()
-        send(&s, .select)
-        send(&s, .authDone(token: 1, ok: true))
-        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "t")
-        #expect(s.wholeSeq == 0)
-        send(&s, .select)  // the Now Playing row: the whole screen
-        #expect(s.top.screen == .now && s.wholeSeq == 1 && s.navForward)
-        send(&s, .menu)  // back to the main menu: the whole screen
-        #expect(s.top.screen == .main && s.wholeSeq == 2 && !s.navForward)
-        send(&s, .wheel(1))
-        send(&s, .select)  // Playlists: only the content
-        #expect(s.top.screen == .playlists && s.wholeSeq == 2)
-        send(&s, .menu)
-        #expect(s.top.screen == .main && s.wholeSeq == 2)
-        send(&s, .reset)
-        #expect(s.wholeSeq == 2)  // the reset keeps it, so the skin does not push
+    @Test func onlyMovesBetweenAHalfScreenAndAFullOnePushTheWholeScreen() {
+        var s = mainMenu()
+        func move(_ actions: Action...) -> Int {  // how many whole-screen pushes the moves made
+            let seq = s.wholeSeq
+            send(&s, actions)
+            return s.wholeSeq - seq
+        }
+        // Half to half, and full to full: only the content.
+        #expect(move(.select, .playlistsLoaded(token: 1, playlists: [focusInfo])) == 0)  // main to Playlists
+        #expect(s.top.screen == .playlists)
+        #expect(move(.select, .tracksLoaded(token: 2, playlist: "focus", tracks: focus.tracks)) == 1)  // to a playlist: push
+        #expect(move(.select) == 0 && s.top.screen == .now)  // a track to Now Playing
+        #expect(move(.menu) == 0)
+        #expect(move(.menu) == 1 && s.top.screen == .playlists)  // back to Playlists: push
+        #expect(move(.menu) == 0 && s.top.screen == .main)
+        // The main menu to a full screen and back: push both ways.
+        #expect(move(.wheel(-9), .wheel(4), .select) == 1 && s.top.screen == .settings)
+        #expect(move(.menu) == 1)
+        #expect(move(.wheel(-9), .wheel(2), .select) == 1 && s.top.screen == .tracks(playlist: Playlist.likedSongsID))
+        #expect(move(.menu) == 1)
+        #expect(move(.wheel(-9), .select) == 1 && s.top.screen == .now)
+        #expect(move(.menu) == 1)
+        // With Album Art off, no screen is a half screen: only the content slides.
+        s.showArt = false
+        #expect(move(.wheel(-9), .wheel(1), .select) == 0 && s.top.screen == .playlists)
+        #expect(move(.select) == 0 && s.top.screen == .tracks(playlist: "focus"))
+        #expect(move(.menu, .menu) == 0 && s.top.screen == .main)
+        #expect(move(.wheel(-9), .select, .menu) == 0)
+        #expect(move(.reset) == 0)  // the reset keeps it, so the skin does not push
     }
 
     @Test func tickExpiresToastAndOverlay() {

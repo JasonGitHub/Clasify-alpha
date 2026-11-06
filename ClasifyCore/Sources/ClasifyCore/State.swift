@@ -162,8 +162,8 @@ public struct AppState: Equatable, Sendable {
     /// a screen opened, false on a way back.
     public var navSeq = 0
     public var navForward = true
-    /// Counts the moves between the main menu and Now Playing. On those, a skin pushes the
-    /// whole screen, with its title bar; on other moves only the content slides.
+    /// Counts the moves between a half screen (`isHalf`) and a full one. On those, a skin
+    /// pushes the whole screen, with its title bar; on other moves only the content slides.
     public var wholeSeq = 0
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
