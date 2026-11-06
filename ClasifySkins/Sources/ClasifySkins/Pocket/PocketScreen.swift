@@ -24,15 +24,19 @@ enum Pocket {
     /// The LCD's glass, behind the lists.
     static var glass: LinearGradient { .vertical(Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec)) }
     static var selection: LinearGradient { .vertical(Color(hex: 0x5aa3f0), Color(hex: 0x1f6fd1)) }
-    /// The glossy blue of the progress fill and the slider knobs.
-    static var gloss: LinearGradient {
+    /// The photo's soft blue: the fill of the progress and volume bars, the scrub diamond and the slider knob.
+    static var soft: LinearGradient {
         LinearGradient(
             stops: [
-                .init(color: Color(hex: 0x9fd0ff), location: 0), .init(color: Color(hex: 0x3d8ae8), location: 0.55),
-                .init(color: Color(hex: 0x2a73d4), location: 1),
+                .init(color: Color(hex: 0x8ea6d6), location: 0), .init(color: Color(hex: 0x6993c5), location: 0.55),
+                .init(color: Color(hex: 0x7eb6e7), location: 0.85), .init(color: Color(hex: 0x82adcd), location: 1),
             ],
             startPoint: .top, endPoint: .bottom)
     }
+    /// The empty part of the four Now Playing bars: white, with no border.
+    static var barTrack: LinearGradient { .vertical(.white, Color(hex: 0xeef2f5)) }
+    /// The four Now Playing bars are 13.2 points tall.
+    static let softBarHeight: CGFloat = 13.2
     static let offline = Color(hex: 0xa3261c)
     /// The title bar's play and pause mark.
     static let blue = Color(hex: 0x1f6fd1)

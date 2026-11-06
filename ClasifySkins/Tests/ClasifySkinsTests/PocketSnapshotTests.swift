@@ -347,7 +347,8 @@ import Testing
         s.stack.append(Frame(screen: .now))
         let shot = try render(s, "now")
         // The cover is not loaded, so it is the same blue-grey square as a track with no cover.
-        let got = shot.rgb(Self.screenLeft + 12 + 6, 80), want = try reference(0xd5dee8)
+        // The tilted cover's top left is at 9 x 14.6 under the title bar; this point is 6 x 8 into it.
+        let got = shot.rgb(Self.screenLeft + 16, 75), want = try reference(0xd5dee8)
         #expect(near(got, want), "cover \(got), want \(want)")
     }
 
@@ -356,8 +357,8 @@ import Testing
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")  // no cover ID
         s.stack.append(Frame(screen: .now))
         let shot = try render(s, "now-no-cover")
-        // The cover's top starts under the 14 point icon row: 51.4 + 6 + 14 + 2.
-        let got = shot.rgb(Self.screenLeft + 12 + 6, 80), want = try reference(0xd5dee8)
+        // The cover's top left is at 9 x 14.6 under the title bar (y 66); this point is 6 x 8 into it.
+        let got = shot.rgb(Self.screenLeft + 16, 75), want = try reference(0xd5dee8)
         #expect(near(got, want), "placeholder \(got), want \(want)")
     }
 
@@ -368,7 +369,7 @@ import Testing
         let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let wanted = String(repeating: "ab", count: 20)
         let shot = try render(s, "now-cover", artwork: Artwork { $0 == wanted ? red : nil })
-        let got = shot.rgb(Self.screenLeft + 12 + 38, 136)  // the middle of the cover, where the note was
+        let got = shot.rgb(Self.screenLeft + 77, 129)  // the middle of the tilted cover, where the notes were
         #expect(got.r > 200 && got.g < 60 && got.b < 60, "cover \(got)")
     }
 
@@ -425,18 +426,19 @@ import Testing
         s.overlayUntil = 1
         s.volume = 60
         let volume = try render(s, "now-volume")
-        // The bottom row is 24 points high over the 6 point padding, so bars center at y 239.
-        #expect(volume.isBlue(90, 239))  // inside the 60% glossy fill
-        #expect(volume.isLight(270, 239))  // past it
+        // The bottom row is 22 points high, 13.6 above the bottom, so the bars center at y 233.
+        // The bar runs from x 87.6 to 279.
+        #expect(volume.isBlue(100, 233))  // inside the 60% soft blue fill
+        #expect(volume.isLight(250, 233))  // past it: white, with no border
         s.nowMode = .scrub
         s.albumArt = .off
         s.t = 102.5  // half of the track
         let scrub = try render(s, "now-scrub")
-        // The times sit on the bar's line: 28 + 6 points on the left, 6 + 32 on the right.
-        let start: Int = Self.screenLeft + 12 + 34, end: Int = Self.screenLeft + Self.screenWidth - 12 - 38
-        #expect(scrub.isBlue((start + end) / 2, 239))  // the blue diamond at the half
-        #expect(scrub.isLight(start + 10, 239))  // a thin light track, no fill
-        #expect(scrub.isLight(end - 10, 239))
+        // The times sit on the bar's line: the bar is 191.4 points wide, 54.6 from the screen's left.
+        let start: Int = Self.screenLeft + 55, end: Int = Self.screenLeft + 55 + 191
+        #expect(scrub.isBlue((start + end) / 2, 233))  // the soft blue diamond at the half
+        #expect(scrub.isLight(start + 10, 233))  // the empty white bar, no fill
+        #expect(scrub.isLight(end - 10, 233))
     }
 
     @Test func nowPlayingSliders() throws {
@@ -446,8 +448,9 @@ import Testing
         s.nowMode = .shuffle
         s.shuffle = true
         let on = try render(s, "now-shuffle")
-        // The slider fills the 42 points over the bottom padding. The knob sits on its 6 point track.
-        let right: Int = Self.screenLeft + Self.screenWidth - 12 - 6, left: Int = Self.screenLeft + 12 + 6, knobY: Int = 230
+        // The slider's 13.2 point bar is where the progress bar is: 174.8 points under the title bar
+        // (y 226.2), 54.6 from the screen's left, and 191.4 wide. The 16 point knob is centered on it, at y 233.
+        let right: Int = Self.screenLeft + 55 + 191, left: Int = Self.screenLeft + 55, knobY: Int = 233
         #expect(on.isBlue(right - 2, knobY))  // Songs
         #expect(!on.isBlue(left + 2, knobY))
         s.nowMode = .repeatMode

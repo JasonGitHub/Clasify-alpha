@@ -1,8 +1,10 @@
 import ClasifyCore
 import SwiftUI
 
-/// Now Playing: the shuffle and repeat icons, the tilted cover, the track, and the progress,
-/// volume or slider row.
+/// Now Playing, laid out like the photo (round 7, card U): the shuffle and repeat icons at the top
+/// right, the tilted 127 point cover on the left, the track on its right, and the progress,
+/// volume or slider row at the bottom. The points are the mockup's, from the top left of the
+/// 300 x 206 area under the title bar.
 struct PocketNowPlaying: View {
     let state: AppState
     let input: @MainActor (Action) -> Void
@@ -11,29 +13,41 @@ struct PocketNowPlaying: View {
     /// and while the same cover loads again, so the square does not flash.
     @State private var lastCover: CoverArt.Shown?
 
+    /// The cover's side, and the left edge of the four bars and their width.
+    static let coverSide: CGFloat = 126.6
+    static let barLeft: CGFloat = 54.6, barWidth: CGFloat = 191.4
+
     var body: some View {
         if let now = Labels.now(in: state) {
-            VStack(spacing: 2) {
-                icons
-                HStack(alignment: .top, spacing: 12) {
-                    if state.showsNowPlayingArt { cover(now) }
-                    VStack(alignment: state.showsNowPlayingArt ? .leading : .center, spacing: 3) {
-                        Text(now.title).font(.helvetica(14, bold: true))
-                        Text(now.artist).font(.helvetica(12)).foregroundStyle(Pocket.gray)
-                        Text(now.list).font(.helvetica(12)).foregroundStyle(Pocket.gray)
-                        Text(now.count).font(.helvetica(11)).foregroundStyle(Color(hex: 0x4b535c)).padding(.top, 6)
-                    }
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: state.showsNowPlayingArt ? .leading : .center)
+            let art = state.showsNowPlayingArt
+            ZStack(alignment: .topLeading) {
+                if art { cover(now).offset(x: 9, y: 14.6) }
+                // With no cover, the text is centered across the screen.
+                let left: CGFloat = art ? 150.6 : 8
+                Group {
+                    line(now.title, size: 15.1, color: .black, top: 36.3)
+                    line(now.artist, size: 11.7, color: Color(hex: 0x1e1e1e), top: 57.2)
+                    line(now.list, size: 11.7, color: Color(hex: 0x1e1e1e), top: 74)
+                    line(now.count, size: 11.7, color: Color(hex: 0x292929), top: 91.4)
                 }
-                .frame(maxHeight: .infinity, alignment: .top)
+                .frame(width: Pocket.screenWidth - left - 8, alignment: art ? .leading : .center)
+                .offset(x: left)
+                icons
                 bottom(now)
             }
-            .padding(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
-    /// Shuffle and repeat, dark when on and dimmed when off. A click changes them.
+    /// One line of the track's text. The mockup sets each line's box to its font size, at `top`.
+    private func line(_ text: String, size: CGFloat, color: Color, top: CGFloat) -> some View {
+        Text(text).font(.helvetica(size, bold: true)).foregroundStyle(color).lineLimit(1)
+            .frame(height: size)
+            .offset(y: top)
+    }
+
+    /// Shuffle and repeat, dark when on and dimmed when off, 12 points from the right and 7 under
+    /// the title bar. A click changes them.
     private var icons: some View {
         HStack(spacing: 10) {
             Button { input(.toggleShuffle) } label: {
@@ -54,20 +68,24 @@ struct PocketNowPlaying: View {
             .accessibilityLabel("Repeat \(state.repeatMode.rawValue)")
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity, minHeight: 14, maxHeight: 14, alignment: .trailing)
+        .frame(height: 12)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.trailing, 12)
+        .offset(y: 7)
     }
 
     private func iconColor(_ on: Bool) -> Color { on ? Pocket.ink : Color(hex: 0x9aa3ad) }
 
-    /// The 84 point cover with its reflection, turned in 3D as in the mockup.
+    /// The 126.6 point cover with its 22 point reflection, tilted as in the photo.
     private func cover(_ now: Labels.NowText) -> some View {
         let fresh = artwork.image(for: now.coverID)
         let shown = CoverArt.shown(
             fresh: fresh, coverID: now.coverID, pending: artwork.isPending(now.coverID), last: lastCover)
-        let art = CoverArt(image: shown)
-        return VStack(spacing: 1) {
-            art.frame(width: 84, height: 84).clipped()
-            art.reflection(side: 84, height: 24)
+        let art = CoverArt(image: shown, notesSize: 80)
+        let side = Self.coverSide
+        return VStack(spacing: 0) {
+            art.frame(width: side, height: side).clipped()
+            art.reflection(side: side, height: 22, strength: 0.4)
         }
         .animation(.easeInOut(duration: 0.2), value: shown.map(ObjectIdentifier.init))
         .modifier(Tilt())
@@ -83,98 +101,119 @@ struct PocketNowPlaying: View {
             SliderView(slider: slider)
         } else if state.nowMode == .volume && state.overlayUntil > 0 {
             // The reducer sets overlayUntil when the wheel changes the volume and clears it on a later tick.
-            HStack(spacing: 6) {
-                IconView(.speaker, width: 10, height: 10)
-                Meter(fraction: Double(state.volume) / 100)
-                IconView(.speakerLoud, width: 12, height: 10)
+            barRow {
+                IconView(.speaker, width: 13, height: 13)
+            } bar: {
+                SoftBar(fraction: Double(state.volume) / 100)
+            } trailing: {
+                IconView(.speakerLoud, width: 16, height: 14)
             }
-            .frame(height: 24)
+            .foregroundStyle(.black)
             .accessibilityElement()
             .accessibilityLabel("Volume \(state.volume) percent")
         } else {
             let fraction = now.duration > 0 ? state.t / now.duration : 0
-            HStack(spacing: 6) {
-                Text(Labels.time(state.t)).frame(width: 28, alignment: .leading)
-                if state.nowMode == .scrub { ScrubTrack(fraction: fraction) } else { Meter(fraction: fraction) }
-                Text("-" + Labels.time(now.duration - state.t)).frame(width: 32, alignment: .trailing)
+            barRow {
+                Text(Labels.time(state.t))
+            } bar: {
+                if state.nowMode == .scrub { ScrubTrack(fraction: fraction) } else { SoftBar(fraction: fraction) }
+            } trailing: {
+                Text("-" + Labels.time(now.duration - state.t))
             }
-            .font(.helvetica(10, bold: true))
+            .font(.helvetica(11.7, bold: true))
+            .foregroundStyle(.black)
             .monospacedDigit()
-            .frame(height: 24)
         }
+    }
+
+    /// The bottom row: a 33.6 point slot, the 191.4 point bar and a 38.4 point slot, 21 points
+    /// from the left, 22 points tall and 13.6 above the bottom.
+    private func barRow<L: View, B: View, T: View>(
+        @ViewBuilder leading: () -> L, @ViewBuilder bar: () -> B, @ViewBuilder trailing: () -> T
+    ) -> some View {
+        HStack(spacing: 0) {
+            leading().frame(width: Self.barLeft - 21, alignment: .leading)
+            bar().frame(width: Self.barWidth)
+            trailing().frame(width: 38.4, alignment: .trailing)
+        }
+        .padding(.leading, 21)
+        .frame(height: 22)
+        .frame(maxHeight: .infinity, alignment: .bottom)
+        .padding(.bottom, 13.6)
     }
 }
 
-/// The shuffle or repeat slider: the stops over a thin track with a round knob, and the name under it.
+/// The shuffle or repeat slider, with its bar exactly where the progress bar is (Jason, 22:16 JST): the stops over the bar, each
+/// centered on its place and black when chosen, a round knob, and the name under the bar.
 struct SliderView: View {
     let slider: Labels.Slider
 
     var body: some View {
-        VStack(spacing: 5) {
-            HStack {
-                ForEach(Array(slider.stops.enumerated()), id: \.offset) { i, stop in
-                    if i > 0 { Spacer(minLength: 0) }
-                    Text(stop)
+        let count = slider.stops.count
+        let fraction = count > 1 ? Double(slider.index) / Double(count - 1) : 0
+        let left = PocketNowPlaying.barLeft, width = PocketNowPlaying.barWidth
+        ZStack(alignment: .topLeading) {
+            ForEach(Array(slider.stops.enumerated()), id: \.offset) { i, stop in
+                let x = left + width * (count > 1 ? CGFloat(i) / CGFloat(count - 1) : 0)
+                Text(stop)
+                    .font(.helvetica(11.7, bold: true))
+                    .foregroundStyle(i == slider.index ? Color.black : Color(hex: 0x8a9099))
+                    .fixedSize()
+                    .frame(width: 0, height: 11.7)  // centered on x
+                    .offset(x: x, y: 159.3)
+            }
+            Pocket.barTrack
+                .frame(width: width, height: Pocket.softBarHeight)
+                .overlay(alignment: .leading) {
+                    Circle().fill(Pocket.soft)
+                        .shadow(color: .black.opacity(0.25), radius: 1, y: 1)
+                        .frame(width: 16, height: 16)
+                        .frame(width: 0)
+                        .offset(x: width * fraction)
                 }
-            }
-            .font(.helvetica(10, bold: true))
-            let fraction = slider.stops.count > 1 ? Double(slider.index) / Double(slider.stops.count - 1) : 0
-            Track(fraction: fraction) {
-                Circle().fill(Pocket.gloss)
-                    .overlay { Circle().strokeBorder(Color(hex: 0x1f5fb8), lineWidth: 1) }
-                    .frame(width: 14, height: 14)
-            }
-            .padding(.horizontal, 6)
-            Text(slider.name).font(.helvetica(10)).foregroundStyle(Pocket.gray)
+                .offset(x: left, y: 174.8)
+            Text(slider.name)
+                .font(.helvetica(11.7, bold: true))
+                .foregroundStyle(Color(hex: 0x1e1e1e))
+                .frame(width: Pocket.screenWidth, height: 11.7)
+                .offset(y: 191.5)
         }
-        .frame(height: 42)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .accessibilityElement()
         .accessibilityLabel("\(slider.name): \(slider.stops[slider.index])")
     }
 }
 
-/// The 8 point progress and volume bar: a light groove with a glossy blue fill.
-struct Meter: View {
+/// The 13.2 point progress and volume bar: white, with no border, and a soft blue fill.
+struct SoftBar: View {
     let fraction: Double
 
     var body: some View {
         GeometryReader { geo in
-            LinearGradient.vertical(Color(hex: 0xf6f8fa), Color(hex: 0xdfe5ea))
+            Pocket.barTrack
                 .overlay(alignment: .leading) {
-                    Pocket.gloss.frame(width: geo.size.width * min(max(fraction, 0), 1))
+                    Pocket.soft.frame(width: geo.size.width * min(max(fraction, 0), 1))
                 }
-                .overlay { Rectangle().strokeBorder(Color(hex: 0xaab4be), lineWidth: 1) }
         }
-        .frame(height: 8)
+        .frame(height: Pocket.softBarHeight)
     }
 }
 
-/// The scrub bar: a blue diamond on a thin light track.
+/// The scrub bar: a soft blue 14 x 18 diamond on the empty bar.
 struct ScrubTrack: View {
     let fraction: Double
 
     var body: some View {
-        Track(fraction: fraction) {
-            Diamond().fill(Pocket.gloss).frame(width: 12, height: 14)
-        }
-        .accessibilityLabel("Scrubbing")
-    }
-}
-
-/// A 6 point rounded track with a marker centered at `fraction` of its width.
-struct Track<Marker: View>: View {
-    let fraction: Double
-    @ViewBuilder let marker: () -> Marker
-
-    var body: some View {
         GeometryReader { geo in
-            Capsule().fill(LinearGradient.vertical(.white, Color(hex: 0xe3e8ed)))
-                .overlay { Capsule().strokeBorder(Color(hex: 0xb7c0c9), lineWidth: 1) }
+            Pocket.barTrack
                 .overlay(alignment: .leading) {
-                    marker().fixedSize().frame(width: 0).offset(x: geo.size.width * min(max(fraction, 0), 1))
+                    Diamond().fill(Pocket.soft).frame(width: 14, height: 18)
+                        .frame(width: 0)
+                        .offset(x: geo.size.width * min(max(fraction, 0), 1))
                 }
         }
-        .frame(height: 6)
+        .frame(height: Pocket.softBarHeight)
+        .accessibilityLabel("Scrubbing")
     }
 }
 
