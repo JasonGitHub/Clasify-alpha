@@ -17,7 +17,7 @@ public struct Artwork: Sendable {
         self.pending = pending
     }
 
-    /// No covers: the skins show the colored square.
+    /// No covers: the skins show the blue-grey square.
     public static let none = Artwork { _ in nil }
 
     @MainActor func image(for coverID: String?) -> CGImage? { coverID.flatMap(lookup) }

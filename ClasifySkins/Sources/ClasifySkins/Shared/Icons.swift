@@ -2,7 +2,7 @@ import SwiftUI
 
 /// The mockup's SVG icons as shapes. Each path uses the SVG's own view box and scales to its frame.
 enum Icon: Sendable {
-    case chevron, prev, next, playPause, speaker, speakerLoud, note
+    case chevron, prev, next, playPause, speaker, speakerLoud
     /// The joined notes on a track that has no cover.
     case notes
     /// The title bar's play and pause marks.
@@ -17,7 +17,7 @@ enum Icon: Sendable {
         case .playPause: CGSize(width: 20, height: 12)
         case .speaker: CGSize(width: 14, height: 14)
         case .speakerLoud: CGSize(width: 16, height: 14)
-        case .note, .notes: CGSize(width: 24, height: 24)
+        case .notes: CGSize(width: 24, height: 24)
         case .play, .pause: CGSize(width: 9, height: 10)
         case .shuffle, .repeatMode: CGSize(width: 16, height: 14)
         }
@@ -27,7 +27,7 @@ enum Icon: Sendable {
     var fill: Path {
         var p = Path()
         switch self {
-        case .chevron, .note, .shuffle, .repeatMode:
+        case .chevron, .shuffle, .repeatMode:
             break
         case .notes:
             p.addEllipse(in: CGRect(x: 3.2, y: 15.2, width: 6, height: 6))
@@ -81,11 +81,6 @@ enum Icon: Sendable {
             p.move(to: CGPoint(x: 12.5, y: 2.5))
             p.addArc(center: CGPoint(x: 8.09, y: 7), radius: 6.3, startAngle: .degrees(-45.6), endAngle: .degrees(45.6), clockwise: false)
             return (p, 1.3)
-        case .note:
-            p.addLines([CGPoint(x: 9, y: 18), CGPoint(x: 9, y: 5), CGPoint(x: 20, y: 3), CGPoint(x: 20, y: 16)])
-            p.addEllipse(in: CGRect(x: 4, y: 15.5, width: 5, height: 5))
-            p.addEllipse(in: CGRect(x: 15, y: 13.5, width: 5, height: 5))
-            return (p, 1.6)
         case .shuffle:  // "M1 3h3l7 8h3 M1 11h3l2-2.3 M9 5.3L11 3h3 M12 1l2 2-2 2 M12 9l2 2-2 2"
             p.addLines([CGPoint(x: 1, y: 3), CGPoint(x: 4, y: 3), CGPoint(x: 11, y: 11), CGPoint(x: 14, y: 11)])
             p.addLines([CGPoint(x: 1, y: 11), CGPoint(x: 4, y: 11), CGPoint(x: 6, y: 8.7)])

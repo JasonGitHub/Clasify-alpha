@@ -64,7 +64,7 @@ struct PocketNowPlaying: View {
         let fresh = artwork.image(for: now.coverID)
         let shown = CoverArt.shown(
             fresh: fresh, coverID: now.coverID, pending: artwork.isPending(now.coverID), last: lastCover)
-        let art = CoverArt(artist: now.artist, coverID: now.coverID, image: shown)
+        let art = CoverArt(image: shown)
         return VStack(spacing: 1) {
             art.frame(width: 84, height: 84).clipped()
             art.reflection(side: 84, height: 24)

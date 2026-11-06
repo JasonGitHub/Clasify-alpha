@@ -113,12 +113,6 @@ func sampleState() -> AppState {
         #expect(Labels.time(-3) == "0:00")
         #expect(Labels.time(.nan) == "0:00")
     }
-
-    @Test func coverColorUsesTheMockupHash() {
-        #expect(Labels.cover(for: "") == 0x6a54b0)  // h = 0
-        #expect(Labels.cover(for: "A") == 0x2f6f99)  // h = 65, 65 % 8 = 1
-        #expect(Labels.cover(for: "OutKast") == Labels.cover(for: "OutKast"))
-    }
 }
 
 @Suite @MainActor struct InputTests {

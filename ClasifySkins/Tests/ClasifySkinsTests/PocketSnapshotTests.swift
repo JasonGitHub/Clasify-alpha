@@ -89,9 +89,10 @@ import Testing
         // A 136 point pane (x 24 to 160) with 8 rows of 22.5 and no bar.
         #expect(shot.isLight(125, Self.rowCenter(0)))  // right of "Now Playing"
         #expect(shot.isBlue(125, Self.rowCenter(1)))
-        // On the right, the playing track's cover: here the artist's color, as no image is loaded.
+        // On the right, the playing track's cover: no image is loaded, so the blue-grey square.
+        // Its gradient runs from d5dee8 at the top to a9b8c8 at the bottom; the point is low in it.
         let art = shot.rgb(Self.screenLeft + 170, Self.listTop + 150)  // past the pane's shadow
-        let want = try reference(Labels.cover(for: "OutKast"))
+        let want = try reference(0xb0bece)
         #expect(near(art, want), "art \(art), want \(want)")
 
         s.showArt = false  // Album Art off: a full-width list, with no covers
@@ -333,8 +334,8 @@ import Testing
         s.t = 61
         s.stack.append(Frame(screen: .now))
         let shot = try render(s, "now")
-        let want = try reference(Labels.cover(for: "OutKast"))
-        let got = shot.rgb(Self.screenLeft + 12 + 8, 131)  // left part of the cover, beside the note
+        // The cover is not loaded, so it is the same blue-grey square as a track with no cover.
+        let got = shot.rgb(Self.screenLeft + 12 + 6, 75), want = try reference(0xd5dee8)
         #expect(near(got, want), "cover \(got), want \(want)")
     }
 

@@ -155,15 +155,6 @@ enum Labels {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
-    /// The mockup's cover colors. A hash of the artist picks one, so an artist keeps one color.
-    static let covers: [UInt32] = [0x6a54b0, 0x2f6f99, 0xb5583a, 0x3a8a5c, 0xa8832a, 0x8a3f6e, 0x2f7f7a, 0x5a6b8c]
-
-    static func cover(for artist: String) -> UInt32 {
-        var h: UInt32 = 0
-        for unit in artist.utf16 { h = h &* 31 &+ UInt32(unit) }  // the mockup's hash, over UTF-16 like JavaScript
-        return covers[Int(h % UInt32(covers.count))]
-    }
-
     /// The seconds of one loop of the mockup's marquee on the selected row: max(5, round(width / 28 + 3)).
     /// Width is the mockup's estimate: 7.4 points a character, 13 for a CJK character.
     /// The row itself measures if the label fits, so only a label that is cut scrolls.

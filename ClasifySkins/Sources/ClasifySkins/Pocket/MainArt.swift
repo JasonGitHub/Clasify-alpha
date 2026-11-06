@@ -6,7 +6,7 @@ import SwiftUI
 /// right to left for the next cover.
 /// The next cover fades in on top of it, and the one under stays fully shown until the fade
 /// ends, so the dark background never shows through. A cover that is not loaded yet shows the
-/// cover before it until it loads. Only when no cover is loaded does the colored square show.
+/// cover before it until it loads. Only when no cover is loaded does the blue-grey square show.
 struct MainArt: View {
     let tracks: [ClasifyCore.Track]  // not the skin's Track view
     @Environment(\.artwork) private var artwork
@@ -98,7 +98,7 @@ struct MainArt: View {
             GeometryReader { geo in
                 ZStack {
                     if sources.allSatisfy({ $0 == nil }) {
-                        layer(tracks.first, image: nil).frame(width: geo.size.width, height: geo.size.height)
+                        layer(nil).frame(width: geo.size.width, height: geo.size.height)
                     } else {
                         ForEach(images.indices, id: \.self) { i in
                             // With Reduce Motion on, the first cover stays still.
@@ -142,7 +142,7 @@ struct MainArt: View {
             PanningCover(image: image, scale: Self.baseScale, pan: reduceMotion ? nil : m, elapsed: t - m.start)
         } else {
             GeometryReader { geo in
-                layer(tracks.first, image: image)
+                layer(image)
                     .frame(width: geo.size.width, height: geo.size.height)
                     .scaleEffect(f.scale)
                     .offset(x: f.dx * geo.size.width, y: f.dy * geo.size.height)
@@ -150,8 +150,8 @@ struct MainArt: View {
         }
     }
 
-    private func layer(_ track: ClasifyCore.Track?, image: CGImage?) -> some View {
-        CoverArt(artist: track?.artist ?? "", coverID: track?.coverID, image: image, noteSize: 40, notesSize: 60)
+    private func layer(_ image: CGImage?) -> some View {
+        CoverArt(image: image, notesSize: 60)
     }
 }
 

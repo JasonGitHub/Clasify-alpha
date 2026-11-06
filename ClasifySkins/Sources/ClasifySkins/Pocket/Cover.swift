@@ -1,15 +1,11 @@
 import SwiftUI
 
-/// A track's cover, as the mockup draws it in Now Playing and the main menu: the loaded image,
-/// or the artist's color with an outline note until it loads, or a blue-grey square with
-/// white joined notes when the track has no cover.
+/// A track's cover in Now Playing and the main menu: the loaded image, or else a blue-grey
+/// square with white joined notes. The square is the same for a track with no cover, a cover
+/// that is loading and a cover that failed (Jason, 2026-11-06).
 struct CoverArt: View {
-    let artist: String
-    /// Nil when the track has no cover.
-    let coverID: String?
     let image: CGImage?
-    /// The size of the outline note, and of the joined notes.
-    var noteSize: CGFloat = 26
+    /// The size of the joined notes.
     var notesSize: CGFloat = 54
 
     /// A cover that showed, with the cover ID it belongs to.
@@ -34,9 +30,6 @@ struct CoverArt: View {
             Image(decorative: image, scale: 1).resizable().scaledToFill()
                 .id(ObjectIdentifier(image))
                 .transition(.opacity)
-        } else if coverID != nil {
-            Color(hex: Labels.cover(for: artist))
-                .overlay { IconView(.note, width: noteSize, height: noteSize).foregroundStyle(.white.opacity(0.85)) }
         } else {
             LinearGradient.vertical(Color(hex: 0xd5dee8), Color(hex: 0xa9b8c8))
                 .overlay { IconView(.notes, width: notesSize, height: notesSize).foregroundStyle(.white) }
@@ -46,7 +39,7 @@ struct CoverArt: View {
     /// The reflection under a cover of `side` points: the cover's lower part mirrored, fading out downward.
     func reflection(side: CGFloat, height: CGFloat) -> some View {
         Group {
-            if image != nil || coverID != nil {
+            if image != nil {
                 self.frame(width: side, height: side)
                     .scaleEffect(x: 1, y: -1, anchor: .center)
                     .frame(width: side, height: height, alignment: .top)
@@ -56,7 +49,7 @@ struct CoverArt: View {
             }
         }
         .frame(width: side, height: height)
-        .mask(LinearGradient.vertical(.black.opacity(image == nil && coverID == nil ? 0.45 : 0.35), .clear))
+        .mask(LinearGradient.vertical(.black.opacity(image == nil ? 0.45 : 0.35), .clear))
     }
 }
 
