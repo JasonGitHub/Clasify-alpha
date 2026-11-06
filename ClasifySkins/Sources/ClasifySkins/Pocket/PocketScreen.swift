@@ -187,12 +187,24 @@ struct PocketList: View {
         }
     }
 
+    /// The shortest thumb, so a long list does not shrink it to a thin line.
+    static let minThumb: CGFloat = 12
+
+    /// The thumb's length and its offset from the top of a track `height` points long. The
+    /// length shows the part of the list on screen, but never under `minThumb`. At the last
+    /// row, the thumb's bottom touches the track's bottom.
+    static func thumb(height: CGFloat, shown: Int, count: Int, first: Int) -> (length: CGFloat, offset: CGFloat) {
+        let length = min(height, max(minThumb, height * CGFloat(shown) / CGFloat(max(count, 1))))
+        let last = max(1, count - shown)
+        return (length, (height - length) * CGFloat(min(first, last)) / CGFloat(last))
+    }
+
     private func scrollBar(first: Int, count: Int) -> some View {
         GeometryReader { geo in
-            let height = geo.size.height
+            let thumb = Self.thumb(height: geo.size.height, shown: state.shownRows, count: count, first: first)
             Capsule().fill(Color(hex: 0x5d6772))
-                .frame(height: height * min(1, CGFloat(state.shownRows) / CGFloat(count)))
-                .offset(y: height * CGFloat(first) / CGFloat(count))
+                .frame(height: thumb.length)
+                .offset(y: thumb.offset)
         }
         .frame(width: 5)
         .background(Capsule().fill(Color(hex: 0xc3ccd5)))
