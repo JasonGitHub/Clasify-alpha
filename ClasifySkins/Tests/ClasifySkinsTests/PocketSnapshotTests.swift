@@ -691,7 +691,7 @@ import Testing
         s.isPlaying = false
         let paused = try render(s, "bar-paused")
         // The bar is the screen's last 21.9 points; the note is its first 11 x 11, after 9 of padding.
-        // The text starts 4 points after the note, so this box holds only the note.
+        // The text starts 6 points after the note, so this box holds only the note.
         let gray = try reference(0x5d6772)
         var ink = 0
         for x in (Self.screenLeft + 7)...(Self.screenLeft + 19) {
@@ -701,6 +701,27 @@ import Testing
             }
         }
         #expect(ink > 0)  // the note is drawn, in the bar's gray text color
+
+        // Round 7 card W, change 55: the note's middle is on the text's middle, not above it.
+        // "Paper Planes — M.I.A." runs from the cap tops to the "p" tails, so the middle of its
+        // ink is within a few tenths of a point of the middle of its x-height. Read in pixels.
+        let px = Snapshot.scale
+        func inkRows(_ xs: ClosedRange<Int>) -> [Int] {
+            ((Self.screenBottom - 21) * px...Self.screenBottom * px).filter { y in
+                (xs.lowerBound * px...xs.upperBound * px).contains { x in
+                    let c = playing.bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) ?? .clear
+                    return max(c.redComponent, c.greenComponent, c.blueComponent) < 0.6
+                }
+            }
+        }
+        let note = inkRows((Self.screenLeft + 9)...(Self.screenLeft + 19))
+        let text = inkRows((Self.screenLeft + 27)...(Self.screenLeft + 120))
+        let noteTop = try #require(note.first), noteBottom = try #require(note.last)
+        let textTop = try #require(text.first), textBottom = try #require(text.last)
+        // The note is a little taller than the text, so its top may be up to 1 point above it, no more.
+        #expect(noteTop >= textTop - px, "note top \(noteTop), text top \(textTop)")
+        let offset = Double(noteTop + noteBottom - textTop - textBottom) / 2 / Double(px)
+        #expect(abs(offset) <= 1, "note middle \(offset) points from the text middle")
     }
 
     /// The mockup states that the other tests do not draw. Each one must render at full size.

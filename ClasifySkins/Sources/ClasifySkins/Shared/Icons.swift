@@ -3,8 +3,10 @@ import SwiftUI
 /// The mockup's SVG icons as shapes. Each path uses the SVG's own view box and scales to its frame.
 enum Icon: Sendable {
     case chevron, prev, next, playPause, speaker, speakerLoud
-    /// The joined notes: on the cover placeholder, and in the now-playing bar.
+    /// The joined notes on the cover placeholder.
     case notes
+    /// The song list bar's note (Round 7 card W, change 55): the mockup's path, with bigger heads.
+    case barNote
     /// The title bar's play and pause marks.
     case play, pause
 
@@ -16,6 +18,7 @@ enum Icon: Sendable {
         case .speaker: CGSize(width: 14, height: 14)
         case .speakerLoud: CGSize(width: 16, height: 14)
         case .notes: CGSize(width: 24, height: 24)
+        case .barNote: CGSize(width: 16, height: 16)
         case .play, .pause: CGSize(width: 8, height: 9)
         }
     }
@@ -32,6 +35,18 @@ enum Icon: Sendable {
             p.addRect(CGRect(x: 7.6, y: 4.8, width: 1.8, height: 13.4))
             p.addRect(CGRect(x: 18.6, y: 2.4, width: 1.8, height: 13.8))
             p.addLines([CGPoint(x: 7.6, y: 4.8), CGPoint(x: 20.4, y: 1.9), CGPoint(x: 20.4, y: 5.3), CGPoint(x: 7.6, y: 8.2)])
+            p.closeSubpath()
+        case .barNote:
+            // The SVG "M5 3l9-2v10.5a2.3 2.3 0 11-1.6-2.2V4.6L6.6 5.8v7.7a2.3 2.3 0 11-1.6-2.2z". Each
+            // arc is a head: radius 2.3, from the stem's right edge the long way round to its left.
+            p.move(to: CGPoint(x: 5, y: 3))
+            p.addLine(to: CGPoint(x: 14, y: 1))
+            p.addLine(to: CGPoint(x: 14, y: 11.5))
+            p.addArc(center: CGPoint(x: 11.7, y: 11.491), radius: 2.3, startAngle: .degrees(0.23), endAngle: .degrees(-72.28), clockwise: false)
+            p.addLine(to: CGPoint(x: 12.4, y: 4.6))
+            p.addLine(to: CGPoint(x: 6.6, y: 5.8))
+            p.addLine(to: CGPoint(x: 6.6, y: 13.5))
+            p.addArc(center: CGPoint(x: 4.3, y: 13.491), radius: 2.3, startAngle: .degrees(0.23), endAngle: .degrees(-72.28), clockwise: false)
             p.closeSubpath()
         case .play:
             p.addLines([CGPoint(x: 0.5, y: 0.5), CGPoint(x: 7.5, y: 4.5), CGPoint(x: 0.5, y: 8.5)])
@@ -80,7 +95,7 @@ enum Icon: Sendable {
             p.move(to: CGPoint(x: 12.5, y: 2.5))
             p.addArc(center: CGPoint(x: 8.09, y: 7), radius: 6.3, startAngle: .degrees(-45.6), endAngle: .degrees(45.6), clockwise: false)
             return (p, 1.3)
-        case .prev, .next, .playPause, .speaker, .notes, .play, .pause:
+        case .prev, .next, .playPause, .speaker, .notes, .barNote, .play, .pause:
             return nil
         }
     }

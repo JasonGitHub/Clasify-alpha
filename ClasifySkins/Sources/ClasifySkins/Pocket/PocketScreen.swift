@@ -1,3 +1,4 @@
+import AppKit
 import ClasifyCore
 import SwiftUI
 
@@ -13,6 +14,13 @@ enum Pocket {
     static let barHeight: CGFloat = 21.9
     /// The list under the title bar.
     static let listHeight: CGFloat = 206
+    /// Where the text's baseline falls in the bar note's 11 point frame. The note's ink spans y 1
+    /// to 15.8 of its 16 unit view box, so its middle is 5.77 points down; the baseline is half
+    /// an x-height of the 10.5 point bold font below that.
+    static let barNoteBaseline: CGFloat = {
+        let xHeight = NSFont(name: "HelveticaNeue-Bold", size: 10.5)?.xHeight ?? 5.5
+        return (1 + 15.79) / 2 / 16 * 11 + xHeight / 2
+    }()
     /// The dark gray bezel around the screen.
     static let bezel = Color(hex: 0x4a4e53)
     /// The title bar's play and pause marks: glossy blue with a thin dark blue edge.
@@ -191,9 +199,11 @@ struct PocketScreen: View {
 
     private func bar(_ now: Labels.NowText) -> some View {
         HStack(spacing: 6) {
-            HStack(spacing: 4) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 // A music note, the same when paused: play and pause show only in the title bar.
-                IconView(.notes, width: 11, height: 11).accessibilityHidden(true)
+                // Its middle sits on the middle of the text's x-height, as in the mockup.
+                IconView(.barNote, width: 11, height: 11).accessibilityHidden(true)
+                    .alignmentGuide(.firstTextBaseline) { _ in Pocket.barNoteBaseline }
                 Text("\(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")").lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
