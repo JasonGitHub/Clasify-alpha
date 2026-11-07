@@ -13,7 +13,7 @@ struct PocketAbout: View {
         let label: String
     }
 
-    /// The scenes in the store's order: 0 the castle (718 x 306 px), 1 the takoyaki (718 x 314 px).
+    /// The scenes in the store's order: 0 the castle, 1 the takoyaki. Each JPEG is 600 x 280 px.
     /// An image is nil only if the package was built without it.
     @MainActor static let scenes = [
         Art(image: art("about-castle"), anchor: 0.40, label: "Capybara at Osaka Castle"),
@@ -21,7 +21,7 @@ struct PocketAbout: View {
     ]
 
     private static func art(_ name: String) -> NSImage? {
-        Bundle.module.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+        Bundle.module.url(forResource: name, withExtension: "jpg").flatMap { NSImage(contentsOf: $0) }
     }
 
     let scene: Int
