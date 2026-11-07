@@ -57,14 +57,14 @@ enum Labels {
         }
     }
 
-    /// The text of a screen that shows no list: loading, an error, an empty list, the login wait, About.
+    /// The text of a screen that shows no list: loading, an error, an empty list, the login wait.
     struct Message: Equatable {
         var title: String
         var body = ""
         var spinner = false
     }
 
-    /// Nil when the screen shows a list or Now Playing.
+    /// Nil when the screen shows a list, Now Playing or About.
     static func message(for frame: Frame, in state: AppState) -> Message? {
         if frame.loading { return Message(title: "Loading…", spinner: true) }
         if frame.error {
@@ -79,14 +79,16 @@ enum Labels {
             return Message(
                 title: "Waiting for browser…", body: "Approve Clasify in your browser. Spotify Premium required.",
                 spinner: true)
-        case .about:
-            return Message(title: "Clasify \(version)", body: "Not affiliated with Spotify.")
         case .now where state.current == nil:
             return Message(title: "")
         default:
             return nil
         }
     }
+
+    /// The About screen's fine print (card E). "Not affiliated with Spotify" moves to the macOS
+    /// About window later (Jason, 11-07 17:08 JST).
+    static var aboutVersion: String { "Version \(version)" }
 
     /// The app's version, or the mockup's when the bundle has none, as in tests.
     static var version: String {

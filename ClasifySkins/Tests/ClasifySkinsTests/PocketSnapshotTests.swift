@@ -562,6 +562,28 @@ import Testing
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
     }
 
+    /// About, option E: the art at the top fades into the glass, then the name, the line with the
+    /// red heart, and the version.
+    @Test func aboutShowsTheArtNameHeartAndVersion() throws {
+        #expect(PocketAbout.castle != nil)  // the art is bundled
+        var s = sampleState()
+        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
+        let shot = try render(s, "about-e")
+        let top = Self.listTop, left = Self.screenLeft
+        // The art: not the plain glass at the top of the screen.
+        let glass = try reference(0xf4f8fb)
+        let art = (left + 10..<left + 290).filter { !near(shot.rgb($0, top + 20), glass) }
+        #expect(art.count > 100)
+        // The name: dark ink in its band, 142 to 158 points down.
+        let name = (left + 100..<left + 200).filter { x in (top + 145...top + 156).contains { shot.isDark(x, $0) } }
+        #expect(name.count > 10)
+        // The heart: red pixels in the second line's band.
+        let red = (left..<left + 300).filter { x in
+            (top + 160...top + 174).contains { y in let c = shot.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
+        }
+        #expect(!red.isEmpty)
+    }
+
     /// The battery's shadow fades downward only, from y 49 to 53 of the view box: its rows have
     /// the same color at both ends, and the lower row is much lighter than the upper one.
     @Test func theBatteryShadowFadesDownward() throws {
