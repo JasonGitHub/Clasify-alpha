@@ -25,7 +25,9 @@ struct PocketNowPlaying: View {
                 // With no cover, the text is centered across the screen.
                 let left: CGFloat = art ? 150.6 : 8
                 Group {
-                    NowLines(now: now, art: art).id(now.title + "\n" + now.artist + "\n" + now.list)
+                    // Keyed by the track, and by its text, which can arrive after the track starts.
+                    NowLines(now: now, art: art)
+                        .id([state.current?.playlist, state.current?.track, now.title, now.artist, now.list])
                     line(now.count, size: 11.7, color: Color(hex: 0x292929), top: 91.4)
                 }
                 .frame(width: Pocket.screenWidth - left - 8, alignment: art ? .leading : .center)
