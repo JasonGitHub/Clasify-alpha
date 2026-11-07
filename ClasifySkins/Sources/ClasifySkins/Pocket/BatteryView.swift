@@ -13,10 +13,10 @@ struct BatteryView: View {
     var body: some View {
         let scale = Self.height / Self.viewBox.height
         ZStack(alignment: .topLeading) {
-            // The shadow under the frame: #6e6e6f fading out.
+            // The shadow under the frame: #6e6e6f fading out downward, the same all along its width.
             rect(0, 49, 101, 4).fill(LinearGradient(
                 colors: [Color(hex: 0x6e6e6f), Color(hex: 0x6e6e6f, opacity: 0)],
-                startPoint: UnitPoint(x: 0, y: 49 / Self.viewBox.height), endPoint: .bottom))
+                startPoint: UnitPoint(x: 0, y: 49 / Self.viewBox.height), endPoint: UnitPoint(x: 0, y: 1)))
             tip
             Path(roundedRect: CGRect(x: 0, y: 0, width: 101, height: 49), cornerRadius: 1).fill(Color(hex: 0x636364))
             rect(2, 2, 97, 46).fill(Self.gradient(Self.emptyColors))

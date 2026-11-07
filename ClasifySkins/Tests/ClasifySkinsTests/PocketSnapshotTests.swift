@@ -562,6 +562,23 @@ import Testing
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
     }
 
+    /// The battery's shadow fades downward only: its row has the same color at both ends.
+    @Test func theBatteryShadowFadesDownward() throws {
+        let battery = Labels.BatteryText(level: 0.5, red: false, mark: nil, label: "Battery 50%")
+        let renderer = ImageRenderer(content: BatteryView(battery: battery).background(Color.white))
+        renderer.scale = 10
+        let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        // The shadow is y 49 to 53 of the 53 unit view box; this row is in its upper half.
+        let y = Int(50.5 / 53 * 11 * 10)
+        func rgb(_ x: Int) -> (r: Int, g: Int, b: Int) {
+            let c = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) ?? .clear
+            return (Int(c.redComponent * 255), Int(c.greenComponent * 255), Int(c.blueComponent * 255))
+        }
+        let left = rgb(10), right = rgb(Int(95.0 / 111 * BatteryView.width * 10))  // 5 and 95 units in
+        #expect(near(left, right), "left \(left), right \(right)")
+        #expect(left.r < 240, "the shadow shows: \(left)")
+    }
+
     /// Round 7 card Y: the battery sits at the right of the title bar, 7 points after the play
     /// mark. A Mac with no battery shows none, and the mark stays at the right edge.
     @Test func theTitleBarShowsTheBattery() throws {
