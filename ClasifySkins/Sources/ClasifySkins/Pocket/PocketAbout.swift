@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-/// The About screen, option E (Jason, 11-07 17:08 JST): a capybara scene in Osaka, faded into
-/// the glass, then "Clasify", "Made with ♥ in Osaka" and the version. Each open shows the next
+/// The About screen, option E, Round 8 card AB (Jason, 11-07 17:08 JST): a capybara scene in
+/// Osaka, faded into the glass, then "Clasify", "Made with ♥ in Osaka" and the version. Each open shows the next
 /// scene (17:11 JST); the store picks it. The points are from the top of the 300 x 206 area under
 /// the title bar. It is the same on both body colors.
 struct PocketAbout: View {
@@ -36,22 +36,26 @@ struct PocketAbout: View {
             }
             // The art fades into the glass, with no hard edge where it ends.
             fade.frame(height: 82).offset(y: 60)
-            VStack(spacing: 3) {
-                Text("Clasify").font(.helvetica(16, bold: true)).foregroundStyle(Pocket.ink)
-                HStack(spacing: 3.5) {
-                    Text("Made with")
-                    Heart().fill(Color(hex: 0xe0565b)).frame(width: 10, height: 9)
-                    Text("in Osaka")
-                }
-                .font(.helvetica(11))
-                .foregroundStyle(Color(hex: 0x5d6772))
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Made with love in Osaka")
+            // Card AB: each line box is as tall as its font (CSS line-height 1). The name's box
+            // starts at y 142, and the second line's box starts 3 pt under it, at y 161.
+            Text("Clasify").font(.helvetica(16, bold: true)).foregroundStyle(Pocket.ink)
+                .frame(height: 16)
+                .offset(y: 142)
+            HStack(spacing: 3.5) {
+                Text("Made with")
+                Heart().fill(Color(hex: 0xe0565b)).frame(width: 10, height: 9)
+                Text("in Osaka")
             }
-            .offset(y: 142)
+            .font(.helvetica(11))
+            .foregroundStyle(Color(hex: 0x5d6772))
+            .frame(height: 11)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Made with love in Osaka")
+            .offset(y: 161)
             Text(Labels.aboutVersion)
                 .font(.helvetica(8))
                 .foregroundStyle(Color(hex: 0x8a949e))
+                .frame(height: 8)
                 .frame(maxHeight: .infinity, alignment: .bottom)
                 .padding(.bottom, 7)
         }
