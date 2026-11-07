@@ -237,8 +237,9 @@ extension View {
 
 /// The title, artist and playlist lines (round 8, card AA). A line wider than its room has no
 /// "…": it is cut, and its last 22 points fade out. A line that fits has no fade. The long
-/// lines scroll one at a time, in order, as `Labels.nowScroll` says; the fade stays at the
-/// right edge while the text moves. A new track makes a new view, so the turns start again.
+/// lines scroll once each, in turn, with a rest between, as `Labels.nowScroll` says; the fade
+/// stays at the right edge while the text moves. A new track makes a new view, so the turns
+/// start again.
 /// One measured width per line decides both the fade and the turns, so they always agree.
 struct NowLines: View {
     let now: Labels.NowText
@@ -267,7 +268,7 @@ struct NowLines: View {
             ZStack(alignment: .topLeading) {
                 ForEach(0..<3, id: \.self) { i in
                     let l = lines[i]
-                    let shift = scroll.map { $0.line == i ? Marquee.shift(at: $0.time, loop: $0.loop) : 0 } ?? 0
+                    let shift = scroll.map { $0.line == i ? $0.shift : 0 } ?? 0
                     line(l.text, size: l.size, color: l.color, top: l.top, long: widths[i] > room, shift: shift)
                 }
             }

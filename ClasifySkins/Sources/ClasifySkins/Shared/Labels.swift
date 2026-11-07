@@ -187,36 +187,44 @@ enum Labels {
 
     /// The seconds of one loop of the mockup's marquee: max(5, round(width / 28 + 3)), with the estimated width.
     /// The row itself measures if the label fits, so only a label that is cut scrolls.
-    static func marqueeLoop(_ label: String) -> Double { marqueeLoop(width: estimatedWidth(label)) }
-
-    static func marqueeLoop(width: Double) -> Double { max(5, (width / 28 + 3).rounded()) }
+    static func marqueeLoop(_ label: String) -> Double { max(5, (estimatedWidth(label) / 28 + 3).rounded()) }
 
     /// Now Playing's long lines (round 8, card AA): the room for the title, artist and playlist.
     static func nowRoom(art: Bool) -> Double { art ? 141.4 : 284 }
 
-    /// Which Now Playing line scrolls at time `t`, as the mockup's `npFade` gives it.
-    /// The lines wider than `room` take turns, in order, each for one loop of its marquee;
-    /// then the turns start again. Nil when no line is long.
+    /// Which Now Playing line scrolls at time `t`, and how far. The lines wider than `room` take
+    /// turns, in order. In its turn a line waits 1.5 s, scrolls once at 28 points a second until
+    /// its start comes back, and stops. Then all lines rest for 8 s, and the next turn starts.
+    /// Nil when no line is long.
     struct NowScroll: Equatable {
-        /// The line that scrolls now: 0 title, 1 artist, 2 playlist.
+        /// The line whose turn it is: 0 title, 1 artist, 2 playlist.
         var line: Int
-        /// The seconds since its turn started.
-        var time: Double
-        /// The seconds of its loop.
-        var loop: Double
+        /// How far it has moved, as a part of one copy's width (the text and the 28 point gap).
+        var shift: Double
     }
+
+    static let nowHold = 1.5, nowRest = 8.0
+
+    /// The seconds a line takes to scroll once: its width and the gap, at 28 points a second.
+    static func nowScrollSeconds(width: Double) -> Double { (width + 28) / 28 }
+
+    /// The seconds of a line's whole turn: the wait, the scroll and the rest.
+    static func nowTurn(width: Double) -> Double { nowHold + nowScrollSeconds(width: width) + nowRest }
 
     /// `widths` are the lines' widths in points, as the skin measures them.
     static func nowScroll(widths: [Double], room: Double, at t: Double) -> NowScroll? {
-        let turns = widths.enumerated().compactMap { (i, w) -> (line: Int, loop: Double)? in
-            w > room ? (i, marqueeLoop(width: w)) : nil
-        }
-        let total = turns.reduce(0) { $0 + $1.loop }
+        let long = widths.enumerated().filter { $0.element > room }
+        let total = long.reduce(0) { $0 + nowTurn(width: $1.element) }
         guard total > 0 else { return nil }
         var m = max(0, t).truncatingRemainder(dividingBy: total)
-        for turn in turns {
-            if m < turn.loop { return NowScroll(line: turn.line, time: m, loop: turn.loop) }
-            m -= turn.loop
+        for (line, width) in long {
+            let turn = nowTurn(width: width)
+            if m < turn {
+                let scroll = nowScrollSeconds(width: width)
+                let moving = m >= nowHold && m < nowHold + scroll
+                return NowScroll(line: line, shift: moving ? (m - nowHold) / scroll : 0)
+            }
+            m -= turn
         }
         return nil
     }

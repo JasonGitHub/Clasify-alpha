@@ -186,18 +186,28 @@ func sampleState() -> AppState {
         #expect(Labels.marqueeLoop("Short") == 5)  // the shortest loop
     }
 
-    /// Round 8 card AA: the long Now Playing lines take turns, title first, one loop each.
-    @Test func longNowPlayingLinesScrollOneAtATime() throws {
-        let widths = [258.0, 166.5, 73.3]  // a 12 s loop, a 9 s loop, and a line that fits
+    /// Round 8 card AA: each long Now Playing line waits 1.5 s, scrolls once, then all rest 8 s.
+    /// The title goes first, then the artist; a line that fits never takes a turn.
+    @Test func longNowPlayingLinesScrollOnceEachInTurn() throws {
+        let widths = [258.0, 166.5, 73.3]
         let room = Labels.nowRoom(art: true)
         #expect(room == 141.4 && Labels.nowRoom(art: false) == 284)
-        #expect(Labels.nowScroll(widths: widths, room: room, at: 0) == .init(line: 0, time: 0, loop: 12))
-        #expect(Labels.nowScroll(widths: widths, room: room, at: 13) == .init(line: 1, time: 1, loop: 9))
-        let again = try #require(Labels.nowScroll(widths: widths, room: room, at: 22))  // 21 s: the turns start again
-        #expect(again.line == 0 && abs(again.time - 1) < 1e-9)
+        let titleScroll = Labels.nowScrollSeconds(width: 258), artistScroll = Labels.nowScrollSeconds(width: 166.5)
+        #expect(abs(titleScroll - 286.0 / 28) < 1e-9)  // the text and the 28 point gap, at 28 points a second
+        let titleTurn = Labels.nowTurn(width: 258)
+        #expect(abs(titleTurn - (1.5 + titleScroll + 8)) < 1e-9)
+        func at(_ t: Double) -> Labels.NowScroll? { Labels.nowScroll(widths: widths, room: room, at: t) }
+        #expect(at(0) == .init(line: 0, shift: 0))  // the wait
+        #expect(at(1.4) == .init(line: 0, shift: 0))
+        let half = try #require(at(1.5 + titleScroll / 2))
+        #expect(half.line == 0 && abs(half.shift - 0.5) < 1e-9)
+        #expect(at(1.5 + titleScroll + 1) == .init(line: 0, shift: 0))  // the rest
+        let artist = try #require(at(titleTurn + 1.5 + artistScroll / 2))
+        #expect(artist.line == 1 && abs(artist.shift - 0.5) < 1e-9)
+        let total = titleTurn + Labels.nowTurn(width: 166.5)
+        #expect(at(total + 0.5) == .init(line: 0, shift: 0))  // the turns start again
         // With no cover there is room for all, so nothing scrolls.
         #expect(Labels.nowScroll(widths: widths, room: Labels.nowRoom(art: false), at: 5) == nil)
-        // A line that fits never takes a turn.
         #expect(Labels.nowScroll(widths: [60, 166.5], room: room, at: 0)?.line == 1)
     }
 }

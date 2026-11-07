@@ -356,8 +356,8 @@ import Testing
         #expect(near(got, want), "cover \(got), want \(want)")
     }
 
-    /// Round 8 card AA: a long title and artist are cut with a fade, not "…", and scroll one at a
-    /// time: the title first, then the artist. The playlist fits, so it stays still.
+    /// Round 8 card AA: a long title and artist are cut with a fade, not "…", and scroll once each
+    /// in turn: the title first, then the artist. The playlist fits, so it stays still.
     @Test func longNowPlayingLinesFadeAndTakeTurns() throws {
         var s = sampleState()
         let title = "Everything You Wanted Before the Rain", artist = "Hana and the Static Orchestra"
@@ -366,10 +366,10 @@ import Testing
         s.stack.append(Frame(screen: .now))
         let titleWidth = NowLines.width(title, size: 15.1), artistWidth = NowLines.width(artist, size: 11.7)
         #expect(titleWidth > 141.4 && artistWidth > 141.4 && NowLines.width("Liked Songs", size: 11.7) < 141.4)
-        let titleLoop = Labels.marqueeLoop(width: titleWidth), artistLoop = Labels.marqueeLoop(width: artistWidth)
-        let still = try render(s, "now-long")  // 1 s: the title's hold
-        let titleMoves = try render(s, "now-long-title", time: titleLoop * 0.59)
-        let artistMoves = try render(s, "now-long-artist", time: titleLoop + artistLoop * 0.59)
+        let still = try render(s, "now-long")  // 1 s: the title's wait
+        let titleMoves = try render(s, "now-long-title", time: 1.5 + Labels.nowScrollSeconds(width: titleWidth) / 2)
+        let artistMoves = try render(
+            s, "now-long-artist", time: Labels.nowTurn(width: titleWidth) + 1.5 + Labels.nowScrollSeconds(width: artistWidth) / 2)
         // The lines' middles, 19 points of title bar plus each line's top and half its size.
         let titleY = Self.screenTop + 19 + 44, artistY = Self.screenTop + 19 + 63, listY = Self.screenTop + 19 + 80
         let left = Self.screenLeft + 151, right = Self.screenLeft + Self.screenWidth - 8
