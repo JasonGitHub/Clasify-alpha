@@ -1,3 +1,4 @@
+import AppKit
 import ClasifyCore
 import SwiftUI
 
@@ -25,9 +26,9 @@ struct PocketNowPlaying: View {
                 // With no cover, the text is centered across the screen.
                 let left: CGFloat = art ? 150.6 : 8
                 Group {
-                    line(now.title, size: 15.1, color: .black, top: 36.3)
-                    line(now.artist, size: 11.7, color: Color(hex: 0x1e1e1e), top: 57.2)
-                    line(now.list, size: 11.7, color: Color(hex: 0x1e1e1e), top: 74)
+                    // Keyed by the track, and by its text, which can arrive after the track starts.
+                    NowLines(now: now, art: art)
+                        .id([state.current?.playlist, state.current?.track, now.title, now.artist, now.list])
                     line(now.count, size: 11.7, color: Color(hex: 0x292929), top: 91.4)
                 }
                 .frame(width: Pocket.screenWidth - left - 8, alignment: art ? .leading : .center)
@@ -231,5 +232,68 @@ extension View {
     /// keep their targets apart: each is 24 x 22 points.
     func widerHitArea(_ inset: CGFloat = 5) -> some View {
         padding(inset).contentShape(Rectangle()).padding(-inset)
+    }
+}
+
+/// The title, artist and playlist lines (round 8, card AA). A line wider than its room has no
+/// "…": it is cut, and its last 22 points fade out. A line that fits has no fade. The long
+/// lines scroll once each, in turn, with a rest between, as `Labels.nowScroll` says; the fade
+/// stays at the right edge while the text moves. A new track makes a new view, so the turns
+/// start again.
+/// One measured width per line decides both the fade and the turns, so they always agree.
+struct NowLines: View {
+    let now: Labels.NowText
+    let art: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.animationTime) private var fixedTime
+    @State private var start = Date.timeIntervalSinceReferenceDate
+
+    private var lines: [(text: String, size: Double, color: Color, top: CGFloat)] {
+        [(now.title, 15.1, .black, 36.3), (now.artist, 11.7, Color(hex: 0x1e1e1e), 57.2), (now.list, 11.7, Color(hex: 0x1e1e1e), 74)]
+    }
+
+    /// A line's width in bold Helvetica Neue, the font `Font.helvetica` draws it in.
+    static func width(_ text: String, size: Double) -> Double {
+        let font = NSFont(name: "HelveticaNeue-Bold", size: size) ?? .boldSystemFont(ofSize: size)
+        return Double(ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width))
+    }
+
+    var body: some View {
+        let room = Labels.nowRoom(art: art)
+        let widths = lines.map { Self.width($0.text, size: $0.size) }
+        let still = Labels.nowScroll(widths: widths, room: room, at: 0) == nil
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still || reduceMotion || fixedTime != nil)) { context in
+            let t = reduceMotion ? 0 : fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
+            let scroll = reduceMotion ? nil : Labels.nowScroll(widths: widths, room: room, at: t)
+            ZStack(alignment: .topLeading) {
+                ForEach(0..<3, id: \.self) { i in
+                    let l = lines[i]
+                    let shift = scroll.map { $0.line == i ? $0.shift : 0 } ?? 0
+                    line(l.text, size: l.size, color: l.color, top: l.top, long: widths[i] > room, shift: shift)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func line(_ text: String, size: Double, color: Color, top: CGFloat, long: Bool, shift: Double) -> some View {
+        let label = Text(text).font(.helvetica(size, bold: true)).foregroundStyle(color)
+        Group {
+            if long {
+                // Cut, not truncated, and it starts at the left even when the lines are centered.
+                Marquee.copies(label, shift: shift)
+                    .clipped()
+                    .mask {
+                        HStack(spacing: 0) {
+                            Color.black
+                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 22)
+                        }
+                    }
+            } else {
+                label.lineLimit(1).frame(maxWidth: .infinity, alignment: art ? .leading : .center)
+            }
+        }
+        .frame(height: size)
+        .offset(y: top)
     }
 }

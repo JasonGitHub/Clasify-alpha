@@ -361,16 +361,20 @@ struct Marquee: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = reduceMotion ? 0 : fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
-            let shift = Self.shift(at: t, loop: loop)
-            HStack(spacing: 0) {
-                text.padding(.trailing, 28)
-                text.padding(.trailing, 28).accessibilityHidden(true)
-            }
-            .fixedSize()
-            .visualEffect { content, geo in content.offset(x: -shift * geo.size.width / 2) }
-            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)  // minWidth 0: else the frame is as wide as both copies
+            Self.copies(text, shift: Self.shift(at: t, loop: loop))
         }
         .clipped()
+    }
+
+    /// The two copies, moved left by `shift` of one copy's width, in a frame as wide as its room.
+    static func copies(_ text: Text, shift: Double) -> some View {
+        HStack(spacing: 0) {
+            text.padding(.trailing, 28)
+            text.padding(.trailing, 28).accessibilityHidden(true)
+        }
+        .fixedSize()
+        .visualEffect { content, geo in content.offset(x: -shift * geo.size.width / 2) }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)  // minWidth 0: else the frame is as wide as both copies
     }
 }
 

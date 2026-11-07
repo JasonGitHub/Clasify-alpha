@@ -185,4 +185,29 @@ func sampleState() -> AppState {
         #expect(Labels.marqueeLoop("The Longest Road Trip Playlist Ever Made") == 14)  // 296 points
         #expect(Labels.marqueeLoop("Short") == 5)  // the shortest loop
     }
+
+    /// Round 8 card AA: each long Now Playing line waits 1.5 s, scrolls once, then all rest 8 s.
+    /// The title goes first, then the artist; a line that fits never takes a turn.
+    @Test func longNowPlayingLinesScrollOnceEachInTurn() throws {
+        let widths = [258.0, 166.5, 73.3]
+        let room = Labels.nowRoom(art: true)
+        #expect(room == 141.4 && Labels.nowRoom(art: false) == 284)
+        let titleScroll = Labels.nowScrollSeconds(width: 258), artistScroll = Labels.nowScrollSeconds(width: 166.5)
+        #expect(abs(titleScroll - 286.0 / 28) < 1e-9)  // the text and the 28 point gap, at 28 points a second
+        let titleTurn = Labels.nowTurn(width: 258)
+        #expect(abs(titleTurn - (1.5 + titleScroll + 8)) < 1e-9)
+        func at(_ t: Double) -> Labels.NowScroll? { Labels.nowScroll(widths: widths, room: room, at: t) }
+        #expect(at(0) == .init(line: 0, shift: 0))  // the wait
+        #expect(at(1.4) == .init(line: 0, shift: 0))
+        let half = try #require(at(1.5 + titleScroll / 2))
+        #expect(half.line == 0 && abs(half.shift - 0.5) < 1e-9)
+        #expect(at(1.5 + titleScroll + 1) == .init(line: 0, shift: 0))  // the rest
+        let artist = try #require(at(titleTurn + 1.5 + artistScroll / 2))
+        #expect(artist.line == 1 && abs(artist.shift - 0.5) < 1e-9)
+        let total = titleTurn + Labels.nowTurn(width: 166.5)
+        #expect(at(total + 0.5) == .init(line: 0, shift: 0))  // the turns start again
+        // With no cover there is room for all, so nothing scrolls.
+        #expect(Labels.nowScroll(widths: widths, room: Labels.nowRoom(art: false), at: 5) == nil)
+        #expect(Labels.nowScroll(widths: [60, 166.5], room: room, at: 0)?.line == 1)
+    }
 }
