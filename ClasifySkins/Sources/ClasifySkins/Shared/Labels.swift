@@ -177,14 +177,47 @@ enum Labels {
         return String(format: "%d:%02d", s / 60, s % 60)
     }
 
-    /// The seconds of one loop of the mockup's marquee on the selected row: max(5, round(width / 28 + 3)).
-    /// Width is the mockup's estimate: 7.4 points a character, 13 for a CJK character.
-    /// The row itself measures if the label fits, so only a label that is cut scrolls.
-    static func marqueeLoop(_ label: String) -> Double {
+    /// The mockup's estimate of a label's width: 7.4 points a character at 13 points, 13 for a
+    /// CJK character, scaled to the font size.
+    static func estimatedWidth(_ label: String, size: Double = 13) -> Double {
         let wide: (Unicode.Scalar) -> Bool = {
             (0x3000...0x9FFF).contains($0.value) || (0xAC00...0xD7AF).contains($0.value) || (0xFF00...0xFFEF).contains($0.value)
         }
-        let estimate = label.unicodeScalars.reduce(0.0) { $0 + (wide($1) ? 13 : 7.4) }
-        return max(5, (estimate / 28 + 3).rounded())
+        return label.unicodeScalars.reduce(0.0) { $0 + (wide($1) ? 13 : 7.4) } * size / 13
+    }
+
+    /// The seconds of one loop of the mockup's marquee: max(5, round(width / 28 + 3)), with the estimated width.
+    /// The row itself measures if the label fits, so only a label that is cut scrolls.
+    static func marqueeLoop(_ label: String, size: Double = 13) -> Double {
+        max(5, (estimatedWidth(label, size: size) / 28 + 3).rounded())
+    }
+
+    /// Now Playing's long lines (round 8, card AA): the room for the title, artist and playlist.
+    static func nowRoom(art: Bool) -> Double { art ? 141.4 : 284 }
+
+    /// Which Now Playing line scrolls at time `t`, as the mockup's `npFade` gives it.
+    /// The long lines take turns, in order, each for one loop of its marquee; then the turns
+    /// start again. Nil when no line is long.
+    struct NowScroll: Equatable {
+        /// The line that scrolls now: 0 title, 1 artist, 2 playlist.
+        var line: Int
+        /// The seconds since its turn started.
+        var time: Double
+        /// The seconds of its loop.
+        var loop: Double
+    }
+
+    static func nowScroll(_ lines: [(text: String, size: Double)], room: Double, at t: Double) -> NowScroll? {
+        let turns = lines.enumerated().compactMap { (i, l) -> (line: Int, loop: Double)? in
+            l.text.isEmpty || estimatedWidth(l.text, size: l.size) <= room ? nil : (i, marqueeLoop(l.text, size: l.size))
+        }
+        let total = turns.reduce(0) { $0 + $1.loop }
+        guard total > 0 else { return nil }
+        var m = max(0, t).truncatingRemainder(dividingBy: total)
+        for turn in turns {
+            if m < turn.loop { return NowScroll(line: turn.line, time: m, loop: turn.loop) }
+            m -= turn.loop
+        }
+        return nil
     }
 }

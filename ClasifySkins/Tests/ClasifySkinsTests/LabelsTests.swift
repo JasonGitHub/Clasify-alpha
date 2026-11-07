@@ -185,4 +185,21 @@ func sampleState() -> AppState {
         #expect(Labels.marqueeLoop("The Longest Road Trip Playlist Ever Made") == 14)  // 296 points
         #expect(Labels.marqueeLoop("Short") == 5)  // the shortest loop
     }
+
+    /// Round 8 card AA: the long Now Playing lines take turns, title first, one loop each.
+    @Test func longNowPlayingLinesScrollOneAtATime() throws {
+        let title = String(repeating: "x", count: 30)  // 257.9 points at 15.1: a 12 s loop
+        let artist = String(repeating: "y", count: 25)  // 166.5 points at 11.7: a 9 s loop
+        let lines = [(text: title, size: 15.1), (text: artist, size: 11.7), (text: "Liked Songs", size: 11.7)]
+        let room = Labels.nowRoom(art: true)
+        #expect(room == 141.4 && Labels.nowRoom(art: false) == 284)
+        #expect(Labels.nowScroll(lines, room: room, at: 0) == .init(line: 0, time: 0, loop: 12))
+        #expect(Labels.nowScroll(lines, room: room, at: 13) == .init(line: 1, time: 1, loop: 9))
+        let again = try #require(Labels.nowScroll(lines, room: room, at: 22))  // 21 s: the turns start again
+        #expect(again.line == 0 && abs(again.time - 1) < 1e-9)
+        // With no cover there is room for both, so nothing scrolls.
+        #expect(Labels.nowScroll(lines, room: Labels.nowRoom(art: false), at: 5) == nil)
+        // A line that fits never takes a turn.
+        #expect(Labels.nowScroll([(text: "Hey Ya!", size: 15.1), (text: artist, size: 11.7)], room: room, at: 0)?.line == 1)
+    }
 }

@@ -356,6 +356,36 @@ import Testing
         #expect(near(got, want), "cover \(got), want \(want)")
     }
 
+    /// Round 8 card AA: a long title and artist are cut with a fade, not "…", and scroll one at a
+    /// time: the title first, then the artist. The playlist fits, so it stays still.
+    @Test func longNowPlayingLinesFadeAndTakeTurns() throws {
+        var s = sampleState()
+        let title = "Everything You Wanted Before the Rain", artist = "Hana and the Static Orchestra"
+        s.library[0].tracks.append(Track(id: "spotify:track:3", title: title, artist: artist, duration: 263))
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:3")
+        s.stack.append(Frame(screen: .now))
+        let titleLoop = Labels.marqueeLoop(title, size: 15.1), artistLoop = Labels.marqueeLoop(artist, size: 11.7)
+        let still = try render(s, "now-long")  // 1 s: the title's hold
+        let titleMoves = try render(s, "now-long-title", time: titleLoop * 0.59)
+        let artistMoves = try render(s, "now-long-artist", time: titleLoop + artistLoop * 0.59)
+        // The lines' middles, 19 points of title bar plus each line's top and half its size.
+        let titleY = Self.screenTop + 19 + 44, artistY = Self.screenTop + 19 + 63, listY = Self.screenTop + 19 + 80
+        let left = Self.screenLeft + 151, right = Self.screenLeft + Self.screenWidth - 8
+        func changed(_ a: Snapshot, _ b: Snapshot, _ y: Int) -> Int {
+            (left..<right).filter { x in (y - 4...y + 4).contains { a.rgb(x, $0) != b.rgb(x, $0) } }.count
+        }
+        #expect(changed(still, titleMoves, titleY) > 10)  // the title's turn
+        #expect(changed(still, titleMoves, artistY) == 0)
+        #expect(changed(still, artistMoves, titleY) == 0)  // the title waits at the start
+        #expect(changed(still, artistMoves, artistY) > 10)  // the artist's turn
+        #expect(changed(still, artistMoves, listY) == 0)
+        // The title has ink in its middle, and none in the last 3 points of the fade.
+        let ink = (left + 10..<right - 30).filter { x in (titleY - 6...titleY + 6).contains { still.isDark(x, $0) } }
+        let edge = (right - 3..<right).filter { x in (titleY - 6...titleY + 6).contains { still.isDark(x, $0) } }
+        #expect(ink.count > 20)
+        #expect(edge.isEmpty, "dark at \(edge)")
+    }
+
     @Test func aTrackWithNoCoverShowsTheBlueGreySquare() throws {
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")  // no cover ID
