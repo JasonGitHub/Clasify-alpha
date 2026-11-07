@@ -342,7 +342,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .albumArt: s.albumArt = s.albumArt.next
             case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
-            case .about: s.stack.append(Frame(screen: .about))
+            case .about:
+                s.aboutScene = s.aboutOpens % AppState.aboutScenes; s.aboutOpens += 1
+                s.stack.append(Frame(screen: .about))
             case .logOut: s.stack.append(Frame(screen: .confirm))
             case .cancel: s.stack.removeLast()
             case .confirmLogOut: signOut("Logged out"); fx.append(.logOut)
@@ -535,7 +537,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
             let battery = s.battery  // the Mac's battery, which a reset does not change
+            let aboutOpens = s.aboutOpens  // About counts from launch, not from a reset
             s = AppState()
+            s.aboutOpens = aboutOpens
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
             s.battery = battery
         }

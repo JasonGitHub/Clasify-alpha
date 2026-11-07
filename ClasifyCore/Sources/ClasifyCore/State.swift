@@ -187,6 +187,13 @@ public struct AppState: Equatable, Sendable {
     public var showsNowPlayingArt: Bool { albumArt != .off }
     public var deviceColor = DeviceColor.silver
     public var clicker = true
+    /// The About art scene that shows, from 0. Each open of About shows the next scene, and the
+    /// first open after launch shows scene 0. In memory only: nothing is saved.
+    public var aboutScene = 0
+    /// How many times About opened since launch.
+    public var aboutOpens = 0
+    /// The About art scenes: the castle, then the takoyaki.
+    public static let aboutScenes = 2
     /// nil when the Mac has no battery, or before the app reads it.
     public var battery: Battery?
     public var nowMode = NowMode.volume

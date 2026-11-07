@@ -1,23 +1,38 @@
 import AppKit
 import SwiftUI
 
-/// The About screen, option E (Jason, 11-07 17:08 JST): the capybara at Osaka Castle, faded
-/// into the glass, then "Clasify", "Made with ♥ in Osaka" and the version. The points are from
-/// the top of the 300 x 206 area under the title bar. It is the same on both body colors.
+/// The About screen, option E (Jason, 11-07 17:08 JST): a capybara scene in Osaka, faded into
+/// the glass, then "Clasify", "Made with ♥ in Osaka" and the version. Each open shows the next
+/// scene (17:11 JST); the store picks it. The points are from the top of the 300 x 206 area under
+/// the title bar. It is the same on both body colors.
 struct PocketAbout: View {
-    /// The bundled art, 718 x 306 pixels. Nil only if the package was built without it.
-    @MainActor static let castle: NSImage? = Bundle.module.url(forResource: "about-castle", withExtension: "png")
-        .flatMap { NSImage(contentsOf: $0) }
+    /// A bundled art scene, with its vertical crop anchor and its VoiceOver label.
+    struct Art {
+        let image: NSImage?
+        let anchor: Double
+        let label: String
+    }
+
+    /// The scenes in the store's order: 0 the castle (718 x 306 px), 1 the takoyaki (718 x 314 px).
+    /// An image is nil only if the package was built without it.
+    @MainActor static let scenes = [
+        Art(image: art("about-castle"), anchor: 0.40, label: "Capybara at Osaka Castle"),
+        Art(image: art("about-takoyaki"), anchor: 0.45, label: "Capybara eating takoyaki"),
+    ]
+
+    private static func art(_ name: String) -> NSImage? {
+        Bundle.module.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+    }
+
+    let scene: Int
 
     var body: some View {
+        let current = Self.scenes[min(max(scene, 0), Self.scenes.count - 1)]
         ZStack(alignment: .top) {
-            if let castle = Self.castle {
-                Image(nsImage: castle)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: Pocket.screenWidth, height: 140)
-                    .clipped()
-                    .accessibilityHidden(true)
+            if let image = current.image {
+                Self.fill(image, anchor: current.anchor)
+                    .accessibilityElement()
+                    .accessibilityLabel(current.label)
             }
             // The art fades into the glass, with no hard edge where it ends.
             fade.frame(height: 82).offset(y: 60)
@@ -42,6 +57,21 @@ struct PocketAbout: View {
         }
         .frame(width: Pocket.screenWidth, height: Pocket.listHeight, alignment: .top)
         .clipped()
+    }
+
+    /// The art fills 300 x 140, centered across. Down, the spare height splits at `anchor`, so
+    /// 0.4 cuts 40% of it from the top and 60% from the bottom.
+    private static func fill(_ image: NSImage, anchor: Double) -> some View {
+        let box = CGSize(width: Pocket.screenWidth, height: 140)
+        let size = image.size.width > 0 && image.size.height > 0 ? image.size : box
+        let scale = max(box.width / size.width, box.height / size.height)
+        let drawn = CGSize(width: size.width * scale, height: size.height * scale)
+        return Image(nsImage: image)
+            .resizable()
+            .frame(width: drawn.width, height: drawn.height)
+            .offset(x: (box.width - drawn.width) / 2, y: (box.height - drawn.height) * anchor)
+            .frame(width: box.width, height: box.height, alignment: .topLeading)
+            .clipped()
     }
 
     /// Clear to the glass color at y 142, about rgb(226, 235, 242), with the spec's stops.
