@@ -583,6 +583,25 @@ import Testing
         #expect(lower.r - upper.r > 40, "it fades out downward: \(upper) to \(lower)")
     }
 
+    /// Card Y as updated for CLA-30: the gray-green frame and the D4 shading from battery-icon-gen.py.
+    @Test func theBatteryHasTheGrayGreenFrameAndD4Shading() throws {
+        let battery = Labels.BatteryText(level: 0.5, red: false, mark: nil, label: "Battery 50%")
+        let renderer = ImageRenderer(content: BatteryView(battery: battery).background(Color.white))
+        renderer.scale = 10
+        let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        let perUnit = BatteryView.width * 10 / 111  // pixels per view box unit
+        // The frame's left side, x 0 to 2 of the view box, halfway down.
+        let c = bitmap.colorAt(x: Int(1 * perUnit), y: Int(25 * perUnit))?.usingColorSpace(.sRGB) ?? .clear
+        let frame = (r: Int(c.redComponent * 255), g: Int(c.greenComponent * 255), b: Int(c.blueComponent * 255))
+        let want = try reference(0x8a9886)
+        #expect(near(frame, want), "frame \(frame), want \(want)")
+        // The gradients, as the generator lists them: 47 colors each, top to bottom.
+        #expect(BatteryView.fillAll.count == 47 && BatteryView.emptyAll.count == 47 && BatteryView.redAll.count == 47)
+        #expect(BatteryView.fillAll.first == 0xb1e392 && BatteryView.fillAll.last == 0x7bb362)
+        #expect(BatteryView.emptyAll.first == 0x76777a && BatteryView.emptyAll.last == 0x797a7d)
+        #expect(BatteryView.redAll.first == 0xa37264 && BatteryView.redAll.last == 0x9e6e60)
+    }
+
     /// Round 7 card Y: the battery sits at the right of the title bar, 7 points after the play
     /// mark. A Mac with no battery shows none, and the mark stays at the right edge.
     @Test func theTitleBarShowsTheBattery() throws {
