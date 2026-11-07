@@ -91,6 +91,8 @@ final class AppModel {
     @ObservationIgnored private var haptics: Haptics?
     /// Logs in again in the background when the librespot session drops.
     @ObservationIgnored private var keeper: SessionKeeper?
+    /// Sends the Mac's battery to the store, for the title bar.
+    @ObservationIgnored private var battery: BatteryWatcher?
 
     init() {
         guard let client = LibrespotClient() else {
@@ -108,6 +110,7 @@ final class AppModel {
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] in await keeper?.reconnect() ?? false }
         self.keeper = keeper
+        battery = BatteryWatcher(store: store)
         // A change made in the Spotify app shows when the user comes back to Clasify.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main

@@ -154,6 +154,10 @@ struct PocketScreen: View {
             case .paused: mark(.pause, label: "Paused")
             case nil: EmptyView()
             }
+            // The battery, 7 points after the play mark. A Mac with no battery shows none.
+            if let battery = Labels.battery(in: state) {
+                BatteryView(battery: battery).padding(.leading, 1)
+            }
         }
         .font(.helvetica(11.7, bold: true))
         .padding(EdgeInsets(top: 1, leading: 9, bottom: 0, trailing: 8))
