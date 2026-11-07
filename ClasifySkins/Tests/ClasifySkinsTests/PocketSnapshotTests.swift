@@ -530,6 +530,33 @@ import Testing
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
     }
 
+    /// Round 7 card Y: the battery sits at the right of the title bar, 7 points after the play
+    /// mark. A Mac with no battery shows none, and the mark stays at the right edge.
+    @Test func theTitleBarShowsTheBattery() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
+        s.stack.append(Frame(screen: .settings))  // a full-width header
+        let none = try render(s, "battery-none")
+        s.battery = Battery(level: 0.5, charging: false, onPower: false)
+        let half = try render(s, "battery-half")
+        s.battery = Battery(level: 0.19, charging: false, onPower: false)
+        let low = try render(s, "battery-low")
+        s.battery = Battery(level: 0.6, charging: true, onPower: true)
+        _ = try render(s, "battery-charging")
+        s.battery = Battery(level: 1, charging: false, onPower: true)
+        _ = try render(s, "battery-plugged")
+        // The battery is 23 x 11 points, 8 in from the screen's right edge. Its fill starts 0.4
+        // points into it: at 19% the fill ends 4.2 points in, at 50% 10.6 points in.
+        let right: Int = Self.screenLeft + Self.screenWidth - 8, midY: Int = Self.screenTop + 9
+        let fillX = right - 21  // 2 points into the battery: inside the fill at 19% and at 50%
+        let green = half.rgb(fillX, midY), red = low.rgb(fillX, midY)
+        #expect(green.g > green.r + 15, "green \(green)")
+        #expect(red.r > red.g + 15, "red \(red)")
+        // With no battery, the play mark sits where the battery is now.
+        #expect(none.isBlue(right - 8, midY))
+        #expect(!half.isBlue(right - 8, midY))
+    }
+
     @Test func pausedMarkIsTwoBars() throws {
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")

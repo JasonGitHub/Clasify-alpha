@@ -106,6 +106,20 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.deviceColor == .black)  // a saved setting: a reset keeps it
     }
 
+    @Test func batteryChangedSetsTheBatteryAndAResetKeepsIt() {
+        var s = mainMenu()
+        #expect(s.battery == nil)  // not read yet, or a Mac with no battery
+        let half = Battery(level: 0.5, charging: true, onPower: true)
+        #expect(send(&s, .batteryChanged(half)).isEmpty)
+        #expect(s.battery == half && !half.low)
+        send(&s, .reset)
+        #expect(s.battery == half)  // the Mac's battery does not change on a reset
+        send(&s, .batteryChanged(nil))
+        #expect(s.battery == nil)
+        #expect(Battery(level: 0.19, charging: false, onPower: false).low)
+        #expect(Battery(level: 1.3, charging: false, onPower: true).level == 1)  // kept in 0...1
+    }
+
     @Test func selectTrackLoadsAndPlays() {
         var s = mainMenu()
         send(&s, openFocus(1))

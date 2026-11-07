@@ -130,6 +130,27 @@ enum Labels {
         state.current == nil ? nil : state.isPlaying ? .playing : .paused
     }
 
+    /// The title bar battery: how full it is, red below 20%, and its mark. A bolt while it
+    /// charges; a plug when the Mac is on power and not charging (full, or macOS holds the
+    /// charge); no mark on battery power.
+    struct BatteryText: Equatable {
+        enum Mark: Equatable { case bolt, plug }
+        var level: Double
+        var red: Bool
+        var mark: Mark?
+        /// For VoiceOver.
+        var label: String
+    }
+
+    /// Nil when the Mac has no battery: the title bar shows none.
+    static func battery(in state: AppState) -> BatteryText? {
+        guard let b = state.battery else { return nil }
+        let mark: BatteryText.Mark? = b.charging ? .bolt : b.onPower ? .plug : nil
+        let percent = Int((b.level * 100).rounded())
+        let label = "Battery \(percent)%" + (mark == .bolt ? ", charging" : mark == .plug ? ", on power" : "")
+        return BatteryText(level: b.level, red: b.low, mark: mark, label: label)
+    }
+
     /// The shuffle or repeat slider on Now Playing: its name, its stops and the stop that is on.
     struct Slider: Equatable {
         var name: String

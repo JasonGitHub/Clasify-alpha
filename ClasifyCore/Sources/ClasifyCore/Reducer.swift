@@ -31,6 +31,9 @@ public enum Action: Equatable, Sendable {
     /// The restore that `.launch` started finished.
     case restored(token: Int, ok: Bool)
     case offline(Bool)
+    /// The Mac's battery changed, as the app reads it from IOKit. nil when the Mac has no
+    /// battery (an iMac or a Mac mini): the title bar shows no battery.
+    case batteryChanged(Battery?)
     /// Signs out and forgets the stored login. Send it only when Spotify refuses the refresh
     /// token (it was revoked). Never send it when the hourly access token expires or the
     /// network is down: a restore handles those, and this would delete a working login.
@@ -519,6 +522,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if on && s.isPlaying { s.isPlaying = false; fx.append(.pause); toast("Connection lost. Paused") }
             s.offline = on
 
+        case .batteryChanged(let battery):
+            s.battery = battery
+
         case .expire:
             // Forget the stored login too, so that a later .launch does not restore it.
             if s.signedIn { signOut("Session expired. Log in again"); fx.append(.logOut) }
@@ -528,8 +534,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let (tok, gen, auth, art) = (s.tok, s.playGen, s.authAttempt, s.artTok)  // keep counters so callbacks from before the reset stay stale
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
+            let battery = s.battery  // the Mac's battery, which a reset does not change
             s = AppState()
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
+            s.battery = battery
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)

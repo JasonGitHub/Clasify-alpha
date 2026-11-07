@@ -90,6 +90,25 @@ public enum AlbumArt: String, CaseIterable, Sendable {
 }
 /// The Pocket skin's body color (round 8, card Z). The Settings row goes Silver, Black, then Silver again.
 public enum DeviceColor: String, CaseIterable, Sendable { case silver = "Silver", black = "Black" }
+
+/// The Mac's battery, shown in the title bar (round 7, card Y).
+public struct Battery: Equatable, Sendable {
+    /// From 0 (empty) to 1 (full).
+    public var level: Double
+    /// The battery is charging now.
+    public var charging: Bool
+    /// The Mac runs on power from the adapter. It can be on power and not charging, when the
+    /// battery is full or macOS holds the charge.
+    public var onPower: Bool
+
+    public init(level: Double, charging: Bool, onPower: Bool) {
+        self.level = min(max(level, 0), 1); self.charging = charging; self.onPower = onPower
+    }
+
+    /// Below 20%, the level shows in red.
+    public var low: Bool { level < 0.2 }
+}
+
 public enum Skin: String, CaseIterable, Sendable { case pocket = "Pocket", aqua = "Aqua", dark = "Dark" }
 
 extension CaseIterable where Self: Equatable {
@@ -168,6 +187,8 @@ public struct AppState: Equatable, Sendable {
     public var showsNowPlayingArt: Bool { albumArt != .off }
     public var deviceColor = DeviceColor.silver
     public var clicker = true
+    /// nil when the Mac has no battery, or before the app reads it.
+    public var battery: Battery?
     public var nowMode = NowMode.volume
     /// When the volume bar hides, or when a scrub, shuffle or repeat slider goes back to the
     /// progress bar. 0 when nothing is timed.

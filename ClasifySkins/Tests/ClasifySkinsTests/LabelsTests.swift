@@ -114,6 +114,17 @@ func sampleState() -> AppState {
         #expect(Labels.slider(in: s) == .init(name: "Repeat", stops: ["Off", "One", "All"], index: 2))
     }
 
+    @Test func batteryShowsItsLevelColorAndMark() {
+        var s = sampleState()
+        #expect(Labels.battery(in: s) == nil)  // no battery: no icon
+        s.battery = Battery(level: 0.45, charging: false, onPower: false)
+        #expect(Labels.battery(in: s) == .init(level: 0.45, red: false, mark: nil, label: "Battery 45%"))
+        s.battery = Battery(level: 0.1, charging: true, onPower: true)
+        #expect(Labels.battery(in: s) == .init(level: 0.1, red: true, mark: .bolt, label: "Battery 10%, charging"))
+        s.battery = Battery(level: 1, charging: false, onPower: true)
+        #expect(Labels.battery(in: s) == .init(level: 1, red: false, mark: .plug, label: "Battery 100%, on power"))
+    }
+
     @Test func times() {
         #expect(Labels.time(0) == "0:00")
         #expect(Labels.time(65.9) == "1:05")
