@@ -1,7 +1,7 @@
 import ClasifyCore
 import SwiftUI
 
-/// The Pocket skin from the mockup: a white pocket player with an LCD and a click wheel.
+/// The Pocket skin from the mockup: a silver or black pocket player with an LCD and a click wheel.
 /// It renders `state` and sends input actions. It holds no logic.
 public struct PocketSkin: View {
     /// The device's size in points, as in the mockup: the photo's shape.
@@ -32,30 +32,12 @@ public struct PocketSkin: View {
         // The bezel and the wheel, centered, with the mockup's 55.8 point gap between them.
         VStack(spacing: 55.8) {
             PocketScreen(state: state, input: input)
-            ClickWheel(input: input, catchesScroll: interactive, pressed: pressed)
+            ClickWheel(input: input, color: state.deviceColor, catchesScroll: interactive, pressed: pressed)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.
         .padding(.top, 25.8)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
-        .background {
-            // Neutral silver, with a white line inside the top edge and fainter ones at the sides.
-            RoundedRectangle(cornerRadius: 34)
-                .fill(LinearGradient(
-                    stops: [
-                        .init(color: Color(hex: 0xf4f4f4), location: 0), .init(color: Color(hex: 0xe4e4e4), location: 0.55),
-                        .init(color: Color(hex: 0xc8c8c8), location: 1),
-                    ],
-                    startPoint: .top, endPoint: .bottom))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(0.5), lineWidth: 1).padding(1)
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white, lineWidth: 1).padding(1)
-                        .mask(LinearGradient.vertical(.white, .clear, .clear))
-                }
-                .overlay { RoundedRectangle(cornerRadius: 34).strokeBorder(Color(hex: 0x9c9c9c), lineWidth: 1) }
-                .shadow(color: Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
-        }
+        .background { device(state.deviceColor) }
         .focusable()
         .focused($focused)
         .focusEffectDisabled()
@@ -73,6 +55,45 @@ public struct PocketSkin: View {
         .accessibilityLabel(
             "Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
     }
+
+    /// The device body: silver, or black (round 8, card Z), with a light line inside the top
+    /// edge and fainter ones at the sides.
+    private func device(_ color: DeviceColor) -> some View {
+        let black = color == .black
+        let shape = RoundedRectangle(cornerRadius: 34)
+        return shape
+            .fill(LinearGradient(stops: black ? Self.blackBody : Self.silverBody, startPoint: .top, endPoint: .bottom))
+            .overlay {
+                if black {  // slightly darker sides
+                    shape.fill(LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.16), location: 0), .init(color: .white.opacity(0.05), location: 0.2),
+                            .init(color: .white.opacity(0.07), location: 0.5), .init(color: .white.opacity(0.05), location: 0.8),
+                            .init(color: .black.opacity(0.16), location: 1),
+                        ],
+                        startPoint: .leading, endPoint: .trailing))
+                }
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(black ? 0.12 : 0.5), lineWidth: 1).padding(1)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(black ? 0.35 : 1), lineWidth: 1).padding(1)
+                    .mask(LinearGradient.vertical(.white, .clear, .clear))
+            }
+            .overlay { shape.strokeBorder(Color(hex: black ? 0x1c1c1c : 0x9c9c9c), lineWidth: 1) }
+            .shadow(color: black ? .black.opacity(0.45) : Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
+    }
+
+    static var silverBody: [Gradient.Stop] { [
+        .init(color: Color(hex: 0xf4f4f4), location: 0), .init(color: Color(hex: 0xe4e4e4), location: 0.55),
+        .init(color: Color(hex: 0xc8c8c8), location: 1),
+    ] }
+    static var blackBody: [Gradient.Stop] { [
+        .init(color: Color(hex: 0x6c6b6e), location: 0), .init(color: Color(hex: 0x626164), location: 0.22),
+        .init(color: Color(hex: 0x555457), location: 0.5), .init(color: Color(hex: 0x3f3f3f), location: 0.7),
+        .init(color: Color(hex: 0x2c2c2c), location: 0.86), .init(color: Color(hex: 0x212121), location: 1),
+    ] }
 
     /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back,
     /// Space plays, S and R change shuffle and repeat.

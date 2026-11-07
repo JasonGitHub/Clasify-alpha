@@ -89,7 +89,21 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .select)
         #expect(s.albumArt == .all && s.isHalf(.main) && s.isHalf(.playlists) && s.showsNowPlayingArt)
         #expect(!s.rows(for: s.top).contains(.skin))  // only the Pocket skin in 1.0
-        #expect(s.rows(for: s.top).count == 6)  // no Playback engine, EQ or Skin row in 1.0
+        #expect(s.rows(for: s.top).count == 7)  // no Playback engine, EQ or Skin row in 1.0
+    }
+
+    @Test func deviceColorGoesSilverBlackSilver() {
+        var s = mainMenu()
+        send(&s, .wheel(3), .select)
+        #expect(s.rows(for: s.top) == [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut])
+        #expect(s.deviceColor == .silver)  // the default
+        send(&s, .wheel(3), .select)
+        #expect(s.deviceColor == .black && s.top.screen == .settings)
+        send(&s, .select)
+        #expect(s.deviceColor == .silver)
+        s.deviceColor = .black
+        send(&s, .reset)
+        #expect(s.deviceColor == .black)  // a saved setting: a reset keeps it
     }
 
     @Test func selectTrackLoadsAndPlays() {

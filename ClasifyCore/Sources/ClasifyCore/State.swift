@@ -56,7 +56,7 @@ public struct Frame: Equatable, Sendable {
 public enum Row: Equatable, Sendable {
     case logIn, nowPlaying, playlists, likedSongs, shuffleSongs, settings
     case playlist(String), track(String)
-    case shuffle, repeatMode, skin, albumArt, clicker, about, logOut
+    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, about, logOut
     case cancel, confirmLogOut
 }
 
@@ -88,6 +88,8 @@ public enum AlbumArt: String, CaseIterable, Sendable {
     /// No covers. Now Playing centers its text.
     case off = "Off"
 }
+/// The Pocket skin's body color (round 8, card Z). The Settings row goes Silver, Black, then Silver again.
+public enum DeviceColor: String, CaseIterable, Sendable { case silver = "Silver", black = "Black" }
 public enum Skin: String, CaseIterable, Sendable { case pocket = "Pocket", aqua = "Aqua", dark = "Dark" }
 
 extension CaseIterable where Self: Equatable {
@@ -164,6 +166,7 @@ public struct AppState: Equatable, Sendable {
     public var albumArt = AlbumArt.all
     /// Now Playing shows the playing track's cover.
     public var showsNowPlayingArt: Bool { albumArt != .off }
+    public var deviceColor = DeviceColor.silver
     public var clicker = true
     public var nowMode = NowMode.volume
     /// When the volume bar hides, or when a scrub, shuffle or repeat slider goes back to the
@@ -306,7 +309,7 @@ public struct AppState: Equatable, Sendable {
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
         case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
-        case .settings: [.shuffle, .repeatMode, .albumArt, .clicker, .about, .logOut]
+        case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .auth, .about, .now: []
         }

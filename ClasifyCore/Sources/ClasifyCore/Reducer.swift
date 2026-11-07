@@ -337,6 +337,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
             case .albumArt: s.albumArt = s.albumArt.next
+            case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
             case .about: s.stack.append(Frame(screen: .about))
             case .logOut: s.stack.append(Frame(screen: .confirm))

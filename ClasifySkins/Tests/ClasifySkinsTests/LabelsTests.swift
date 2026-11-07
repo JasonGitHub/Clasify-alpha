@@ -48,6 +48,9 @@ func sampleState() -> AppState {
         #expect(Labels.row(.albumArt, on: .settings, in: s) == .init(label: "Album Art", value: "Now Playing"))
         s.albumArt = .all
         #expect(Labels.row(.albumArt, on: .settings, in: s) == .init(label: "Album Art", value: "All"))
+        #expect(Labels.row(.deviceColor, on: .settings, in: s) == .init(label: "Body", value: "Silver"))
+        s.deviceColor = .black
+        #expect(Labels.row(.deviceColor, on: .settings, in: s) == .init(label: "Body", value: "Black"))
         #expect(Labels.row(.clicker, on: .settings, in: s) == .init(label: "Clicker", value: "On"))
         #expect(Labels.row(.logOut, on: .settings, in: s) == .init(label: "Log out", opens: true))
     }

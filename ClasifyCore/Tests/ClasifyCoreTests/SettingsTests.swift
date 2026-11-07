@@ -17,14 +17,17 @@ final class FakeSettings: SettingsStore {
 @Test func settingsLoadTheSavedValuesAndSkipUnknownOnes() {
     let store = FakeSettings()
     var saved = Settings()
-    saved.shuffle = true; saved.repeatMode = .one; saved.albumArt = .nowPlaying; saved.clicker = false
+    saved.shuffle = true; saved.repeatMode = .one; saved.albumArt = .nowPlaying; saved.deviceColor = .black; saved.clicker = false
     saved.save(to: store)
     #expect(store.values == [
         "settings.shuffle": "true", "settings.repeat": "One",
-        "settings.albumArt": "Now Playing", "settings.clicker": "false",
+        "settings.albumArt": "Now Playing", "settings.deviceColor": "Black", "settings.clicker": "false",
     ])
     #expect(Settings(from: store) == saved)
-    store.values = ["settings.shuffle": "yes", "settings.repeat": "Twice", "settings.albumArt": "On", "settings.clicker": "1"]
+    store.values = [
+        "settings.shuffle": "yes", "settings.repeat": "Twice", "settings.albumArt": "On", "settings.deviceColor": "Gold",
+        "settings.clicker": "1",
+    ]
     #expect(Settings(from: store) == Settings())  // unknown values give the defaults
 }
 

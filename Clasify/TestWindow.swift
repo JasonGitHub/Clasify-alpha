@@ -141,6 +141,7 @@ private struct TestPanel: View {
         case .repeatMode: "Repeat: \(state.repeatMode.rawValue)"
         case .skin: "Skin: \(state.skin.rawValue)"
         case .albumArt: "Album Art: \(state.albumArt.rawValue)"
+        case .deviceColor: "Body: \(state.deviceColor.rawValue)"
         case .clicker: "Clicker: \(state.clicker ? "On" : "Off")"
         case .about: "About"
         case .logOut: "Log Out"

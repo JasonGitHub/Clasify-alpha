@@ -5,11 +5,17 @@ import SwiftUI
 /// button send their actions. It only maps input to actions.
 struct ClickWheel: View {
     let input: @MainActor (Action) -> Void
+    /// Silver: a white wheel with gray labels. Black: a dark gray wheel with near white labels.
+    var color = DeviceColor.silver
     /// False in snapshot tests, which cannot draw the AppKit scroll view.
     var catchesScroll = true
 
-    init(input: @escaping @MainActor (Action) -> Void, catchesScroll: Bool = true, pressed: Zone? = nil) {
+    init(
+        input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
+        pressed: Zone? = nil
+    ) {
         self.input = input
+        self.color = color
         self.catchesScroll = catchesScroll
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
@@ -69,9 +75,9 @@ struct ClickWheel: View {
             // Flat white, as in the photo: no gradient and no ring line. The mockup's shadows
             // are a faint 1 point line around it and a white line under it.
             Circle()
-                .fill(Color(hex: 0xfefefe))
-                .background { Circle().fill(Color.white.opacity(0.8)).offset(y: 1).blur(radius: 0.5) }
-                .background { Circle().fill(Color.black.opacity(0.06)).padding(-1) }
+                .fill(Color(hex: black ? 0x2f2f2f : 0xfefefe))
+                .background { Circle().fill(Color.white.opacity(black ? 0.12 : 0.8)).offset(y: 1).blur(radius: 0.5) }
+                .background { Circle().fill(Color.black.opacity(black ? 0.25 : 0.06)).padding(-1) }
                 .frame(width: Self.size, height: Self.size)
             key(.menu) { Text("MENU").font(.helvetica(14, weight: .medium)).tracking(0.7) }
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
@@ -102,10 +108,12 @@ struct ClickWheel: View {
         .accessibilityAction(named: "Previous track") { input(.prev) }
     }
 
+    private var black: Bool { color == .black }
+
     private func key<Label: View>(_ zone: Zone, @ViewBuilder label: () -> Label) -> some View {
         let rect = Self.zones.first { $0.0 == zone }?.1 ?? .zero
         return label()
-            .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? 0x6c7076 : 0x9f9f9f))
+            .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (black ? 0xf2f2f2 : 0x9f9f9f)))
             .frame(width: rect.width, height: rect.height)
             .offset(x: rect.minX, y: rect.minY)
     }
@@ -114,11 +122,16 @@ struct ClickWheel: View {
         // Pressed in, as in the photo: dark at the top, with a faint inner shadow and no ring
         // line. Pressed, it gets a little darker.
         let down = pressed == .center
+        let (top, bottom): (UInt32, UInt32) = switch (black, down) {
+        case (false, false): (0xc8c8c8, 0xe9e9e9)
+        case (false, true): (0xbcbcbc, 0xdcdcdc)
+        case (true, false): (0x38383a, 0x706e71)
+        case (true, true): (0x2e2e30, 0x636164)
+        }
         return Circle()
-            .fill(down ? LinearGradient.vertical(Color(hex: 0xbcbcbc), Color(hex: 0xdcdcdc))
-                       : LinearGradient.vertical(Color(hex: 0xc8c8c8), Color(hex: 0xe9e9e9)))
+            .fill(LinearGradient.vertical(Color(hex: top), Color(hex: bottom)))
             .overlay {
-                Circle().stroke(Color.black.opacity(0.12), lineWidth: 2).blur(radius: 1).offset(y: 1)
+                Circle().stroke(Color.black.opacity(black ? 0.35 : 0.12), lineWidth: 2).blur(radius: 1).offset(y: 1)
                     .clipShape(Circle())
             }
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
