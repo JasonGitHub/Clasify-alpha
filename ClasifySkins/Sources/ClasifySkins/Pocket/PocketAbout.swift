@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The About screen, option E, Round 8 card AB (Jason, 11-07 17:08 JST): a capybara scene in
 /// Osaka, faded into the glass, then "Clasify", "Made with ♥ in Osaka" and the version. Each open shows the next
-/// scene (17:11 JST); the store picks it. The points are from the top of the 300 x 206 area under
+/// scene (17:11 JST; Dotonbori added 17:24 JST); the store picks it. The points are from the top of the 300 x 206 area under
 /// the title bar. It is the same on both body colors.
 struct PocketAbout: View {
     /// A bundled art scene, with its vertical crop anchor and its VoiceOver label.
@@ -13,11 +13,13 @@ struct PocketAbout: View {
         let label: String
     }
 
-    /// The scenes in the store's order: 0 the castle, 1 the takoyaki. Each JPEG is 600 x 280 px.
+    /// The scenes in the store's order: 0 the castle, 1 the takoyaki, 2 Dotonbori. Each JPEG is
+    /// 600 x 280 px.
     /// An image is nil only if the package was built without it.
     @MainActor static let scenes = [
         Art(image: art("about-castle"), anchor: 0.40, label: "Capybara at Osaka Castle"),
         Art(image: art("about-takoyaki"), anchor: 0.45, label: "Capybara eating takoyaki"),
+        Art(image: art("about-dotonbori"), anchor: 0.5, label: "Capybara in Dotonbori"),
     ]
 
     private static func art(_ name: String) -> NSImage? {

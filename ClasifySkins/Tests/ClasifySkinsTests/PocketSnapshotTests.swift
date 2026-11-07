@@ -563,8 +563,8 @@ import Testing
     }
 
     /// About, option E: the art at the top fades into the glass, then the name, the line with the
-    /// red heart, and the version. Both scenes have this layout.
-    @Test(arguments: [0, 1]) func aboutShowsTheArtNameHeartAndVersion(scene: Int) throws {
+    /// red heart, and the version. Every scene has this layout.
+    @Test(arguments: [0, 1, 2]) func aboutShowsTheArtNameHeartAndVersion(scene: Int) throws {
         #expect(PocketAbout.scenes.count == AppState.aboutScenes)
         #expect(PocketAbout.scenes[scene].image != nil)  // the art is bundled
         var s = sampleState()
@@ -586,7 +586,7 @@ import Testing
         #expect(!red.isEmpty)
     }
 
-    /// The second open of About shows the takoyaki, not the castle again.
+    /// The second open of About shows the takoyaki, not the castle again, and the third shows Dotonbori.
     @Test func aboutScenesDrawDifferentArt() throws {
         var s = sampleState()
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
@@ -594,8 +594,12 @@ import Testing
         s.aboutScene = 1
         let takoyaki = try render(s, "about-scene-1")
         let top = Self.listTop + 30, left = Self.screenLeft
-        let differ = (left + 10..<left + 290).filter { !near(castle.rgb($0, top), takoyaki.rgb($0, top)) }
-        #expect(differ.count > 50)
+        s.aboutScene = 2
+        let dotonbori = try render(s, "about-scene-2")
+        for (a, b) in [(castle, takoyaki), (takoyaki, dotonbori), (castle, dotonbori)] {
+            let differ = (left + 10..<left + 290).filter { !near(a.rgb($0, top), b.rgb($0, top)) }
+            #expect(differ.count > 50)
+        }
     }
 
     /// The battery's shadow fades downward only, from y 49 to 53 of the view box: its rows have

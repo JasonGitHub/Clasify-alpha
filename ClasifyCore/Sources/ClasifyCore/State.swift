@@ -192,8 +192,8 @@ public struct AppState: Equatable, Sendable {
     public var aboutScene = 0
     /// How many times About opened since launch.
     public var aboutOpens = 0
-    /// The About art scenes: the castle, then the takoyaki.
-    public static let aboutScenes = 2
+    /// The About art scenes: the castle, the takoyaki, then Dotonbori.
+    public static let aboutScenes = 3
     /// nil when the Mac has no battery, or before the app reads it.
     public var battery: Battery?
     public var nowMode = NowMode.volume

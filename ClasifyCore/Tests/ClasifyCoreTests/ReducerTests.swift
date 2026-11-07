@@ -111,15 +111,15 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .wheel(3), .select, .wheel(5))  // Settings, on the About row
         #expect(s.rows(for: s.top)[s.top.sel] == .about && s.aboutScene == 0)
         var scenes: [Int] = []
-        for _ in 0..<3 {
+        for _ in 0..<4 {
             send(&s, .select)
             #expect(s.top.screen == .about)
             scenes.append(s.aboutScene)
             send(&s, .menu)
         }
-        #expect(scenes == [0, 1, 0])  // the castle first, then the takoyaki, then the castle
+        #expect(scenes == [0, 1, 2, 0])  // the castle, the takoyaki, Dotonbori, then the castle again
         send(&s, .reset)
-        #expect(s.aboutOpens == 3)  // a reset keeps the count
+        #expect(s.aboutOpens == 4)  // a reset keeps the count
     }
 
     @Test func batteryChangedSetsTheBatteryAndAResetKeepsIt() {

@@ -12,7 +12,8 @@ let package = Package(
         // Resources: the About screen's art, bundled. Skins load nothing from the network or disk.
         .target(
             name: "ClasifySkins", dependencies: [.product(name: "ClasifyCore", package: "ClasifyCore")],
-            resources: [.copy("Resources/about-castle.jpg"), .copy("Resources/about-takoyaki.jpg")]),
+            resources: [.copy("Resources/about-castle.jpg"), .copy("Resources/about-takoyaki.jpg"),
+                        .copy("Resources/about-dotonbori.jpg")]),
         .testTarget(name: "ClasifySkinsTests", dependencies: ["ClasifySkins"]),
     ]
 )
