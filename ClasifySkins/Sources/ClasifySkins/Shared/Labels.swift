@@ -48,7 +48,7 @@ enum Labels {
         case .repeatMode: return RowText(label: "Repeat", value: state.repeatMode.rawValue)
         case .skin: return RowText(label: "Skin", value: state.skin.rawValue)
         case .albumArt: return RowText(label: "Album Art", value: state.albumArt.rawValue)
-        case .deviceColor: return RowText(label: "Device Color", value: state.deviceColor.rawValue)
+        case .deviceColor: return RowText(label: "Body", value: state.deviceColor.rawValue)
         case .clicker: return RowText(label: "Clicker", value: onOff(state.clicker))
         case .about: return RowText(label: "About", opens: true)
         case .logOut: return RowText(label: "Log out", opens: true)
