@@ -1,3 +1,4 @@
+import AppKit
 import ClasifyCore
 import SwiftUI
 
@@ -238,6 +239,7 @@ extension View {
 /// "…": it is cut, and its last 22 points fade out. A line that fits has no fade. The long
 /// lines scroll one at a time, in order, as `Labels.nowScroll` says; the fade stays at the
 /// right edge while the text moves. A new track makes a new view, so the turns start again.
+/// One measured width per line decides both the fade and the turns, so they always agree.
 struct NowLines: View {
     let now: Labels.NowText
     let art: Bool
@@ -249,38 +251,47 @@ struct NowLines: View {
         [(now.title, 15.1, .black, 36.3), (now.artist, 11.7, Color(hex: 0x1e1e1e), 57.2), (now.list, 11.7, Color(hex: 0x1e1e1e), 74)]
     }
 
+    /// A line's width in bold Helvetica Neue, the font `Font.helvetica` draws it in.
+    static func width(_ text: String, size: Double) -> Double {
+        let font = NSFont(name: "HelveticaNeue-Bold", size: size) ?? .boldSystemFont(ofSize: size)
+        return Double(ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width))
+    }
+
     var body: some View {
         let room = Labels.nowRoom(art: art)
-        let turns = lines.map { (text: $0.text, size: $0.size) }
-        let still = Labels.nowScroll(turns, room: room, at: 0) == nil
+        let widths = lines.map { Self.width($0.text, size: $0.size) }
+        let still = Labels.nowScroll(widths: widths, room: room, at: 0) == nil
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: still || reduceMotion || fixedTime != nil)) { context in
             let t = reduceMotion ? 0 : fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
-            let scroll = reduceMotion ? nil : Labels.nowScroll(turns, room: room, at: t)
+            let scroll = reduceMotion ? nil : Labels.nowScroll(widths: widths, room: room, at: t)
             ZStack(alignment: .topLeading) {
                 ForEach(0..<3, id: \.self) { i in
                     let l = lines[i]
                     let shift = scroll.map { $0.line == i ? Marquee.shift(at: $0.time, loop: $0.loop) : 0 } ?? 0
-                    line(l.text, size: l.size, color: l.color, top: l.top, shift: shift)
+                    line(l.text, size: l.size, color: l.color, top: l.top, long: widths[i] > room, shift: shift)
                 }
             }
         }
     }
 
-    private func line(_ text: String, size: Double, color: Color, top: CGFloat, shift: Double) -> some View {
+    @ViewBuilder
+    private func line(_ text: String, size: Double, color: Color, top: CGFloat, long: Bool, shift: Double) -> some View {
         let label = Text(text).font(.helvetica(size, bold: true)).foregroundStyle(color)
-        return ViewThatFits(in: .horizontal) {
-            label.lineLimit(1)
-            // Too wide: cut, not truncated, and it starts at the left even when the lines are centered.
-            Marquee.copies(label, shift: shift)
-                .clipped()
-                .mask {
-                    HStack(spacing: 0) {
-                        Color.black
-                        LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 22)
+        Group {
+            if long {
+                // Cut, not truncated, and it starts at the left even when the lines are centered.
+                Marquee.copies(label, shift: shift)
+                    .clipped()
+                    .mask {
+                        HStack(spacing: 0) {
+                            Color.black
+                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 22)
+                        }
                     }
-                }
+            } else {
+                label.lineLimit(1).frame(maxWidth: .infinity, alignment: art ? .leading : .center)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: art ? .leading : .center)
         .frame(height: size)
         .offset(y: top)
     }

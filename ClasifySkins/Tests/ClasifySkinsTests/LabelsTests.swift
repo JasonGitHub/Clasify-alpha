@@ -188,18 +188,16 @@ func sampleState() -> AppState {
 
     /// Round 8 card AA: the long Now Playing lines take turns, title first, one loop each.
     @Test func longNowPlayingLinesScrollOneAtATime() throws {
-        let title = String(repeating: "x", count: 30)  // 257.9 points at 15.1: a 12 s loop
-        let artist = String(repeating: "y", count: 25)  // 166.5 points at 11.7: a 9 s loop
-        let lines = [(text: title, size: 15.1), (text: artist, size: 11.7), (text: "Liked Songs", size: 11.7)]
+        let widths = [258.0, 166.5, 73.3]  // a 12 s loop, a 9 s loop, and a line that fits
         let room = Labels.nowRoom(art: true)
         #expect(room == 141.4 && Labels.nowRoom(art: false) == 284)
-        #expect(Labels.nowScroll(lines, room: room, at: 0) == .init(line: 0, time: 0, loop: 12))
-        #expect(Labels.nowScroll(lines, room: room, at: 13) == .init(line: 1, time: 1, loop: 9))
-        let again = try #require(Labels.nowScroll(lines, room: room, at: 22))  // 21 s: the turns start again
+        #expect(Labels.nowScroll(widths: widths, room: room, at: 0) == .init(line: 0, time: 0, loop: 12))
+        #expect(Labels.nowScroll(widths: widths, room: room, at: 13) == .init(line: 1, time: 1, loop: 9))
+        let again = try #require(Labels.nowScroll(widths: widths, room: room, at: 22))  // 21 s: the turns start again
         #expect(again.line == 0 && abs(again.time - 1) < 1e-9)
-        // With no cover there is room for both, so nothing scrolls.
-        #expect(Labels.nowScroll(lines, room: Labels.nowRoom(art: false), at: 5) == nil)
+        // With no cover there is room for all, so nothing scrolls.
+        #expect(Labels.nowScroll(widths: widths, room: Labels.nowRoom(art: false), at: 5) == nil)
         // A line that fits never takes a turn.
-        #expect(Labels.nowScroll([(text: "Hey Ya!", size: 15.1), (text: artist, size: 11.7)], room: room, at: 0)?.line == 1)
+        #expect(Labels.nowScroll(widths: [60, 166.5], room: room, at: 0)?.line == 1)
     }
 }

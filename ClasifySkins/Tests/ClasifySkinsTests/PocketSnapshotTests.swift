@@ -364,7 +364,9 @@ import Testing
         s.library[0].tracks.append(Track(id: "spotify:track:3", title: title, artist: artist, duration: 263))
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:3")
         s.stack.append(Frame(screen: .now))
-        let titleLoop = Labels.marqueeLoop(title, size: 15.1), artistLoop = Labels.marqueeLoop(artist, size: 11.7)
+        let titleWidth = NowLines.width(title, size: 15.1), artistWidth = NowLines.width(artist, size: 11.7)
+        #expect(titleWidth > 141.4 && artistWidth > 141.4 && NowLines.width("Liked Songs", size: 11.7) < 141.4)
+        let titleLoop = Labels.marqueeLoop(width: titleWidth), artistLoop = Labels.marqueeLoop(width: artistWidth)
         let still = try render(s, "now-long")  // 1 s: the title's hold
         let titleMoves = try render(s, "now-long-title", time: titleLoop * 0.59)
         let artistMoves = try render(s, "now-long-artist", time: titleLoop + artistLoop * 0.59)
