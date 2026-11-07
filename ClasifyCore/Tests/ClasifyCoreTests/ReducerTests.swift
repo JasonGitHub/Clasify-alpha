@@ -106,6 +106,22 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.deviceColor == .black)  // a saved setting: a reset keeps it
     }
 
+    @Test func aboutShowsTheNextSceneEachTimeItOpens() {
+        var s = mainMenu()
+        send(&s, .wheel(3), .select, .wheel(5))  // Settings, on the About row
+        #expect(s.rows(for: s.top)[s.top.sel] == .about && s.aboutScene == 0)
+        var scenes: [Int] = []
+        for _ in 0..<4 {
+            send(&s, .select)
+            #expect(s.top.screen == .about)
+            scenes.append(s.aboutScene)
+            send(&s, .menu)
+        }
+        #expect(scenes == [0, 1, 2, 0])  // the castle, the takoyaki, Dotonbori, then the castle again
+        send(&s, .reset)
+        #expect(s.aboutOpens == 4)  // a reset keeps the count
+    }
+
     @Test func batteryChangedSetsTheBatteryAndAResetKeepsIt() {
         var s = mainMenu()
         #expect(s.battery == nil)  // not read yet, or a Mac with no battery

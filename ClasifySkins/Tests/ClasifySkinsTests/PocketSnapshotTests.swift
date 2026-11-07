@@ -562,6 +562,46 @@ import Testing
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
     }
 
+    /// About, option E: the art at the top fades into the glass, then the name, the line with the
+    /// red heart, and the version. Every scene has this layout.
+    @Test(arguments: [0, 1, 2]) func aboutShowsTheArtNameHeartAndVersion(scene: Int) throws {
+        #expect(PocketAbout.scenes.count == AppState.aboutScenes)
+        #expect(PocketAbout.scenes[scene].image != nil)  // the art is bundled
+        var s = sampleState()
+        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
+        s.aboutScene = scene
+        let shot = try render(s, "about-e-\(scene)")
+        let top = Self.listTop, left = Self.screenLeft
+        // The art: not the plain glass at the top of the screen.
+        let glass = try reference(0xf4f8fb)
+        let art = (left + 10..<left + 290).filter { !near(shot.rgb($0, top + 20), glass) }
+        #expect(art.count > 100)
+        // The name: dark ink in its band, 142 to 158 points down.
+        let name = (left + 100..<left + 200).filter { x in (top + 145...top + 156).contains { shot.isDark(x, $0) } }
+        #expect(name.count > 10)
+        // The heart: red pixels in the second line's band.
+        let red = (left..<left + 300).filter { x in
+            (top + 160...top + 174).contains { y in let c = shot.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
+        }
+        #expect(!red.isEmpty)
+    }
+
+    /// The second open of About shows the takoyaki, not the castle again, and the third shows Dotonbori.
+    @Test func aboutScenesDrawDifferentArt() throws {
+        var s = sampleState()
+        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
+        let castle = try render(s, "about-scene-0")
+        s.aboutScene = 1
+        let takoyaki = try render(s, "about-scene-1")
+        let top = Self.listTop + 30, left = Self.screenLeft
+        s.aboutScene = 2
+        let dotonbori = try render(s, "about-scene-2")
+        for (a, b) in [(castle, takoyaki), (takoyaki, dotonbori), (castle, dotonbori)] {
+            let differ = (left + 10..<left + 290).filter { !near(a.rgb($0, top), b.rgb($0, top)) }
+            #expect(differ.count > 50)
+        }
+    }
+
     /// The battery's shadow fades downward only, from y 49 to 53 of the view box: its rows have
     /// the same color at both ends, and the lower row is much lighter than the upper one.
     @Test func theBatteryShadowFadesDownward() throws {
