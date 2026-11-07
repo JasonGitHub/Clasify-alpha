@@ -130,8 +130,9 @@ struct PocketScreen: View {
         // highlight under it.
         .padding(EdgeInsets(top: 6.6, leading: 6.6, bottom: 7.8, trailing: 6.6))
         .background {
-            RoundedRectangle(cornerRadius: 7.8).fill(Pocket.bezel)
-                .shadow(color: .white.opacity(0.7), radius: 0, y: 1)
+            // Near black on the black device (round 8, card Z), with a fainter highlight.
+            RoundedRectangle(cornerRadius: 7.8).fill(state.deviceColor == .black ? Color(hex: 0x050505) : Pocket.bezel)
+                .shadow(color: .white.opacity(state.deviceColor == .black ? 0.18 : 0.7), radius: 0, y: 1)
         }
         .foregroundStyle(Pocket.ink)
         // .contain, not .combine: the shuffle and repeat buttons on Now Playing must stay

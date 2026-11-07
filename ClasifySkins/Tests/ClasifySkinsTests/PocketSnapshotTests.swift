@@ -284,7 +284,7 @@ import Testing
     @Test func onlyTheSelectedRowShowsAChevron() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 4  // About; Log out under it also opens a screen
+        s.top.sel = 5  // About; Log out under it also opens a screen
         let shot = try render(s, "settings-chevron")
         // The chevron is 8 points wide, 10 points in from the right edge of the list.
         let xs = Self.screenLeft + Self.screenWidth - 20...Self.screenLeft + Self.screenWidth - 8
@@ -292,8 +292,8 @@ import Testing
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
         }
-        #expect(box(5).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Log out
-        #expect(box(4).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+        #expect(box(6).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Log out
+        #expect(box(5).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
     }
 
     @Test func songListShowsArtistsAndTheScrollBar() throws {
@@ -511,6 +511,23 @@ import Testing
         // Dark at the top, as if pressed in. Pressed, the whole button gets darker.
         #expect(up.rgb(x, nearTop).b < up.rgb(x, nearBottom).b)
         #expect(down.rgb(x, middle).b < up.rgb(x, middle).b)
+    }
+
+    /// Round 8 card Z: the black device has a dark body, a near black bezel and a dark gray
+    /// wheel with a dark center. The screen does not change.
+    @Test func blackDeviceColorsTheBodyBezelAndWheel() throws {
+        var s = AppState()
+        s.deviceColor = .black
+        let shot = try render(s, "black")
+        let wheelTop: Int = 321, x = Int(PocketSkin.size.width) / 2
+        let middle: Int = wheelTop + 112
+        let ring = shot.rgb(x, wheelTop + 60), wheel = try reference(0x2f2f2f)
+        #expect(near(ring, wheel), "ring \(ring)")
+        let bezel = shot.rgb(29, Self.screenTop + 60), want = try reference(0x050505)  // left of the screen
+        #expect(near(bezel, want), "bezel \(bezel)")
+        #expect(shot.isDark(10, 300))  // the body, beside the screen
+        #expect(shot.rgb(x, middle - 30).b < shot.rgb(x, middle + 30).b)  // the center: dark at the top
+        #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
     }
 
     @Test func pausedMarkIsTwoBars() throws {

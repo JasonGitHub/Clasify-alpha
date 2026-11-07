@@ -1,10 +1,11 @@
 import Foundation
 
-/// The settings that stay after a restart: Shuffle, Repeat, Album Art and Clicker.
+/// The settings that stay after a restart: Shuffle, Repeat, Album Art, Device Color and Clicker.
 public struct Settings: Equatable, Sendable {
     public var shuffle = false
     public var repeatMode = RepeatMode.off
     public var albumArt = AlbumArt.all
+    public var deviceColor = DeviceColor.silver
     public var clicker = true
 
     public init() {}
@@ -14,6 +15,7 @@ public struct Settings: Equatable, Sendable {
         static let shuffle = "settings.shuffle"
         static let repeatMode = "settings.repeat"
         static let albumArt = "settings.albumArt"
+        static let deviceColor = "settings.deviceColor"
         static let clicker = "settings.clicker"
     }
 
@@ -23,6 +25,7 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.shuffle).flatMap({ Bool($0) }) { shuffle = v }
         if let v = store.string(forKey: Key.repeatMode).flatMap(RepeatMode.init(rawValue:)) { repeatMode = v }
         if let v = store.string(forKey: Key.albumArt).flatMap(AlbumArt.init(rawValue:)) { albumArt = v }
+        if let v = store.string(forKey: Key.deviceColor).flatMap(DeviceColor.init(rawValue:)) { deviceColor = v }
         if let v = store.string(forKey: Key.clicker).flatMap({ Bool($0) }) { clicker = v }
     }
 
@@ -30,6 +33,7 @@ public struct Settings: Equatable, Sendable {
         store.set(String(shuffle), forKey: Key.shuffle)
         store.set(repeatMode.rawValue, forKey: Key.repeatMode)
         store.set(albumArt.rawValue, forKey: Key.albumArt)
+        store.set(deviceColor.rawValue, forKey: Key.deviceColor)
         store.set(String(clicker), forKey: Key.clicker)
     }
 }
@@ -48,9 +52,12 @@ extension AppState {
     public var settings: Settings {
         get {
             var v = Settings()
-            (v.shuffle, v.repeatMode, v.albumArt, v.clicker) = (shuffle, repeatMode, albumArt, clicker)
+            (v.shuffle, v.repeatMode, v.albumArt, v.deviceColor, v.clicker) = (shuffle, repeatMode, albumArt, deviceColor, clicker)
             return v
         }
-        set { (shuffle, repeatMode, albumArt, clicker) = (newValue.shuffle, newValue.repeatMode, newValue.albumArt, newValue.clicker) }
+        set {
+            (shuffle, repeatMode, albumArt, deviceColor, clicker) =
+                (newValue.shuffle, newValue.repeatMode, newValue.albumArt, newValue.deviceColor, newValue.clicker)
+        }
     }
 }
