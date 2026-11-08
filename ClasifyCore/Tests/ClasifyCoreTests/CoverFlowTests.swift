@@ -147,6 +147,21 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(s.letterUntil > 0)
         send(&s, .menu, now: 200.4)
         #expect(s.top.screen == .main && s.letterUntil == 0 && s.coverFlowSteps.isEmpty)
+        // Center during the letter opens the album; MENU comes back with no letter.
+        send(&s, .select, now: 201)
+        for t in [202.0, 202.1, 202.2, 202.3] { send(&s, .wheel(1), now: t) }
+        send(&s, .select, now: 202.4)
+        #expect(s.letterUntil == 0 && s.coverFlowSteps.isEmpty)
+        send(&s, .menu, now: 202.5)
+        #expect(s.top.screen == .coverFlow && s.coverFlowLetter == nil)
+    }
+
+    @Test func signingOutForgetsTheShownAlbum() {
+        var s = withCoverFlow(tenAlbums)
+        send(&s, .select, now: 150)
+        #expect(s.coverFlowAlbum != nil)
+        send(&s, .menu, .wheel(5), .select, .wheel(6), .select, .wheel(1), .select, now: 151)  // Settings, Log out, Log out
+        #expect(s.top.screen == .login && s.coverFlowAlbum == nil && s.letterUntil == 0)
     }
 
     @Test func centerOpensTheAlbumsSongs() {

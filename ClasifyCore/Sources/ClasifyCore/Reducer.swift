@@ -257,6 +257,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
         s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
+        s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
         toast(msg)
     }
     func shuffleLiked() {
@@ -356,6 +357,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 // Until the song panel (CLA-38): the album's songs in the normal song list.
                 let albums = s.albums
                 guard !s.top.loading, albums.indices.contains(s.top.sel) else { return }
+                s.letterUntil = 0; s.coverFlowSteps = []  // so MENU comes back with no letter
                 return open(.tracks(playlist: albums[s.top.sel].id))
             }
             guard s.top.screen.isList, !s.top.loading else { return }
