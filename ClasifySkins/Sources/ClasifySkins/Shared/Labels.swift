@@ -139,6 +139,24 @@ enum Labels {
             coverID: track?.coverID)
     }
 
+    /// Cover Flow's song panel (card AF): the album, its artist, and its songs with their lengths.
+    struct PanelText: Equatable {
+        struct Song: Equatable {
+            var title: String
+            var length: String
+        }
+        var album: String
+        var artist: String
+        var songs: [Song]
+    }
+
+    static func panel(_ album: String, in state: AppState) -> PanelText {
+        let info = state.album(album)
+        return PanelText(
+            album: info?.name ?? "", artist: info?.artist ?? "",
+            songs: state.tracks(in: album).map { .init(title: $0.title, length: time($0.duration)) })
+    }
+
     /// The mark beside the playing track: ▶ while it plays, two bars while it is paused.
     enum PlayMark: Equatable { case playing, paused }
 

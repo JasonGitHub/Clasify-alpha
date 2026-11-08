@@ -126,11 +126,12 @@ final class ArtworkLoader {
         if state.isHalf(state.top.screen) {
             ids.formUnion(state.mainArt.flatMap { [$0.coverID, $0.largeCoverID] }.compactMap { $0 })
         }
-        // Cover Flow: the middle album and the 7 on each side that `CoverFlowStrip` draws.
-        if state.top.screen == .coverFlow {
+        // Cover Flow: the middle album and the 7 on each side that `CoverFlowStrip` draws, also
+        // behind the song panel.
+        if let frame = state.coverFlowFrame {
             let albums = state.albums, covers = state.albumCovers
             if !albums.isEmpty {
-                let sel = min(max(state.top.sel, 0), albums.count - 1)
+                let sel = min(max(frame.sel, 0), albums.count - 1)
                 for album in albums[max(0, sel - 7)...min(albums.count - 1, sel + 7)] {
                     if let id = covers[album.id] { ids.insert(id) }
                 }

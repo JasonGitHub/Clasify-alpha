@@ -305,10 +305,6 @@ public struct AppState: Equatable, Sendable {
     public var wholeSeq = 0
     /// How the last screen change moves, so a skin can draw it (Round 9, cards AE, AF, AH).
     public var navMove = NavMove.push
-    /// TEMP (CLA-38): Center on Cover Flow opens the song panel only when this is on, and the
-    /// album's normal song list when it is off. It stays off until the panel is drawn (CLA-38
-    /// part b), which removes it. Tests turn it on.
-    public var albumPanelOn = false
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
     /// The album that Cover Flow showed last, so it opens there again when nothing plays.
@@ -334,6 +330,15 @@ public struct AppState: Equatable, Sendable {
     public var showsBar: Bool {
         guard current != nil, case .tracks = top.screen else { return false }
         return true
+    }
+
+    /// The Cover Flow frame, while Cover Flow or its song panel shows. Its `sel` is the album
+    /// in the middle, also while the panel shows the album's songs.
+    public var coverFlowFrame: Frame? {
+        switch top.screen {
+        case .coverFlow, .albumPanel: stack.last { $0.screen == .coverFlow }
+        default: nil
+        }
     }
 
     /// The list rows that show at once: `visibleRows`, or `trackRows` for the taller two-line

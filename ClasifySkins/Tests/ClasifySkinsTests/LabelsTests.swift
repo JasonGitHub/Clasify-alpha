@@ -35,6 +35,19 @@ func sampleState() -> AppState {
         #expect(Labels.title(.now, in: s) == "Now Playing")
     }
 
+    @Test func theSongPanelShowsTheAlbumAndItsSongs() {
+        var s = sampleState()
+        let album = Album(id: "spotify:album:n", name: "Nevermind", artist: "Nirvana")
+        s.library[0].tracks[0].album = album
+        s.library[0].tracks[0].duration = 219
+        let title = s.library[0].tracks[0].title
+        #expect(Labels.panel(album.id, in: s) == .init(album: "Nevermind", artist: "Nirvana", songs: [.init(title: title, length: "3:39")]))
+        #expect(Labels.title(.albumPanel(album: album.id), in: s) == "Cover Flow")  // the title bar stays
+        let row = Labels.row(.track(s.library[0].tracks[0].id), on: .albumPanel(album: album.id), in: s)
+        #expect(row.label == title)
+        #expect(Labels.panel("spotify:album:gone", in: s).songs.isEmpty)
+    }
+
     @Test func albumRowsShowTheAlbumAndItsArtist() {
         var s = sampleState()
         let album = Album(id: "spotify:album:n", name: "Nevermind")  // no album artist from Spotify

@@ -10,14 +10,21 @@ import SwiftUI
 struct PocketCoverFlow: View {
     let state: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The song panel that showed last, so it can turn back into the cover after MENU.
+    @State private var lastPanel: AlbumPanel.Shown?
 
     var body: some View {
         let albums = state.albums
-        CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(state.top.sel))
-            // Fast steps retarget the glide, so the covers stream and then ease to a stop.
-            .animation(reduceMotion ? nil : CoverFlowStrip.glide, value: state.top.sel)
-            .overlay(alignment: .topLeading) { LetterBox(letter: state.coverFlowLetter) }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        let frame = state.coverFlowFrame ?? state.top
+        let panel = AlbumPanel.Shown(state)
+        CoverFlowTurn(turn: panel == nil ? 0 : 1, panel: panel ?? lastPanel, state: state) {
+            CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0)
+                // Fast steps retarget the glide, so the covers stream and then ease to a stop.
+                .animation(reduceMotion ? nil : CoverFlowStrip.glide, value: frame.sel)
+        }
+        .overlay(alignment: .topLeading) { LetterBox(letter: state.coverFlowLetter) }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .onChange(of: panel, initial: true) { _, new in if let new { lastPanel = new } }
     }
 }
 
@@ -27,6 +34,10 @@ struct CoverFlowStrip: View, Animatable {
     /// The cover ID of each album, by album ID.
     let covers: [String: String]
     var pos: Double
+    /// How far the side covers have moved out for the song panel, 0 to 1 (card AF): 44 points.
+    var spread = 0.0
+    /// The song panel shows: the middle cover and the names hide (card AF).
+    var hidesMiddle = false
     @Environment(\.artwork) private var artwork
     /// The doors move hides the names until they fade in (card AE, change 82).
     @Environment(\.doorsStage) private var doors
@@ -54,9 +65,12 @@ struct CoverFlowStrip: View, Animatable {
         var x: Double, angle: Double, scale: Double, dark: Double, opacity: Double
     }
 
-    static func pose(_ d: Double) -> Pose {
+    /// The side covers move out by `spread` x 44 points for the song panel (card AF).
+    static let spreadWidth = 44.0
+
+    static func pose(_ d: Double, spread: Double = 0) -> Pose {
         let m = abs(d), sign: Double = d > 0 ? 1 : -1
-        let x = m <= 1 ? sign * 72 * m : sign * (72 + (m - 1) * 27)
+        let x = (m <= 1 ? sign * 72 * m : sign * (72 + (m - 1) * 27)) + (m > 0.001 ? sign * spreadWidth * spread : 0)
         let angle = -sign * 70 * min(m, 1)
         let scale = 1 - 0.1 * min(m, 1)
         return Pose(x: x, angle: angle, scale: scale, dark: 0.04 * min(m, 6), opacity: max(0, min(1, 7 - m)))
@@ -69,13 +83,14 @@ struct CoverFlowStrip: View, Animatable {
         ZStack(alignment: .topLeading) {
             if low <= high {
                 ForEach(low...high, id: \.self) { k in
-                    let p = Self.pose(Double(k) - pos)
+                    let d = Double(k) - pos
+                    let p = Self.pose(d, spread: spread)
                     cover(albums[k])
                         // The mockup's brightness filter: darker away from the middle. A multiply
                         // keeps the clear end of the reflection clear.
                         .colorMultiply(Color(white: 1 - p.dark))
                         .modifier(TurnY(angle: p.angle, scale: p.scale))
-                        .opacity(p.opacity)
+                        .opacity(hidesMiddle && abs(d) < 0.5 ? 0 : p.opacity)
                         .offset(x: Pocket.screenWidth / 2 + p.x - Self.side / 2, y: Self.top)
                         .zIndex(100 - abs(Double(k) - pos) * 10)
                 }
@@ -87,7 +102,7 @@ struct CoverFlowStrip: View, Animatable {
                     name(shown.artist ?? "", color: Pocket.ink)
                 }
                 .offset(y: 164 - 2)  // the mockup's 14 pt lines start 2 pt above the text
-                .opacity(doors.names)
+                .opacity(hidesMiddle ? 0 : doors.names)
                 .zIndex(200)
             }
         }
@@ -106,7 +121,7 @@ struct CoverFlowStrip: View, Animatable {
 
     /// A cover with its reflection, which turns with it: the cover, a 1 point gap, then 30
     /// points of the cover turned over, from 35% to clear.
-    private func cover(_ album: Album) -> some View {
+    func cover(_ album: Album) -> some View {
         let image = covers[album.id].flatMap { artwork.lookup($0) }
         let art = CoverArt(image: image, notesSize: 51)
         return VStack(spacing: 1) {

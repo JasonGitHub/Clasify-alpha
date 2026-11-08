@@ -505,6 +505,41 @@ import Testing
         #expect(!shot.isDark(Self.screenLeft + 125, Self.listTop + 57))
     }
 
+    @Test func theSongPanelFollowsTheMockup() {
+        #expect(AlbumPanel.height(songs: 1) == 188 && AlbumPanel.height(songs: 6) == 188)  // the smallest panel
+        #expect(AlbumPanel.height(songs: 7) == 197 && AlbumPanel.height(songs: 14) == 197)  // then it scrolls
+        // The rows move up by whole rows, but the last row stops at the panel's bottom.
+        #expect(AlbumPanel.scroll(off: 1, songs: 9, height: 197) == 23)
+        #expect(AlbumPanel.scroll(off: 3, songs: 9, height: 197) == 51)  // 9 x 23 - 156
+        #expect(AlbumPanel.scroll(off: 0, songs: 3, height: 188) == 0)
+        #expect(AlbumPanel.thumb(track: 152, songs: 6, scroll: 0, height: 188) == nil)  // all rows fit
+        let thumb = AlbumPanel.thumb(track: 152, songs: 9, scroll: 51, height: 197)
+        #expect(thumb.map { abs($0.length + $0.offset - 152) < 1e-9 } == true)  // at the end of the track
+        // The side covers move 44 points out; the middle one stays.
+        #expect(CoverFlowStrip.pose(1, spread: 1).x == 116 && CoverFlowStrip.pose(-2, spread: 0.5).x == -121)
+        #expect(CoverFlowStrip.pose(0, spread: 1).x == 0)
+    }
+
+    @Test func coverFlowSongPanel() throws {
+        var s = sampleState()
+        let clouds = Album(id: "spotify:album:c", name: "Clouds", artist: "Joni Mitchell")
+        s.library[0].tracks = (0..<9).map { i in
+            Track(id: "t\(i)", title: "Song \(i)", artist: "Joni Mitchell", duration: 200, album: clouds)
+        }
+        s.stack.append(Frame(screen: .coverFlow))
+        s.stack.append(Frame(screen: .albumPanel(album: "spotify:album:c")))
+        s.top.sel = 1
+        let shot = try render(s, "cover-flow-panel")
+        // The blue top bar, 9 points under the title bar and 41 tall.
+        let bar = shot.rgb(Self.screenLeft + 150, Self.listTop + 9 + 30)
+        #expect(bar.b > bar.r + 30 && bar.b < 200, "bar \(bar)")
+        // The second song is selected: our blue bar, at 9 + 41 + 23 + 11.5 under the title bar.
+        #expect(shot.isBlue(Self.screenLeft + 150, Self.listTop + 9 + 41 + 23 + 11))
+        #expect(!shot.isBlue(Self.screenLeft + 150, Self.listTop + 9 + 41 + 11))
+        // 28 points from each side, the Cover Flow glass shows beside the panel.
+        #expect(shot.isLight(Self.screenLeft + 10, Self.listTop + 120))
+    }
+
     @Test func settings() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))

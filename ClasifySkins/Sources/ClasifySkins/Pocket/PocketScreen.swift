@@ -84,11 +84,27 @@ struct PocketScreen: View {
                            removal: .modifier(active: ScreenMove(side: -1), identity: ScreenMove(side: 0)))
     }
 
-    /// The slide's curve, or for the doors a linear time that `DoorsStage` shapes.
+    /// Cover Flow's cover turns over into the song panel and back: 0.35 s, ease-in-out (card AF).
+    static let flipAnimation = Animation.easeInOut(duration: 0.35)
+
+    /// The slide's curve, the turn of the song panel, or for the doors a linear time that
+    /// `DoorsStage` shapes.
     private var moveAnimation: Animation? {
         if reduceMotion { return nil }
-        guard state.navMove == .doors else { return Self.slideAnimation }
-        return .linear(duration: state.navForward ? DoorsStage.openTime : DoorsStage.closeTime)
+        switch state.navMove {
+        case .doors: return .linear(duration: state.navForward ? DoorsStage.openTime : DoorsStage.closeTime)
+        case .flip: return Self.flipAnimation
+        case .push, .fly: return Self.slideAnimation
+        }
+    }
+
+    /// The content's identity: a new one slides in. Cover Flow and its song panel are one
+    /// view, so the cover turns over in place. A negative ID never meets a `navSeq`.
+    private var contentID: Int {
+        guard state.coverFlowFrame != nil, let i = state.stack.lastIndex(where: { $0.screen == .coverFlow }) else {
+            return state.navSeq
+        }
+        return -1 - i
     }
 
     /// Shows at once, and on removal stays until the slide ends.
@@ -120,7 +136,7 @@ struct PocketScreen: View {
                 ZStack(alignment: .leading) {
                     // Each screen keeps its own width while it slides, so its text does not reflow.
                     content.frame(width: width).frame(maxHeight: .infinity)
-                        .id(state.navSeq)
+                        .id(contentID)
                         .transition(slide)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -220,7 +236,7 @@ struct PocketScreen: View {
             PocketNowPlaying(state: state, input: input)
         } else if top.screen == .about {
             PocketAbout(scene: state.aboutScene)
-        } else if top.screen == .coverFlow {
+        } else if state.coverFlowFrame != nil {  // Cover Flow, and its song panel over it
             PocketCoverFlow(state: state)
         } else {
             PocketList(state: state)

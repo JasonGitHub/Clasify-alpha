@@ -40,10 +40,10 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         var s = withCoverFlow(tenAlbums)
         send(&s, .select, now: 150)
         #expect(s.navMove == .doors && s.navForward)  // the menu opens like two doors
-        send(&s, .select, now: 151)  // an album's songs: a normal slide
+        send(&s, .select, now: 151)  // the song panel: the cover turns over
         #expect(s.navMove != .doors)
         send(&s, .menu, now: 152)
-        #expect(s.navMove != .doors)  // back to Cover Flow from a full screen
+        #expect(s.navMove != .doors)  // back to Cover Flow from the panel
         send(&s, .menu, now: 153)
         #expect(s.navMove == .doors && !s.navForward)  // the doors close
         send(&s, .wheel(2), .select, now: 154)  // Albums: both half screens, only the list slides
@@ -179,15 +179,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(s.top.screen == .login && s.coverFlowAlbum == nil && s.letterUntil == 0)
     }
 
-    @Test func centerOpensTheAlbumsSongs() {
-        var s = withCoverFlow(tenAlbums)
-        send(&s, .select, now: 150)
-        send(&s, .select, now: 151)
-        #expect(s.top.screen == .tracks(playlist: "spotify:album:5"))  // Clouds
-        #expect(s.rows(for: s.top) == [.track("t5")])
-    }
-
-    /// Cover Flow with three songs on Clouds (index 5) and the song panel on (CLA-38 TEMP flag).
+    /// Cover Flow with three songs on Clouds (index 5).
     func withPanel() -> AppState {
         var s = withCoverFlow(tenAlbums)
         let clouds = Album(id: "spotify:album:5", name: "Clouds")
@@ -195,7 +187,6 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
             Track(id: "c2", title: "c2", artist: "a", duration: 100, album: clouds),
             Track(id: "c3", title: "c3", artist: "a", duration: 100, album: clouds),
         ]
-        s.albumPanelOn = true
         send(&s, .select, now: 150)
         return s
     }
@@ -228,11 +219,14 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(s.top.screen == .coverFlow && s.navMove == .flip)
     }
 
-    @Test func withThePanelOffCenterOpensTheNormalSongList() {
+    @Test func theCoverFlowFrameKeepsTheMiddleAlbumWhileThePanelShows() {
         var s = withPanel()
-        s.albumPanelOn = false
-        send(&s, .select, now: 151)
-        #expect(s.top.screen == .tracks(playlist: "spotify:album:5") && s.navMove == .push)
+        #expect(s.coverFlowFrame?.sel == 5)
+        send(&s, .select, .wheel(2), now: 151)
+        #expect(s.top.sel == 2 && s.coverFlowFrame?.sel == 5)  // the song, and still Clouds
+        send(&s, .select, now: 152)
+        #expect(s.top.screen == .now && s.coverFlowFrame == nil)
+        #expect(mainMenu().coverFlowFrame == nil)
     }
 
     @Test func eachScreenChangeHasItsMove() {
