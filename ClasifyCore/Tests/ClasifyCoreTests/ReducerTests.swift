@@ -55,7 +55,7 @@ func playing(_ i: Int = 0) -> AppState {
         s = playing()
         send(&s, .menu, .wheel(7))  // back to Focus tracks: 5 rows, with the bar too
         #expect(s.top.sel == 7 && s.top.off == 3)
-        send(&s, .menu, .menu, .select)  // Now Playing
+        send(&s, .menu, .menu, .wheel(-1), .select)  // Now Playing, above Cover Flow
         #expect(send(&s, .wheel(-2)) == [.setVolume(50)])
         #expect(s.overlayUntil == 101.5)
         #expect(send(&s, .select, .wheel(2)) == [.seek(10, generation: 2)])  // scrub
@@ -440,7 +440,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.mainArt.count == mainArtCount && s.mainArt.allSatisfy { $0.id.hasPrefix("l") })
         send(&s, .select, now: 103)  // Liked Songs opens with no read
         #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && !s.top.loading)
-        send(&s, .menu, .wheel(-1), .select, .playlistsLoaded(token: s.tok + 1, playlists: [focusInfo]), now: 104)
+        send(&s, .menu, .wheel(-2), .select, .playlistsLoaded(token: s.tok + 1, playlists: [focusInfo]), now: 104)
         #expect(s.library.map(\.id) == [Playlist.likedSongsID, "focus"] && s.rows(for: s.top) == [.playlist("focus")])
         #expect(s.tracks(in: Playlist.likedSongsID) == Self.likedCovers.tracks)  // the list load keeps the read
         // Offline at first open, nothing is read.
@@ -1062,7 +1062,7 @@ func playing(_ i: Int = 0) -> AppState {
     var s = AppState()
     send(&s, .select, .authDone(token: 1, ok: true))
     let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
-    store.send(.select)  // Playlists
+    store.send(.wheel(1)); store.send(.select)  // Playlists
     #expect(store.state.top.loading)
     await store.settle()
     #expect(lib.fetches == ["playlists"] && !store.state.top.loading && store.state.library == [focusInfo])
