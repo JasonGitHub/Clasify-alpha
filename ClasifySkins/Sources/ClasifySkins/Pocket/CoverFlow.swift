@@ -130,12 +130,11 @@ struct CoverFlowStrip: View, Animatable {
             }
             // The names change when a cover passes the middle.
             if let shown {
-                // Card AE.1 (changes 125, 128): both lines bold 16 in ink, with tops at 159 and 176.
-                // The mockup's lines start 2 points above the text.
-                ZStack(alignment: .topLeading) {
-                    name(shown.name).offset(y: 159 - 2)
-                    name(shown.artist ?? "").offset(y: 176 - 2)
+                VStack(spacing: 0) {
+                    name(shown.name, color: .black)
+                    name(shown.artist ?? "", color: Pocket.ink)
                 }
+                .offset(y: 164 - 2)  // the mockup's 14 pt lines start 2 pt above the text
                 .opacity(hidesMiddle ? 0 : doors.names)
                 .zIndex(200)
             }
@@ -145,23 +144,22 @@ struct CoverFlowStrip: View, Animatable {
         .accessibilityLabel(shown.map { "\($0.name), \($0.artist ?? "")" } ?? "")
     }
 
-    /// One line under the covers: bold 16 ink, centered, 10 points in from each side.
-    private func name(_ text: String) -> some View {
-        FadeLine(Text(text)).font(.helvetica(16, bold: true)).foregroundStyle(Pocket.ink)
-            .frame(height: 19.5)
+    /// One line under the covers: bold 14, centered, 10 points in from each side.
+    private func name(_ text: String, color: Color) -> some View {
+        FadeLine(Text(text)).font(.helvetica(14, bold: true)).foregroundStyle(color)
+            .frame(height: 17)
             .frame(width: Pocket.screenWidth - 20)
             .padding(.horizontal, 10)
     }
 
     /// A cover with its reflection, which turns with it: the cover, then right under it 30
-    /// points of the cover turned over, from 25% to clear (32% for the default art) (card AE.1,
-    /// changes 124 and 126).
+    /// points of the cover turned over, from 35% to clear (card AE.1, change 124).
     func cover(_ album: Album) -> some View {
         let art = CoverArt(image: image(album), notesSize: 51)
         return VStack(spacing: 0) {
             art.frame(width: Self.side, height: Self.side).clipped()
                 .overlay { Rectangle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
-            art.reflection(side: Self.side, height: Self.side / 4, strength: 0.25, placeholderStrength: 0.32)
+            art.reflection(side: Self.side, height: Self.side / 4)
         }
         .frame(width: Self.side, height: Self.side * 1.25, alignment: .top)
     }
