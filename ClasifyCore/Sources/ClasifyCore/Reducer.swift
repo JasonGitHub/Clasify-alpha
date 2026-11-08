@@ -135,6 +135,12 @@ public let activationStaleAfter = 30.0
 public let extraTrackLimit = 50
 /// Seconds that a list's scroll bar shows after a wheel step or a screen change.
 public let scrollBarTime = 1.5
+/// A fast spin in Cover Flow: this many wheel steps within `fastSpinTime` seconds show the
+/// big letter (card AG).
+public let fastSpinSteps = 4
+public let fastSpinTime = 0.6
+/// Seconds after the last wheel step before Cover Flow hides the big letter.
+public let letterTime = 1.0
 
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { max(lo, min(hi, v)) }
 
@@ -161,6 +167,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func finishLoad(_ token: Int, ok: Bool) {
         s.top.loading = false
         s.top.error = s.offline || !ok
+        if s.top.screen == .coverFlow && !s.top.error { placeCoverFlow() }
         if s.shuffleToken == token && !s.top.error {
             s.shuffleToken = nil
             shuffleLiked()
@@ -258,6 +265,38 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.shuffle = true  // before play, so the engine gets shuffle on with the load
         play(Playlist.likedSongsID, liked[env.random(liked.count)].id)
     }
+    /// Cover Flow opens on the playing album, else on the album it showed last, else on the
+    /// middle album (card AE).
+    func placeCoverFlow() {
+        let albums = s.albums
+        let playing = s.current.flatMap { s.track($0)?.album?.id }
+        let index = { (id: String?) in id.flatMap { id in albums.firstIndex { $0.id == id } } }
+        s.top.sel = index(playing) ?? index(s.coverFlowAlbum) ?? albums.count / 2
+        s.top.off = 0
+        if albums.indices.contains(s.top.sel) { s.coverFlowAlbum = albums[s.top.sel].id }
+    }
+    /// Moves Cover Flow by `d` albums, or by `d` letters while the big letter shows. A wheel
+    /// step counts toward a fast spin; the ⏮ ⏭ buttons always move one album.
+    func moveCoverFlow(_ d: Int, wheel: Bool) {
+        guard !s.top.loading, !s.top.error, d != 0 else { return }
+        let albums = s.albums
+        guard !albums.isEmpty else { return }
+        var sel = clamp(s.top.sel, 0, albums.count - 1)
+        for _ in 0..<abs(d) {
+            if wheel && s.letterUntil > 0 {
+                sel = AppState.letterJump(from: sel, by: d.signum(), in: albums)
+            } else {
+                sel = clamp(sel + d.signum(), 0, albums.count - 1)
+            }
+            if wheel {
+                s.coverFlowSteps = Array((s.coverFlowSteps + [now]).suffix(fastSpinSteps))
+                let fast = s.coverFlowSteps.count == fastSpinSteps && now - s.coverFlowSteps[0] <= fastSpinTime
+                if fast || s.letterUntil > 0 { s.letterUntil = now + letterTime }
+            }
+        }
+        s.top.sel = sel
+        s.coverFlowAlbum = albums[sel].id
+    }
     let offlineStart = "Offline. Can’t start playback"
     func toggleShuffle() { s.shuffle.toggle(); fx.append(.setShuffle(s.shuffle)) }
     func setRepeat(_ mode: RepeatMode) {
@@ -290,6 +329,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 }
                 return
             }
+            if s.top.screen == .coverFlow { return moveCoverFlow(d, wheel: true) }
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
@@ -312,6 +352,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fetch(s.top.screen)
                 return
             }
+            if s.top.screen == .coverFlow {
+                // Until the song panel (CLA-38): the album's songs in the normal song list.
+                let albums = s.albums
+                guard !s.top.loading, albums.indices.contains(s.top.sel) else { return }
+                return open(.tracks(playlist: albums[s.top.sel].id))
+            }
             guard s.top.screen.isList, !s.top.loading else { return }
             let rows = s.rows(for: s.top)
             guard rows.indices.contains(s.top.sel) else { return }
@@ -321,6 +367,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.stack.append(Frame(screen: .auth, token: s.authAttempt))
                 fx.append(.logIn(token: s.authAttempt))
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
+            case .coverFlow:
+                open(.coverFlow)
+                if !s.top.loading { placeCoverFlow() }
             case .playlists: open(.playlists)
             case .albums: open(.albums)
             case .album(let id): open(.tracks(playlist: id))
@@ -356,6 +405,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
             if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
             if s.stack.count < 2 { return }
+            if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
 
         case .toggleShuffle: toggleShuffle()
@@ -368,11 +418,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             fx.append(s.isPlaying ? .resume : .pause)
 
         case .next:
+            // The skin's ⏭ button moves Cover Flow (card AE).
+            if s.top.screen == .coverFlow { return moveCoverFlow(1, wheel: false) }
             guard s.current != nil else { return }
             if s.offline { return toast(offlineStart) }  // a skip offline would leave UI and player on different tracks
             skip(true)  // `current` follows when the engine reports `.trackChanged`
 
         case .prev:
+            if s.top.screen == .coverFlow { return moveCoverFlow(-1, wheel: false) }
             guard s.current != nil else { return }
             if s.t > 3 { s.t = 0; seek(0) } else if s.offline { toast(offlineStart) } else { skip(false) }
 
@@ -385,6 +438,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // The volume bar hides, and a slider goes back to the progress bar.
             if s.overlayUntil > 0 && now > s.overlayUntil { s.overlayUntil = 0; s.nowMode = .volume }
             if s.scrollUntil > 0 && now > s.scrollUntil { s.scrollUntil = 0 }
+            if s.letterUntil > 0 && now > s.letterUntil { s.letterUntil = 0 }
 
         case .position(let t, let gen):
             // Soon after a seek, a position far from the target is from an earlier seek.
