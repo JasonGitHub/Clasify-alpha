@@ -27,6 +27,9 @@ final class ArtworkLoader {
     /// The main menu covers that the panel shows: the last set with a cover in memory. The
     /// panel keeps them until a cover of the new set loads, so they stay wanted until then.
     @ObservationIgnored private var mainShown: Set<String> = []
+    /// The default cover IDs of `mainShown`. The panel decides when to switch sets from these
+    /// only, not from the large covers, so this check must too.
+    @ObservationIgnored private var mainShownDefaults: Set<String> = []
     /// The set before `mainShown`, kept while the panel fades from it, until `fadeEnds`.
     @ObservationIgnored private var mainFading: Set<String> = []
     @ObservationIgnored private var fadeEnds = ContinuousClock.now
@@ -95,14 +98,19 @@ final class ArtworkLoader {
                 return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
             }
             mainShown = []
+            mainShownDefaults = []
             mainFading = []
             return []
         }
         leftMainAt = nil
-        let ids = Set(state.mainArt.flatMap { [$0.coverID, $0.largeCoverID] }.compactMap { $0 })
-        if ids != mainShown && (ids.contains { cached($0) != nil } || !mainShown.contains { cached($0) != nil }) {
+        // As `MainArtPanel.switches`: a default cover of the new set is loaded, or none of the old.
+        let defaults = Set(state.mainArt.compactMap(\.coverID))
+        let ids = defaults.union(state.mainArt.compactMap(\.largeCoverID))
+        if ids != mainShown
+            && (defaults.contains { cached($0) != nil } || !mainShownDefaults.contains { cached($0) != nil }) {
             mainFading = mainShown
             mainShown = ids
+            mainShownDefaults = defaults
             fadeEnds = .now + .seconds(2)  // the 1 s fade, with a margin
         }
         return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
