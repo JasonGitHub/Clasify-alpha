@@ -445,13 +445,6 @@ final class SpotifyConnectPlayer: Player {
     private func play(_ trackID: String, context playlist: String?, id: Int, at position: Double?) async {
         guard let contextURI = contextURI(for: playlist) else { return fail("Can’t play this list", id) }
         let start = ContinuousClock.now
-        // A song of an album from Liked Songs: first only the album's liked songs (see `AlbumPlay`).
-        var liked: [Track] = []
-        if let playlist, Album.isID(playlist) {
-            liked = await library.tracks(of: Playlist.likedSongsID) ?? []
-            guard id == loadID else { return }
-        }
-        let albumList = playlist.flatMap { AlbumPlay.trackList(album: $0, track: trackID, liked: liked) }
         do {
             // Reuse the known device, or the one that the pre-warm finds. Look it up again once
             // if the play fails, for example after Spotify restarted.
@@ -470,19 +463,10 @@ final class SpotifyConnectPlayer: Player {
                 Self.logTime("load: options set", since: start)
                 guard id == loadID else { return }
                 do {
-                    if let playlist, Album.isID(playlist) {
-                        let path = try await AlbumPlay.run(
-                            hasList: albumList != nil,
-                            trackList: { try await again { try await client.play(device: found, tracks: albumList ?? [], track: trackID) } },
-                            albumContext: { try await again { try await client.play(device: found, context: contextURI, track: trackID) } },
-                            trackListFailed: { Self.logFailure("play the album as a track list", $0) },
-                            stillWanted: { id == loadID })
-                        // A newer load came while Spotify refused the list: no album over it.
-                        guard let path else { return }
-                        Self.logTime("load: album played as \(path.rawValue)", since: start)
-                    } else {
-                        try await again { try await client.play(device: found, context: contextURI, track: trackID) }
-                    }
+                    // A song of an album plays the whole album from that song, like any other
+                    // context (CLA-45). Spotify takes a plain track list but plays nothing.
+                    try await again { try await client.play(device: found, context: contextURI, track: trackID) }
+                    if Album.isID(contextURI) { Self.logTime("load: album context played", since: start) }
                     Self.logTime("load: play acknowledged", since: start)
                     break
                 } catch where attempt == 0 && known != nil {

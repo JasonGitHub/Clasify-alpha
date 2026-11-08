@@ -56,19 +56,6 @@ extension LibrespotClient {
         try await command("cannot play") { lsb_connect_play(handle, device, context, track, commandCallback, $0) }
     }
 
-    /// Plays the plain list `tracks` on `device`, from `track`, with no context URI.
-    func play(device: String, tracks: [String], track: String) async throws {
-        // C copies, alive until the bridge call returns: it copies them before it queues.
-        let copies = tracks.map { strdup($0) }
-        defer { copies.forEach { free($0) } }
-        let pointers = copies.map { $0.map { UnsafePointer<CChar>($0) } }
-        try await command("cannot play the list") { box in
-            pointers.withUnsafeBufferPointer {
-                lsb_connect_play_tracks(handle, device, $0.baseAddress, $0.count, track, commandCallback, box)
-            }
-        }
-    }
-
     // The calls below queue at once and do not wait. The bridge runs them in call order,
     // so a pause that is queued before `logout` still goes out first. A failure is only logged.
 
