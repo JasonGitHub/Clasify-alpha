@@ -345,12 +345,14 @@ public struct AppState: Equatable, Sendable {
     /// shows the cover and Clasify is online.
     public var canFly: Bool { albumArt != .off && !offline }
 
-    /// Now Playing over Cover Flow's song panel, reached by the cover's flight (card AH).
+    /// Now Playing over Cover Flow's song panel, reached by the cover's flight (card AH). Only
+    /// while the panel's album plays: after a failed load brings back another track, Now
+    /// Playing shows that track's cover, so no panel cover may fly back.
     public var nowOverPanel: Bool {
-        guard canFly, top.screen == .now, stack.count >= 2, case .albumPanel = stack[stack.count - 2].screen else {
+        guard canFly, top.screen == .now, stack.count >= 2, case .albumPanel(let album) = stack[stack.count - 2].screen else {
             return false
         }
-        return true
+        return current?.playlist == album
     }
 
     /// The list rows that show at once: `visibleRows`, or `trackRows` for the taller two-line
