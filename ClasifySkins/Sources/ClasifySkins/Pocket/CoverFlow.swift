@@ -40,7 +40,8 @@ struct CoverFlowStrip: View, Animatable {
     static let glide = Animation.spring(response: 0.3, dampingFraction: 1)
     /// The middle cover's side and its top.
     static let side: CGFloat = 120, top: CGFloat = 22
-    /// The most covers that show on each side.
+    /// The most covers that show on each side. `ArtworkLoader.wantedCovers` keeps one more on
+    /// each side (7) in memory, the ones that fade in at the ends.
     static let perSide = 6
 
     /// Where an album `d` places from the middle shows: its center's offset from the middle in

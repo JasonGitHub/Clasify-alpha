@@ -22,7 +22,8 @@ final class ArtworkLoader {
     /// drop any cover at any time, for example under memory pressure. When it dropped the playing
     /// cover, each redraw loaded it again and showed the square for a moment: the blink.
     @ObservationIgnored private var kept: [String: CGImage] = [:]
-    /// The cover IDs that `kept` holds: the playing track's, the next track's, and the main menu's.
+    /// The cover IDs that `kept` holds: the playing track's, the next track's, the main menu's
+    /// and the ones Cover Flow draws.
     @ObservationIgnored private var wanted: Set<String> = []
     /// The main menu covers that the panel shows: the last set with a cover in memory. The
     /// panel keeps them until a cover of the new set loads, so they stay wanted until then.
@@ -116,13 +117,24 @@ final class ArtworkLoader {
         return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
     }
 
-    /// The cover IDs of the playing track and of the track after it, and on a half screen
-    /// the covers that take turns there, so none of them drops out of memory and blinks.
+    /// The cover IDs of the playing track and of the track after it, on a half screen the
+    /// covers that take turns there, and on Cover Flow the covers it draws, so none of them
+    /// drops out of memory and blinks.
     static func wantedCovers(in state: AppState) -> Set<String> {
         var ids: Set<String> = []
         // The large covers too, which load in the background when the menu opens.
         if state.isHalf(state.top.screen) {
             ids.formUnion(state.mainArt.flatMap { [$0.coverID, $0.largeCoverID] }.compactMap { $0 })
+        }
+        // Cover Flow: the middle album and the 7 on each side that `CoverFlowStrip` draws.
+        if state.top.screen == .coverFlow {
+            let albums = state.albums, covers = state.albumCovers
+            if !albums.isEmpty {
+                let sel = min(max(state.top.sel, 0), albums.count - 1)
+                for album in albums[max(0, sel - 7)...min(albums.count - 1, sel + 7)] {
+                    if let id = covers[album.id] { ids.insert(id) }
+                }
+            }
         }
         guard let ref = state.current else { return ids }
         if let id = state.track(ref)?.coverID { ids.insert(id) }
