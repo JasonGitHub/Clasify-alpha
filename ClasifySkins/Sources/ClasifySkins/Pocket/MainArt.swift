@@ -18,14 +18,17 @@ struct MainArt: View {
 
     /// Seconds that each cover shows, and seconds of the fade to the next (as on the device).
     static let slot = 6.8, fade = 0.6
-    /// The side of each cover in points, centered in the 150 x 225 panel, with no zoom.
-    static let coverSide = 338.0
-    /// The pan speed in points a second, along each axis that moves.
+    /// The side of each cover in points, centered in the 150 x 225 panel, with no zoom
+    /// (card AL: 250, so people on a cover are not cut off).
+    static let coverSide = 250.0
+    /// The sideways pan speed in points a second.
     static let panSpeed = 6.7
-    /// How far a cover moves along each axis in its turn: it pans for all of `slot + fade`
-    /// seconds, about 49.6 points. Half of it, 24.8, stays inside the smallest margin,
-    /// (338 - 225) / 2 = 56.5 points, so no edge shows.
+    /// How far a cover moves sideways in its turn: it pans for all of `slot + fade` seconds,
+    /// about 49.6 points. Half of it, 24.8, stays inside the side margin, (250 - 150) / 2 = 50.
     static let travel = panSpeed * (slot + fade)
+    /// How far every second cover moves down in its turn, over the same time. Half of it,
+    /// 12.5, is the whole top and bottom margin, (250 - 225) / 2, so no edge shows.
+    static let drop = 25.0
 
     /// A point offset from the centered cover. A positive `y` moves it down.
     struct Offset: Equatable {
@@ -62,7 +65,7 @@ struct MainArt: View {
     static func motion(at t: Double, index: Int, count: Int) -> Pan {
         let h = travel / 2
         let left = (from: Offset(x: h, y: 0), to: Offset(x: -h, y: 0))
-        let rightDown = (from: Offset(x: -h, y: -h), to: Offset(x: h, y: h))
+        let rightDown = (from: Offset(x: -h, y: -drop / 2), to: Offset(x: h, y: drop / 2))
         if count <= 1 { return Pan(start: 0, from: left.from, to: left.to, reverses: true, turn: 0) }
         let (_, _, turn) = phase(at: t, index: index, count: count)
         // The direction alternates with each cover shown: left, then right and down.
@@ -85,7 +88,7 @@ struct MainArt: View {
     }
 
     /// The cover that a layer shows for its whole turn: the large one (about 640 px, sharp at
-    /// 338 pt) when it was in memory when the turn began, else the default one (about 300 px).
+    /// 250 pt) when it was in memory when the turn began, else the default one (about 300 px).
     /// So a cover never changes while it shows: a large cover that loads during a turn shows
     /// from that cover's next turn. `turnStart` and `loadedAt` are seconds since the reference date.
     /// One cover only (a one-album list): its single turn lasts as long as the panel. So with
