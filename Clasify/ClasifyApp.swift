@@ -119,7 +119,7 @@ final class AppModel {
             MainActor.assumeIsolated { store?.send(.activated) }
         }
         store.send(.launch)  // restores the stored login
-        // The reducer's toast, overlay and scroll bar timers run on .tick. Each .tick redraws the skin,
+        // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
         // and resets the player when the session signs out.
@@ -137,7 +137,8 @@ final class AppModel {
                 let overlayDone = state.overlayUntil > 0 && now > state.overlayUntil
                 let scrollDone = state.scrollUntil > 0 && now > state.scrollUntil
                 let artDone = state.artUntil > 0 && now > state.artUntil
-                if toastDone || overlayDone || scrollDone || artDone { store?.send(.tick) }
+                let letterDone = state.letterUntil > 0 && now > state.letterUntil
+                if toastDone || overlayDone || scrollDone || artDone || letterDone { store?.send(.tick) }
             }
         }
     }

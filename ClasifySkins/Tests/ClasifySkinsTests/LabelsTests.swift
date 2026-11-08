@@ -51,6 +51,11 @@ func sampleState() -> AppState {
         #expect(Labels.message(for: s.top, in: s)?.body.hasPrefix("Like songs from this album") == true)
         s.stack.removeLast()
         #expect(Labels.message(for: s.top, in: s)?.title == "No albums")
+        // Cover Flow shows the same albums, so it has the same words.
+        #expect(Labels.title(.coverFlow, in: s) == "Cover Flow")
+        #expect(Labels.row(.coverFlow, on: .main, in: s) == .init(label: "Cover Flow", opens: true))
+        s.stack[s.stack.count - 1] = Frame(screen: .coverFlow)
+        #expect(Labels.message(for: s.top, in: s)?.title == "No albums")
     }
 
     @Test func settingsRowsShowTheirValues() {

@@ -70,6 +70,14 @@ extension Album {
 
         static func < (a: SortKey, b: SortKey) -> Bool { (a.letter ? 1 : 0, a.name) < (b.letter ? 1 : 0, b.name) }
     }
+
+    /// The letter that an album name sorts under, as Cover Flow's letter jump shows it: the
+    /// first letter in capitals, with no accent, or "#" for a number or a symbol.
+    public static func letter(_ name: String) -> String {
+        let key = SortKey(name)
+        guard key.letter, let first = key.name.first else { return "#" }
+        return String(first).uppercased()
+    }
 }
 
 public struct Playlist: Equatable, Sendable {
@@ -90,14 +98,15 @@ public struct Playlist: Equatable, Sendable {
 
 public enum Screen: Equatable, Sendable {
     /// `tracks` shows a playlist, Liked Songs, or an album's songs from Liked Songs (`Album.isID`).
-    /// `albums` lists the albums in Liked Songs.
-    case login, auth, main, playlists, albums, tracks(playlist: String), settings, confirm, about, now
+    /// `albums` lists the albums in Liked Songs. `coverFlow` shows the same albums as covers,
+    /// one at a time: `Frame.sel` is the index of the album in the middle.
+    case login, auth, main, playlists, albums, tracks(playlist: String), settings, confirm, about, now, coverFlow
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .main, .playlists, .albums, .tracks, .settings, .confirm: true
-        case .auth, .about, .now: false
+        case .auth, .about, .now, .coverFlow: false
         }
     }
 }
@@ -116,7 +125,7 @@ public struct Frame: Equatable, Sendable {
 
 /// A selectable list row. Skins map rows to labels and values.
 public enum Row: Equatable, Sendable {
-    case logIn, nowPlaying, playlists, albums, likedSongs, shuffleSongs, settings
+    case logIn, nowPlaying, coverFlow, playlists, albums, likedSongs, shuffleSongs, settings
     case playlist(String), album(String), track(String)
     case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, about, logOut
     case cancel, confirmLogOut
@@ -274,6 +283,16 @@ public struct AppState: Equatable, Sendable {
     public var wholeSeq = 0
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
+    /// TEMP (CLA-37): the main menu shows the Cover Flow row only when this is on. It stays off
+    /// until the Cover Flow screen is drawn (CLA-37 part b), which removes it. Tests turn it on.
+    public var coverFlowRow = false
+    /// The album that Cover Flow showed last, so it opens there again when nothing plays.
+    public var coverFlowAlbum: String?
+    /// The times of the last Cover Flow wheel steps, at most `fastSpinSteps`.
+    public var coverFlowSteps: [Double] = []
+    /// While Cover Flow shows the big letter: each wheel step jumps to the next or previous
+    /// letter. 0 when the letter is hidden.
+    public var letterUntil: Double = 0
     public var toast = ""
     public var toastUntil: Double = 0
     public var offline = false
@@ -377,7 +396,7 @@ public struct AppState: Equatable, Sendable {
         switch screen {
         case .playlists: playlistsLoaded
         case .tracks(let id): loadedTracks.contains(Self.source(id))
-        case .albums: loadedTracks.contains(Playlist.likedSongsID)
+        case .albums, .coverFlow: loadedTracks.contains(Playlist.likedSongsID)
         default: true
         }
     }
@@ -389,7 +408,7 @@ public struct AppState: Equatable, Sendable {
     public static func readKey(_ screen: Screen) -> String {
         switch screen {
         case .tracks(let id): source(id)
-        case .albums: Playlist.likedSongsID
+        case .albums, .coverFlow: Playlist.likedSongsID
         default: ""
         }
     }
@@ -436,14 +455,42 @@ public struct AppState: Equatable, Sendable {
     public func rows(for frame: Frame) -> [Row] {
         switch frame.screen {
         case .login: restoring ? [] : [.logIn]
-        case .main: (current == nil ? [] : [.nowPlaying]) + [.playlists, .albums, .likedSongs, .shuffleSongs, .settings]
+        case .main:
+            (current == nil ? [] : [.nowPlaying]) + (coverFlowRow ? [.coverFlow] : [])
+                + [.playlists, .albums, .likedSongs, .shuffleSongs, .settings]
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
-        case .albums: albums.map { .album($0.id) }
+        case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
         case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .auth, .about, .now: []
         }
+    }
+
+    /// The first album of the next letter (`step` 1) or of the previous one (`step` -1) from
+    /// index `i` of `albums`, which are in A to Z order. On the last letter it stays, and on
+    /// the first letter it goes to the first album.
+    static func letterJump(from i: Int, by step: Int, in albums: [Album]) -> Int {
+        let letters = albums.map { Album.letter($0.name) }
+        func start(_ j: Int) -> Int {  // the first album of the letter at j
+            var j = j
+            while j > 0 && letters[j - 1] == letters[j] { j -= 1 }
+            return j
+        }
+        if step > 0 {
+            let next = letters[i...].firstIndex { $0 != letters[i] }
+            return next ?? i
+        }
+        let here = start(i)
+        return here > 0 ? start(here - 1) : 0
+    }
+
+    /// The big letter that Cover Flow shows during a fast spin: the letter of the album in the
+    /// middle. Nil when it is hidden.
+    public var coverFlowLetter: String? {
+        guard letterUntil > 0, top.screen == .coverFlow else { return nil }
+        let list = albums
+        return list.indices.contains(top.sel) ? Album.letter(list[top.sel].name) : nil
     }
 }

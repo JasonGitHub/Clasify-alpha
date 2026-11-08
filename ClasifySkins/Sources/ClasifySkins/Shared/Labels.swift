@@ -10,6 +10,7 @@ enum Labels {
         case .auth: "Sign in"
         case .playlists: "Playlists"
         case .albums: "Albums"
+        case .coverFlow: "Cover Flow"
         case .tracks(let id) where Album.isID(id): state.album(id)?.name ?? ""
         case .tracks(let id): state.library.first { $0.id == id }?.name ?? (id == Playlist.likedSongsID ? "Liked Songs" : "")
         case .settings: "Settings"
@@ -37,6 +38,7 @@ enum Labels {
         case .nowPlaying: return RowText(label: "Now Playing", opens: true)
         case .playlists: return RowText(label: "Playlists", opens: true)
         case .albums: return RowText(label: "Albums", opens: true)
+        case .coverFlow: return RowText(label: "Cover Flow", opens: true)
         case .likedSongs: return RowText(label: "Liked Songs", opens: true)
         case .shuffleSongs: return RowText(label: "Shuffle Songs")
         case .settings: return RowText(label: "Settings", opens: true)
@@ -84,7 +86,7 @@ enum Labels {
             return Message(title: "No songs", body: "Like songs from this album in Spotify. Press MENU to go back.")
         case .tracks where state.rows(for: frame).isEmpty:
             return Message(title: "No songs", body: "Add songs to this playlist in Spotify. Press MENU to go back.")
-        case .albums where state.rows(for: frame).isEmpty:
+        case .albums where state.rows(for: frame).isEmpty, .coverFlow where state.rows(for: frame).isEmpty:
             return Message(title: "No albums", body: "Like songs in Spotify to see their albums. Press MENU to go back.")
         case .auth:
             return Message(
