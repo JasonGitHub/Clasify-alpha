@@ -186,6 +186,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func play(_ pl: String, _ id: String) {
         if !s.loadPending { s.beforeLoad = s.current.map { BeforeLoad(current: $0, t: s.t, isPlaying: s.isPlaying) } }
         s.loadPending = true
+        if s.current == nil { shiftMainSelection(by: 1) }
         s.current = TrackRef(playlist: pl, track: id)
         s.t = 0; s.isPlaying = true; s.nowMode = .volume
         s.stack.append(Frame(screen: .now))
@@ -247,6 +248,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         guard let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) else { return }
         s.trackReads.insert(id)
         fx.append(.readTrack(id))
+    }
+    /// The Now Playing row comes onto the main menu (`by` 1) or leaves it (-1). Each main menu
+    /// frame keeps the row it had selected, so MENU comes back to the row the user picked.
+    func shiftMainSelection(by d: Int) {
+        for f in s.stack.indices where s.stack[f].screen == .main {
+            s.stack[f].sel = max(0, s.stack[f].sel + d)
+        }
     }
     func stop() {
         if s.current != nil { fx.append(.stop) }
@@ -474,7 +482,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.current == nil, gen == s.playGen else { return }  // a load or a newer one came first
             s.current = TrackRef(playlist: pl ?? "", track: id)  // "" is no playlist of ours
             s.isPlaying = playing; s.t = t
-            if s.top.screen == .main { s.top.sel += 1 }  // the new Now Playing row goes on top: keep the pick
+            shiftMainSelection(by: 1)  // the new Now Playing row goes on top: keep the pick
             readIfUnknown(id)
 
         case .playbackFailed(let msg, let gen):
@@ -490,6 +498,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.current = before.current; s.t = before.t; s.isPlaying = before.isPlaying
             } else {
                 s.current = nil; s.t = 0; s.isPlaying = false
+                shiftMainSelection(by: -1)
                 // No empty Now Playing: back to the list the load came from, with the toast there.
                 if s.top.screen == .now && s.stack.count > 1 { s.stack.removeLast(); s.nowMode = .volume; s.overlayUntil = 0 }
             }

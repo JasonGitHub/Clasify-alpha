@@ -5,7 +5,6 @@ import Testing
 /// album in `names`. The album IDs are "spotify:album:0", "spotify:album:1" and so on.
 func withCoverFlow(_ names: [String]) -> AppState {
     var s = mainMenu()
-    s.coverFlowRow = true
     let tracks = names.enumerated().map { i, name in
         Track(id: "t\(i)", title: "t\(i)", artist: "a", duration: 100, album: Album(id: "spotify:album:\(i)", name: name))
     }
@@ -31,12 +30,10 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(s.top.screen == .coverFlow && !s.top.loading && !s.isHalf(.coverFlow))
         #expect(shown(s) == "Clouds")  // the middle of ten: index 5
         #expect(s.rows(for: s.top).count == 10)
-        // Off, the row is not there (until the Cover Flow screen is drawn).
-        var off = mainMenu()
-        #expect(!off.rows(for: off.top).contains(.coverFlow))
-        off.current = TrackRef(playlist: Playlist.likedSongsID, track: "x")
-        off.coverFlowRow = true
-        #expect(off.rows(for: off.top).prefix(2) == [.nowPlaying, .coverFlow])
+        // While a song plays, Now Playing comes first.
+        var playing = mainMenu()
+        playing.current = TrackRef(playlist: Playlist.likedSongsID, track: "x")
+        #expect(playing.rows(for: playing.top).prefix(2) == [.nowPlaying, .coverFlow])
     }
 
     @Test func itOpensWhereYouLeftItAndOnThePlayingAlbum() {
@@ -67,7 +64,6 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
 
     @Test func itReadsLikedSongsFirst() {
         var s = mainMenu()
-        s.coverFlowRow = true
         #expect(send(&s, .select) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
         #expect(s.top.screen == .coverFlow && s.top.loading)
         send(&s, .wheel(1))  // nothing to move while it loads
@@ -170,6 +166,18 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         send(&s, .select, now: 151)
         #expect(s.top.screen == .tracks(playlist: "spotify:album:5"))  // Clouds
         #expect(s.rows(for: s.top) == [.track("t5")])
+    }
+
+    @Test func eachAlbumTakesTheCoverOfItsFirstSongWithOne() {
+        var s = withCoverFlow(["Aja", "Blue"])
+        let aja = Album(id: "spotify:album:0", name: "Aja")
+        s.library[0].tracks[0].coverID = nil
+        s.library[0].tracks += [
+            Track(id: "t2", title: "t2", artist: "a", duration: 100, coverID: "c2", album: aja),
+            Track(id: "t3", title: "t3", artist: "a", duration: 100, coverID: "c3", album: aja),
+        ]
+        s.library[0].tracks[1].coverID = "c1"
+        #expect(s.albumCovers == ["spotify:album:0": "c2", "spotify:album:1": "c1"])
     }
 
     @Test func withNoAlbumsNothingMoves() {

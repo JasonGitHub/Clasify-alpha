@@ -442,6 +442,47 @@ import Testing
         #expect(!shot.isBlue(Self.screenLeft + 60, Self.rowCenter(0, songs: true)))
     }
 
+    @Test func coverFlowPosesFollowTheMockup() {
+        #expect(CoverFlowStrip.pose(0) == .init(x: 0, angle: 0, scale: 1, dark: 0, opacity: 1))
+        #expect(CoverFlowStrip.pose(1) == .init(x: 72, angle: -70, scale: 0.9, dark: 0.04, opacity: 1))
+        #expect(CoverFlowStrip.pose(-0.5) == .init(x: -36, angle: 35, scale: 0.95, dark: 0.02, opacity: 1))
+        let far = CoverFlowStrip.pose(-3)  // the stack: 27 points apart past the first cover
+        #expect(far.x == -126 && far.angle == 70 && abs(far.dark - 0.12) < 1e-9)
+        #expect(CoverFlowStrip.pose(7).opacity == 0 && abs(CoverFlowStrip.pose(6.5).opacity - 0.5) < 1e-9)
+    }
+
+    @Test func coverFlowShowsTheMiddleAlbumAndTheLetter() throws {
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        var s = sampleState()
+        let names = ["Aja", "Blue", "Clouds", "Dark Side", "Eno"]
+        s.library[0].tracks = names.enumerated().map { i, name in
+            Track(id: "t\(i)", title: "t\(i)", artist: "a", duration: 100, coverID: "c\(i)",
+                  album: Album(id: "spotify:album:\(i)", name: name, artist: "Artist \(i)"))
+        }
+        s.stack.append(Frame(screen: .coverFlow))
+        s.top.sel = 2  // Clouds
+        let art = Artwork { $0 == "c2" ? red : blue }
+        let shot = try render(s, "cover-flow", artwork: art)
+        // The middle cover is 120 points, 22 points under the header: its center is at 150, 82.
+        let middle = shot.rgb(Self.screenLeft + 150, Self.listTop + 82)
+        #expect(middle.r > 200 && middle.b < 60, "middle \(middle)")
+        // The covers next to it turn toward it, 72 points to each side.
+        for x in [150 - 72, 150 + 72] {
+            let side = shot.rgb(Self.screenLeft + x, Self.listTop + 82)
+            #expect(side.b > 150 && side.r < 60, "side \(side)")
+        }
+        // The album name, bold black, on the line at 164.
+        #expect((100...200).contains { shot.isDark(Self.screenLeft + $0, Self.listTop + 172) })
+
+        // A fast spin: the big letter box over the middle cover, dark over the red.
+        s.letterUntil = 1
+        let spin = try render(s, "cover-flow-letter", artwork: art)
+        let box = spin.rgb(Self.screenLeft + 125, Self.listTop + 57)
+        #expect(spin.isDark(Self.screenLeft + 125, Self.listTop + 57), "box \(box)")
+        #expect(!shot.isDark(Self.screenLeft + 125, Self.listTop + 57))
+    }
+
     @Test func settings() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))

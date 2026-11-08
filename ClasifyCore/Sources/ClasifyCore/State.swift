@@ -283,9 +283,6 @@ public struct AppState: Equatable, Sendable {
     public var wholeSeq = 0
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
-    /// TEMP (CLA-37): the main menu shows the Cover Flow row only when this is on. It stays off
-    /// until the Cover Flow screen is drawn (CLA-37 part b), which removes it. Tests turn it on.
-    public var coverFlowRow = false
     /// The album that Cover Flow showed last, so it opens there again when nothing plays.
     public var coverFlowAlbum: String?
     /// The times of the last Cover Flow wheel steps, at most `fastSpinSteps`.
@@ -456,8 +453,7 @@ public struct AppState: Equatable, Sendable {
         switch frame.screen {
         case .login: restoring ? [] : [.logIn]
         case .main:
-            (current == nil ? [] : [.nowPlaying]) + (coverFlowRow ? [.coverFlow] : [])
-                + [.playlists, .albums, .likedSongs, .shuffleSongs, .settings]
+            (current == nil ? [] : [.nowPlaying]) + [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings]
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
@@ -484,6 +480,17 @@ public struct AppState: Equatable, Sendable {
         }
         let here = start(i)
         return here > 0 ? start(here - 1) : 0
+    }
+
+    /// The cover ID of each album in Liked Songs, by album ID: the cover of its first song
+    /// that has one. Cover Flow draws the albums with these.
+    public var albumCovers: [String: String] {
+        var covers: [String: String] = [:]
+        for track in tracks(in: Playlist.likedSongsID) {
+            guard let album = track.album?.id, covers[album] == nil, let cover = track.coverID else { continue }
+            covers[album] = cover
+        }
+        return covers
     }
 
     /// The big letter that Cover Flow shows during a fast spin: the letter of the album in the

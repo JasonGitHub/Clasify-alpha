@@ -198,6 +198,8 @@ struct PocketScreen: View {
             PocketNowPlaying(state: state, input: input)
         } else if top.screen == .about {
             PocketAbout(scene: state.aboutScene)
+        } else if top.screen == .coverFlow {
+            PocketCoverFlow(state: state)
         } else {
             PocketList(state: state)
         }
