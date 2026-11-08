@@ -138,9 +138,10 @@ public let extraTrackLimit = 50
 /// Seconds that a list's scroll bar shows after a wheel step or a screen change.
 public let scrollBarTime = 1.5
 /// A fast spin in Cover Flow: this many wheel steps within `fastSpinTime` seconds show the
-/// big letter (card AG).
-public let fastSpinSteps = 4
-public let fastSpinTime = 0.6
+/// big letter (card AG). Change 95: 6 steps within 0.4 s, so a normal quick turn does not
+/// start it (it was 4 within 0.6 s).
+public let fastSpinSteps = 6
+public let fastSpinTime = 0.4
 /// Seconds after the last wheel step before Cover Flow hides the big letter.
 public let letterTime = 1.0
 
