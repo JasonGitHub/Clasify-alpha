@@ -116,16 +116,19 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
 
     @Test func aFastSpinShowsTheLetterAndJumpsByLetter() {
         var s = withCoverFlow(tenAlbums)
-        send(&s, .select, now: 150)
-        #expect(shown(s) == "Clouds")
-        // Four quick steps move one album each. The fourth shows the letter.
-        for (i, t) in [200.0, 200.1, 200.2].enumerated() {
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "t3")  // Gold, the last album
+        send(&s, .wheel(1), .select, now: 150)
+        #expect(shown(s) == "Gold")
+        // Six quick steps within 0.4 s move one album each. The sixth shows the letter.
+        for (i, t) in [200.0, 200.05, 200.1, 200.15, 200.2].enumerated() {
             send(&s, .wheel(-1), now: t)
             #expect(s.coverFlowLetter == nil, "step \(i)")
         }
+        send(&s, .wheel(-1), now: 200.25)
+        #expect(shown(s) == "Blue" && s.coverFlowLetter == "B")
+        // Then each step jumps to the first album of the next or previous letter.
         send(&s, .wheel(-1), now: 200.3)
         #expect(shown(s) == "Abbey Road" && s.coverFlowLetter == "A")
-        // Then each step jumps to the first album of the next or previous letter.
         send(&s, .wheel(-1), now: 200.4)
         #expect(shown(s) == "1989" && s.coverFlowLetter == "#")
         send(&s, .wheel(-1), now: 200.5)
@@ -143,6 +146,21 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(shown(s) == "Born")
     }
 
+    /// Change 95: five quick steps, or six steps over more than 0.4 s, do not show the letter.
+    @Test func fiveQuickStepsOrSixSlowerOnesShowNoLetter() {
+        var s = withCoverFlow(tenAlbums)
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "t3")  // Gold, the last album
+        send(&s, .wheel(1), .select, now: 150)
+        for t in [200.0, 200.05, 200.1, 200.15, 200.2] { send(&s, .wheel(-1), now: t) }
+        #expect(shown(s) == "Born" && s.coverFlowLetter == nil && s.letterUntil == 0)
+        // Six steps 0.1 s apart take 0.5 s.
+        for t in [210.0, 210.1, 210.2, 210.3, 210.4, 210.5] { send(&s, .wheel(1), now: t) }
+        #expect(shown(s) == "Gold" && s.coverFlowLetter == nil && s.letterUntil == 0)
+        // Six steps within 0.35 s show it.
+        for t in [220.0, 220.07, 220.14, 220.21, 220.28, 220.35] { send(&s, .wheel(-1), now: t) }
+        #expect(s.letterUntil > 0)
+    }
+
     @Test func onTheLastLetterAJumpStays() {
         let albums = withCoverFlow(tenAlbums).albums
         let gold = albums.firstIndex { $0.name == "Gold" }!
@@ -158,13 +176,13 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
     @Test func menuHidesTheLetter() {
         var s = withCoverFlow(tenAlbums)
         send(&s, .select, now: 150)
-        for t in [200.0, 200.1, 200.2, 200.3] { send(&s, .wheel(1), now: t) }
+        for t in [200.0, 200.05, 200.1, 200.15, 200.2, 200.25] { send(&s, .wheel(1), now: t) }
         #expect(s.letterUntil > 0)
         send(&s, .menu, now: 200.4)
         #expect(s.top.screen == .main && s.letterUntil == 0 && s.coverFlowSteps.isEmpty)
         // Center during the letter opens the album; MENU comes back with no letter.
         send(&s, .select, now: 201)
-        for t in [202.0, 202.1, 202.2, 202.3] { send(&s, .wheel(1), now: t) }
+        for t in [202.0, 202.05, 202.1, 202.15, 202.2, 202.25] { send(&s, .wheel(1), now: t) }
         send(&s, .select, now: 202.4)
         #expect(s.letterUntil == 0 && s.coverFlowSteps.isEmpty)
         send(&s, .menu, now: 202.5)
