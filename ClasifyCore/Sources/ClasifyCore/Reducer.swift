@@ -466,12 +466,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             var screens = [Screen.tracks(playlist: id)]
             for f in s.stack where AppState.readKey(f.screen) == id && !screens.contains(f.screen) { screens.append(f.screen) }
             let old = screens.map { s.rows(for: Frame(screen: $0)) }
-            // The playing track left the list: keep its details for Now Playing.
-            if let ref = s.current, AppState.source(ref.playlist) == id, !tracks.contains(where: { $0.id == ref.track }),
-                let track = s.library[i].tracks.first(where: { $0.id == ref.track }) {
-                keepExtra(track)
-            }
+            // The playing track left the list (or its album): keep its details for Now Playing.
+            let playing = s.current.flatMap { AppState.source($0.playlist) == id ? s.track($0) : nil }
             s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+            if let ref = s.current, let playing, s.track(ref) == nil { keepExtra(playing) }
             s.readAt[id] = now
             for (screen, rows) in zip(screens, old) { keepSelection(on: screen, old: rows) }
 

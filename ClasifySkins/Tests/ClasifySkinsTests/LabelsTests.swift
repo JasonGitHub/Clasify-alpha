@@ -46,8 +46,10 @@ func sampleState() -> AppState {
         #expect(Labels.title(.tracks(playlist: album.id), in: s) == "Nevermind")  // the album's song list
         s.current = TrackRef(playlist: album.id, track: "spotify:track:1")
         #expect(Labels.now(in: s)?.list == "Nevermind" && Labels.now(in: s)?.count == "1 of 1")
-        s.stack = [Frame(screen: .main), Frame(screen: .albums)]
-        s.library[0].tracks[0].album = nil
+        s.stack = [Frame(screen: .main), Frame(screen: .albums), Frame(screen: .tracks(playlist: album.id))]
+        s.library[0].tracks[0].album = nil  // its last song left Liked Songs
+        #expect(Labels.message(for: s.top, in: s)?.body.hasPrefix("Like songs from this album") == true)
+        s.stack.removeLast()
         #expect(Labels.message(for: s.top, in: s)?.title == "No albums")
     }
 

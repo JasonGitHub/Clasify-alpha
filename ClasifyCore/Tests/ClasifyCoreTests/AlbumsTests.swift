@@ -80,6 +80,14 @@ func withLikedAlbums() -> AppState {
         s.refreshing = [Playlist.likedSongsID]
         send(&s, .tracksRefreshed(playlist: Playlist.likedSongsID, tracks: likedAlbums))
         #expect(s.extraTracks.isEmpty && s.track(ref) != nil)
+        // A re-read that moves the playing song to another album keeps its details for Now Playing.
+        var moved = likedAlbums
+        moved[0].album = Album(id: "spotify:album:other", name: "Other")
+        s.refreshing = [Playlist.likedSongsID]
+        send(&s, .tracksRefreshed(playlist: Playlist.likedSongsID, tracks: moved))
+        #expect(s.extraTracks.map(\.id) == ["u3"] && s.track(ref)?.album?.id == "spotify:album:u")
+        #expect(s.album("spotify:album:u")?.name == "MTV Unplugged In New York")
+        s.extraTracks = []
         s.refreshing.insert(AppState.readKey(.playlists))
         send(&s, .playlistsRefreshed([]))  // a playlist list re-read: Liked Songs stays, so no copy either
         #expect(s.extraTracks.isEmpty)

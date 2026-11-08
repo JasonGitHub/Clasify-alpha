@@ -391,10 +391,12 @@ public struct AppState: Equatable, Sendable {
         return songs.sorted { order($0) < order($1) }.map(\.element)
     }
 
-    /// An album in Liked Songs, by its URI, with the artist as `albums` gives it.
+    /// An album in Liked Songs, by its URI, with the artist as `albums` gives it. When its last
+    /// song left Liked Songs, the album of a kept track (such as the playing one), so the
+    /// title bar and Now Playing keep its name.
     public func album(_ id: String) -> Album? {
-        guard let track = tracks(in: Playlist.likedSongsID).first(where: { $0.album?.id == id }), var album = track.album
-        else { return nil }
+        let track = tracks(in: Playlist.likedSongsID).first { $0.album?.id == id } ?? extraTracks.first { $0.album?.id == id }
+        guard let track, var album = track.album else { return nil }
         if album.artist == nil { album.artist = track.artist.isEmpty ? nil : track.artist }
         return album
     }
