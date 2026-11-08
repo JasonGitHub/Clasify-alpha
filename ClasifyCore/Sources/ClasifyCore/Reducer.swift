@@ -526,6 +526,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if let ref = s.current, let playing, s.track(ref) == nil { keepExtra(playing) }
             s.readAt[id] = now
             for (screen, rows) in zip(screens, old) { keepSelection(on: screen, old: rows) }
+            // Cover Flow opens again on the album it shows now, also when its album left.
+            if let flow = s.stack.last(where: { $0.screen == .coverFlow }) {
+                let albums = s.albums
+                if albums.indices.contains(flow.sel) { s.coverFlowAlbum = albums[flow.sel].id }
+            }
 
         case .artTracksRead(let token, let id, let tracks):
             guard s.artReads[id] == token else { return }  // a read from before a logout or reset

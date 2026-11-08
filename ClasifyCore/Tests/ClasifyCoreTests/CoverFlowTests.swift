@@ -53,6 +53,18 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(s.top.screen == .coverFlow && shown(s) == "Aja")
     }
 
+    @Test func aRereadThatRemovesTheShownAlbumOpensOnTheAlbumShownAfterIt() {
+        var s = withCoverFlow(tenAlbums)
+        send(&s, .select, now: 150)
+        #expect(shown(s) == "Clouds")
+        s.refreshing = [Playlist.likedSongsID]
+        let left = s.library[0].tracks.filter { $0.id != "t5" }  // Clouds leaves
+        send(&s, .tracksRefreshed(playlist: Playlist.likedSongsID, tracks: left), now: 151)
+        #expect(shown(s) == "Dark Side")  // the same place
+        send(&s, .menu, .select, now: 152)
+        #expect(shown(s) == "Dark Side")  // not the middle album, Born
+    }
+
     @Test func itReadsLikedSongsFirst() {
         var s = mainMenu()
         s.coverFlowRow = true
