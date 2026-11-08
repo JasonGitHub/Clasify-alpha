@@ -364,12 +364,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 return
             }
             if s.top.screen == .coverFlow {
-                // The album's songs in the song panel, or in the normal song list until the panel is drawn (TEMP).
+                // The cover turns over into the song panel with the album's songs (card AF).
                 let albums = s.albums
                 guard !s.top.loading, albums.indices.contains(s.top.sel) else { return }
                 s.letterUntil = 0; s.coverFlowSteps = []  // so MENU comes back with no letter
-                let id = albums[s.top.sel].id
-                return open(s.albumPanelOn ? .albumPanel(album: id) : .tracks(playlist: id))
+                return open(.albumPanel(album: albums[s.top.sel].id))
             }
             guard s.top.screen.isList, !s.top.loading else { return }
             let rows = s.rows(for: s.top)
