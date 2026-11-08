@@ -229,6 +229,35 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(mainMenu().coverFlowFrame == nil)
     }
 
+    @Test func withAlbumArtOffOrOfflineASongPushesNowPlayingInstead() {
+        var off = withPanel()
+        off.albumArt = .off
+        send(&off, .select, .select, now: 151)  // the panel, then its first song
+        #expect(off.top.screen == .now && off.navMove == .push && !off.nowOverPanel)
+        send(&off, .menu, now: 152)
+        #expect(off.navMove == .push)
+
+        var s = withPanel()
+        send(&s, .select, .select, now: 151)
+        #expect(s.navMove == .fly && s.nowOverPanel)
+        s.offline = true  // the connection drops on Now Playing
+        #expect(!s.nowOverPanel)
+        send(&s, .menu, now: 152)
+        #expect(s.top.screen == .albumPanel(album: "spotify:album:5") && s.navMove == .push)
+    }
+
+    @Test func aFailedLoadThatBringsBackAnotherAlbumStopsTheFlight() {
+        var s = withPanel()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "t0")  // another song plays
+        send(&s, .select, .select, now: 151)  // a song of Clouds
+        #expect(s.navMove == .fly && s.nowOverPanel)
+        let generation = s.playGen
+        send(&s, .loadFailed("Can’t play", generation: generation), now: 152)
+        #expect(s.top.screen == .now && s.current?.track == "t0" && !s.nowOverPanel)
+        send(&s, .menu, now: 153)  // the panel's cover must not fly back over another song
+        #expect(s.top.screen == .albumPanel(album: "spotify:album:5") && s.navMove == .push)
+    }
+
     @Test func eachScreenChangeHasItsMove() {
         let panel = Screen.albumPanel(album: "spotify:album:5")
         #expect(AppState.move(between: .main, and: .coverFlow, whole: true) == .doors)
@@ -238,6 +267,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(AppState.move(between: panel, and: .coverFlow, whole: false) == .flip)
         #expect(AppState.move(between: panel, and: .now, whole: false) == .fly)
         #expect(AppState.move(between: .now, and: panel, whole: false) == .fly)
+        #expect(AppState.move(between: panel, and: .now, whole: false, fly: false) == .push)
         #expect(AppState.move(between: .tracks(playlist: "x"), and: .now, whole: false) == .push)
         #expect(AppState.move(between: .main, and: .playlists, whole: false) == .push)
     }

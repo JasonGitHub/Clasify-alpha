@@ -618,6 +618,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
+    let wasOverPanel = s.nowOverPanel
     let wasAuth = s.top.screen == .auth
     let rowBefore = s.halfRow
     let wasOffline = s.offline
@@ -631,7 +632,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         // Between a half screen and a full one, the whole screen moves; otherwise only the content.
         let whole = s.isHalf(before.1) != s.isHalf(s.top.screen)
         if whole { s.wholeSeq += 1 }
-        s.navMove = AppState.move(between: before.1, and: s.top.screen, whole: whole)
+        // The cover flies only to and from a Now Playing that shows the panel's album.
+        let fly = before.1 == .now ? wasOverPanel : s.nowOverPanel
+        s.navMove = AppState.move(between: before.1, and: s.top.screen, whole: whole, fly: fly)
     }
     // A list shows its scroll bar for a moment when it appears: on a new screen, or when its
     // load ends. A reset starts with no bar.

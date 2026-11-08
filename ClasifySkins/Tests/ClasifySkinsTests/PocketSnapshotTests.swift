@@ -540,6 +540,39 @@ import Testing
         #expect(shot.isLight(Self.screenLeft + 10, Self.listTop + 120))
     }
 
+    @Test func theCoverFliesFromThePanelToNowPlayingsCover() {
+        let size = CGSize(width: 244, height: 197)
+        func at(_ fly: Double, _ p: CGPoint) -> CGPoint { p.applying(FlyEffect(fly: fly).effectValue(size: size)) }
+        func near(_ a: CGPoint, _ b: CGPoint) -> Bool { abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01 }
+        // At the start the card is the panel, turned over: its left edge is on the right.
+        #expect(near(at(0, .zero), CGPoint(x: 244, y: 0)))
+        // At the end it is Now Playing's 126.6 point cover, with the photo's tilt, at (9, 14.6):
+        // 19 points left of and 5.6 under the panel's top left (28, 9).
+        #expect(near(at(1, .zero), CGPoint(x: -19, y: 5.6)))
+        let corner = CGPoint(x: 126.6, y: 126.6).applying(Tilt().effectValue(size: size))
+        #expect(near(at(1, CGPoint(x: 244, y: 197)), CGPoint(x: corner.x - 19, y: corner.y + 5.6)))
+    }
+
+    @Test func nowPlayingOverTheSongPanelLooksLikeNowPlaying() throws {
+        var s = sampleState()
+        let album = Album(id: "spotify:album:h", name: "Hey", artist: "OutKast")
+        s.library[0].tracks[1].album = album
+        s.current = TrackRef(playlist: album.id, track: "spotify:track:2")
+        s.isPlaying = true
+        s.t = 61
+        s.stack += [Frame(screen: .now)]
+        let plain = try render(s, "now-plain")
+        s.stack = [Frame(screen: .main), Frame(screen: .coverFlow), Frame(screen: .albumPanel(album: album.id)), Frame(screen: .now)]
+        #expect(s.nowOverPanel)
+        let over = try render(s, "now-over-panel")
+        // The cover, the text and the bars are where the plain Now Playing has them.
+        for (x, y) in [(16, 75), (70, 80), (150, 120), (150, 200), (250, 230)] {
+            let a = plain.rgb(Self.screenLeft + x, y), b = over.rgb(Self.screenLeft + x, y)
+            let diff: Int = abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b)
+            #expect(diff < 30, "at \(x), \(y): \(a) vs \(b)")
+        }
+    }
+
     @Test func settings() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
