@@ -451,6 +451,28 @@ import Testing
         #expect(CoverFlowStrip.pose(7).opacity == 0 && abs(CoverFlowStrip.pose(6.5).opacity - 0.5) < 1e-9)
     }
 
+    @Test func theDoorsFollowTheMockupTimes() {
+        func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
+        // `side` runs linearly over 0.6 s on the way in and 0.35 s on the way back.
+        let opening = { (t: Double) in DoorsStage(side: -t / DoorsStage.openTime, forward: true) }
+        let behind = { (t: Double) in DoorsStage(side: 1 - t / DoorsStage.openTime, forward: true) }
+        #expect(close(opening(0).open, 0))  // closed at the press
+        #expect(opening(0.125).open > 0 && opening(0.125).open < 0.5)  // speeding up
+        #expect(close(opening(0.25).open, 1) && close(opening(0.6).open, 1))  // open after 0.25 s
+        #expect(behind(0).headerY == -20 && behind(0).names == 0)  // Cover Flow: no title bar, no names
+        #expect(behind(0.44).names == 0 && close(behind(0.5).names, 0.5) && close(behind(0.55).names, 1))
+        #expect(behind(0.49).headerY == -20 && close(behind(0.6).headerY, 0))  // the title bar from 0.5 s
+        #expect(behind(0.6).names == 1 && close(behind(0.6).open, 0))
+        // MENU: the names go at once, the title bar goes up in 0.1 s, then the doors close.
+        let leaving = { (t: Double) in DoorsStage(side: -t / DoorsStage.closeTime, forward: false) }
+        let closing = { (t: Double) in DoorsStage(side: 1 - t / DoorsStage.closeTime, forward: false) }
+        #expect(leaving(0).names == 1 && close(leaving(0).headerY, 0) && leaving(0.01).names == 0)
+        #expect(close(leaving(0.1).headerY, -20))
+        #expect(close(closing(0).open, 1) && close(closing(0.1).open, 1))  // open until 0.1 s
+        #expect(closing(0.2).open < 0.5)  // quick at first, slowing down at the end
+        #expect(close(closing(0.35).open, 0))
+    }
+
     @Test func coverFlowShowsTheMiddleAlbumAndTheLetter() throws {
         let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))

@@ -36,6 +36,25 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(playing.rows(for: playing.top).prefix(2) == [.nowPlaying, .coverFlow])
     }
 
+    @Test func theMainMenuOpensAndClosesLikeDoorsOnlyToCoverFlow() {
+        var s = withCoverFlow(tenAlbums)
+        send(&s, .select, now: 150)
+        #expect(s.navDoors && s.navForward)  // the menu opens like two doors
+        send(&s, .select, now: 151)  // an album's songs: a normal slide
+        #expect(!s.navDoors)
+        send(&s, .menu, now: 152)
+        #expect(!s.navDoors)  // back to Cover Flow from a full screen
+        send(&s, .menu, now: 153)
+        #expect(s.navDoors && !s.navForward)  // the doors close
+        send(&s, .wheel(2), .select, now: 154)  // Albums: both half screens, only the list slides
+        #expect(!s.navDoors)
+        // With Album Art off, the main menu is a full screen: no whole move, so no doors.
+        var off = withCoverFlow(tenAlbums)
+        off.albumArt = .off
+        send(&off, .select, now: 150)
+        #expect(off.top.screen == .coverFlow && !off.navDoors)
+    }
+
     @Test func itOpensWhereYouLeftItAndOnThePlayingAlbum() {
         var s = withCoverFlow(tenAlbums)
         send(&s, .select, now: 150)

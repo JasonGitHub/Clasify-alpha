@@ -77,6 +77,20 @@ struct PocketScreen: View {
 
     static let slideAnimation = Animation.timingCurve(0.2, 0.7, 0.3, 1, duration: 0.22)
 
+    /// A whole-screen move: a push, or the doors between the main menu and Cover Flow.
+    private var whole: AnyTransition {
+        if reduceMotion { return .identity }
+        return .asymmetric(insertion: .modifier(active: ScreenMove(side: 1), identity: ScreenMove(side: 0)),
+                           removal: .modifier(active: ScreenMove(side: -1), identity: ScreenMove(side: 0)))
+    }
+
+    /// The slide's curve, or for the doors a linear time that `DoorsStage` shapes.
+    private var moveAnimation: Animation? {
+        if reduceMotion { return nil }
+        guard state.navDoors else { return Self.slideAnimation }
+        return .linear(duration: state.navForward ? DoorsStage.openTime : DoorsStage.closeTime)
+    }
+
     /// Shows at once, and on removal stays until the slide ends.
     private var stay: AnyTransition {
         if reduceMotion { return .identity }
@@ -95,10 +109,14 @@ struct PocketScreen: View {
             if split {
                 // On the way out, the covers stay until the pane has widened over them.
                 MainArtPanel(tracks: state.mainArt).padding(.leading, Pocket.paneWidth).transition(stay)
+                    .modifier(DoorHalf(side: 1))
             }
             VStack(spacing: 0) {
-                header
-                Pocket.line.frame(height: 1)
+                VStack(spacing: 0) {
+                    header
+                    Pocket.line.frame(height: 1)
+                }
+                .modifier(DoorsHeader())
                 ZStack(alignment: .leading) {
                     // Each screen keeps its own width while it slides, so its text does not reflow.
                     content.frame(width: width).frame(maxHeight: .infinity)
@@ -121,6 +139,7 @@ struct PocketScreen: View {
                         .transition(stay)
                 }
             }
+            .modifier(DoorHalf(side: -1))
         }
     }
 
@@ -128,13 +147,16 @@ struct PocketScreen: View {
         ZStack {
             // Between a half screen and a full one, the whole screen moves, with its title bar,
             // the pane and the covers. Other moves slide only the content (`parts`).
+            // In the doors move, the main menu's doors open over Cover Flow and close over it.
             parts.frame(width: Pocket.screenWidth, height: Pocket.screenHeight, alignment: .leading)
                 .id(state.wholeSeq)
-                .transition(slide)
+                .transition(whole)
+                .zIndex(top.screen == .coverFlow ? 0 : 1)
         }
         .clipped()
         .environment(\.navForward, state.navForward)
-        .animation(reduceMotion ? nil : Self.slideAnimation, value: state.navSeq)
+        .environment(\.navDoors, state.navDoors)
+        .animation(moveAnimation, value: state.navSeq)
         .overlay(alignment: .bottom) {
             if !state.toast.isEmpty { toast }
         }
