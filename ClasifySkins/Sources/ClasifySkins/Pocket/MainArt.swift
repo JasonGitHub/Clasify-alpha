@@ -88,6 +88,9 @@ struct MainArt: View {
     /// 338 pt) when it was in memory when the turn began, else the default one (about 300 px).
     /// So a cover never changes while it shows: a large cover that loads during a turn shows
     /// from that cover's next turn. `turnStart` and `loadedAt` are seconds since the reference date.
+    /// One cover only (a one-album list): its single turn lasts as long as the panel. So with
+    /// a cold cache it keeps the default cover until the panel is made again, and never swaps
+    /// while it shows. With the large cover already in memory, it is sharp from the start.
     static func coverID(
         for track: ClasifyCore.Track, turnStart: Double, loaded: (String) -> Bool, loadedAt: (String) -> Double?
     ) -> String? {
