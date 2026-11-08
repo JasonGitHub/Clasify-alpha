@@ -4,7 +4,7 @@ import SwiftUI
 /// `Push`: 1 is the incoming screen before it comes in, -1 the outgoing screen after it goes,
 /// and 0 a screen in place. Most moves push, as `Push` does.
 ///
-/// Between the main menu and Cover Flow (`AppState.navDoors`), the menu opens like two doors
+/// Between the main menu and Cover Flow (`AppState.navMove` is `.doors`), the menu opens like two doors
 /// instead (Round 9, card AE, change 82): the left half (the title bar and the list) slides
 /// left and fades out, and the right half (the covers) slides right. Cover Flow is behind
 /// them, with no title bar and no names. The names fade in, then the title bar slides down.

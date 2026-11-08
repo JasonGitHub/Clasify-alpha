@@ -115,6 +115,8 @@ public let visibleRows = 9
 /// Song lists show two lines a row (title and artist), so fewer rows fit. The count stays
 /// the same when the bar shows: the rows get shorter instead.
 public let trackRows = 5
+/// The song rows that show at once in Cover Flow's song panel (card AF): 6, and part of a 7th.
+public let panelRows = 6
 /// Seconds after a seek in which `.position` ignores a position far from the seek target.
 let seekSettle = 3.0
 /// How far a position can be from the seek target, plus the time since the seek, and still be taken.
@@ -362,11 +364,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 return
             }
             if s.top.screen == .coverFlow {
-                // Until the song panel (CLA-38): the album's songs in the normal song list.
+                // The album's songs in the song panel, or in the normal song list until the panel is drawn (TEMP).
                 let albums = s.albums
                 guard !s.top.loading, albums.indices.contains(s.top.sel) else { return }
                 s.letterUntil = 0; s.coverFlowSteps = []  // so MENU comes back with no letter
-                return open(.tracks(playlist: albums[s.top.sel].id))
+                let id = albums[s.top.sel].id
+                return open(s.albumPanelOn ? .albumPanel(album: id) : .tracks(playlist: id))
             }
             guard s.top.screen.isList, !s.top.loading else { return }
             let rows = s.rows(for: s.top)
@@ -395,7 +398,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .playlist(let id): open(.tracks(playlist: id))
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
-                if case .tracks(let pl) = s.top.screen { play(pl, id) }
+                if let list = s.top.screen.songList { play(list, id) }
             case .shuffle: toggleShuffle()
             case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
@@ -629,8 +632,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         // Between a half screen and a full one, the whole screen moves; otherwise only the content.
         let whole = s.isHalf(before.1) != s.isHalf(s.top.screen)
         if whole { s.wholeSeq += 1 }
-        let ends = (before.1, s.top.screen)
-        s.navDoors = whole && (ends == (.main, .coverFlow) || ends == (.coverFlow, .main))
+        s.navMove = AppState.move(between: before.1, and: s.top.screen, whole: whole)
     }
     // A list shows its scroll bar for a moment when it appears: on a new screen, or when its
     // load ends. A reset starts with no bar.
