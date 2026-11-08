@@ -29,7 +29,9 @@ struct CoverFlowStrip: View, Animatable {
     var pos: Double
     @Environment(\.artwork) private var artwork
 
-    var animatableData: Double {
+    // `Animatable` is nonisolated while `View` is on the main actor. `pos` is a plain Double
+    // in a value type, so reading and writing it from any isolation is safe.
+    nonisolated var animatableData: Double {
         get { pos }
         set { pos = newValue }
     }
