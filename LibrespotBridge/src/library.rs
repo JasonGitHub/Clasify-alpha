@@ -4,7 +4,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::ffi::{c_char, c_void, CString};
 
-use librespot_core::{FileId, Session};
+use librespot_core::{FileId, Session, SpotifyId};
 use librespot_protocol::context_page::ContextPage;
 use librespot_protocol::extended_metadata::{
     BatchedEntityRequest, BatchedExtensionResponse, EntityRequest, ExtensionQuery,
@@ -32,14 +32,22 @@ pub(crate) struct Playlist {
     pub track_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Track {
     pub uri: String,
     pub title: String,
     pub artist: String,
     /// The album cover's image file ID in lowercase hex, or empty when there is none.
     pub cover_id: String,
+    /// Like `spotify:album:<id>`, or empty when the track has no album.
+    pub album_uri: String,
+    pub album_name: String,
+    /// The album's artists, joined with ", ". Empty when Spotify gives none.
+    pub album_artist: String,
     pub duration_ms: u32,
+    /// The disc and the track's place on it, from 1. 0 when Spotify does not give it.
+    pub disc_number: u32,
+    pub track_number: u32,
 }
 
 /// One decoded rootlist page.
@@ -225,6 +233,17 @@ pub(crate) fn cover_id(track: &TrackMessage) -> String {
         .unwrap_or_default()
 }
 
+/// The album's URI, like `spotify:album:<id>`, or empty when the track has no album ID.
+pub(crate) fn album_uri(track: &TrackMessage) -> String {
+    track
+        .album
+        .as_ref()
+        .and_then(|album| SpotifyId::from_raw(album.gid()).ok())
+        .and_then(|id| id.to_base62().ok())
+        .map(|id| format!("spotify:album:{id}"))
+        .unwrap_or_default()
+}
+
 /// The tracks for `uris`, in the same order. A track without metadata is left out.
 pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[String]) -> Vec<Track> {
     let mut found: HashMap<&str, Track> = HashMap::new();
@@ -241,12 +260,21 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
             continue;
         };
         let artists: Vec<&str> = track.artist.iter().map(|a| a.name()).collect();
+        let album = track.album.as_ref();
+        let album_artists: Vec<&str> = album
+            .map(|a| a.artist.iter().map(|a| a.name()).collect())
+            .unwrap_or_default();
         let track = Track {
             uri: data.entity_uri.clone(),
             title: track.name().to_owned(),
             artist: artists.join(", "),
             cover_id: cover_id(&track),
+            album_uri: album_uri(&track),
+            album_name: album.map_or("", |a| a.name()).to_owned(),
+            album_artist: album_artists.join(", "),
             duration_ms: track.duration().max(0) as u32,
+            disc_number: track.disc_number().max(0) as u32,
+            track_number: track.number().max(0) as u32,
         };
         found.insert(data.entity_uri.as_str(), track);
     }
@@ -300,7 +328,12 @@ pub struct LsbTrack {
     pub title: *const c_char,
     pub artist: *const c_char,
     pub cover_id: *const c_char,
+    pub album_uri: *const c_char,
+    pub album_name: *const c_char,
+    pub album_artist: *const c_char,
     pub duration_ms: u32,
+    pub disc_number: u32,
+    pub track_number: u32,
 }
 
 pub type LsbPlaylistsCallback = extern "C" fn(
@@ -380,20 +413,37 @@ pub(crate) fn deliver_tracks(
             let texts: Vec<_> = tracks
                 .iter()
                 .map(|t| {
-                    let text = [&t.uri, &t.title, &t.artist, &t.cover_id];
+                    let text = [
+                        &t.uri,
+                        &t.title,
+                        &t.artist,
+                        &t.cover_id,
+                        &t.album_uri,
+                        &t.album_name,
+                        &t.album_artist,
+                    ];
                     text.map(|t| c_text(t))
                 })
                 .collect();
             let raw: Vec<_> = tracks
                 .iter()
                 .zip(&texts)
-                .map(|(t, [uri, title, artist, cover_id])| LsbTrack {
-                    uri: uri.as_ptr(),
-                    title: title.as_ptr(),
-                    artist: artist.as_ptr(),
-                    cover_id: cover_id.as_ptr(),
-                    duration_ms: t.duration_ms,
-                })
+                .map(
+                    |(t, [uri, title, artist, cover_id, album_uri, album_name, album_artist])| {
+                        LsbTrack {
+                            uri: uri.as_ptr(),
+                            title: title.as_ptr(),
+                            artist: artist.as_ptr(),
+                            cover_id: cover_id.as_ptr(),
+                            album_uri: album_uri.as_ptr(),
+                            album_name: album_name.as_ptr(),
+                            album_artist: album_artist.as_ptr(),
+                            duration_ms: t.duration_ms,
+                            disc_number: t.disc_number,
+                            track_number: t.track_number,
+                        }
+                    },
+                )
                 .collect();
             callback(context, LSB_OK, std::ptr::null(), raw.as_ptr(), raw.len());
         }
