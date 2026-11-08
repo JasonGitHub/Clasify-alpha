@@ -50,7 +50,7 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .wheel(-3))
         #expect(s.top.sel == 0)
         send(&s, .wheel(99))
-        #expect(s.top.sel == 3)  // clamped to last row
+        #expect(s.top.sel == 4)  // clamped to last row
 
         s = playing()
         send(&s, .menu, .wheel(7))  // back to Focus tracks: 5 rows, with the bar too
@@ -76,7 +76,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func selectPushesScreensAndTogglesSettings() {
         var s = mainMenu()
-        send(&s, .wheel(3), .select)
+        send(&s, .wheel(4), .select)
         #expect(s.top.screen == .settings)
         send(&s, .select, .wheel(1), .select, .select)
         #expect(s.shuffle && s.repeatMode == .one)
@@ -94,7 +94,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func deviceColorGoesSilverBlackSilver() {
         var s = mainMenu()
-        send(&s, .wheel(3), .select)
+        send(&s, .wheel(4), .select)
         #expect(s.rows(for: s.top) == [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut])
         #expect(s.deviceColor == .silver)  // the default
         send(&s, .wheel(3), .select)
@@ -108,7 +108,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func aboutShowsTheNextSceneEachTimeItOpens() {
         var s = mainMenu()
-        send(&s, .wheel(3), .select, .wheel(5))  // Settings, on the About row
+        send(&s, .wheel(4), .select, .wheel(5))  // Settings, on the About row
         #expect(s.rows(for: s.top)[s.top.sel] == .about && s.aboutScene == 0)
         var scenes: [Int] = []
         for _ in 0..<4 {
@@ -147,7 +147,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func shuffleSongsLoadsLikedSongsFirst() {
         var s = mainMenu()  // fresh sign-in: nothing read yet
-        #expect(send(&s, .wheel(2), .select) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
+        #expect(send(&s, .wheel(3), .select) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
         #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
         let load: [Effect] = [.setShuffle(true), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
         #expect(send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == load)
@@ -158,7 +158,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .select).contains(.load(trackID: "l0", context: "liked", autoplay: true, generation: 2)))
 
         s = mainMenu()
-        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))  // read fails
+        send(&s, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))  // read fails
         #expect(s.top.error)
         send(&s, .select, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks))  // retry succeeds and still shuffles
         #expect(s.top.screen == .now && s.shuffle && s.current?.track == "l0")
@@ -214,7 +214,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func shuffleAndRepeatSettingsGoToEngine() {
         var s = mainMenu()
-        send(&s, .wheel(3), .select)  // Settings
+        send(&s, .wheel(4), .select)  // Settings
         #expect(send(&s, .select) == [.setShuffle(true)])
         #expect(send(&s, .wheel(1), .select) == [.setRepeat(.all)])
         #expect(send(&s, .select) == [.setRepeat(.one)])
@@ -305,7 +305,7 @@ func playing(_ i: Int = 0) -> AppState {
         var s = mainMenu()
         send(&s, .tick, now: 102)
         #expect(s.scrollUntil == 0)
-        send(&s, .wheel(1))
+        send(&s, .wheel(2))
         #expect(s.scrollUntil == 100 + scrollBarTime)
         send(&s, .tick, now: 101)
         #expect(s.scrollUntil == 101.5)  // still showing
@@ -361,11 +361,11 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.mainArt.map(\.id) == ["f3"])  // Now Playing: the playing cover only
         send(&s, .wheel(1), now: 200)  // Playlists
         #expect(s.mainArt.map(\.id) == ["f3"] && s.artUntil == 200 + artDelay)  // not yet
-        send(&s, .wheel(1), now: 200.2)  // Liked Songs: a fast scroll waits again
+        send(&s, .wheel(1), now: 200.2)  // Albums: a fast scroll waits again
         send(&s, .tick, now: 200.4)
         #expect(s.mainArt.map(\.id) == ["f3"])
         send(&s, .tick, now: 200.6)
-        #expect(s.artRow == .likedSongs && s.artUntil == 0)
+        #expect(s.artRow == .albums && s.artUntil == 0)
         #expect(s.mainArt.count == mainArtCount && s.mainArt.allSatisfy { $0.id.hasPrefix("l") })
         send(&s, .wheel(-1), now: 300)
         send(&s, .tick, now: 301)
@@ -434,13 +434,13 @@ func playing(_ i: Int = 0) -> AppState {
         var s = AppState()
         #expect(send(&s, .launch, .restored(token: 1, ok: true)).last == .readArtTracks(token: 1, playlist: Playlist.likedSongsID))
         #expect(s.artRow == .playlists && s.mainArt.isEmpty)
-        #expect(send(&s, .wheel(1), .tick, now: 101).isEmpty)  // Liked Songs: the read already runs
+        #expect(send(&s, .wheel(2), .tick, now: 101).isEmpty)  // Liked Songs: the read already runs
         send(&s, .artTracksRead(token: 1, playlist: Playlist.likedSongsID, tracks: Self.likedCovers.tracks), now: 102)
         #expect(s.loadedTracks == [Playlist.likedSongsID] && s.library.map(\.id) == [Playlist.likedSongsID])
         #expect(s.mainArt.count == mainArtCount && s.mainArt.allSatisfy { $0.id.hasPrefix("l") })
         send(&s, .select, now: 103)  // Liked Songs opens with no read
         #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && !s.top.loading)
-        send(&s, .menu, .wheel(-1), .select, .playlistsLoaded(token: s.tok + 1, playlists: [focusInfo]), now: 104)
+        send(&s, .menu, .wheel(-2), .select, .playlistsLoaded(token: s.tok + 1, playlists: [focusInfo]), now: 104)
         #expect(s.library.map(\.id) == [Playlist.likedSongsID, "focus"] && s.rows(for: s.top) == [.playlist("focus")])
         #expect(s.tracks(in: Playlist.likedSongsID) == Self.likedCovers.tracks)  // the list load keeps the read
         // Offline at first open, nothing is read.
@@ -473,7 +473,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.navSeq == 1 && s.navForward)
         send(&s, .authDone(token: 1, ok: true))  // the main menu replaces login: still forward
         #expect(s.navSeq == 2 && s.navForward)
-        send(&s, .wheel(1))  // no screen change
+        send(&s, .wheel(2))  // no screen change
         #expect(s.navSeq == 2)
         send(&s, .select)  // Liked Songs opens
         #expect(s.navSeq == 3 && s.navForward)
@@ -637,11 +637,11 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func adoptedShowsWhatSpotifyPlaysWithoutOpeningNowPlaying() {
         var s = mainMenu()
-        send(&s, .wheel(1))  // Liked Songs
+        send(&s, .wheel(2))  // Liked Songs
         #expect(send(&s, .adopted(track: "f2", playlist: "focus", playing: false, position: 12, generation: 0)) == [])
         #expect(s.current == TrackRef(playlist: "focus", track: "f2") && !s.isPlaying && s.t == 12)
-        #expect(s.top.screen == .main && s.rows(for: s.top) == [.nowPlaying, .playlists, .likedSongs, .shuffleSongs, .settings])
-        #expect(s.top.sel == 2)  // still Liked Songs
+        #expect(s.top.screen == .main && s.rows(for: s.top) == [.nowPlaying, .playlists, .albums, .likedSongs, .shuffleSongs, .settings])
+        #expect(s.top.sel == 3)  // still Liked Songs
         #expect(send(&s, .play) == [.resume] && s.isPlaying)  // Play works at once
         s = mainMenu()
         send(&s, .adopted(track: "zz", playlist: nil, playing: true, position: 3, generation: 0))  // a station
@@ -718,7 +718,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .libraryStale, now: 101) == [.refreshTracks(playlist: "focus"), .refreshPlaylists])
         #expect(s.readAt.isEmpty)
         s.refreshing = []
-        send(&s, .menu, .menu, .wheel(1), .select, now: 102)  // Liked Songs: not read yet, so it loads
+        send(&s, .menu, .menu, .wheel(2), .select, now: 102)  // Liked Songs: not read yet, so it loads
         #expect(send(&s, .libraryStale, now: 103) == [.refreshPlaylists])  // the loading list is not read twice
     }
 
@@ -795,7 +795,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.loading && !s.loadedTracks.contains("focus"))
         send(&s, .tracksLoaded(token: 2, playlist: "focus", tracks: focus.tracks))
         #expect(!s.top.loading && s.rows(for: s.top).count == 8 && s.loadedTracks == ["focus"])
-        send(&s, .menu, .menu, .wheel(1), .select, .tracksLoaded(token: 3, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        send(&s, .menu, .menu, .wheel(2), .select, .tracksLoaded(token: 3, playlist: Playlist.likedSongsID, tracks: liked.tracks))
         #expect(s.library.map(\.id) == [Playlist.likedSongsID, "focus"])  // Liked Songs goes first
     }
 
@@ -917,7 +917,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func logOutGoesThroughConfirm() {
         var s = playing()
-        send(&s, .menu, .menu, .menu, .wheel(4), .select, .wheel(6), .select)
+        send(&s, .menu, .menu, .menu, .wheel(5), .select, .wheel(6), .select)
         #expect(s.top.screen == .confirm)
         send(&s, .select)  // Cancel
         #expect(s.top.screen == .settings)
@@ -956,18 +956,18 @@ func playing(_ i: Int = 0) -> AppState {
 
 /// The wheel clicks only when a step moves something. Past an end it is silent.
 @MainActor @Test func wheelClicksOnlyWhenSomethingMoves() {
-    var s = mainMenu()  // four rows
+    var s = mainMenu()  // five rows
     let store = Store(player: FakePlayer(), library: FakeLibrary(), state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
     var clicks = 0
     store.onWheelStep = { clicks += 1 }
     store.send(.wheel(-1))  // already at the top
     #expect(clicks == 0)
-    store.send(.wheel(1)); store.send(.wheel(1)); store.send(.wheel(1))
-    #expect(clicks == 3 && store.state.top.sel == 3)
+    for _ in 0..<4 { store.send(.wheel(1)) }
+    #expect(clicks == 4 && store.state.top.sel == 4)
     store.send(.wheel(1))  // already at the bottom
-    #expect(clicks == 3)
+    #expect(clicks == 4)
     store.send(.select)  // a button press is not a wheel step
-    #expect(clicks == 3)
+    #expect(clicks == 4)
 
     s = playing()
     s.volume = 100

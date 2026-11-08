@@ -35,6 +35,22 @@ func sampleState() -> AppState {
         #expect(Labels.title(.now, in: s) == "Now Playing")
     }
 
+    @Test func albumRowsShowTheAlbumAndItsArtist() {
+        var s = sampleState()
+        let album = Album(id: "spotify:album:n", name: "Nevermind")  // no album artist from Spotify
+        s.library[0].tracks[0].album = album
+        #expect(Labels.title(.albums, in: s) == "Albums")
+        #expect(Labels.row(.albums, on: .main, in: s) == .init(label: "Albums", opens: true))
+        // Two lines, like a song row; the artist of its first song stands in.
+        #expect(Labels.row(.album(album.id), on: .albums, in: s) == .init(label: "Nevermind", detail: "M.I.A."))
+        #expect(Labels.title(.tracks(playlist: album.id), in: s) == "Nevermind")  // the album's song list
+        s.current = TrackRef(playlist: album.id, track: "spotify:track:1")
+        #expect(Labels.now(in: s)?.list == "Nevermind" && Labels.now(in: s)?.count == "1 of 1")
+        s.stack = [Frame(screen: .main), Frame(screen: .albums)]
+        s.library[0].tracks[0].album = nil
+        #expect(Labels.message(for: s.top, in: s)?.title == "No albums")
+    }
+
     @Test func settingsRowsShowTheirValues() {
         var s = sampleState()
         s.shuffle = true

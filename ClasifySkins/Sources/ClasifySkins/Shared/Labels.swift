@@ -9,6 +9,8 @@ enum Labels {
         case .login, .main: "Clasify"
         case .auth: "Sign in"
         case .playlists: "Playlists"
+        case .albums: "Albums"
+        case .tracks(let id) where Album.isID(id): state.album(id)?.name ?? ""
         case .tracks(let id): state.library.first { $0.id == id }?.name ?? (id == Playlist.likedSongsID ? "Liked Songs" : "")
         case .settings: "Settings"
         case .confirm: "Log out?"
@@ -34,11 +36,16 @@ enum Labels {
         case .logIn: return RowText(label: "Log in with Spotify", opens: true)
         case .nowPlaying: return RowText(label: "Now Playing", opens: true)
         case .playlists: return RowText(label: "Playlists", opens: true)
+        case .albums: return RowText(label: "Albums", opens: true)
         case .likedSongs: return RowText(label: "Liked Songs", opens: true)
         case .shuffleSongs: return RowText(label: "Shuffle Songs")
         case .settings: return RowText(label: "Settings", opens: true)
         case .playlist(let id):
             return RowText(label: state.library.first { $0.id == id }?.name ?? "", opens: true)
+        case .album(let id):
+            // Two lines, like a song row: the album, then its artist.
+            let album = state.album(id)
+            return RowText(label: album?.name ?? "", detail: album?.artist ?? "")
         case .track(let id):
             guard case .tracks(let playlist) = screen else { return RowText(label: "") }
             let ref = TrackRef(playlist: playlist, track: id)
@@ -75,6 +82,8 @@ enum Labels {
             return Message(title: "Signing in…", spinner: true)
         case .tracks where state.rows(for: frame).isEmpty:
             return Message(title: "No songs", body: "Add songs to this playlist in Spotify. Press MENU to go back.")
+        case .albums where state.rows(for: frame).isEmpty:
+            return Message(title: "No albums", body: "Like songs in Spotify to see their albums. Press MENU to go back.")
         case .auth:
             return Message(
                 title: "Waiting for browser…", body: "Approve Clasify in your browser. Spotify Premium required.",

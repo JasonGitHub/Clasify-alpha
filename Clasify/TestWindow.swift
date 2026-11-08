@@ -119,7 +119,8 @@ private struct TestPanel: View {
         case .login, .main: "Clasify"
         case .auth: "Sign in"
         case .playlists: "Playlists"
-        case .tracks(let id): state.library.first { $0.id == id }?.name ?? "Tracks"
+        case .albums: "Albums"
+        case .tracks(let id): state.library.first { $0.id == id }?.name ?? state.album(id)?.name ?? "Tracks"
         case .settings: "Settings"
         case .confirm: "Log out?"
         case .about: "About"
@@ -132,10 +133,12 @@ private struct TestPanel: View {
         case .logIn: "Log in with Spotify"
         case .nowPlaying: "Now Playing"
         case .playlists: "Playlists"
+        case .albums: "Albums"
         case .likedSongs: "Liked Songs"
         case .shuffleSongs: "Shuffle Songs"
         case .settings: "Settings"
         case .playlist(let id): state.library.first { $0.id == id }?.name ?? id
+        case .album(let id): state.album(id)?.name ?? id
         case .track(let id): trackLabel(id)
         case .shuffle: "Shuffle: \(state.shuffle ? "On" : "Off")"
         case .repeatMode: "Repeat: \(state.repeatMode.rawValue)"

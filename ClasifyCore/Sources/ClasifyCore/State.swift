@@ -1,3 +1,5 @@
+import Foundation
+
 public struct Track: Equatable, Sendable {
     public var id: String  // Spotify URI
     public var title: String
@@ -34,10 +36,28 @@ public struct Album: Equatable, Hashable, Sendable {
         self.artist = artist.flatMap { $0.isEmpty ? nil : $0 }
     }
 
+    /// True for an album URI. A song list of an album (`Screen.tracks` with this ID) shows the
+    /// album's songs from Liked Songs.
+    public static func isID(_ id: String) -> Bool { id.hasPrefix("spotify:album:") }
+
     /// The album from the bridge's fields, where "" means missing. Nil with no album URI.
     public static func from(id: String?, name: String?, artist: String?) -> Album? {
         guard let id, !id.isEmpty else { return nil }
         return Album(id: id, name: name ?? "", artist: artist)
+    }
+}
+
+extension Album {
+    /// Sorts names that start with a letter after the others, then by the name with no case or accents.
+    struct SortKey: Comparable {
+        var letter: Bool, name: String
+
+        init(_ name: String) {
+            self.name = name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            letter = self.name.first?.isLetter ?? false
+        }
+
+        static func < (a: SortKey, b: SortKey) -> Bool { (a.letter ? 1 : 0, a.name) < (b.letter ? 1 : 0, b.name) }
     }
 }
 
@@ -58,12 +78,14 @@ public struct Playlist: Equatable, Sendable {
 }
 
 public enum Screen: Equatable, Sendable {
-    case login, auth, main, playlists, tracks(playlist: String), settings, confirm, about, now
+    /// `tracks` shows a playlist, Liked Songs, or an album's songs from Liked Songs (`Album.isID`).
+    /// `albums` lists the albums in Liked Songs.
+    case login, auth, main, playlists, albums, tracks(playlist: String), settings, confirm, about, now
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
-        case .login, .main, .playlists, .tracks, .settings, .confirm: true
+        case .login, .main, .playlists, .albums, .tracks, .settings, .confirm: true
         case .auth, .about, .now: false
         }
     }
@@ -83,8 +105,8 @@ public struct Frame: Equatable, Sendable {
 
 /// A selectable list row. Skins map rows to labels and values.
 public enum Row: Equatable, Sendable {
-    case logIn, nowPlaying, playlists, likedSongs, shuffleSongs, settings
-    case playlist(String), track(String)
+    case logIn, nowPlaying, playlists, albums, likedSongs, shuffleSongs, settings
+    case playlist(String), album(String), track(String)
     case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, about, logOut
     case cancel, confirmLogOut
 }
@@ -262,8 +284,10 @@ public struct AppState: Equatable, Sendable {
     /// The list rows that show at once: `visibleRows`, or `trackRows` for the taller two-line
     /// song rows. The bar takes no row: the song rows get shorter while it shows.
     public var shownRows: Int {
-        if case .tracks = top.screen { return trackRows }
-        return visibleRows
+        switch top.screen {
+        case .tracks, .albums: return trackRows  // two-line rows
+        default: return visibleRows
+        }
     }
 
     /// The selected row of the main menu, or nil on another screen.
@@ -274,9 +298,9 @@ public struct AppState: Equatable, Sendable {
     }
 
     /// The screen is a half screen: a list pane on the left half with the covers on its right. With Album
-    /// Art set to All, these are the main menu and Playlists.
+    /// Art set to All, these are the main menu, Playlists and Albums.
     public func isHalf(_ screen: Screen) -> Bool {
-        albumArt == .all && (screen == .main || screen == .playlists)
+        albumArt == .all && (screen == .main || screen == .playlists || screen == .albums)
     }
 
     /// The selected row of a half screen, whose covers show. Nil on other screens, and while
@@ -293,6 +317,7 @@ public struct AppState: Equatable, Sendable {
     /// - Liked Songs, Shuffle Songs and Settings: albums from Liked Songs.
     /// - A playlist on the Playlists screen: albums from that playlist. Until its tracks are
     ///   read, or when the read failed or has no covers, the covers that show stay.
+    /// - An album on the Albums screen: that album's cover.
     /// Up to `mainArtCount` albums, each cover once, in a random order that `artSeed` sets.
     /// With none of these, the playing track's cover. Tracks with no cover are left out.
     public mutating func refreshArt() {
@@ -300,8 +325,8 @@ public struct AppState: Equatable, Sendable {
         let liked = tracks(in: Playlist.likedSongsID)
         var pool: [Track]
         switch artRow {
-        case .playlist(let id)?:
-            let picks = Self.albums(loadedTracks.contains(id) ? tracks(in: id) : [], seed: artSeed, count: mainArtCount)
+        case .playlist(let id)?, .album(let id)?:
+            let picks = Self.albums(isLoaded(.tracks(playlist: id)) ? tracks(in: id) : [], seed: artSeed, count: mainArtCount)
             if !picks.isEmpty { mainArt = picks }
             return
         case .nowPlaying?:
@@ -340,18 +365,56 @@ public struct AppState: Equatable, Sendable {
     public func isLoaded(_ screen: Screen) -> Bool {
         switch screen {
         case .playlists: playlistsLoaded
-        case .tracks(let id): loadedTracks.contains(id)
+        case .tracks(let id): loadedTracks.contains(Self.source(id))
+        case .albums: loadedTracks.contains(Playlist.likedSongsID)
         default: true
         }
     }
 
-    /// The `readAt` key of a list screen: the playlist ID, or "" for the playlist list.
+    /// The list that a song list reads: Liked Songs for an album, else the playlist itself.
+    public static func source(_ id: String) -> String { Album.isID(id) ? Playlist.likedSongsID : id }
+
+    /// The `readAt` key of a list screen: the playlist ID that it reads, or "" for the playlist list.
     public static func readKey(_ screen: Screen) -> String {
-        if case .tracks(let id) = screen { id } else { "" }
+        switch screen {
+        case .tracks(let id): source(id)
+        case .albums: Playlist.likedSongsID
+        default: ""
+        }
     }
 
+    /// A playlist's tracks. For an album ID, the album's songs in Liked Songs, in disc and track order.
     public func tracks(in playlist: String) -> [Track] {
-        library.first { $0.id == playlist }?.tracks ?? []
+        guard Album.isID(playlist) else { return library.first { $0.id == playlist }?.tracks ?? [] }
+        let songs = tracks(in: Playlist.likedSongsID).enumerated().filter { $0.element.album?.id == playlist }
+        let order = { (e: (offset: Int, element: Track)) in (e.element.disc ?? 1, e.element.number ?? Int.max, e.offset) }
+        return songs.sorted { order($0) < order($1) }.map(\.element)
+    }
+
+    /// An album in Liked Songs, by its URI, with the artist as `albums` gives it.
+    public func album(_ id: String) -> Album? {
+        guard let track = tracks(in: Playlist.likedSongsID).first(where: { $0.album?.id == id }), var album = track.album
+        else { return nil }
+        if album.artist == nil { album.artist = track.artist.isEmpty ? nil : track.artist }
+        return album
+    }
+
+    /// The albums in Liked Songs, each once: names that start with a number or a symbol first,
+    /// then A to Z, with no regard to case or accents. An album with no album artist from
+    /// Spotify takes the artist of its first song.
+    public var albums: [Album] {
+        var found: [String: Album] = [:]
+        var order: [String] = []
+        for track in tracks(in: Playlist.likedSongsID) {
+            guard var album = track.album, found[album.id] == nil else { continue }
+            if album.artist == nil { album.artist = track.artist.isEmpty ? nil : track.artist }
+            found[album.id] = album
+            order.append(album.id)
+        }
+        let keyed = order.compactMap { found[$0] }.map { album -> (key: Album.SortKey, album: Album) in
+            (Album.SortKey(album.name), album)
+        }
+        return keyed.sorted { ($0.key, $0.album.id) < ($1.key, $1.album.id) }.map(\.album)
     }
 
     /// The track in its playlist, else in `extraTracks`.
@@ -362,8 +425,9 @@ public struct AppState: Equatable, Sendable {
     public func rows(for frame: Frame) -> [Row] {
         switch frame.screen {
         case .login: restoring ? [] : [.logIn]
-        case .main: (current == nil ? [] : [.nowPlaying]) + [.playlists, .likedSongs, .shuffleSongs, .settings]
+        case .main: (current == nil ? [] : [.nowPlaying]) + [.playlists, .albums, .likedSongs, .shuffleSongs, .settings]
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
+        case .albums: albums.map { .album($0.id) }
         case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
         case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut]
