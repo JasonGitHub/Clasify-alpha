@@ -136,11 +136,14 @@ import Testing
             if n % 2 == 0 {  // left only, also across the loop
                 #expect(close(moves[n].x, -travel) && moves[n].y == 0)
             } else {  // right and down, on a diagonal
-                #expect(close(moves[n].x, travel) && close(moves[n].y, travel))
+                #expect(close(moves[n].x, travel) && close(moves[n].y, MainArt.drop))
             }
         }
-        // The cover is 338 points in the 150 x 225 panel, so the pan never shows an edge.
-        #expect(MainArt.coverSide == 338)
+        // The cover is 250 points in the 150 x 225 panel, so the pan never shows an edge.
+        #expect(MainArt.coverSide == 250 && MainArt.drop == 25)
+        // A down turn goes from 12.5 points up to 12.5 points down, the whole margin (card AL).
+        let down = MainArt.motion(at: MainArt.slot + 1, index: 1, count: 3)
+        #expect(down.from.y == -12.5 && down.to.y == 12.5)
         for i in 0..<3 {
             for t in stride(from: 0.0, to: 48, by: 0.25) {
                 let f = MainArt.pose(at: t, index: i, count: 3)
@@ -223,7 +226,7 @@ import Testing
         let m = MainArt.motion(at: 0, index: 0, count: 3)
         view.update(image: image, side: MainArt.coverSide, pan: m, elapsed: 0)
         view.layout()
-        #expect(view.cover.bounds.size == CGSize(width: 338, height: 338))
+        #expect(view.cover.bounds.size == CGSize(width: 250, height: 250))
         #expect(view.cover.position == CGPoint(x: 58, y: 90))
         let move = try #require(view.cover.animation(forKey: "pan") as? CABasicAnimation)
         #expect(move.keyPath == "position")
