@@ -28,6 +28,8 @@ struct CoverFlowStrip: View, Animatable {
     let covers: [String: String]
     var pos: Double
     @Environment(\.artwork) private var artwork
+    /// The doors move hides the names until they fade in (card AE, change 82).
+    @Environment(\.doorsStage) private var doors
 
     // `Animatable` is nonisolated while `View` is on the main actor. `pos` is a plain Double
     // in a value type, so reading and writing it from any isolation is safe.
@@ -85,6 +87,7 @@ struct CoverFlowStrip: View, Animatable {
                     name(shown.artist ?? "", color: Pocket.ink)
                 }
                 .offset(y: 164 - 2)  // the mockup's 14 pt lines start 2 pt above the text
+                .opacity(doors.names)
                 .zIndex(200)
             }
         }

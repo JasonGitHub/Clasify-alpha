@@ -281,6 +281,9 @@ public struct AppState: Equatable, Sendable {
     /// Counts the moves between a half screen (`isHalf`) and a full one. On those, a skin
     /// pushes the whole screen, with its title bar; on other moves only the content slides.
     public var wholeSeq = 0
+    /// True when the last whole-screen move was between the main menu and Cover Flow. A skin
+    /// opens the menu like two doors there (Round 9, card AE, change 82).
+    public var navDoors = false
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
     /// The album that Cover Flow showed last, so it opens there again when nothing plays.
