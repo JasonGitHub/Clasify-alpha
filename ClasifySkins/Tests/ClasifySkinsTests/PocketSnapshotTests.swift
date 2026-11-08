@@ -307,7 +307,7 @@ import Testing
         let artist = (top + 21...top + 35).contains { y in
             (Self.screenLeft + 10...Self.screenLeft + 50).contains { x in
                 let c = shot.rgb(x, y)
-                return max(c.r, c.g, c.b) < 170
+                return max(c.r, c.g, c.b) < 185  // the detail gray #9ba3ad
             }
         }
         #expect(artist)
@@ -318,6 +318,27 @@ import Testing
         let below = Self.listTop + 150
         let bar = shot.rgb(thumbX, below), row = shot.rgb(thumbX - 6, below)
         #expect(near(bar, row), "bar \(bar), row \(row)")
+    }
+
+    /// Round 10 card AI: the lines between two-line rows sit on the pixel grid, so they all have
+    /// the same thickness, though the rows are 41.2 points tall. Read in pixels at 2x.
+    @Test func rowDividersAreEquallyThick() throws {
+        var s = sampleState()
+        s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))  // row 0 selected, no bar
+        let shot = try render(s, "tracks-dividers")
+        let px = Snapshot.scale, x = (Self.screenLeft + 250) * px  // right of the short labels
+        func value(_ y: Int) -> Int {
+            let c = shot.bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) ?? .clear
+            return Int((c.redComponent + c.greenComponent + c.blueComponent) * 255)
+        }
+        // The rows end at 51.4 + 41.2 k points. Under rows 1, 2 and 3 (not selected), count the
+        // pixels that are darker than the glass 4 pixels above them.
+        let thickness = [2, 3, 4].map { k -> Int in
+            let bottom = Int((51.4 + 41.2 * Double(k)) * Double(px))
+            return (bottom - 6...bottom + 2).filter { value($0) <= value($0 - 4) - 4 }.count
+        }
+        #expect(thickness.allSatisfy { $0 > 0 }, "thickness \(thickness)")
+        #expect(Set(thickness).count == 1, "thickness \(thickness)")
     }
 
     @Test func theScrollBarHidesWhenTheListIsStill() throws {

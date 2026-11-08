@@ -29,6 +29,13 @@ enum Pocket {
     static let ink = Color(hex: 0x1b1f24)
     static let gray = Color(hex: 0x3d454e)
     static let line = Color(hex: 0x8f99a3)
+    /// A two-line row's detail line (Round 10 card AI): Helvetica Neue Medium 11, light gray, or
+    /// pale blue on the selected row.
+    static let detailFont = Font.helvetica(11, weight: .medium)
+    static let detail = Color(hex: 0x9ba3ad)
+    static let detailSelected = Color(hex: 0xe3efff)
+    /// The faint 1 point line between two-line rows (card AI).
+    static let divider = Color.black.opacity(0.02)
     /// The LCD's glass, behind the lists.
     static var glass: LinearGradient { .vertical(Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec)) }
     static var selection: LinearGradient { .vertical(Color(hex: 0x5aa3f0), Color(hex: 0x1f6fd1)) }
@@ -319,9 +326,9 @@ struct PocketRow: View {
                 }
                 if !text.detail.isEmpty {
                     Text(text.detail)
-                        .font(.helvetica(11, bold: true))
+                        .font(Pocket.detailFont)
                         .lineLimit(1)
-                        .foregroundStyle(selected ? Color(hex: 0xe3efff) : Color(hex: 0x6b7580))
+                        .foregroundStyle(selected ? Pocket.detailSelected : Pocket.detail)
                 }
             }
             Spacer(minLength: 0)
@@ -345,12 +352,30 @@ struct PocketRow: View {
         .frame(height: height)
         .foregroundStyle(selected ? Color.white : Pocket.ink)
         .background { if selected { Pocket.selection } }
-        .overlay(alignment: .bottom) {
+        .overlay {
             // Two-line rows have a faint line between them, except under the selection.
-            if !text.detail.isEmpty && !selected { Color.black.opacity(0.06).frame(height: 1) }
+            if !text.detail.isEmpty && !selected { RowDivider() }
         }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// The 1 point line at the bottom of a two-line row. Rows are 36.6 or 41.2 points tall, so a row's
+/// bottom is often between two display pixels. The line moves up to the pixel above it, so every
+/// line is equally sharp and thick.
+struct RowDivider: View {
+    @Environment(\.displayScale) private var displayScale
+
+    var body: some View {
+        GeometryReader { g in
+            let scale = max(displayScale, 1)
+            let bottom = g.frame(in: .global).maxY
+            let snapped = (bottom * scale).rounded(.down) / scale
+            Pocket.divider
+                .frame(width: g.size.width, height: 1)
+                .offset(y: g.size.height - 1 - (bottom - snapped))
+        }
     }
 }
 
