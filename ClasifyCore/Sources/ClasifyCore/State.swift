@@ -97,10 +97,10 @@ public struct Playlist: Equatable, Sendable {
 }
 
 public enum Screen: Equatable, Sendable {
-    /// `tracks` shows a playlist, Liked Songs, or an album's songs from Liked Songs (`Album.isID`).
+    /// `tracks` shows a playlist, Liked Songs, or all songs of an album (`Album.isID`).
     /// `albums` lists the albums in Liked Songs. `coverFlow` shows the same albums as covers,
     /// one at a time: `Frame.sel` is the index of the album in the middle. `albumPanel` is
-    /// the song panel that a Cover Flow cover turns into: an album's songs from Liked Songs.
+    /// the song panel that a Cover Flow cover turns into: all songs of the album (CLA-46).
     case login, auth, main, playlists, albums, tracks(playlist: String), settings, confirm, about, now, coverFlow
     case albumPanel(album: String)
 
@@ -401,13 +401,15 @@ public struct AppState: Equatable, Sendable {
         var pool: [Track]
         switch artRow {
         case .playlist(let id)?, .album(let id)?:
-            let picks = Self.albums(isLoaded(.tracks(playlist: id)) ? tracks(in: id) : [], seed: artSeed, count: mainArtCount)
+            let known = Album.isID(id) || isLoaded(.tracks(playlist: id))  // an album has its liked songs before a read
+            let picks = Self.albums(known ? tracks(in: id) : [], seed: artSeed, count: mainArtCount)
             if !picks.isEmpty { mainArt = picks }
             return
         case .nowPlaying?:
             pool = []
         case .playlists?:
-            pool = library.filter { $0.id != Playlist.likedSongsID && loadedTracks.contains($0.id) }.flatMap(\.tracks)
+            pool = library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) && loadedTracks.contains($0.id) }
+                .flatMap(\.tracks)
             if !pool.contains(where: { $0.coverID != nil }) { pool = liked }
         default:
             pool = liked
@@ -452,27 +454,27 @@ public struct AppState: Equatable, Sendable {
     public func isLoaded(_ screen: Screen) -> Bool {
         switch screen {
         case .playlists: playlistsLoaded
-        case .tracks(let id): loadedTracks.contains(Self.source(id))
-        case .albums, .coverFlow, .albumPanel: loadedTracks.contains(Playlist.likedSongsID)
+        case .tracks(let id), .albumPanel(let id): loadedTracks.contains(id)
+        case .albums, .coverFlow: loadedTracks.contains(Playlist.likedSongsID)
         default: true
         }
     }
 
-    /// The list that a song list reads: Liked Songs for an album, else the playlist itself.
-    public static func source(_ id: String) -> String { Album.isID(id) ? Playlist.likedSongsID : id }
-
     /// The `readAt` key of a list screen: the playlist ID that it reads, or "" for the playlist list.
     public static func readKey(_ screen: Screen) -> String {
         switch screen {
-        case .tracks(let id): source(id)
-        case .albums, .coverFlow, .albumPanel: Playlist.likedSongsID
+        case .tracks(let id), .albumPanel(let id): id  // an album reads all its songs (CLA-46)
+        case .albums, .coverFlow: Playlist.likedSongsID
         default: ""
         }
     }
 
-    /// A playlist's tracks. For an album ID, the album's songs in Liked Songs, in disc and track order.
+    /// A playlist's tracks. For an album ID, all songs of the album in album order, once read
+    /// (CLA-46). Before that, its songs in Liked Songs in disc and track order, so the album's
+    /// cover and a playing song from it can show.
     public func tracks(in playlist: String) -> [Track] {
-        guard Album.isID(playlist) else { return library.first { $0.id == playlist }?.tracks ?? [] }
+        if let list = library.first(where: { $0.id == playlist }) { return list.tracks }
+        guard Album.isID(playlist) else { return [] }
         return Album.songs(playlist, in: tracks(in: Playlist.likedSongsID))
     }
 
@@ -514,7 +516,7 @@ public struct AppState: Equatable, Sendable {
         case .login: restoring ? [] : [.logIn]
         case .main:
             (current == nil ? [] : [.nowPlaying]) + [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings]
-        case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
+        case .playlists: library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.map { .playlist($0.id) }
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).

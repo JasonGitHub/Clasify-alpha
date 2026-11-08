@@ -123,9 +123,9 @@ typedef void (*LsbTracksCallback)(void *context, int32_t status, const char *mes
                                   const LsbTrack *tracks, size_t count);
 // The playlists in the user's list, in order. Folders are flattened.
 int32_t lsb_read_playlists(LsbBridge *bridge, LsbPlaylistsCallback on_result, void *context);
-// All tracks of a playlist ("spotify:playlist:<id>"), or of Liked Songs when
-// playlist_uri is NULL, in order and over all pages. Episodes, local files and
-// tracks without details are left out.
+// All tracks of a playlist ("spotify:playlist:<id>") or an album ("spotify:album:<id>"),
+// or of Liked Songs when playlist_uri is NULL, in order and over all pages. Episodes,
+// local files and tracks without details are left out.
 int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
                         LsbTracksCallback on_result, void *context);
 // The details of one track ("spotify:track:<id>"), for a track that plays from outside

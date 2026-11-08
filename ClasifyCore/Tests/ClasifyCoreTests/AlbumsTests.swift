@@ -60,36 +60,87 @@ func withLikedAlbums() -> AppState {
         #expect(!s.top.loading && s.rows(for: s.top).count == 4)
     }
 
-    @Test func anAlbumOpensItsLikedSongsInDiscAndTrackOrder() {
+    /// All songs of Nevermind, as Spotify reads the album: "n3" is not liked.
+    static let nevermind: [Track] = {
+        let album = Album(id: "spotify:album:n", name: "Nevermind", artist: "Nirvana")
+        return ["n1", "n2", "n3", "x"].map { Track(id: $0, title: $0, artist: "a-\($0)", duration: 200, album: album) }
+    }()
+
+    /// All songs of MTV Unplugged: "u2" is not liked.
+    static let unplugged: [Track] = {
+        let album = Album(id: "spotify:album:u", name: "MTV Unplugged In New York", artist: "Nirvana")
+        return ["u1", "u2", "u3"].map { Track(id: $0, title: $0, artist: "a-\($0)", duration: 200, album: album) }
+    }()
+
+    @Test func anAlbumOpensWithAllItsSongs() {
         var s = withLikedAlbums()
-        send(&s, .wheel(2), .select, .wheel(3), .select)  // Albums, then Nevermind
-        #expect(s.top.screen == .tracks(playlist: "spotify:album:n") && !s.top.loading)
-        #expect(s.rows(for: s.top) == [.track("n1"), .track("n2"), .track("x")])  // disc 1, then disc 2
+        send(&s, .wheel(2), .select, .wheel(3), now: 120)  // Albums, on Nevermind
+        // CLA-46: the first open reads the whole album.
+        #expect(send(&s, .select, now: 121) == [.fetchTracks(token: 1, playlist: "spotify:album:n")])
+        #expect(s.top.screen == .tracks(playlist: "spotify:album:n") && s.top.loading)
+        send(&s, .tracksLoaded(token: 1, playlist: "spotify:album:n", tracks: Self.nevermind), now: 122)
+        #expect(!s.top.loading && s.rows(for: s.top) == [.track("n1"), .track("n2"), .track("n3"), .track("x")])
         #expect(s.showsBar == false && s.shownRows == trackRows)
+        // Albums and Playlists still list only what they did.
+        #expect(s.albums.count == 4 && s.rows(for: Frame(screen: .playlists)).isEmpty)
+        // The next open shows it at once. A stale one reads it again in the background.
+        send(&s, .menu)
+        #expect(send(&s, .select, now: 130) == [] && !s.top.loading)
+        send(&s, .menu)
+        #expect(send(&s, .select, now: 400) == [.refreshTracks(playlist: "spotify:album:n")])
+        // A playlist list re-read keeps the album.
+        s.refreshing.insert(AppState.readKey(.playlists))
+        send(&s, .playlistsRefreshed([]))
+        #expect(s.isLoaded(.tracks(playlist: "spotify:album:n")) && s.tracks(in: "spotify:album:n").count == 4)
+    }
+
+    @Test func anAlbumThatFailsToReadShowsTheErrorAndRetries() {
+        var s = withLikedAlbums()
+        send(&s, .wheel(2), .select, .wheel(3), .select)
+        send(&s, .tracksLoaded(token: 1, playlist: "spotify:album:n", tracks: nil))
+        #expect(s.top.error && !s.top.loading && !s.isLoaded(.tracks(playlist: "spotify:album:n")))
+        #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: "spotify:album:n")])  // center retries
+        #expect(s.top.loading && !s.top.error)
+        send(&s, .tracksLoaded(token: 2, playlist: "spotify:album:n", tracks: Self.nevermind))
+        #expect(s.rows(for: s.top).count == 4)
     }
 
     @Test func aSongOfAnAlbumPlaysInTheAlbum() {
         var s = withLikedAlbums()
-        send(&s, .wheel(2), .select, .wheel(2), .select, .wheel(1))  // MTV Unplugged, its second song
+        send(&s, .wheel(2), .select, .wheel(2), .select)  // MTV Unplugged
+        send(&s, .tracksLoaded(token: 1, playlist: "spotify:album:u", tracks: Self.unplugged))
+        send(&s, .wheel(1))  // its second song, which is not liked
         let load: [Effect] = [.setShuffle(false), .setRepeat(.off),
-                              .load(trackID: "u3", context: "spotify:album:u", autoplay: true, generation: 1)]
+                              .load(trackID: "u2", context: "spotify:album:u", autoplay: true, generation: 1)]
         #expect(send(&s, .select) == load)
-        let ref = TrackRef(playlist: "spotify:album:u", track: "u3")
-        #expect(s.current == ref && s.track(ref)?.title == "u3" && s.top.screen == .now)
-        // A Liked Songs re-read keeps it, and does not keep a copy for a track that left.
+        let ref = TrackRef(playlist: "spotify:album:u", track: "u2")
+        #expect(s.current == ref && s.track(ref)?.title == "u2" && s.top.screen == .now)
+        // A Liked Songs re-read does not change the read album.
         s.refreshing = [Playlist.likedSongsID]
         send(&s, .tracksRefreshed(playlist: Playlist.likedSongsID, tracks: likedAlbums))
         #expect(s.extraTracks.isEmpty && s.track(ref) != nil)
+        // An album re-read without the playing song keeps its details for Now Playing.
+        s.refreshing = ["spotify:album:u"]
+        send(&s, .tracksRefreshed(playlist: "spotify:album:u", tracks: [Self.unplugged[0]]))
+        #expect(s.extraTracks.map(\.id) == ["u2"] && s.track(ref)?.album?.id == "spotify:album:u")
+    }
+
+    @Test func anAlbumThatWasNotReadFollowsLikedSongs() {
+        // Spotify plays an album that Clasify did not read: it shows the album's liked songs.
+        var s = withLikedAlbums()
+        s.current = TrackRef(playlist: "spotify:album:u", track: "u3")
+        #expect(s.tracks(in: "spotify:album:u").map(\.id) == ["u1", "u3"])
         // A re-read that moves the playing song to another album keeps its details for Now Playing.
         var moved = likedAlbums
         moved[0].album = Album(id: "spotify:album:other", name: "Other")
         s.refreshing = [Playlist.likedSongsID]
         send(&s, .tracksRefreshed(playlist: Playlist.likedSongsID, tracks: moved))
+        let ref = TrackRef(playlist: "spotify:album:u", track: "u3")
         #expect(s.extraTracks.map(\.id) == ["u3"] && s.track(ref)?.album?.id == "spotify:album:u")
         #expect(s.album("spotify:album:u")?.name == "MTV Unplugged In New York")
         s.extraTracks = []
         s.refreshing.insert(AppState.readKey(.playlists))
-        send(&s, .playlistsRefreshed([]))  // a playlist list re-read: Liked Songs stays, so no copy either
+        send(&s, .playlistsRefreshed([]))  // a playlist list re-read: no copy
         #expect(s.extraTracks.isEmpty)
     }
 

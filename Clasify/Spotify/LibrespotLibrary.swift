@@ -239,7 +239,7 @@ final class LibrespotLibrary: Library {
         let task = trackReads[id] ?? Task<[Track], any Error> {
             do {
                 // The time covers the context read and the metadata batches.
-                return try await timed(uri == nil ? "liked songs read" : "playlist read", count: { $0.count }) {
+                return try await timed(uri == nil ? "liked songs read" : Album.isID(id) ? "album read" : "playlist read", count: { $0.count }) {
                     try await client.tracks(playlistURI: uri)
                 }
             } catch let error as BridgeError {

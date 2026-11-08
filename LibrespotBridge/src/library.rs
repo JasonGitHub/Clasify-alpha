@@ -521,7 +521,7 @@ pub unsafe extern "C" fn lsb_read_playlists(
     LSB_OK
 }
 
-/// Reads all tracks of a playlist, or of Liked Songs when `playlist_uri` is NULL.
+/// Reads all tracks of a playlist or an album, or of Liked Songs when `playlist_uri` is NULL.
 /// The result comes once through `on_result`, on a bridge thread. Needs a login.
 ///
 /// # Safety
@@ -538,7 +538,9 @@ pub unsafe extern "C" fn lsb_read_tracks(
         return LSB_ERR_INVALID_ARGUMENT;
     };
     let uri = match read_str(playlist_uri) {
-        Some(uri) if uri.starts_with("spotify:playlist:") => Some(uri.to_owned()),
+        Some(uri) if uri.starts_with("spotify:playlist:") || uri.starts_with("spotify:album:") => {
+            Some(uri.to_owned())
+        }
         Some(_) => return LSB_ERR_INVALID_ARGUMENT,
         None if !playlist_uri.is_null() => return LSB_ERR_INVALID_ARGUMENT,
         None => None,

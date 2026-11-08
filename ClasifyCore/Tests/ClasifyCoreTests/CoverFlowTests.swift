@@ -197,7 +197,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(s.top.screen == .login && s.coverFlowAlbum == nil && s.letterUntil == 0)
     }
 
-    /// Cover Flow with three songs on Clouds (index 5).
+    /// Cover Flow with three songs on Clouds (index 5), and the album already read.
     func withPanel() -> AppState {
         var s = withCoverFlow(tenAlbums)
         let clouds = Album(id: "spotify:album:5", name: "Clouds")
@@ -205,8 +205,33 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
             Track(id: "c2", title: "c2", artist: "a", duration: 100, album: clouds),
             Track(id: "c3", title: "c3", artist: "a", duration: 100, album: clouds),
         ]
+        s.library.append(Playlist(id: "spotify:album:5", name: "", tracks: s.tracks(in: "spotify:album:5")))
+        s.loadedTracks.insert("spotify:album:5")
+        s.readAt["spotify:album:5"] = 150
         send(&s, .select, now: 150)
         return s
+    }
+
+    /// CLA-46: the panel shows all songs of the album. The first open reads them while the
+    /// cover turns over; a failed read shows the error, and center tries again.
+    @Test func theFirstOpenOfThePanelReadsTheWholeAlbum() {
+        var s = withCoverFlow(tenAlbums)
+        send(&s, .select, now: 150)  // Cover Flow, on Clouds
+        #expect(send(&s, .select, now: 151) == [.fetchTracks(token: 1, playlist: "spotify:album:5")])
+        #expect(s.top.screen == .albumPanel(album: "spotify:album:5") && s.top.loading && s.navMove == .flip)
+        #expect(s.coverFlowFrame?.sel == 5)
+        send(&s, .tracksLoaded(token: 1, playlist: "spotify:album:5", tracks: nil), now: 152)
+        #expect(s.top.error && !s.top.loading)
+        #expect(send(&s, .select, now: 153) == [.fetchTracks(token: 2, playlist: "spotify:album:5")])
+        let clouds = Album(id: "spotify:album:5", name: "Clouds")
+        let all = ["t5", "x1", "x2"].map { Track(id: $0, title: $0, artist: "a", duration: 100, album: clouds) }
+        send(&s, .tracksLoaded(token: 2, playlist: "spotify:album:5", tracks: all), now: 154)
+        #expect(!s.top.loading && !s.top.error && s.rows(for: s.top) == [.track("t5"), .track("x1"), .track("x2")])
+        // Cover Flow still shows only the albums of Liked Songs.
+        #expect(s.albums.count == 10)
+        // Back and in again: no read.
+        send(&s, .menu, now: 155)
+        #expect(send(&s, .select, now: 156) == [] && !s.top.loading)
     }
 
     @Test func centerTurnsTheCoverIntoTheSongPanel() {

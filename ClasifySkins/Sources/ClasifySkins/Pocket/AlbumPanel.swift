@@ -39,7 +39,7 @@ struct AlbumPanelCard: View {
     @Environment(\.artwork) private var artwork
 
     var body: some View {
-        let text = Labels.panel(panel.album, in: state)
+        let text = panel.text(in: state)
         let height = AlbumPanel.height(songs: text.songs.count)
         Group {
             if turn < 0.5 {
@@ -49,7 +49,7 @@ struct AlbumPanelCard: View {
                     .scaleEffect(x: AlbumPanel.width / CoverFlowStrip.side, y: height / CoverFlowStrip.side, anchor: .topLeading)
                     .frame(width: AlbumPanel.width, height: height, alignment: .topLeading)
             } else {
-                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: state.scrollUntil > 0)
+                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: state.scrollUntil > 0, message: panel.message)
                     // The back of the card: turned over once more, so it reads the right way.
                     .scaleEffect(x: turn < 1 ? -1 : 1, y: 1)
             }
@@ -98,6 +98,8 @@ struct AlbumPanel: View {
     let off: Int
     let height: CGFloat
     let scrollBar: Bool
+    /// Loading, an error or no songs: it shows in place of the rows (CLA-46).
+    var message: Labels.Message? = nil
 
     /// 244 points wide, 28 from each side and 9 under the title bar.
     static let width: CGFloat = 244, left: CGFloat = 28, top: CGFloat = 9
@@ -147,10 +149,16 @@ struct AlbumPanel: View {
             .frame(height: Self.barHeight - 1)
             .background(Self.bar)
             Color(hex: 0x2d3642).frame(height: 1)
-            VStack(spacing: 0) {
-                ForEach(text.songs.indices, id: \.self) { i in row(text.songs[i], selected: i == sel) }
+            Group {
+                if let message {
+                    MessageView(message: message).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(text.songs.indices, id: \.self) { i in row(text.songs[i], selected: i == sel) }
+                    }
+                    .offset(y: -scroll)
+                }
             }
-            .offset(y: -scroll)
             .frame(width: Self.width, height: height - Self.barHeight, alignment: .top)
             .clipped()
         }
@@ -213,6 +221,8 @@ struct AlbumPanel: View {
     struct Shown: Equatable {
         let album: String
         let sel: Int, off: Int
+        /// Loading, an error or no songs (CLA-46).
+        let message: Labels.Message?
 
         /// Nil unless the song panel is on top, or under Now Playing while its cover flies there.
         init?(_ state: AppState) {
@@ -221,6 +231,15 @@ struct AlbumPanel: View {
             self.album = album
             sel = frame.sel
             off = frame.off
+            message = Labels.message(for: frame, in: state)
+        }
+
+        /// The panel's text. While a message shows, it has no songs, so the panel is its
+        /// smallest size.
+        func text(in state: AppState) -> Labels.PanelText {
+            var text = Labels.panel(album, in: state)
+            if message != nil { text.songs = [] }
+            return text
         }
     }
 }
@@ -243,12 +262,12 @@ struct CoverFly: View, Animatable {
     }
 
     var body: some View {
-        let text = Labels.panel(panel.album, in: state)
+        let text = panel.text(in: state)
         let height = AlbumPanel.height(songs: text.songs.count)
         Group {
             if fly < 0.5 {
                 // The panel's back, turned the right way, as in `AlbumPanelCard`.
-                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: false)
+                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: false, message: panel.message)
                     .scaleEffect(x: -1, y: 1)
             } else {
                 CoverArt(image: state.albumCovers[panel.album].flatMap { artwork.lookup($0) }, notesSize: 51)
