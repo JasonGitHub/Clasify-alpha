@@ -176,7 +176,7 @@ fn library_and_token_layouts_match_c() {
         offset_of!(LsbPlaylist, track_count),
     ];
     assert_eq!(playlist, [8, 16]);
-    assert_eq!(size_of::<LsbTrack>(), 72);
+    assert_eq!(size_of::<LsbTrack>(), 80);
     let track = [
         offset_of!(LsbTrack, title),
         offset_of!(LsbTrack, artist),
@@ -184,11 +184,12 @@ fn library_and_token_layouts_match_c() {
         offset_of!(LsbTrack, album_uri),
         offset_of!(LsbTrack, album_name),
         offset_of!(LsbTrack, album_artist),
+        offset_of!(LsbTrack, large_cover_id),
         offset_of!(LsbTrack, duration_ms),
         offset_of!(LsbTrack, disc_number),
         offset_of!(LsbTrack, track_number),
     ];
-    assert_eq!(track, [8, 16, 24, 32, 40, 48, 56, 60, 64]);
+    assert_eq!(track, [8, 16, 24, 32, 40, 48, 56, 64, 68, 72]);
 }
 
 mod library_tests {
@@ -548,6 +549,20 @@ mod library_tests {
     }
 
     #[test]
+    fn large_cover_is_the_large_size_else_the_widest() {
+        let small = image(1, Some(Size::SMALL), 64);
+        let default = image(2, Some(Size::DEFAULT), 300);
+        let large = image(3, Some(Size::LARGE), 640);
+        let track = with_covers(vec![small.clone(), large, default.clone()], vec![]);
+        assert_eq!(large_cover_id(&track), "03".repeat(20));
+        let track = with_covers(vec![small, default], vec![]);
+        assert_eq!(large_cover_id(&track), "02".repeat(20));
+        let track = with_covers(vec![], vec![image(4, None, 300)]);
+        assert_eq!(large_cover_id(&track), "04".repeat(20));
+        assert_eq!(large_cover_id(&TrackMessage::default()), "");
+    }
+
+    #[test]
     fn cover_id_is_lowercase_hex_like_librespot_file_ids() {
         let bytes: Vec<u8> = (0xa0..0xb4).collect();
         let expected = "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3";
@@ -663,6 +678,7 @@ mod library_tests {
                     read(t.album_uri),
                     read(t.album_name),
                     read(t.album_artist),
+                    read(t.large_cover_id),
                     t.duration_ms.to_string(),
                     t.disc_number.to_string(),
                     t.track_number.to_string(),
@@ -692,6 +708,7 @@ mod library_tests {
             album_uri: "spotify:album:a".to_owned(),
             album_name: "Al\0bum".to_owned(),
             album_artist: "B".to_owned(),
+            large_cover_id: "cd89".to_owned(),
             duration_ms: 1000,
             disc_number: 1,
             track_number: 3,
@@ -720,6 +737,7 @@ mod library_tests {
                         "spotify:album:a",
                         "Al bum",
                         "B",
+                        "cd89",
                         "1000",
                         "1",
                         "3"

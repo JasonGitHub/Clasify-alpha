@@ -111,6 +111,7 @@ typedef struct LsbTrack {
     const char *album_uri;       // Like "spotify:album:<id>", or "" when there is none.
     const char *album_name;      // Or "".
     const char *album_artist;    // The album's artists, joined with ", ", or "".
+    const char *large_cover_id;  // The large cover (about 640 px), like cover_id, or "".
     uint32_t duration_ms;
     uint32_t disc_number;        // From 1, or 0 when Spotify does not give it.
     uint32_t track_number;       // The place on the disc, from 1, or 0.

@@ -198,6 +198,25 @@ import Testing
         }
     }
 
+    @Test func aLargeCoverShowsOnlyFromTheTurnAfterItLoads() {
+        let track = ClasifyCore.Track(id: "t", title: "", artist: "", duration: 1, coverID: "small", largeCoverID: "large")
+        let loadsAt = 3.0  // the large cover arrives 3 s after the menu opens (time 0)
+        // The choice for layer 0 of 2 at time t, with the turn start that the view uses.
+        func pick(_ t: Double, loaded: Bool = true) -> String? {
+            let turnStart = MainArt.motion(at: t, index: 0, count: 2).start
+            return MainArt.coverID(for: track, turnStart: turnStart, loaded: { _ in loaded }, loadedAt: { _ in loadsAt })
+        }
+        // Layer 0's first turn runs from -0.6 s to 6.8 s: the large cover arrives during it,
+        // so every frame of that turn keeps the default cover. No change while it shows.
+        for frame in 0..<(6 * 30) { #expect(pick(Double(frame) / 30) == "small") }
+        // Its next turn starts at 13.0 s, after the load: the large cover, for the whole turn
+        // (from just after its start, because 13.6 is not exact in binary).
+        for frame in 0..<(6 * 30) { #expect(pick(13.05 + Double(frame) / 30) == "large") }
+        #expect(pick(14, loaded: false) == "small")  // not in memory: the default cover
+        let none = ClasifyCore.Track(id: "t", title: "", artist: "", duration: 1, coverID: "small")
+        #expect(MainArt.coverID(for: none, turnStart: 99, loaded: { _ in true }, loadedAt: { _ in 0 }) == "small")
+    }
+
     @Test func thePanningCoverMovesItsLayerWithCoreAnimation() throws {
         let image = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let view = PanView(frame: NSRect(x: 0, y: 0, width: 116, height: 180))

@@ -7,14 +7,20 @@ import SwiftUI
 public struct Artwork: Sendable {
     let lookup: @MainActor @Sendable (String) -> CGImage?
     let pending: @MainActor @Sendable (String) -> Bool
+    let loadedAt: @MainActor @Sendable (String) -> Double?
 
     /// `pending` says that a cover is still loading, so a skin can keep the cover it showed.
+    /// `loadedAt` gives when a cover in memory arrived, in seconds since the reference date
+    /// (`Date.timeIntervalSinceReferenceDate`), so a skin can tell whether it was there when
+    /// a cover's turn began. By default, each cover in memory has always been there.
     public init(
         _ lookup: @escaping @MainActor @Sendable (String) -> CGImage?,
-        pending: @escaping @MainActor @Sendable (String) -> Bool = { _ in false }
+        pending: @escaping @MainActor @Sendable (String) -> Bool = { _ in false },
+        loadedAt: @escaping @MainActor @Sendable (String) -> Double? = { _ in -.infinity }
     ) {
         self.lookup = lookup
         self.pending = pending
+        self.loadedAt = loadedAt
     }
 
     /// No covers: the skins show the blue-grey square.
