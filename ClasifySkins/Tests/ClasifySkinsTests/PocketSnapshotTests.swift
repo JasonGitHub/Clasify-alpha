@@ -568,7 +568,8 @@ import Testing
         // The cover, the text and the bars are where the plain Now Playing has them.
         for (x, y) in [(16, 75), (70, 80), (150, 120), (150, 200), (250, 230)] {
             let a = plain.rgb(Self.screenLeft + x, y), b = over.rgb(Self.screenLeft + x, y)
-            #expect(abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b) < 30, "at \(x), \(y): \(a) vs \(b)")
+            let diff: Int = abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b)
+            #expect(diff < 30, "at \(x), \(y): \(a) vs \(b)")
         }
     }
 
