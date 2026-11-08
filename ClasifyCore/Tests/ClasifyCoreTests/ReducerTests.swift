@@ -55,7 +55,9 @@ func playing(_ i: Int = 0) -> AppState {
         s = playing()
         send(&s, .menu, .wheel(7))  // back to Focus tracks: 5 rows, with the bar too
         #expect(s.top.sel == 7 && s.top.off == 3)
-        send(&s, .menu, .menu, .wheel(-1), .select)  // Now Playing, above Cover Flow
+        send(&s, .menu, .menu)
+        #expect(s.rows(for: s.top)[s.top.sel] == .playlists)  // the row picked before the song played
+        send(&s, .wheel(-2), .select)  // Now Playing, at the top
         #expect(send(&s, .wheel(-2)) == [.setVolume(50)])
         #expect(s.overlayUntil == 101.5)
         #expect(send(&s, .select, .wheel(2)) == [.seek(10, generation: 2)])  // scrub
@@ -152,7 +154,7 @@ func playing(_ i: Int = 0) -> AppState {
         let load: [Effect] = [.setShuffle(true), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
         #expect(send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == load)
         #expect(s.top.screen == .now && s.shuffle && s.shuffleToken == nil)
-        send(&s, .menu, .menu, .wheel(1))  // back to Shuffle Songs, one row lower under Now Playing
+        send(&s, .menu, .menu)  // back to Shuffle Songs, one row lower under Now Playing
         #expect(s.rows(for: s.top)[s.top.sel] == .shuffleSongs)
         // Liked Songs is read now, so the next shuffle starts at once.
         #expect(send(&s, .select).contains(.load(trackID: "l0", context: "liked", autoplay: true, generation: 2)))
@@ -677,6 +679,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .loadFailed("Install the Spotify app to play music", generation: 1)) == [])
         #expect(s.current == nil && !s.isPlaying && s.t == 0 && s.toast == "Install the Spotify app to play music")
         #expect(s.top.screen == .tracks(playlist: "focus"))  // no empty Now Playing: back to the list
+        #expect(s.stack[0].sel == 1 && s.rows(for: s.stack[0])[1] == .playlists)  // the main menu keeps its pick
         s = playing(2)
         send(&s, .menu, .wheel(1), .select, .position(1, generation: 2))  // the second load plays
         #expect(s.beforeLoad == nil && !s.loadPending)
