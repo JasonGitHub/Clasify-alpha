@@ -120,7 +120,7 @@ private struct TestPanel: View {
         case .auth: "Sign in"
         case .playlists: "Playlists"
         case .albums: "Albums"
-        case .coverFlow: "Cover Flow"
+        case .coverFlow, .albumPanel: "Cover Flow"
         case .tracks(let id): state.library.first { $0.id == id }?.name ?? state.album(id)?.name ?? "Tracks"
         case .settings: "Settings"
         case .confirm: "Log out?"
@@ -156,7 +156,7 @@ private struct TestPanel: View {
     }
 
     private func trackLabel(_ id: String) -> String {
-        guard case .tracks(let playlist) = state.top.screen,
+        guard let playlist = state.top.screen.songList,
             let track = state.track(TrackRef(playlist: playlist, track: id))
         else { return id }
         return "\(track.title) — \(track.artist)"

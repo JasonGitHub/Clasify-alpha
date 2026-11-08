@@ -39,20 +39,20 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
     @Test func theMainMenuOpensAndClosesLikeDoorsOnlyToCoverFlow() {
         var s = withCoverFlow(tenAlbums)
         send(&s, .select, now: 150)
-        #expect(s.navDoors && s.navForward)  // the menu opens like two doors
+        #expect(s.navMove == .doors && s.navForward)  // the menu opens like two doors
         send(&s, .select, now: 151)  // an album's songs: a normal slide
-        #expect(!s.navDoors)
+        #expect(s.navMove != .doors)
         send(&s, .menu, now: 152)
-        #expect(!s.navDoors)  // back to Cover Flow from a full screen
+        #expect(s.navMove != .doors)  // back to Cover Flow from a full screen
         send(&s, .menu, now: 153)
-        #expect(s.navDoors && !s.navForward)  // the doors close
+        #expect(s.navMove == .doors && !s.navForward)  // the doors close
         send(&s, .wheel(2), .select, now: 154)  // Albums: both half screens, only the list slides
-        #expect(!s.navDoors)
+        #expect(s.navMove != .doors)
         // With Album Art off, the main menu is a full screen: no whole move, so no doors.
         var off = withCoverFlow(tenAlbums)
         off.albumArt = .off
         send(&off, .select, now: 150)
-        #expect(off.top.screen == .coverFlow && !off.navDoors)
+        #expect(off.top.screen == .coverFlow && off.navMove != .doors)
     }
 
     @Test func itOpensWhereYouLeftItAndOnThePlayingAlbum() {
@@ -185,6 +185,67 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         send(&s, .select, now: 151)
         #expect(s.top.screen == .tracks(playlist: "spotify:album:5"))  // Clouds
         #expect(s.rows(for: s.top) == [.track("t5")])
+    }
+
+    /// Cover Flow with three songs on Clouds (index 5) and the song panel on (CLA-38 TEMP flag).
+    func withPanel() -> AppState {
+        var s = withCoverFlow(tenAlbums)
+        let clouds = Album(id: "spotify:album:5", name: "Clouds")
+        s.library[0].tracks += [
+            Track(id: "c2", title: "c2", artist: "a", duration: 100, album: clouds),
+            Track(id: "c3", title: "c3", artist: "a", duration: 100, album: clouds),
+        ]
+        s.albumPanelOn = true
+        send(&s, .select, now: 150)
+        return s
+    }
+
+    @Test func centerTurnsTheCoverIntoTheSongPanel() {
+        var s = withPanel()
+        send(&s, .select, now: 151)
+        #expect(s.top.screen == .albumPanel(album: "spotify:album:5"))  // Clouds
+        #expect(s.navMove == .flip && s.navForward && !s.top.loading)
+        #expect(s.rows(for: s.top) == [.track("t5"), .track("c2"), .track("c3")])
+        #expect(s.shownRows == panelRows && !s.showsBar && s.top.screen.songList == "spotify:album:5")
+        send(&s, .wheel(2), now: 152)
+        #expect(s.top.sel == 2)
+        send(&s, .menu, now: 153)  // the panel turns back into the cover
+        #expect(s.top.screen == .coverFlow && s.navMove == .flip && !s.navForward)
+        #expect(s.albums[s.top.sel].name == "Clouds")
+    }
+
+    @Test func aSongInThePanelPlaysInTheAlbumAndFliesToNowPlaying() {
+        var s = withPanel()
+        send(&s, .select, .wheel(1), now: 151)
+        let load: [Effect] = [.setShuffle(false), .setRepeat(.off),
+                              .load(trackID: "c2", context: "spotify:album:5", autoplay: true, generation: 1)]
+        #expect(send(&s, .select, now: 152) == load)
+        #expect(s.current == TrackRef(playlist: "spotify:album:5", track: "c2"))
+        #expect(s.top.screen == .now && s.navMove == .fly && s.navForward)
+        send(&s, .menu, now: 153)  // back to the panel: the cover flies back
+        #expect(s.top.screen == .albumPanel(album: "spotify:album:5") && s.navMove == .fly && !s.navForward)
+        send(&s, .menu, now: 154)
+        #expect(s.top.screen == .coverFlow && s.navMove == .flip)
+    }
+
+    @Test func withThePanelOffCenterOpensTheNormalSongList() {
+        var s = withPanel()
+        s.albumPanelOn = false
+        send(&s, .select, now: 151)
+        #expect(s.top.screen == .tracks(playlist: "spotify:album:5") && s.navMove == .push)
+    }
+
+    @Test func eachScreenChangeHasItsMove() {
+        let panel = Screen.albumPanel(album: "spotify:album:5")
+        #expect(AppState.move(between: .main, and: .coverFlow, whole: true) == .doors)
+        #expect(AppState.move(between: .coverFlow, and: .main, whole: true) == .doors)
+        #expect(AppState.move(between: .main, and: .coverFlow, whole: false) == .push)  // Album Art off
+        #expect(AppState.move(between: .coverFlow, and: panel, whole: false) == .flip)
+        #expect(AppState.move(between: panel, and: .coverFlow, whole: false) == .flip)
+        #expect(AppState.move(between: panel, and: .now, whole: false) == .fly)
+        #expect(AppState.move(between: .now, and: panel, whole: false) == .fly)
+        #expect(AppState.move(between: .tracks(playlist: "x"), and: .now, whole: false) == .push)
+        #expect(AppState.move(between: .main, and: .playlists, whole: false) == .push)
     }
 
     @Test func eachAlbumTakesTheCoverOfItsFirstSongWithOne() {

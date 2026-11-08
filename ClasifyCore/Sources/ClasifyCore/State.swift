@@ -99,16 +99,38 @@ public struct Playlist: Equatable, Sendable {
 public enum Screen: Equatable, Sendable {
     /// `tracks` shows a playlist, Liked Songs, or an album's songs from Liked Songs (`Album.isID`).
     /// `albums` lists the albums in Liked Songs. `coverFlow` shows the same albums as covers,
-    /// one at a time: `Frame.sel` is the index of the album in the middle.
+    /// one at a time: `Frame.sel` is the index of the album in the middle. `albumPanel` is
+    /// the song panel that a Cover Flow cover turns into: an album's songs from Liked Songs.
     case login, auth, main, playlists, albums, tracks(playlist: String), settings, confirm, about, now, coverFlow
+    case albumPanel(album: String)
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
-        case .login, .main, .playlists, .albums, .tracks, .settings, .confirm: true
+        case .login, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel: true
         case .auth, .about, .now, .coverFlow: false
         }
     }
+
+    /// The list that this screen's song rows play from: a playlist, Liked Songs or an album.
+    /// Nil on screens with no song rows.
+    public var songList: String? {
+        switch self {
+        case .tracks(let id), .albumPanel(let id): id
+        default: nil
+        }
+    }
+}
+
+/// How a screen change moves. Most changes push: the new screen slides in from one side.
+public enum NavMove: Equatable, Sendable {
+    case push
+    /// Between the main menu and Cover Flow: the menu opens like two doors (card AE, change 82).
+    case doors
+    /// Between Cover Flow and the song panel: the cover turns over (card AF).
+    case flip
+    /// Between the song panel and Now Playing: the cover flies to its place (card AH).
+    case fly
 }
 
 /// One entry on the navigation stack.
@@ -281,9 +303,12 @@ public struct AppState: Equatable, Sendable {
     /// Counts the moves between a half screen (`isHalf`) and a full one. On those, a skin
     /// pushes the whole screen, with its title bar; on other moves only the content slides.
     public var wholeSeq = 0
-    /// True when the last whole-screen move was between the main menu and Cover Flow. A skin
-    /// opens the menu like two doors there (Round 9, card AE, change 82).
-    public var navDoors = false
+    /// How the last screen change moves, so a skin can draw it (Round 9, cards AE, AF, AH).
+    public var navMove = NavMove.push
+    /// TEMP (CLA-38): Center on Cover Flow opens the song panel only when this is on, and the
+    /// album's normal song list when it is off. It stays off until the panel is drawn (CLA-38
+    /// part b), which removes it. Tests turn it on.
+    public var albumPanelOn = false
     /// Quick wheel steps on a list move more rows.
     public var wheelSpeed = WheelSpeed()
     /// The album that Cover Flow showed last, so it opens there again when nothing plays.
@@ -316,6 +341,7 @@ public struct AppState: Equatable, Sendable {
     public var shownRows: Int {
         switch top.screen {
         case .tracks, .albums: return trackRows  // two-line rows
+        case .albumPanel: return panelRows
         default: return visibleRows
         }
     }
@@ -391,12 +417,23 @@ public struct AppState: Equatable, Sendable {
         return h
     }
 
+    /// How a change from screen `a` to screen `b`, either way, moves. `whole` is true when one
+    /// of them is a half screen and the other is not.
+    public static func move(between a: Screen, and b: Screen, whole: Bool) -> NavMove {
+        func isPanel(_ s: Screen) -> Bool { if case .albumPanel = s { true } else { false } }
+        func either(_ x: (Screen) -> Bool, _ y: (Screen) -> Bool) -> Bool { (x(a) && y(b)) || (y(a) && x(b)) }
+        if whole && either({ $0 == .main }, { $0 == .coverFlow }) { return .doors }
+        if either({ $0 == .coverFlow }, isPanel) { return .flip }
+        if either(isPanel, { $0 == .now }) { return .fly }
+        return .push
+    }
+
     /// The screen's list is already in the state, so it opens without a read.
     public func isLoaded(_ screen: Screen) -> Bool {
         switch screen {
         case .playlists: playlistsLoaded
         case .tracks(let id): loadedTracks.contains(Self.source(id))
-        case .albums, .coverFlow: loadedTracks.contains(Playlist.likedSongsID)
+        case .albums, .coverFlow, .albumPanel: loadedTracks.contains(Playlist.likedSongsID)
         default: true
         }
     }
@@ -408,7 +445,7 @@ public struct AppState: Equatable, Sendable {
     public static func readKey(_ screen: Screen) -> String {
         switch screen {
         case .tracks(let id): source(id)
-        case .albums, .coverFlow: Playlist.likedSongsID
+        case .albums, .coverFlow, .albumPanel: Playlist.likedSongsID
         default: ""
         }
     }
@@ -459,7 +496,7 @@ public struct AppState: Equatable, Sendable {
             (current == nil ? [] : [.nowPlaying]) + [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings]
         case .playlists: library.filter { $0.id != Playlist.likedSongsID }.map { .playlist($0.id) }
         case .albums, .coverFlow: albums.map { .album($0.id) }
-        case .tracks(let pl): tracks(in: pl).map { .track($0.id) }
+        case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
         case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]

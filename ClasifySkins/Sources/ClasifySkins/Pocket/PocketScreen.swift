@@ -87,7 +87,7 @@ struct PocketScreen: View {
     /// The slide's curve, or for the doors a linear time that `DoorsStage` shapes.
     private var moveAnimation: Animation? {
         if reduceMotion { return nil }
-        guard state.navDoors else { return Self.slideAnimation }
+        guard state.navMove == .doors else { return Self.slideAnimation }
         return .linear(duration: state.navForward ? DoorsStage.openTime : DoorsStage.closeTime)
     }
 
@@ -155,7 +155,7 @@ struct PocketScreen: View {
         }
         .clipped()
         .environment(\.navForward, state.navForward)
-        .environment(\.navDoors, state.navDoors)
+        .environment(\.navDoors, state.navMove == .doors)
         .animation(moveAnimation, value: state.navSeq)
         .overlay(alignment: .bottom) {
             if !state.toast.isEmpty { toast }
