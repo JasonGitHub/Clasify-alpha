@@ -165,11 +165,17 @@ typedef void (*LsbCommandCallback)(void *context, int32_t status, const char *me
 // Registers this session again and lists the account's other Connect devices, by name.
 int32_t lsb_connect_devices(LsbBridge *bridge, LsbDevicesCallback on_result, void *context);
 // Plays context_uri on device_id, from track_uri, or from the start when track_uri is
-// NULL. context_uri is "spotify:playlist:<id>" or, for Liked Songs,
+// NULL. context_uri is "spotify:playlist:<id>", "spotify:album:<id>" or, for Liked Songs,
 // "spotify:user:<username>:collection" with the username from LSB_EVENT_LOGGED_IN.
 // track_uri is "spotify:track:<id>". device_id has only letters, digits, '-' and '_'.
 int32_t lsb_connect_play(LsbBridge *bridge, const char *device_id, const char *context_uri,
                          const char *track_uri, LsbCommandCallback on_result, void *context);
+// Plays a plain list of count track URIs (1 to 500) on device_id, with no context URI,
+// from track_uri, which must be in the list. For the liked songs of an album.
+int32_t lsb_connect_play_tracks(LsbBridge *bridge, const char *device_id,
+                                const char *const *track_uris, size_t count,
+                                const char *track_uri, LsbCommandCallback on_result,
+                                void *context);
 // command is one of LSB_COMMAND_*.
 int32_t lsb_connect_command(LsbBridge *bridge, const char *device_id, uint32_t command,
                             LsbCommandCallback on_result, void *context);

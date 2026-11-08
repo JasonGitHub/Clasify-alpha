@@ -426,7 +426,7 @@ final class SpotifyConnectPlayer: Player {
         // The playlist as in `handle`: a playlist or Liked Songs, else none to go on from.
         context = state.contextURI
         let likedSongs = context.hasSuffix(":collection")
-        followedOther = !likedSongs && !context.hasPrefix("spotify:playlist:")
+        followedOther = !Self.canLoad(context)
         playlist = followedOther ? nil : likedSongs ? Playlist.likedSongsID : context
         startedTrack = state.trackURI
         lastTrack = state.trackURI
@@ -445,6 +445,13 @@ final class SpotifyConnectPlayer: Player {
     private func play(_ trackID: String, context playlist: String?, id: Int, at position: Double?) async {
         guard let contextURI = contextURI(for: playlist) else { return fail("Can’t play this list", id) }
         let start = ContinuousClock.now
+        // A song of an album from Liked Songs: first only the album's liked songs (see `AlbumPlay`).
+        var liked: [Track] = []
+        if let playlist, Album.isID(playlist) {
+            liked = await library.tracks(of: Playlist.likedSongsID) ?? []
+            guard id == loadID else { return }
+        }
+        let albumList = playlist.flatMap { AlbumPlay.trackList(album: $0, track: trackID, liked: liked) }
         do {
             // Reuse the known device, or the one that the pre-warm finds. Look it up again once
             // if the play fails, for example after Spotify restarted.
@@ -463,7 +470,19 @@ final class SpotifyConnectPlayer: Player {
                 Self.logTime("load: options set", since: start)
                 guard id == loadID else { return }
                 do {
-                    try await again { try await client.play(device: found, context: contextURI, track: trackID) }
+                    if let playlist, Album.isID(playlist) {
+                        let path = try await AlbumPlay.run(
+                            hasList: albumList != nil,
+                            trackList: { try await again { try await client.play(device: found, tracks: albumList ?? [], track: trackID) } },
+                            albumContext: { try await again { try await client.play(device: found, context: contextURI, track: trackID) } },
+                            trackListFailed: { Self.logFailure("play the album as a track list", $0) },
+                            stillWanted: { id == loadID })
+                        // A newer load came while Spotify refused the list: no album over it.
+                        guard let path else { return }
+                        Self.logTime("load: album played as \(path.rawValue)", since: start)
+                    } else {
+                        try await again { try await client.play(device: found, context: contextURI, track: trackID) }
+                    }
                     Self.logTime("load: play acknowledged", since: start)
                     break
                 } catch where attempt == 0 && known != nil {
@@ -519,7 +538,13 @@ final class SpotifyConnectPlayer: Player {
         if ours, let latest { handle(latest, receivedAt: latestAt) }
     }
 
-    /// `Playlist.likedSongsID` plays the user's Liked Songs. Other IDs are Spotify playlist URIs.
+    /// A context that the bridge can load again, so Clasify keeps it as its own play:
+    /// Liked Songs, a playlist, or an album (which a song from Albums plays in).
+    nonisolated static func canLoad(_ context: String) -> Bool {
+        context.hasSuffix(":collection") || context.hasPrefix("spotify:playlist:") || Album.isID(context)
+    }
+
+    /// `Playlist.likedSongsID` plays the user's Liked Songs. Other IDs are Spotify playlist or album URIs.
     private func contextURI(for playlist: String?) -> String? {
         guard let playlist else { return nil }
         guard playlist == Playlist.likedSongsID else { return playlist }
@@ -705,9 +730,9 @@ final class SpotifyConnectPlayer: Player {
             log.notice("following Spotify into another context (\(Self.contextKind(state.contextURI), privacy: .public))")
             context = state.contextURI
             // So Play after a quit loads the track in its own context. The bridge can load only
-            // a playlist, so a station or album keeps no place to go on from.
+            // a playlist, an album or Liked Songs, so a station keeps no place to go on from.
             let likedSongs = state.contextURI.hasSuffix(":collection")
-            followedOther = !likedSongs && !state.contextURI.hasPrefix("spotify:playlist:")
+            followedOther = !Self.canLoad(state.contextURI)
             if !followedOther { playlist = likedSongs ? Playlist.likedSongsID : state.contextURI }
         }
         let gen = generation

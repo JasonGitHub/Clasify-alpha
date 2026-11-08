@@ -40,6 +40,14 @@ public struct Album: Equatable, Hashable, Sendable {
     /// album's songs from Liked Songs.
     public static func isID(_ id: String) -> Bool { id.hasPrefix("spotify:album:") }
 
+    /// The songs of album `id` among `tracks`, in disc and track order. Songs with no number
+    /// keep their order, after the numbered ones of their disc.
+    public static func songs(_ id: String, in tracks: [Track]) -> [Track] {
+        let songs = tracks.enumerated().filter { $0.element.album?.id == id }
+        let order = { (e: (offset: Int, element: Track)) in (e.element.disc ?? 1, e.element.number ?? Int.max, e.offset) }
+        return songs.sorted { order($0) < order($1) }.map(\.element)
+    }
+
     /// The album from the bridge's fields, where "" means missing. Nil with no album URI.
     public static func from(id: String?, name: String?, artist: String?) -> Album? {
         guard let id, !id.isEmpty else { return nil }
@@ -386,9 +394,7 @@ public struct AppState: Equatable, Sendable {
     /// A playlist's tracks. For an album ID, the album's songs in Liked Songs, in disc and track order.
     public func tracks(in playlist: String) -> [Track] {
         guard Album.isID(playlist) else { return library.first { $0.id == playlist }?.tracks ?? [] }
-        let songs = tracks(in: Playlist.likedSongsID).enumerated().filter { $0.element.album?.id == playlist }
-        let order = { (e: (offset: Int, element: Track)) in (e.element.disc ?? 1, e.element.number ?? Int.max, e.offset) }
-        return songs.sorted { order($0) < order($1) }.map(\.element)
+        return Album.songs(playlist, in: tracks(in: Playlist.likedSongsID))
     }
 
     /// An album in Liked Songs, by its URI, with the artist as `albums` gives it. When its last
