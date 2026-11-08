@@ -53,7 +53,7 @@ private struct Refused: Error {}
         let player = FakePlayer()
         var s = withLikedAlbums()
         let store = Store(player: player, library: FakeLibrary(), state: s, env: Dependencies(now: { 100 }, random: { _ in 0 }))
-        store.send(.wheel(1)); store.send(.select); store.send(.wheel(3)); store.send(.select)  // Nevermind
+        store.send(.wheel(2)); store.send(.select); store.send(.wheel(3)); store.send(.select)  // Nevermind
         store.send(.select)  // its first song
         #expect(player.calls.last == "load n1 spotify:album:n true")
         s = store.state

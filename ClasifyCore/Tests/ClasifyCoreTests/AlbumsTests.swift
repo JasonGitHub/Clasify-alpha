@@ -29,7 +29,7 @@ func withLikedAlbums() -> AppState {
 @Suite struct AlbumsTests {
     @Test func theMainMenuHasAnAlbumsRowAfterPlaylists() {
         let s = mainMenu()
-        #expect(s.rows(for: s.top) == [.playlists, .albums, .likedSongs, .shuffleSongs, .settings])
+        #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings])
     }
 
     @Test func albumsAreLikedSongsGroupedNumbersFirstThenAToZ() {
@@ -44,7 +44,7 @@ func withLikedAlbums() -> AppState {
 
     @Test func albumsOpensAtOnceWhenLikedSongsIsRead() {
         var s = withLikedAlbums()
-        #expect(send(&s, .wheel(1), .select, now: 150) == [])  // read 50 s ago: no read again
+        #expect(send(&s, .wheel(2), .select, now: 150) == [])  // read 50 s ago: no read again
         #expect(s.top.screen == .albums && !s.top.loading && s.isHalf(.albums) && s.shownRows == trackRows)
         #expect(s.rows(for: s.top) == [.album("spotify:album:1"), .album("spotify:album:m"),
                                        .album("spotify:album:u"), .album("spotify:album:n")])
@@ -54,7 +54,7 @@ func withLikedAlbums() -> AppState {
 
     @Test func albumsLoadsLikedSongsFirst() {
         var s = mainMenu()
-        #expect(send(&s, .wheel(1), .select) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
+        #expect(send(&s, .wheel(2), .select) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
         #expect(s.top.screen == .albums && s.top.loading)
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: likedAlbums))
         #expect(!s.top.loading && s.rows(for: s.top).count == 4)
@@ -62,7 +62,7 @@ func withLikedAlbums() -> AppState {
 
     @Test func anAlbumOpensItsLikedSongsInDiscAndTrackOrder() {
         var s = withLikedAlbums()
-        send(&s, .wheel(1), .select, .wheel(3), .select)  // Albums, then Nevermind
+        send(&s, .wheel(2), .select, .wheel(3), .select)  // Albums, then Nevermind
         #expect(s.top.screen == .tracks(playlist: "spotify:album:n") && !s.top.loading)
         #expect(s.rows(for: s.top) == [.track("n1"), .track("n2"), .track("x")])  // disc 1, then disc 2
         #expect(s.showsBar == false && s.shownRows == trackRows)
@@ -70,7 +70,7 @@ func withLikedAlbums() -> AppState {
 
     @Test func aSongOfAnAlbumPlaysInTheAlbum() {
         var s = withLikedAlbums()
-        send(&s, .wheel(1), .select, .wheel(2), .select, .wheel(1))  // MTV Unplugged, its second song
+        send(&s, .wheel(2), .select, .wheel(2), .select, .wheel(1))  // MTV Unplugged, its second song
         let load: [Effect] = [.setShuffle(false), .setRepeat(.off),
                               .load(trackID: "u3", context: "spotify:album:u", autoplay: true, generation: 1)]
         #expect(send(&s, .select) == load)
@@ -95,7 +95,7 @@ func withLikedAlbums() -> AppState {
 
     @Test func aLikedSongsRereadKeepsTheSelectedAlbum() {
         var s = withLikedAlbums()
-        send(&s, .wheel(1), .select, .wheel(3))  // Nevermind, the last album
+        send(&s, .wheel(2), .select, .wheel(3))  // Nevermind, the last album
         let more = [Track(id: "a", title: "a", artist: "b", duration: 1, album: Album(id: "spotify:album:a", name: "Abbey Road"))]
         s.refreshing = [Playlist.likedSongsID]
         send(&s, .tracksRefreshed(playlist: Playlist.likedSongsID, tracks: more + likedAlbums))
@@ -105,7 +105,7 @@ func withLikedAlbums() -> AppState {
     @Test func theAlbumsCoverIsTheSelectedAlbum() {
         var s = withLikedAlbums()
         s.library[0].tracks = likedAlbums.map { var t = $0; t.coverID = "c-\($0.album?.id ?? "")"; return t }
-        send(&s, .wheel(1), .select, .wheel(3), now: 200)
+        send(&s, .wheel(2), .select, .wheel(3), now: 200)
         send(&s, .tick, now: 201)
         #expect(s.artRow == .album("spotify:album:n") && s.mainArt.map(\.coverID) == ["c-spotify:album:n"])
     }
