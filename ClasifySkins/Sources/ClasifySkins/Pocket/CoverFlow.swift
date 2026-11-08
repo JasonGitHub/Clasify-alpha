@@ -9,23 +9,51 @@ import SwiftUI
 /// from the top left of the 300 x 206 area under the title bar.
 struct PocketCoverFlow: View {
     let state: AppState
+    var input: @MainActor (Action) -> Void = { _ in }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The song panel that showed last, so it can turn back into the cover after MENU.
     @State private var lastPanel: AlbumPanel.Shown?
 
     var body: some View {
         let albums = state.albums
-        let frame = state.coverFlowFrame ?? state.top
+        let frame = state.stack.last { $0.screen == .coverFlow } ?? state.top
         let panel = AlbumPanel.Shown(state)
-        CoverFlowTurn(turn: panel == nil ? 0 : 1, panel: panel ?? lastPanel, state: state) {
-            CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0)
-                // Fast steps retarget the glide, so the covers stream and then ease to a stop.
-                .animation(reduceMotion ? nil : CoverFlowStrip.glide, value: frame.sel)
+        // Card AH: on a song, the covers and the panel go at once and the cover flies to Now
+        // Playing. On MENU they come back when it lands on the panel's place, 0.4 s later.
+        let flying = state.nowOverPanel
+        // Only the opacity waits for the landing; the flight keeps the move's own curve.
+        let comeBack: Animation? = flying || reduceMotion ? nil : .linear(duration: 0).delay(Self.flyTime)
+        ZStack(alignment: .topLeading) {
+            CoverFlowTurn(turn: panel == nil ? 0 : 1, panel: panel ?? lastPanel, state: state) {
+                CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0)
+                    // Fast steps retarget the glide, so the covers stream and then ease to a stop.
+                    .animation(reduceMotion ? nil : CoverFlowStrip.glide, value: frame.sel)
+            }
+            .animation(comeBack) { $0.opacity(flying ? 0 : 1) }
+            .accessibilityHidden(flying)
+            if let shown = panel ?? lastPanel {
+                CoverFly(fly: flying ? 1 : 0, panel: shown, state: state)
+                    // Only while it flies: before, the panel shows; after, Now Playing's own cover.
+                    .animation(comeBack) { $0.opacity(flying ? 1 : 0) }
+                    .accessibilityHidden(true)
+            }
+            if flying {
+                // Now Playing's text and time bar fade in over 0.1 s when the cover lands, and go
+                // at once on MENU, leaving the cover.
+                PocketNowPlaying(state: state, input: input)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)  // placed as on its own screen
+                    .transition(reduceMotion ? .identity : .asymmetric(
+                        insertion: .opacity.animation(.linear(duration: 0.1).delay(Self.flyTime)), removal: .identity))
+            }
         }
         .overlay(alignment: .topLeading) { LetterBox(letter: state.coverFlowLetter) }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .onChange(of: panel, initial: true) { _, new in if let new { lastPanel = new } }
     }
+
+    /// The cover's flight between the song panel and Now Playing: 0.4 s, ease-in-out (card AH).
+    static let flyTime = 0.4
+    static let flyAnimation = Animation.easeInOut(duration: flyTime)
 }
 
 /// The covers at `pos`, which moves smoothly between two albums while they glide.

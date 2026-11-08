@@ -341,6 +341,18 @@ public struct AppState: Equatable, Sendable {
         }
     }
 
+    /// The song panel's cover can fly to Now Playing and back (card AH): only when Now Playing
+    /// shows the cover and Clasify is online.
+    public var canFly: Bool { albumArt != .off && !offline }
+
+    /// Now Playing over Cover Flow's song panel, reached by the cover's flight (card AH).
+    public var nowOverPanel: Bool {
+        guard canFly, top.screen == .now, stack.count >= 2, case .albumPanel = stack[stack.count - 2].screen else {
+            return false
+        }
+        return true
+    }
+
     /// The list rows that show at once: `visibleRows`, or `trackRows` for the taller two-line
     /// song rows. The bar takes no row: the song rows get shorter while it shows.
     public var shownRows: Int {
@@ -423,13 +435,14 @@ public struct AppState: Equatable, Sendable {
     }
 
     /// How a change from screen `a` to screen `b`, either way, moves. `whole` is true when one
-    /// of them is a half screen and the other is not.
-    public static func move(between a: Screen, and b: Screen, whole: Bool) -> NavMove {
+    /// of them is a half screen and the other is not. `fly` is false when the cover cannot fly
+    /// to Now Playing (`canFly`): then that change pushes.
+    public static func move(between a: Screen, and b: Screen, whole: Bool, fly: Bool = true) -> NavMove {
         func isPanel(_ s: Screen) -> Bool { if case .albumPanel = s { true } else { false } }
         func either(_ x: (Screen) -> Bool, _ y: (Screen) -> Bool) -> Bool { (x(a) && y(b)) || (y(a) && x(b)) }
         if whole && either({ $0 == .main }, { $0 == .coverFlow }) { return .doors }
         if either({ $0 == .coverFlow }, isPanel) { return .flip }
-        if either(isPanel, { $0 == .now }) { return .fly }
+        if fly && either(isPanel, { $0 == .now }) { return .fly }
         return .push
     }
 

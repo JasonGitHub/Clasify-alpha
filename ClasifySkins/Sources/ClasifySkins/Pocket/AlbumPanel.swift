@@ -214,12 +214,81 @@ struct AlbumPanel: View {
         let album: String
         let sel: Int, off: Int
 
-        /// Nil unless the song panel is on top.
+        /// Nil unless the song panel is on top, or under Now Playing while its cover flies there.
         init?(_ state: AppState) {
-            guard case .albumPanel(let album) = state.top.screen else { return nil }
+            let frame = state.nowOverPanel ? state.stack[state.stack.count - 2] : state.top
+            guard case .albumPanel(let album) = frame.screen else { return nil }
             self.album = album
-            sel = state.top.sel
-            off = state.top.off
+            sel = frame.sel
+            off = frame.off
         }
+    }
+}
+
+/// The song panel's cover on its flight to Now Playing (card AH), the mockup's `cfFly`. At 0
+/// the card is the panel, as `AlbumPanelCard` leaves it. While it flies, it turns over once
+/// more (180° to 360°) into the cover, and lands on Now Playing's 126.6 point tilted cover at
+/// (9, 14.6). `fly` goes from 0 to 1 on the move's 0.4 s ease-in-out; MENU plays it back.
+struct CoverFly: View, Animatable {
+    var fly: Double
+    let panel: AlbumPanel.Shown
+    let state: AppState
+    @Environment(\.artwork) private var artwork
+
+    // `Animatable` is nonisolated while `View` is on the main actor. `fly` is a plain Double
+    // in a value type, so reading and writing it from any isolation is safe.
+    nonisolated var animatableData: Double {
+        get { fly }
+        set { fly = newValue }
+    }
+
+    var body: some View {
+        let text = Labels.panel(panel.album, in: state)
+        let height = AlbumPanel.height(songs: text.songs.count)
+        Group {
+            if fly < 0.5 {
+                // The panel's back, turned the right way, as in `AlbumPanelCard`.
+                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: false)
+                    .scaleEffect(x: -1, y: 1)
+            } else {
+                CoverArt(image: state.albumCovers[panel.album].flatMap { artwork.lookup($0) }, notesSize: 51)
+                    .frame(width: CoverFlowStrip.side, height: CoverFlowStrip.side).clipped()
+                    .scaleEffect(x: AlbumPanel.width / CoverFlowStrip.side, y: height / CoverFlowStrip.side, anchor: .topLeading)
+                    .frame(width: AlbumPanel.width, height: height, alignment: .topLeading)
+            }
+        }
+        .frame(width: AlbumPanel.width, height: height)
+        .modifier(FlyEffect(fly: fly))
+        .offset(x: AlbumPanel.left, y: AlbumPanel.top)
+    }
+}
+
+/// The mockup's `cfFly` about the card's top left: `perspective(800px) translate(tx, ty)
+/// translate(cx) rotateY(angle) translate(-cx) matrix3d(tilt) scale(sx, sy)`, each part
+/// going straight from its start to its end.
+struct FlyEffect: GeometryEffect {
+    let fly: Double
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let f = CGFloat(min(max(fly, 0), 1))
+        func lerp(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * f }
+        // Lands as the 126.6 point cover (`PocketNowPlaying.coverSide`) at (9, 14.6): this
+        // runs off the main actor, so it cannot read the views' constants.
+        let side: CGFloat = 126.6
+        var t = CATransform3DMakeScale(lerp(1, side / size.width), lerp(1, side / size.height), 1)
+        var tilt = CATransform3DIdentity  // `Tilt`, from none to all of it
+        tilt.m11 = lerp(1, 1.164835)
+        tilt.m12 = lerp(0, 0.082418)
+        tilt.m14 = lerp(0, 0.001259)
+        t = CATransform3DConcat(t, tilt)
+        let cx = lerp(size.width / 2, 74)  // the turn's axis: the panel's middle, then 74 points in
+        t = CATransform3DConcat(t, CATransform3DMakeTranslation(-cx, 0, 0))
+        t = CATransform3DConcat(t, CATransform3DMakeRotation(.pi * (1 + f), 0, 1, 0))
+        t = CATransform3DConcat(t, CATransform3DMakeTranslation(cx, 0, 0))
+        t = CATransform3DConcat(t, CATransform3DMakeTranslation(lerp(0, -19), lerp(0, 5.6), 0))
+        var perspective = CATransform3DIdentity
+        perspective.m34 = -1 / 800
+        t = CATransform3DConcat(t, perspective)
+        return ProjectionTransform(t)
     }
 }
