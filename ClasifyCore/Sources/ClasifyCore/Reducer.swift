@@ -144,10 +144,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     var fx: [Effect] = []
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
     func fetch(_ screen: Screen) {
-        switch screen {
-        case .tracks(let id): fx.append(.fetchTracks(token: s.tok, playlist: id))
-        default: fx.append(.fetchPlaylists(token: s.tok))
-        }
+        let key = AppState.readKey(screen)  // an album and Albums read Liked Songs
+        fx.append(key.isEmpty ? .fetchPlaylists(token: s.tok) : .fetchTracks(token: s.tok, playlist: key))
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
     func open(_ screen: Screen) {
@@ -193,12 +191,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         let key = AppState.readKey(screen)
         guard !s.offline, now - (s.readAt[key] ?? 0) >= limit, !s.refreshing.contains(key) else { return }
         s.refreshing.insert(key)
-        if case .tracks(let id) = screen { fx.append(.refreshTracks(playlist: id)) } else { fx.append(.refreshPlaylists) }
+        fx.append(key.isEmpty ? .refreshPlaylists : .refreshTracks(playlist: key))
     }
     /// Reads the song list on screen and the playlist list again, when they were read before.
     func refreshShown() {
         guard s.signedIn else { return }
-        if case .tracks = s.top.screen, s.isLoaded(s.top.screen) { refreshIfStale(s.top.screen, after: activationStaleAfter) }
+        let songs = !AppState.readKey(s.top.screen).isEmpty  // a song list or Albums
+        if songs, s.isLoaded(s.top.screen) { refreshIfStale(s.top.screen, after: activationStaleAfter) }
         if s.playlistsLoaded { refreshIfStale(.playlists, after: activationStaleAfter) }
     }
     /// After new rows came in, each frame on `screen` keeps its selected row by ID. A row that
@@ -225,7 +224,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         let read = Dictionary(s.library.map { ($0.id, $0.tracks) }, uniquingKeysWith: { a, _ in a })
         let kept = Set(playlists.map(\.id)).union([Playlist.likedSongsID])
         // The playing playlist is gone: keep the playing track's details for Now Playing.
-        if let ref = s.current, !kept.contains(ref.playlist), let track = s.track(ref) { keepExtra(track) }
+        if let ref = s.current, !kept.contains(AppState.source(ref.playlist)), let track = s.track(ref) { keepExtra(track) }
         s.loadedTracks = s.loadedTracks.intersection(kept)
         s.library = s.library.filter { $0.id == Playlist.likedSongsID } + playlists.map {
             var p = $0
@@ -323,6 +322,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fx.append(.logIn(token: s.authAttempt))
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
             case .playlists: open(.playlists)
+            case .albums: open(.albums)
+            case .album(let id): open(.tracks(playlist: id))
             case .likedSongs: open(.tracks(playlist: Playlist.likedSongsID))
             case .shuffleSongs:
                 if s.offline { return toast(offlineStart) }
@@ -461,16 +462,16 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.refreshing.remove(id) != nil, let tracks,
                 let i = s.library.firstIndex(where: { $0.id == id })  // the playlist is gone
             else { return }
-            let screen = Screen.tracks(playlist: id)
-            let old = s.rows(for: Frame(screen: screen))
-            // The playing track left the list: keep its details for Now Playing.
-            if let ref = s.current, ref.playlist == id, !tracks.contains(where: { $0.id == ref.track }),
-                let track = s.library[i].tracks.first(where: { $0.id == ref.track }) {
-                keepExtra(track)
-            }
+            // The screens that show this list: the song list, and for Liked Songs, Albums and its albums.
+            var screens = [Screen.tracks(playlist: id)]
+            for f in s.stack where AppState.readKey(f.screen) == id && !screens.contains(f.screen) { screens.append(f.screen) }
+            let old = screens.map { s.rows(for: Frame(screen: $0)) }
+            // The playing track left the list (or its album): keep its details for Now Playing.
+            let playing = s.current.flatMap { AppState.source($0.playlist) == id ? s.track($0) : nil }
             s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+            if let ref = s.current, let playing, s.track(ref) == nil { keepExtra(playing) }
             s.readAt[id] = now
-            keepSelection(on: screen, old: old)
+            for (screen, rows) in zip(screens, old) { keepSelection(on: screen, old: rows) }
 
         case .artTracksRead(let token, let id, let tracks):
             guard s.artReads[id] == token else { return }  // a read from before a logout or reset

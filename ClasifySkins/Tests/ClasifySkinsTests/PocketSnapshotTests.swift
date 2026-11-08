@@ -372,6 +372,17 @@ import Testing
         #expect(shot.isBlue(thumbX, thumbY))  // the selected row's blue, with no thumb over it
     }
 
+    @Test func albumsIsAHalfScreenOfTwoLineRows() throws {
+        var s = sampleState()
+        s.library[0].tracks[0].album = Album(id: "spotify:album:p", name: "Kala", artist: "M.I.A.")
+        s.library[0].tracks[1].album = Album(id: "spotify:album:s", name: "Speakerboxxx/The Love Below", artist: "OutKast")
+        s.stack.append(Frame(screen: .albums))
+        s.top.sel = 1
+        let shot = try render(s, "albums")
+        #expect(shot.isBlue(Self.screenLeft + 60, Self.rowCenter(1, songs: true)))  // the second two-line row
+        #expect(!shot.isBlue(Self.screenLeft + 60, Self.rowCenter(0, songs: true)))
+    }
+
     @Test func settings() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
