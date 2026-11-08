@@ -18,17 +18,21 @@ public enum AlbumPlay {
 
     /// Runs `trackList` when there is a list, else or when it throws, `albumContext`.
     /// Returns the path that played. Throws the album context's error when both fail.
+    /// Returns nil with no fallback when the list failed and `stillWanted` is false: a newer
+    /// load came while the list was refused, so the album must not replace it.
     /// It runs on the caller's actor, so the steps can use the caller's state.
     public static func run(
         hasList: Bool, trackList: () async throws -> Void, albumContext: () async throws -> Void,
-        trackListFailed: (any Error) -> Void = { _ in }, isolation: isolated (any Actor)? = #isolation
-    ) async throws -> Path {
+        trackListFailed: (any Error) -> Void = { _ in }, stillWanted: () -> Bool = { true },
+        isolation: isolated (any Actor)? = #isolation
+    ) async throws -> Path? {
         if hasList {
             do {
                 try await trackList()
                 return .trackList
             } catch {
                 trackListFailed(error)
+                guard stillWanted() else { return nil }
             }
         }
         try await albumContext()

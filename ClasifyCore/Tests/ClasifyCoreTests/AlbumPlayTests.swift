@@ -35,6 +35,14 @@ private struct Refused: Error {}
         #expect(direct == .albumContext && calls == ["album"])
     }
 
+    @Test func aNewerLoadStopsTheFallback() async throws {
+        var calls: [String] = []
+        let path = try await AlbumPlay.run(
+            hasList: true, trackList: { calls.append("list"); throw Refused() },
+            albumContext: { calls.append("album") }, stillWanted: { false })
+        #expect(path == nil && calls == ["list"])
+    }
+
     @Test func whenBothFailTheAlbumsErrorComesBack() async {
         await #expect(throws: Refused.self) {
             _ = try await AlbumPlay.run(hasList: true, trackList: { throw Refused() }, albumContext: { throw Refused() })

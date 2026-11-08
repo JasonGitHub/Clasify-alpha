@@ -475,7 +475,10 @@ final class SpotifyConnectPlayer: Player {
                             hasList: albumList != nil,
                             trackList: { try await again { try await client.play(device: found, tracks: albumList ?? [], track: trackID) } },
                             albumContext: { try await again { try await client.play(device: found, context: contextURI, track: trackID) } },
-                            trackListFailed: { Self.logFailure("play the album as a track list", $0) })
+                            trackListFailed: { Self.logFailure("play the album as a track list", $0) },
+                            stillWanted: { id == loadID })
+                        // A newer load came while Spotify refused the list: no album over it.
+                        guard let path else { return }
                         Self.logTime("load: album played as \(path.rawValue)", since: start)
                     } else {
                         try await again { try await client.play(device: found, context: contextURI, track: trackID) }
