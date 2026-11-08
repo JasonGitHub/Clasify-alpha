@@ -108,7 +108,12 @@ typedef struct LsbTrack {
     const char *artist;          // All artists, joined with ", ".
     const char *cover_id;        // Album cover file ID, 40 lowercase hex digits, or "".
                                  // The image is at https://i.scdn.co/image/<cover_id>.
+    const char *album_uri;       // Like "spotify:album:<id>", or "" when there is none.
+    const char *album_name;      // Or "".
+    const char *album_artist;    // The album's artists, joined with ", ", or "".
     uint32_t duration_ms;
+    uint32_t disc_number;        // From 1, or 0 when Spotify does not give it.
+    uint32_t track_number;       // The place on the disc, from 1, or 0.
 } LsbTrack;
 
 typedef void (*LsbPlaylistsCallback)(void *context, int32_t status, const char *message,

@@ -5,10 +5,39 @@ public struct Track: Equatable, Sendable {
     public var duration: Double  // seconds
     /// The album cover's Spotify image file ID (hex), or nil when the track has none.
     public var coverID: String?
+    /// The album, for the Albums menu. Nil when Spotify does not give it.
+    public var album: Album?
+    /// The disc and the track's place on it, from 1. Nil when Spotify does not give them.
+    public var disc: Int?, number: Int?
 
-    public init(id: String, title: String, artist: String, duration: Double, coverID: String? = nil) {
+    public init(
+        id: String, title: String, artist: String, duration: Double, coverID: String? = nil,
+        album: Album? = nil, disc: Int? = nil, number: Int? = nil
+    ) {
         self.id = id; self.title = title; self.artist = artist; self.duration = duration
         self.coverID = coverID.flatMap { $0.isEmpty ? nil : $0 }
+        self.album = album
+        self.disc = disc.flatMap { $0 > 0 ? $0 : nil }
+        self.number = number.flatMap { $0 > 0 ? $0 : nil }
+    }
+}
+
+/// An album, as a liked song names it.
+public struct Album: Equatable, Hashable, Sendable {
+    public var id: String  // Spotify URI, like "spotify:album:<id>"
+    public var name: String
+    /// The album's artists, joined with ", ". Nil when Spotify gives none.
+    public var artist: String?
+
+    public init(id: String, name: String, artist: String? = nil) {
+        self.id = id; self.name = name
+        self.artist = artist.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// The album from the bridge's fields, where "" means missing. Nil with no album URI.
+    public static func from(id: String?, name: String?, artist: String?) -> Album? {
+        guard let id, !id.isEmpty else { return nil }
+        return Album(id: id, name: name ?? "", artist: artist)
     }
 }
 

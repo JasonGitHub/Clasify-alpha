@@ -176,14 +176,19 @@ fn library_and_token_layouts_match_c() {
         offset_of!(LsbPlaylist, track_count),
     ];
     assert_eq!(playlist, [8, 16]);
-    assert_eq!(size_of::<LsbTrack>(), 40);
+    assert_eq!(size_of::<LsbTrack>(), 72);
     let track = [
         offset_of!(LsbTrack, title),
         offset_of!(LsbTrack, artist),
         offset_of!(LsbTrack, cover_id),
+        offset_of!(LsbTrack, album_uri),
+        offset_of!(LsbTrack, album_name),
+        offset_of!(LsbTrack, album_artist),
         offset_of!(LsbTrack, duration_ms),
+        offset_of!(LsbTrack, disc_number),
+        offset_of!(LsbTrack, track_number),
     ];
-    assert_eq!(track, [8, 16, 24, 32]);
+    assert_eq!(track, [8, 16, 24, 32, 40, 48, 56, 60, 64]);
 }
 
 mod library_tests {
@@ -433,8 +438,8 @@ mod library_tests {
             uri: format!("spotify:track:{id}"),
             title: title.to_owned(),
             artist: artist.to_owned(),
-            cover_id: String::new(),
             duration_ms,
+            ..Default::default()
         };
         assert_eq!(
             decode_metadata(&response, &uris),
@@ -443,6 +448,59 @@ mod library_tests {
                 track("2", "Two", "B", 2000)
             ]
         );
+    }
+
+    #[test]
+    fn metadata_keeps_the_album_and_the_place_on_it() {
+        let mut gid = vec![0u8; 16];
+        gid[15] = 1; // base 62: 21 zeros, then "1"
+        let message = TrackMessage {
+            name: Some("Song".to_owned()),
+            number: Some(7),
+            disc_number: Some(2),
+            album: MessageField::some(Album {
+                gid: Some(gid),
+                name: Some("Record".to_owned()),
+                artist: ["X", "Y"]
+                    .map(|a| Artist {
+                        name: Some(a.to_owned()),
+                        ..Default::default()
+                    })
+                    .to_vec(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut data = details("spotify:track:9", 200, "", &[], 0);
+        data.extension_data = MessageField::some(Any {
+            value: message.write_to_bytes().unwrap(),
+            ..Default::default()
+        });
+        let response = BatchedExtensionResponse {
+            extended_metadata: vec![EntityExtensionDataArray {
+                extension_data: vec![data],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let tracks = decode_metadata(&response, &["spotify:track:9".to_owned()]);
+        let track = &tracks[0];
+        assert_eq!(
+            track.album_uri,
+            format!("spotify:album:{}1", "0".repeat(21))
+        );
+        assert_eq!(track.album_name, "Record");
+        assert_eq!(track.album_artist, "X, Y");
+        assert_eq!((track.disc_number, track.track_number), (2, 7));
+        // No album and no numbers: empty and 0, so the app can tell they are missing.
+        let none = TrackMessage::default();
+        assert_eq!(album_uri(&none), "");
+        let mut short = none.clone();
+        short.album = MessageField::some(Album {
+            gid: Some(vec![1, 2]),
+            ..Default::default()
+        });
+        assert_eq!(album_uri(&short), ""); // a gid that is not 16 bytes
     }
 
     fn image(id: u8, size: Option<Size>, width: i32) -> Image {
@@ -602,7 +660,12 @@ mod library_tests {
                     read(t.title),
                     read(t.artist),
                     read(t.cover_id),
+                    read(t.album_uri),
+                    read(t.album_name),
+                    read(t.album_artist),
                     t.duration_ms.to_string(),
+                    t.disc_number.to_string(),
+                    t.track_number.to_string(),
                 ]
             })
             .collect();
@@ -626,7 +689,12 @@ mod library_tests {
             title: "One".to_owned(),
             artist: "A".to_owned(),
             cover_id: "ab67".to_owned(),
+            album_uri: "spotify:album:a".to_owned(),
+            album_name: "Al\0bum".to_owned(),
+            album_artist: "B".to_owned(),
             duration_ms: 1000,
+            disc_number: 1,
+            track_number: 3,
         };
         deliver_tracks(record_tracks, context, Ok(vec![track]), false);
         deliver_tracks(record_tracks, context, Err("offline".to_owned()), false);
@@ -644,7 +712,18 @@ mod library_tests {
                 (
                     LSB_OK,
                     None,
-                    vec![row(&["spotify:track:1", "One", "A", "ab67", "1000"])]
+                    vec![row(&[
+                        "spotify:track:1",
+                        "One",
+                        "A",
+                        "ab67",
+                        "spotify:album:a",
+                        "Al bum",
+                        "B",
+                        "1000",
+                        "1",
+                        "3"
+                    ])]
                 ),
                 (LSB_ERR_READ, Some("offline".to_owned()), vec![]),
                 (LSB_ERR_NOT_LOGGED_IN, Some("dropped".to_owned()), vec![]),
