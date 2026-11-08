@@ -220,6 +220,43 @@ import Testing
         #expect(MainArt.coverID(for: none, turnStart: 99, loaded: { _ in true }, loadedAt: { _ in 0 }) == "small")
     }
 
+    /// Card AM: a line that is too long is cut, not ended with "…", and its last 22 points fade.
+    /// A line that fits is drawn as it is, with no mask.
+    @Test func aLongLineIsCutAndFadesAndAShortLineIsPlain() throws {
+        func shot(_ view: some View) throws -> NSBitmapImageRep {
+            let framed = view.font(.helvetica(13, bold: true)).foregroundStyle(Color.black)
+                .frame(width: 100, height: 20, alignment: .leading).background(Color.white)
+            let renderer = ImageRenderer(content: framed)
+            renderer.scale = CGFloat(Snapshot.scale)
+            return NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        }
+        /// The darkness of the pixel columns from point `from` to point `to`.
+        func ink(_ b: NSBitmapImageRep, _ from: Int, _ to: Int) -> Double {
+            var sum = 0.0
+            for x in from * Snapshot.scale..<to * Snapshot.scale {
+                for y in 0..<b.pixelsHigh {
+                    let c = b.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) ?? .white
+                    sum += 3 - (c.redComponent + c.greenComponent + c.blueComponent)
+                }
+            }
+            return sum
+        }
+        let long = "Bohemian Rhapsody Remastered 2011 Version"
+        let faded = try shot(FadeLine(Text(long)))
+        // The same text, cut at the edge with no fade and no "…".
+        let cut = try shot(Text(long).lineLimit(1).fixedSize().frame(width: 100, alignment: .leading).clipped())
+        let fadeStart = 100 - Int(FadeMask.width)
+        // Before the fade, the same pixels as the cut text: no "…" and no other layout.
+        #expect(abs(ink(faded, 0, fadeStart) - ink(cut, 0, fadeStart)) < 0.5)
+        // In the fade, much lighter than the cut text, and almost clear at the very end.
+        #expect(ink(faded, fadeStart, 100) < ink(cut, fadeStart, 100) * 0.7)
+        #expect(ink(faded, 98, 100) < ink(cut, 98, 100) * 0.2 + 0.5)
+        // A short line: the same pixels as plain text, so no mask.
+        let short = try shot(FadeLine(Text("Abbey Road")))
+        let plain = try shot(Text("Abbey Road"))
+        #expect(abs(ink(short, 0, 100) - ink(plain, 0, 100)) < 0.5)
+    }
+
     @Test func thePanningCoverMovesItsLayerWithCoreAnimation() throws {
         let image = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let view = PanView(frame: NSRect(x: 0, y: 0, width: 116, height: 180))

@@ -42,7 +42,7 @@ struct PocketNowPlaying: View {
 
     /// One line of the track's text. The mockup sets each line's box to its font size, at `top`.
     private func line(_ text: String, size: CGFloat, color: Color, top: CGFloat) -> some View {
-        Text(text).font(.helvetica(size, bold: true)).foregroundStyle(color).lineLimit(1)
+        FadeLine(Text(text)).font(.helvetica(size, bold: true)).foregroundStyle(color)
             .frame(height: size)
             .offset(y: top)
     }
@@ -283,12 +283,7 @@ struct NowLines: View {
                 // Cut, not truncated, and it starts at the left even when the lines are centered.
                 Marquee.copies(label, shift: shift)
                     .clipped()
-                    .mask {
-                        HStack(spacing: 0) {
-                            Color.black
-                            LinearGradient(colors: [.black, .clear], startPoint: .leading, endPoint: .trailing).frame(width: 22)
-                        }
-                    }
+                    .mask { FadeMask() }
             } else {
                 label.lineLimit(1).frame(maxWidth: .infinity, alignment: art ? .leading : .center)
             }
