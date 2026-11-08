@@ -31,15 +31,17 @@ jobs:
           # Warnings from librespot objects are OK. Warnings in our own code are not.
           if grep -E '/Clasify/[^ ]*\.swift:[0-9]+:[0-9]+: warning: ' build.log; then echo "Our code has warnings."; exit 1; fi
       - name: Ad-hoc sign and make the DMG
+        env:
+          DMG: Clasify-build-${{ github.run_number }}.dmg  # the build number Jason sees
         run: |
           app=DerivedData/Build/Products/Release/Clasify.app
           lipo -info "$app/Contents/MacOS/Clasify"
           codesign --force --deep --sign - "$app"
           codesign --verify --verbose "$app"
           mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
-          hdiutil create -volname Clasify -srcfolder dmg -ov -format UDZO Clasify.dmg
+          hdiutil create -volname Clasify -srcfolder dmg -ov -format UDZO "$DMG"
       - uses: actions/upload-artifact@v4
         with:
-          name: Clasify.dmg
-          path: Clasify.dmg
+          name: Clasify-build-${{ github.run_number }}.dmg
+          path: Clasify-build-${{ github.run_number }}.dmg
           retention-days: 14
