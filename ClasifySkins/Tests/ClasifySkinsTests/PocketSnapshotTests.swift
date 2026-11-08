@@ -1,5 +1,6 @@
 import AppKit
 import ClasifyCore
+import QuartzCore
 import SwiftUI
 import Testing
 
@@ -443,12 +444,36 @@ import Testing
     }
 
     @Test func coverFlowPosesFollowTheMockup() {
-        #expect(CoverFlowStrip.pose(0) == .init(x: 0, angle: 0, scale: 1, dark: 0, opacity: 1))
-        #expect(CoverFlowStrip.pose(1) == .init(x: 72, angle: -70, scale: 0.9, dark: 0.04, opacity: 1))
-        #expect(CoverFlowStrip.pose(-0.5) == .init(x: -36, angle: 35, scale: 0.95, dark: 0.02, opacity: 1))
+        // Card AE.1 (change 127): 68 points out, turned 61°, scaled to 0.63. No darkening.
+        #expect(CoverFlowStrip.pose(0) == .init(x: 0, angle: 0, scale: 1, opacity: 1))
+        #expect(CoverFlowStrip.pose(1) == .init(x: 68, angle: -61, scale: 0.63, opacity: 1))
+        let half = CoverFlowStrip.pose(-0.5)
+        #expect(half.x == -34 && half.angle == 30.5 && abs(half.scale - 0.815) < 1e-9 && half.opacity == 1)
         let far = CoverFlowStrip.pose(-3)  // the stack: 27 points apart past the first cover
-        #expect(far.x == -126 && far.angle == 70 && abs(far.dark - 0.12) < 1e-9)
+        #expect(far.x == -122 && far.angle == 61 && abs(far.scale - 0.63) < 1e-9)
         #expect(CoverFlowStrip.pose(7).opacity == 0 && abs(CoverFlowStrip.pose(6.5).opacity - 0.5) < 1e-9)
+    }
+
+    /// Card AE.1 (change 129): a side cover's 1 point edge shows just outside its outer side,
+    /// wide enough to see, and it does not cover the face.
+    @Test func theCoverEdgeShowsOutsideTheFace() {
+        func project(_ m: CATransform3D, _ x: CGFloat, _ y: CGFloat) -> CGFloat {
+            (x * m.m11 + y * m.m21 + m.m41) / (x * m.m14 + y * m.m24 + m.m44)
+        }
+        let p = CoverFlowStrip.pose(1)
+        let face = TurnY.matrix(angle: p.angle, scale: p.scale)
+        let edge = CoverEdge.matrix(side: 1, angle: p.angle, scale: p.scale)
+        let outer = project(face, 120, 60), inner = project(face, 0, 60)
+        let a = project(edge, 0, 60), b = project(edge, 1, 60)
+        #expect(abs(a - outer) < 1e-6, "the strip starts on the face's edge")
+        #expect(b - a > 0.5 && b - a < 3, "strip \(a) to \(b)")
+        #expect(inner < outer)  // the strip is beyond the outer side
+        // The left side mirrors it.
+        let q = CoverFlowStrip.pose(-1)
+        let left = CoverEdge.matrix(side: -1, angle: q.angle, scale: q.scale)
+        let leftFace = TurnY.matrix(angle: q.angle, scale: q.scale)
+        let la = project(left, 1, 60), lb = project(left, 0, 60)
+        #expect(abs(la - project(leftFace, 0, 60)) < 1e-6 && la - lb > 0.5 && la - lb < 3, "left \(lb) to \(la)")
     }
 
     @Test func theDoorsFollowTheMockupTimes() {
@@ -489,13 +514,13 @@ import Testing
         // The middle cover is 120 points, 22 points under the header: its center is at 150, 82.
         let middle = shot.rgb(Self.screenLeft + 150, Self.listTop + 82)
         #expect(middle.r > 200 && middle.b < 60, "middle \(middle)")
-        // The covers next to it turn toward it, 72 points to each side.
+        // The covers next to it turn toward it, 68 points to each side.
         for x in [150 - 72, 150 + 72] {
             let side = shot.rgb(Self.screenLeft + x, Self.listTop + 82)
             #expect(side.b > 150 && side.r < 60, "side \(side)")
         }
-        // The album name, bold black, on the line at 164.
-        #expect((100...200).contains { shot.isDark(Self.screenLeft + $0, Self.listTop + 172) })
+        // The album name, bold ink, on the line at 159.
+        #expect((100...200).contains { shot.isDark(Self.screenLeft + $0, Self.listTop + 168) })
 
         // A fast spin: the big letter box over the middle cover, dark over the red.
         s.letterUntil = 1
@@ -516,7 +541,7 @@ import Testing
         let thumb = AlbumPanel.thumb(track: 152, songs: 9, scroll: 51, height: 197)
         #expect(thumb.map { abs($0.length + $0.offset - 152) < 1e-9 } == true)  // at the end of the track
         // The side covers move 44 points out; the middle one stays.
-        #expect(CoverFlowStrip.pose(1, spread: 1).x == 116 && CoverFlowStrip.pose(-2, spread: 0.5).x == -121)
+        #expect(CoverFlowStrip.pose(1, spread: 1).x == 112 && CoverFlowStrip.pose(-2, spread: 0.5).x == -117)
         #expect(CoverFlowStrip.pose(0, spread: 1).x == 0)
     }
 

@@ -37,7 +37,8 @@ struct CoverArt: View {
     }
 
     /// The reflection under a cover of `side` points: the cover's lower part mirrored, fading out downward.
-    func reflection(side: CGFloat, height: CGFloat, strength: Double = 0.35) -> some View {
+    /// `strength` is where a real cover's reflection starts, `placeholderStrength` the default art's.
+    func reflection(side: CGFloat, height: CGFloat, strength: Double = 0.35, placeholderStrength: Double = 0.45) -> some View {
         Group {
             if image != nil {
                 self.frame(width: side, height: side)
@@ -49,7 +50,7 @@ struct CoverArt: View {
             }
         }
         .frame(width: side, height: height)
-        .mask(LinearGradient.vertical(.black.opacity(image == nil ? 0.45 : strength), .clear))
+        .mask(LinearGradient.vertical(.black.opacity(image == nil ? placeholderStrength : strength), .clear))
     }
 }
 
