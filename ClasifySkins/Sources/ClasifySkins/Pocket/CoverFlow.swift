@@ -3,7 +3,7 @@ import QuartzCore
 import SwiftUI
 
 /// Cover Flow (Round 9, card AE): the albums of Liked Songs as covers in a row. The album in
-/// the middle faces you. The others turn 70° toward it, stacked on each side. The names of the
+/// the middle faces you. The others turn 61° toward it, stacked on each side. The names of the
 /// middle album show under the covers. The covers glide when the selection moves (card AE
 /// change 91), and a fast spin shows the big letter (card AG). The points are the mockup's,
 /// from the top left of the 300 x 206 area under the title bar.
@@ -86,11 +86,11 @@ struct CoverFlowStrip: View, Animatable {
     static let perSide = 6
 
     /// Where an album `d` places from the middle shows: its center's offset from the middle in
-    /// points, its turn in degrees, its scale, how dark it is (0 to 1), and its opacity. Within
-    /// one place of the middle the cover turns and moves gradually, so half way two covers
-    /// meet in a V.
+    /// points, its turn in degrees, its scale and its opacity. Within one place of the middle
+    /// the cover turns and moves gradually, so half way two covers meet in a V. All covers are
+    /// equally bright (card AE.1).
     struct Pose: Equatable {
-        var x: Double, angle: Double, scale: Double, dark: Double, opacity: Double
+        var x: Double, angle: Double, scale: Double, opacity: Double
     }
 
     /// The side covers move out by `spread` x 44 points for the song panel (card AF).
@@ -98,10 +98,12 @@ struct CoverFlowStrip: View, Animatable {
 
     static func pose(_ d: Double, spread: Double = 0) -> Pose {
         let m = abs(d), sign: Double = d > 0 ? 1 : -1
-        let x = (m <= 1 ? sign * 72 * m : sign * (72 + (m - 1) * 27)) + (m > 0.001 ? sign * spreadWidth * spread : 0)
-        let angle = -sign * 70 * min(m, 1)
-        let scale = 1 - 0.1 * min(m, 1)
-        return Pose(x: x, angle: angle, scale: scale, dark: 0.04 * min(m, 6), opacity: max(0, min(1, 7 - m)))
+        // Card AE.1 (change 127): the first side cover 68 points out, then one every 27, turned
+        // 61° and scaled to 0.63.
+        let x = (m <= 1 ? sign * 68 * m : sign * (68 + (m - 1) * 27)) + (m > 0.001 ? sign * spreadWidth * spread : 0)
+        let angle = -sign * 61 * min(m, 1)
+        let scale = 1 - 0.37 * min(m, 1)
+        return Pose(x: x, angle: angle, scale: scale, opacity: max(0, min(1, 7 - m)))
     }
 
     var body: some View {
@@ -113,23 +115,27 @@ struct CoverFlowStrip: View, Animatable {
                 ForEach(low...high, id: \.self) { k in
                     let d = Double(k) - pos
                     let p = Self.pose(d, spread: spread)
-                    cover(albums[k])
-                        // The mockup's brightness filter: darker away from the middle. A multiply
-                        // keeps the clear end of the reflection clear.
-                        .colorMultiply(Color(white: 1 - p.dark))
-                        .modifier(TurnY(angle: p.angle, scale: p.scale))
-                        .opacity(hidesMiddle && abs(d) < 0.5 ? 0 : p.opacity)
+                    ZStack(alignment: .topLeading) {
+                        // A side cover's outer edge (change 129). The middle cover shows none.
+                        let side: Double = d > 0 ? 1 : -1
+                        edge(albums[k], side: side)
+                            .modifier(CoverEdge(side: side, angle: p.angle, scale: p.scale))
+                            .opacity(abs(d) > 0.001 ? 1 : 0)
+                        cover(albums[k]).modifier(TurnY(angle: p.angle, scale: p.scale))
+                    }
+                    .opacity(hidesMiddle && abs(d) < 0.5 ? 0 : p.opacity)
                         .offset(x: Pocket.screenWidth / 2 + p.x - Self.side / 2, y: Self.top)
                         .zIndex(100 - abs(Double(k) - pos) * 10)
                 }
             }
             // The names change when a cover passes the middle.
             if let shown {
-                VStack(spacing: 0) {
-                    name(shown.name, color: .black)
-                    name(shown.artist ?? "", color: Pocket.ink)
+                // Card AE.1 (changes 125, 128): both lines bold 16 in ink, with tops at 159 and 176.
+                // The mockup's lines start 2 points above the text.
+                ZStack(alignment: .topLeading) {
+                    name(shown.name).offset(y: 159 - 2)
+                    name(shown.artist ?? "").offset(y: 176 - 2)
                 }
-                .offset(y: 164 - 2)  // the mockup's 14 pt lines start 2 pt above the text
                 .opacity(hidesMiddle ? 0 : doors.names)
                 .zIndex(200)
             }
@@ -139,30 +145,43 @@ struct CoverFlowStrip: View, Animatable {
         .accessibilityLabel(shown.map { "\($0.name), \($0.artist ?? "")" } ?? "")
     }
 
-    /// One line under the covers: bold 14, centered, 10 points in from each side.
-    private func name(_ text: String, color: Color) -> some View {
-        FadeLine(Text(text)).font(.helvetica(14, bold: true)).foregroundStyle(color)
-            .frame(height: 17)
+    /// One line under the covers: bold 16 ink, centered, 10 points in from each side.
+    private func name(_ text: String) -> some View {
+        FadeLine(Text(text)).font(.helvetica(16, bold: true)).foregroundStyle(Pocket.ink)
+            .frame(height: 19.5)
             .frame(width: Pocket.screenWidth - 20)
             .padding(.horizontal, 10)
     }
 
-    /// A cover with its reflection, which turns with it: the cover, a 1 point gap, then 30
-    /// points of the cover turned over, from 35% to clear.
+    /// A cover with its reflection, which turns with it: the cover, then right under it 30
+    /// points of the cover turned over, from 25% to clear (32% for the default art) (card AE.1,
+    /// changes 124 and 126).
     func cover(_ album: Album) -> some View {
-        let image = covers[album.id].flatMap { artwork.lookup($0) }
-        let art = CoverArt(image: image, notesSize: 51)
-        return VStack(spacing: 1) {
+        let art = CoverArt(image: image(album), notesSize: 51)
+        return VStack(spacing: 0) {
             art.frame(width: Self.side, height: Self.side).clipped()
                 .overlay { Rectangle().strokeBorder(.black.opacity(0.12), lineWidth: 0.5) }
-            art.reflection(side: Self.side, height: Self.side / 4)
+            art.reflection(side: Self.side, height: Self.side / 4, strength: 0.25, placeholderStrength: 0.32)
         }
-        .frame(width: Self.side, height: Self.side * 1.25 + 1, alignment: .top)
+        .frame(width: Self.side, height: Self.side * 1.25, alignment: .top)
     }
+
+    /// A cover's 1 point thick edge on the `side` of it (1 right, -1 left): the art's outer
+    /// column, from the same image stretched and clipped, 12% darker (card AE.1, change 129).
+    func edge(_ album: Album, side: Double) -> some View {
+        CoverArt(image: image(album), notesSize: 51)
+            .frame(width: Self.side, height: Self.side)
+            .frame(width: 1, height: Self.side, alignment: side > 0 ? .trailing : .leading)
+            .clipped()
+            .overlay { Color.black.opacity(0.12) }
+    }
+
+    private func image(_ album: Album) -> CGImage? { covers[album.id].flatMap { artwork.lookup($0) } }
 }
 
-/// The mockup's `perspective(360px) rotateY(angle) scale(scale)` about the cover's center
-/// (60, 60), which leaves the reflection under it turning with it.
+/// The mockup's `perspective(86px) rotateY(angle) scale(scale)` about the cover's center
+/// (60, 60), which leaves the reflection under it turning with it. Card AE.1 (change 127)
+/// makes the depth stronger: 86 points, from 360.
 struct TurnY: GeometryEffect {
     var angle: Double, scale: Double
 
@@ -172,15 +191,47 @@ struct TurnY: GeometryEffect {
     }
 
     func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(Self.matrix(angle: angle, scale: scale))
+    }
+
+    static func matrix(angle: Double, scale: Double) -> CATransform3D {
         let c: CGFloat = 60  // half of `CoverFlowStrip.side`
         var perspective = CATransform3DIdentity
-        perspective.m34 = -1 / 360
+        perspective.m34 = -1 / 86
         var t = CATransform3DMakeTranslation(-c, -c, 0)
         t = CATransform3DConcat(t, CATransform3DMakeScale(scale, scale, 1))
         t = CATransform3DConcat(t, CATransform3DMakeRotation(angle * .pi / 180, 0, 1, 0))
         t = CATransform3DConcat(t, perspective)
-        t = CATransform3DConcat(t, CATransform3DMakeTranslation(c, c, 0))
-        return ProjectionTransform(t)
+        return CATransform3DConcat(t, CATransform3DMakeTranslation(c, c, 0))
+    }
+}
+
+/// A cover's 1 point edge strip (card AE.1, change 129), as the mockup draws it: the strip
+/// stands on the cover's right edge (`side` 1) or left edge (-1), turned 90° so it goes 1
+/// point back from the face, and then turns with the cover (`TurnY`). Its view is 1 x 120
+/// points at the cover's top left.
+struct CoverEdge: GeometryEffect {
+    let side: Double
+    var angle: Double, scale: Double
+
+    /// Animates like `TurnY`, so the strip stays on the face while the cover turns.
+    var animatableData: AnimatablePair<Double, Double> {
+        get { AnimatablePair(angle, scale) }
+        set { (angle, scale) = (newValue.first, newValue.second) }
+    }
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(Self.matrix(side: side, angle: angle, scale: scale))
+    }
+
+    static func matrix(side: Double, angle: Double, scale: Double) -> CATransform3D {
+        // The strip turns about its edge on the cover: its left on the right edge, or its right
+        // on the left edge. Then it moves there: x 120 or 0.
+        let pivot: CGFloat = side > 0 ? 0 : 1, at: CGFloat = side > 0 ? 120 : 0
+        var t = CATransform3DMakeTranslation(-pivot, -60, 0)
+        t = CATransform3DConcat(t, CATransform3DMakeRotation(side * .pi / 2, 0, 1, 0))
+        t = CATransform3DConcat(t, CATransform3DMakeTranslation(at, 60, 0))
+        return CATransform3DConcat(t, TurnY.matrix(angle: angle, scale: scale))
     }
 }
 
