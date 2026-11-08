@@ -7,6 +7,8 @@ public struct Track: Equatable, Sendable {
     public var duration: Double  // seconds
     /// The album cover's Spotify image file ID (hex), or nil when the track has none.
     public var coverID: String?
+    /// The large cover (about 640 px), for the main menu's large covers. Nil when there is none.
+    public var largeCoverID: String?
     /// The album, for the Albums menu. Nil when Spotify does not give it.
     public var album: Album?
     /// The disc and the track's place on it, from 1. Nil when Spotify does not give them.
@@ -14,10 +16,11 @@ public struct Track: Equatable, Sendable {
 
     public init(
         id: String, title: String, artist: String, duration: Double, coverID: String? = nil,
-        album: Album? = nil, disc: Int? = nil, number: Int? = nil
+        album: Album? = nil, disc: Int? = nil, number: Int? = nil, largeCoverID: String? = nil
     ) {
         self.id = id; self.title = title; self.artist = artist; self.duration = duration
         self.coverID = coverID.flatMap { $0.isEmpty ? nil : $0 }
+        self.largeCoverID = largeCoverID.flatMap { $0.isEmpty ? nil : $0 }
         self.album = album
         self.disc = disc.flatMap { $0 > 0 ? $0 : nil }
         self.number = number.flatMap { $0 > 0 ? $0 : nil }

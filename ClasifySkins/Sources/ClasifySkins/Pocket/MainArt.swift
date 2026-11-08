@@ -84,6 +84,20 @@ struct MainArt: View {
         return (u, u < fade ? u / fade : u < slot + fade ? 1 : 0, Int(loops) * count + index)
     }
 
+    /// The cover that a layer shows for its whole turn: the large one (about 640 px, sharp at
+    /// 338 pt) when it was in memory when the turn began, else the default one (about 300 px).
+    /// So a cover never changes while it shows: a large cover that loads during a turn shows
+    /// from that cover's next turn. `turnStart` and `loadedAt` are seconds since the reference date.
+    /// One cover only (a one-album list): its single turn lasts as long as the panel. So with
+    /// a cold cache it keeps the default cover until the panel is made again, and never swaps
+    /// while it shows. With the large cover already in memory, it is sharp from the start.
+    static func coverID(
+        for track: ClasifyCore.Track, turnStart: Double, loaded: (String) -> Bool, loadedAt: (String) -> Double?
+    ) -> String? {
+        if let large = track.largeCoverID, loaded(large), let at = loadedAt(large), at <= turnStart { return large }
+        return track.coverID
+    }
+
     /// Each missing item takes the nearest one before it, wrapping around, so a cover that has
     /// not loaded yet shows the cover before it. The timing stays the same when it loads late.
     /// All nil stays all nil.
@@ -108,7 +122,14 @@ struct MainArt: View {
         // Core Animation draws the pan instead (`PanningCover`).
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
-            let images = tracks.map { track in track.coverID.flatMap { artwork.lookup($0) } }
+            // Asking for each large cover also starts its load, in the background.
+            let images = tracks.indices.map { i in
+                let turnStart = start + Self.motion(at: t, index: i, count: tracks.count).start
+                let id = Self.coverID(
+                    for: tracks[i], turnStart: turnStart,
+                    loaded: { artwork.lookup($0) != nil }, loadedAt: { artwork.loadedAt($0) })
+                return id.flatMap { artwork.lookup($0) }
+            }
             let sources = Self.sources(images.map { $0 != nil })
             GeometryReader { geo in
                 ZStack {

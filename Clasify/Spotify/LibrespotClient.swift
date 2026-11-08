@@ -268,7 +268,7 @@ private func tracksCallback(
             id: string($0.uri) ?? "", title: string($0.title) ?? "", artist: string($0.artist) ?? "",
             duration: Double($0.duration_ms) / 1000, coverID: string($0.cover_id),
             album: Album.from(id: string($0.album_uri), name: string($0.album_name), artist: string($0.album_artist)),
-            disc: Int($0.disc_number), number: Int($0.track_number))
+            disc: Int($0.disc_number), number: Int($0.track_number), largeCoverID: string($0.large_cover_id))
     }
     box.resume(.success(tracks))
 }

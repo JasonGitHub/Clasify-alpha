@@ -27,12 +27,17 @@ final class ArtworkLoader {
     /// The main menu covers that the panel shows: the last set with a cover in memory. The
     /// panel keeps them until a cover of the new set loads, so they stay wanted until then.
     @ObservationIgnored private var mainShown: Set<String> = []
+    /// The default cover IDs of `mainShown`. The panel decides when to switch sets from these
+    /// only, not from the large covers, so this check must too.
+    @ObservationIgnored private var mainShownDefaults: Set<String> = []
     /// The set before `mainShown`, kept while the panel fades from it, until `fadeEnds`.
     @ObservationIgnored private var mainFading: Set<String> = []
     @ObservationIgnored private var fadeEnds = ContinuousClock.now
     /// When the main menu closed. Its covers stay on screen while the next screen slides in.
     @ObservationIgnored private var leftMainAt: ContinuousClock.Instant?
     @ObservationIgnored private var loading: Set<String> = []
+    /// When each cover arrived, so the main menu shows a large cover only from the turn after it loads.
+    @ObservationIgnored private var arrivedAt: [String: Double] = [:]
     /// When a cover last failed, so it is not asked for again on every redraw.
     @ObservationIgnored private var failedAt: [String: ContinuousClock.Instant] = [:]
     /// TEMP: the playing track at the last `prefetchNext`, for the blink log.
@@ -52,7 +57,7 @@ final class ArtworkLoader {
 
     /// For the skins: `.environment(\.artwork, loader.artwork)`.
     var artwork: Artwork {
-        Artwork({ [self] in image(for: $0) }, pending: { [self] in isLoading($0) })
+        Artwork({ [self] in image(for: $0) }, pending: { [self] in isLoading($0) }, loadedAt: { [self] in arrivedAt[$0] })
     }
 
     /// The cover if it is in memory. Else it starts the load and returns nil.
@@ -93,14 +98,19 @@ final class ArtworkLoader {
                 return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
             }
             mainShown = []
+            mainShownDefaults = []
             mainFading = []
             return []
         }
         leftMainAt = nil
-        let ids = Set(state.mainArt.compactMap(\.coverID))
-        if ids != mainShown && (ids.contains { cached($0) != nil } || !mainShown.contains { cached($0) != nil }) {
+        // As `MainArtPanel.switches`: a default cover of the new set is loaded, or none of the old.
+        let defaults = Set(state.mainArt.compactMap(\.coverID))
+        let ids = defaults.union(state.mainArt.compactMap(\.largeCoverID))
+        if ids != mainShown
+            && (defaults.contains { cached($0) != nil } || !mainShownDefaults.contains { cached($0) != nil }) {
             mainFading = mainShown
             mainShown = ids
+            mainShownDefaults = defaults
             fadeEnds = .now + .seconds(2)  // the 1 s fade, with a margin
         }
         return ContinuousClock.now < fadeEnds ? mainShown.union(mainFading) : mainShown
@@ -110,7 +120,10 @@ final class ArtworkLoader {
     /// the covers that take turns there, so none of them drops out of memory and blinks.
     static func wantedCovers(in state: AppState) -> Set<String> {
         var ids: Set<String> = []
-        if state.isHalf(state.top.screen) { ids.formUnion(state.mainArt.compactMap(\.coverID)) }
+        // The large covers too, which load in the background when the menu opens.
+        if state.isHalf(state.top.screen) {
+            ids.formUnion(state.mainArt.flatMap { [$0.coverID, $0.largeCoverID] }.compactMap { $0 })
+        }
         guard let ref = state.current else { return ids }
         if let id = state.track(ref)?.coverID { ids.insert(id) }
         let tracks = state.tracks(in: ref.playlist)
@@ -143,6 +156,7 @@ final class ArtworkLoader {
                let source = CGImageSourceCreateWithData(data as CFData, nil),
                let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
                 cache.setObject(image, forKey: coverID as NSString)
+                arrivedAt[coverID] = Date.timeIntervalSinceReferenceDate
                 if wanted.contains(coverID) { kept[coverID] = image }
                 failedAt[coverID] = nil
                 timing.notice("cover: loaded in \(Self.ms(since: start), privacy: .public) ms")

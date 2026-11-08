@@ -17,5 +17,7 @@ struct TrackTests {
         #expect(Album.from(id: "spotify:album:a", name: nil, artist: "") == Album(id: "spotify:album:a", name: ""))
         let track = Track(id: "spotify:track:1", title: "One", artist: "X", duration: 1, disc: 0, number: 0)
         #expect(track.album == nil && track.disc == nil && track.number == nil)
+        #expect(Track(id: "t", title: "", artist: "", duration: 1, largeCoverID: "").largeCoverID == nil)
+        #expect(Track(id: "t", title: "", artist: "", duration: 1, largeCoverID: "ab").largeCoverID == "ab")
     }
 }

@@ -39,6 +39,8 @@ pub(crate) struct Track {
     pub artist: String,
     /// The album cover's image file ID in lowercase hex, or empty when there is none.
     pub cover_id: String,
+    /// The large album cover (about 640 px) in lowercase hex, or empty when there is none.
+    pub large_cover_id: String,
     /// Like `spotify:album:<id>`, or empty when the track has no album.
     pub album_uri: String,
     pub album_name: String,
@@ -244,6 +246,25 @@ pub(crate) fn album_uri(track: &TrackMessage) -> String {
         .unwrap_or_default()
 }
 
+/// The hex file ID of the large album cover, for the main menu's 338 pt covers: the LARGE
+/// size (about 640 px), else the widest image, else empty.
+pub(crate) fn large_cover_id(track: &TrackMessage) -> String {
+    let Some(album) = track.album.as_ref() else {
+        return String::new();
+    };
+    let images = if album.cover_group.image.is_empty() {
+        &album.cover
+    } else {
+        &album.cover_group.image
+    };
+    let usable = || images.iter().filter(|i| !i.file_id().is_empty());
+    let large = usable().find(|i| i.has_size() && i.size() == Size::LARGE);
+    large
+        .or_else(|| usable().max_by_key(|i| i.width()))
+        .map(|i: &Image| FileId::from(i).to_base16().unwrap_or_default())
+        .unwrap_or_default()
+}
+
 /// The tracks for `uris`, in the same order. A track without metadata is left out.
 pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[String]) -> Vec<Track> {
     let mut found: HashMap<&str, Track> = HashMap::new();
@@ -269,6 +290,7 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
             title: track.name().to_owned(),
             artist: artists.join(", "),
             cover_id: cover_id(&track),
+            large_cover_id: large_cover_id(&track),
             album_uri: album_uri(&track),
             album_name: album.map_or("", |a| a.name()).to_owned(),
             album_artist: album_artists.join(", "),
@@ -331,6 +353,7 @@ pub struct LsbTrack {
     pub album_uri: *const c_char,
     pub album_name: *const c_char,
     pub album_artist: *const c_char,
+    pub large_cover_id: *const c_char,
     pub duration_ms: u32,
     pub disc_number: u32,
     pub track_number: u32,
@@ -421,6 +444,7 @@ pub(crate) fn deliver_tracks(
                         &t.album_uri,
                         &t.album_name,
                         &t.album_artist,
+                        &t.large_cover_id,
                     ];
                     text.map(|t| c_text(t))
                 })
@@ -429,15 +453,19 @@ pub(crate) fn deliver_tracks(
                 .iter()
                 .zip(&texts)
                 .map(
-                    |(t, [uri, title, artist, cover_id, album_uri, album_name, album_artist])| {
+                    |(
+                        t,
+                        [uri, title, artist, cover, album_uri, album_name, album_artist, large],
+                    )| {
                         LsbTrack {
                             uri: uri.as_ptr(),
                             title: title.as_ptr(),
                             artist: artist.as_ptr(),
-                            cover_id: cover_id.as_ptr(),
+                            cover_id: cover.as_ptr(),
                             album_uri: album_uri.as_ptr(),
                             album_name: album_name.as_ptr(),
                             album_artist: album_artist.as_ptr(),
+                            large_cover_id: large.as_ptr(),
                             duration_ms: t.duration_ms,
                             disc_number: t.disc_number,
                             track_number: t.track_number,
