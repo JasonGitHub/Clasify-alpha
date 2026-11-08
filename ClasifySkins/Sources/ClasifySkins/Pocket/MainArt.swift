@@ -24,13 +24,12 @@ struct MainArt: View {
     static let panSpeed = 6.7
     /// How far a cover moves along each axis in its turn: it pans for all of `slot + fade`
     /// seconds, about 49.6 points. Half of it, 24.8, stays inside the smallest margin,
-    /// (225 - 338) / 2 = 56.5 points, so no edge shows.
+    /// (338 - 225) / 2 = 56.5 points, so no edge shows.
     static let travel = panSpeed * (slot + fade)
 
     /// A point offset from the centered cover. A positive `y` moves it down.
     struct Offset: Equatable {
         var x: Double, y: Double
-        static let zero = Offset(x: 0, y: 0)
     }
 
     /// One layer at time `t`: opacity, the pan in points, and its order.
