@@ -2,11 +2,12 @@ import ClasifyCore
 import SwiftUI
 
 /// The main menu's right side: the covers take turns, as on the classic pocket players. Each
-/// cover stays `slot` seconds and pans slowly sideways at a fixed scale: left to right, then
-/// right to left for the next cover.
+/// cover stays `slot` seconds. It is drawn larger than the panel, at no zoom, and pans slowly at
+/// a constant speed: to the left, then to the right and down for the next cover, in turn.
 /// The next cover fades in on top of it, and the one under stays fully shown until the fade
 /// ends, so the dark background never shows through. A cover that is not loaded yet shows the
 /// cover before it until it loads. Only when no cover is loaded does the blue-grey square show.
+/// The Playlists half screen uses the same panel.
 struct MainArt: View {
     let tracks: [ClasifyCore.Track]  // not the skin's Track view
     @Environment(\.artwork) private var artwork
@@ -15,17 +16,26 @@ struct MainArt: View {
     /// When this view appeared. Leaving the main menu ends the view, so a return starts over.
     @State private var start = Date.timeIntervalSinceReferenceDate
 
-    /// Seconds that each cover shows, and seconds of the fade to the next.
-    static let slot = 8.0, fade = 1.0
-    /// The fixed scale of each cover.
-    static let baseScale = 1.15
-    /// The farthest a cover moves from the center, as a part of its width. It stays inside the
-    /// margin that `baseScale` gives, (1.15 - 1) / 2 = 7.5 %, so no edge shows.
-    static let pan = 0.06
+    /// Seconds that each cover shows, and seconds of the fade to the next (as on the device).
+    static let slot = 6.8, fade = 0.6
+    /// The side of each cover in points, centered in the 150 x 225 panel, with no zoom.
+    static let coverSide = 338.0
+    /// The pan speed in points a second, along each axis that moves.
+    static let panSpeed = 6.7
+    /// How far a cover moves along each axis in its turn: it pans for all of `slot + fade`
+    /// seconds, about 49.6 points. Half of it, 24.8, stays inside the smallest margin,
+    /// (225 - 338) / 2 = 56.5 points, so no edge shows.
+    static let travel = panSpeed * (slot + fade)
 
-    /// One layer at time `t`: opacity, scale, the pan as a part of the size, and its order.
+    /// A point offset from the centered cover. A positive `y` moves it down.
+    struct Offset: Equatable {
+        var x: Double, y: Double
+        static let zero = Offset(x: 0, y: 0)
+    }
+
+    /// One layer at time `t`: opacity, the pan in points, and its order.
     struct Pose: Equatable {
-        var opacity: Double, scale: Double, dx: Double, dy: Double
+        var opacity: Double, dx: Double, dy: Double
         /// A newer layer has a higher order, so the incoming cover is on top.
         var order: Double
     }
@@ -37,26 +47,32 @@ struct MainArt: View {
         let e = (t - m.start) / (slot + fade)  // 0 to 1 over the pan, at a constant speed
         let c = e.truncatingRemainder(dividingBy: 2)
         let q = m.reverses ? (c < 1 ? c : 2 - c) : min(e, 1)
-        return Pose(opacity: opacity, scale: baseScale, dx: m.from + (m.to - m.from) * q, dy: 0, order: -u)
+        return Pose(
+            opacity: opacity, dx: m.from.x + (m.to.x - m.from.x) * q, dy: m.from.y + (m.to.y - m.from.y) * q,
+            order: -u)
     }
 
     /// One layer's pan in its current turn: it starts at time `start`, moves from `from` to `to`
-    /// (parts of the width) at a constant speed over `slot + fade` seconds, then holds. A single
-    /// cover goes to and fro (`reverses`). The app draws it with Core Animation from these
-    /// values, so the pan moves below a pixel. `turn` names the turn.
+    /// (points) at a constant speed over `slot + fade` seconds, then holds. A single cover goes
+    /// to and fro (`reverses`). The app draws it with Core Animation from these values, so the
+    /// pan moves below a pixel. `turn` names the turn.
     struct Pan: Equatable {
-        var start: Double, from: Double, to: Double, reverses: Bool, turn: Int
+        var start: Double, from: Offset, to: Offset, reverses: Bool, turn: Int
     }
 
     static func motion(at t: Double, index: Int, count: Int) -> Pan {
-        if count <= 1 { return Pan(start: 0, from: -pan, to: pan, reverses: true, turn: 0) }
+        let h = travel / 2
+        let left = (from: Offset(x: h, y: 0), to: Offset(x: -h, y: 0))
+        let rightDown = (from: Offset(x: -h, y: -h), to: Offset(x: h, y: h))
+        if count <= 1 { return Pan(start: 0, from: left.from, to: left.to, reverses: true, turn: 0) }
         let (_, _, turn) = phase(at: t, index: index, count: count)
-        let toRight = turn % 2 == 0  // the direction alternates with each cover shown
+        // The direction alternates with each cover shown: left, then right and down.
+        let way = turn % 2 == 0 ? left : rightDown
         // From whole numbers only, with no `t`, so it is exactly the same on every frame of the
         // turn. Else it could differ by a rounding error, and the view would restart the pan.
         let loops = (turn - index) / count
         let start = Double(loops) * slot * Double(count) + Double(index) * slot - fade
-        return Pan(start: start, from: toRight ? -pan : pan, to: toRight ? pan : -pan, reverses: false, turn: turn)
+        return Pan(start: start, from: way.from, to: way.to, reverses: false, turn: turn)
     }
 
     /// Seconds since the layer started to fade in, its opacity, and its turn.
@@ -88,8 +104,8 @@ struct MainArt: View {
     }
 
     var body: some View {
-        // 30 frames a second, for the fades. The pan moves only about 1.4 points a second
-        // (12 % of 116 points in 9 s), and SwiftUI snapped it to whole pixels, so it stepped.
+        // 30 frames a second, for the fades. The pan moves only `panSpeed` points a second, and
+        // SwiftUI snapped it to whole pixels, so it stepped.
         // Core Animation draws the pan instead (`PanningCover`).
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
@@ -103,7 +119,7 @@ struct MainArt: View {
                         ForEach(images.indices, id: \.self) { i in
                             // With Reduce Motion on, the first cover stays still.
                             let f = reduceMotion
-                                ? Pose(opacity: i == 0 ? 1 : 0, scale: Self.baseScale, dx: 0, dy: 0, order: 0)
+                                ? Pose(opacity: i == 0 ? 1 : 0, dx: 0, dy: 0, order: 0)
                                 : Self.pose(at: t, index: i, count: images.count)
                             let source = sources[i] ?? i
                             // When the layer's own cover loads late, it fades in over the cover
@@ -139,13 +155,13 @@ struct MainArt: View {
     private func cover(_ i: Int, image: CGImage?, pose f: Pose, t: Double, count: Int) -> some View {
         if fixedTime == nil, let image {
             let m = Self.motion(at: t, index: i, count: count)
-            PanningCover(image: image, scale: Self.baseScale, pan: reduceMotion ? nil : m, elapsed: t - m.start)
+            PanningCover(image: image, side: Self.coverSide, pan: reduceMotion ? nil : m, elapsed: t - m.start)
         } else {
             GeometryReader { geo in
                 layer(image)
+                    .frame(width: Self.coverSide, height: Self.coverSide)
+                    .offset(x: f.dx, y: f.dy)
                     .frame(width: geo.size.width, height: geo.size.height)
-                    .scaleEffect(f.scale)
-                    .offset(x: f.dx * geo.size.width, y: f.dy * geo.size.height)
             }
         }
     }

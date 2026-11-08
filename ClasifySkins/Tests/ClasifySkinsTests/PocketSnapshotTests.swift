@@ -109,36 +109,49 @@ import Testing
         func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
         let pose = { (t: Double, i: Int) in MainArt.pose(at: t, index: i, count: 4) }
         #expect(pose(0, 0).opacity == 1 && pose(0, 3).opacity == 0)  // a cover at once
-        #expect(close(pose(7.5, 1).opacity, 0.5))  // the second cover fades in
-        #expect(pose(7.5, 0).opacity == 1)  // and the first stays fully shown under it
-        #expect(pose(7.5, 1).order > pose(7.5, 0).order)
-        #expect(pose(9, 0).opacity == 0 && pose(9, 1).opacity == 1)
-        #expect(close(pose(31.5, 0).opacity, 0.5) && pose(31.5, 3).opacity == 1)  // the loop wraps on top too
-        #expect(pose(3, 2) == pose(35, 2))  // a 32 s loop
+        #expect(MainArt.slot == 6.8 && MainArt.fade == 0.6)  // as on the device
+        #expect(close(pose(6.5, 1).opacity, 0.5))  // the second cover fades in
+        #expect(pose(6.5, 0).opacity == 1)  // and the first stays fully shown under it
+        #expect(pose(6.5, 1).order > pose(6.5, 0).order)
+        #expect(pose(7.5, 0).opacity == 0 && pose(7.5, 1).opacity == 1)
+        #expect(close(pose(26.9, 0).opacity, 0.5) && pose(26.9, 3).opacity == 1)  // the loop wraps on top too
+        let later = pose(3 + 4 * MainArt.slot, 2)  // a 27.2 s loop
+        #expect(close(pose(3, 2).opacity, later.opacity) && close(pose(3, 2).order, later.order))
         for t in stride(from: 0.0, to: 40, by: 0.25) {
             #expect(MainArt.pose(at: t, index: 0, count: 1).opacity == 1)  // one cover always shows
         }
     }
 
-    @Test func mainArtPansSidewaysInTurnWithNoEdge() {
+    @Test func mainArtPansLeftThenRightAndDownWithNoEdge() {
+        func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
         // Where each of 10 covers in a row starts and ends its pan, with 3 covers in the loop.
-        let moves = (0..<10).map { n -> Double in
-            let start = Double(n) * MainArt.slot - MainArt.fade, end = Double(n) * MainArt.slot + MainArt.slot
-            return MainArt.pose(at: end, index: n % 3, count: 3).dx - MainArt.pose(at: start, index: n % 3, count: 3).dx
+        // (6.8 is not exact in binary, so it asks in the middle of each turn, not at its ends.)
+        let moves = (0..<10).map { n -> (x: Double, y: Double) in
+            let m = MainArt.motion(at: Double(n) * MainArt.slot + 1, index: n % 3, count: 3)
+            return (m.to.x - m.from.x, m.to.y - m.from.y)
         }
-        for n in 0..<9 { #expect((moves[n] > 0) != (moves[n + 1] > 0)) }  // right, then left, also across the loop
-        #expect(moves[0] > 0)  // the first cover moves to the right
+        let travel = MainArt.panSpeed * (MainArt.slot + MainArt.fade)
+        #expect(abs(travel - 49.58) < 1e-9)
+        for n in 0..<10 {
+            if n % 2 == 0 {  // left only, also across the loop
+                #expect(close(moves[n].x, -travel) && moves[n].y == 0)
+            } else {  // right and down, on a diagonal
+                #expect(close(moves[n].x, travel) && close(moves[n].y, travel))
+            }
+        }
+        // The cover is 338 points in the 150 x 225 panel, so the pan never shows an edge.
+        #expect(MainArt.coverSide == 338)
         for i in 0..<3 {
             for t in stride(from: 0.0, to: 48, by: 0.25) {
                 let f = MainArt.pose(at: t, index: i, count: 3)
-                #expect(f.dy == 0 && f.scale == MainArt.baseScale)  // sideways only, no zoom
-                #expect(abs(f.dx) <= (f.scale - 1) / 2)  // no edge shows
+                #expect(abs(f.dx) <= (MainArt.coverSide - Pocket.paneWidth) / 2)
+                #expect(abs(f.dy) <= (MainArt.coverSide - Pocket.screenHeight) / 2)
             }
         }
-        // Constant speed: equal time steps move the same distance.
+        // Constant speed: equal time steps move the same distance, at `panSpeed`.
         let a = MainArt.pose(at: 2, index: 0, count: 3).dx, b = MainArt.pose(at: 3, index: 0, count: 3).dx
         let c = MainArt.pose(at: 4, index: 0, count: 3).dx
-        #expect(abs((b - a) - (c - b)) < 1e-12)
+        #expect(abs((b - a) - (c - b)) < 1e-12 && abs(abs(b - a) - MainArt.panSpeed) < 1e-9)
     }
 
     @Test func mainMenuShowsALoadedCoverAtOnceAndNoDarkDip() throws {
@@ -168,18 +181,20 @@ import Testing
         #expect(first == MainArt.motion(at: 5, index: 1, count: 3))
         // The next turn of the same layer is a new pan, in the other direction (3 covers: odd turns).
         let next = MainArt.motion(at: 0.5 + 3 * MainArt.slot, index: 1, count: 3)
-        #expect(next.turn == first.turn + 3 && next.from == -first.from && next.start == first.start + 3 * MainArt.slot)
+        #expect(next.turn == first.turn + 3 && next.from.x == -first.from.x)
+        #expect(abs(next.start - (first.start + 3 * MainArt.slot)) < 1e-9)
         // Every frame of a turn gives the same value, also at a large time with rounding errors.
-        let late = MainArt.motion(at: 975, index: 2, count: 8)  // shown from 975 to 984
-        for frame in 1...240 {
-            #expect(MainArt.motion(at: 975 + Double(frame) / 30, index: 2, count: 8) == late)
+        let late = MainArt.motion(at: 992.3, index: 2, count: 8)  // shown from 992.2 to 999.6
+        for frame in 1...195 {
+            #expect(MainArt.motion(at: 992.3 + Double(frame) / 30, index: 2, count: 8) == late)
         }
         // The pose follows the same pan, at a constant speed from `from` to `to`.
         let m = MainArt.motion(at: 9, index: 1, count: 3)
         let span = MainArt.slot + MainArt.fade
-        for t in stride(from: m.start, through: m.start + span, by: 0.5) {
-            let dx = MainArt.pose(at: t, index: 1, count: 3).dx
-            #expect(abs(dx - (m.from + (m.to - m.from) * (t - m.start) / span)) < 1e-9)
+        for t in stride(from: m.start + 0.05, through: m.start + span - 0.05, by: 0.5) {
+            let f = MainArt.pose(at: t, index: 1, count: 3), q = (t - m.start) / span
+            #expect(abs(f.dx - (m.from.x + (m.to.x - m.from.x) * q)) < 1e-9)
+            #expect(abs(f.dy - (m.from.y + (m.to.y - m.from.y) * q)) < 1e-9)
         }
     }
 
@@ -187,17 +202,25 @@ import Testing
         let image = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let view = PanView(frame: NSRect(x: 0, y: 0, width: 116, height: 180))
         let m = MainArt.motion(at: 0, index: 0, count: 3)
-        view.update(image: image, scale: MainArt.baseScale, pan: m, elapsed: 0)
+        view.update(image: image, side: MainArt.coverSide, pan: m, elapsed: 0)
         view.layout()
-        #expect(abs(view.cover.bounds.width - 116 * MainArt.baseScale) < 1e-9)
+        #expect(view.cover.bounds.size == CGSize(width: 338, height: 338))
         #expect(view.cover.position == CGPoint(x: 58, y: 90))
         let move = try #require(view.cover.animation(forKey: "pan") as? CABasicAnimation)
-        #expect(move.keyPath == "position.x")
-        #expect(abs(((move.fromValue as? NSNumber)?.doubleValue ?? 0) - (58 + m.from * 116)) < 1e-9)
-        #expect(abs(((move.toValue as? NSNumber)?.doubleValue ?? 0) - (58 + m.to * 116)) < 1e-9)
+        #expect(move.keyPath == "position")
+        #expect((move.fromValue as? NSValue)?.pointValue == NSPoint(x: 58 + m.from.x, y: 90 - m.from.y))
+        #expect((move.toValue as? NSValue)?.pointValue == NSPoint(x: 58 + m.to.x, y: 90 - m.to.y))
         #expect(move.duration == MainArt.slot + MainArt.fade)
+        // A right-and-down turn: the layer's y goes up, so the cover moves to a lower y.
+        let diagonal = MainArt.motion(at: MainArt.slot, index: 1, count: 3)
+        view.update(image: image, side: MainArt.coverSide, pan: diagonal, elapsed: 0)
+        view.layout()
+        let down = try #require(view.cover.animation(forKey: "pan") as? CABasicAnimation)
+        let from = try #require((down.fromValue as? NSValue)?.pointValue)
+        let to = try #require((down.toValue as? NSValue)?.pointValue)
+        #expect(to.x > from.x && to.y < from.y)
         // Reduce Motion: no animation, the cover stays at the center.
-        view.update(image: image, scale: MainArt.baseScale, pan: nil, elapsed: 0)
+        view.update(image: image, side: MainArt.coverSide, pan: nil, elapsed: 0)
         view.layout()
         #expect(view.cover.animation(forKey: "pan") == nil)
     }
