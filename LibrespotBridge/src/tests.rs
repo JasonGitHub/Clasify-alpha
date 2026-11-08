@@ -1007,6 +1007,57 @@ mod connect_tests {
     }
 
     #[test]
+    fn play_tracks_sends_a_plain_list_with_no_context_uri() {
+        let other = "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
+        let tracks = vec![TRACK.to_owned(), other.to_owned()];
+        let sent = body(Command::PlayTracks {
+            tracks,
+            track: other.to_owned(),
+        });
+        let expected = format!(
+            concat!(
+                r#"{{"command":{{"context":{{"uri":"","url":"","metadata":{{}},"#,
+                r#""pages":[{{"tracks":[{{"uri":"{0}"}},{{"uri":"{1}"}}]}}]}},"#,
+                r#""play_origin":{{"feature_identifier":"harmony","feature_version":"4.11.0"}},"#,
+                r#""options":{{"license":"on-demand","skip_to":{{"track_uri":"{1}"}},"player_options_override":{{}}}},"#,
+                r#""logging_params":{{"command_id":"c1"}},"endpoint":"play"}}}}"#
+            ),
+            TRACK, other
+        );
+        assert_eq!(sent.2, expected);
+    }
+
+    #[test]
+    fn play_tracks_checks_its_arguments() {
+        let recorder = Recorder::default();
+        let context = &recorder as *const Recorder as *mut c_void;
+        let bridge = lsb_new(Some(record_event), context);
+        let (ctx, app) = (std::ptr::null_mut(), c"app".as_ptr());
+        let (one, two) = (c"spotify:track:1".as_ptr(), c"spotify:track:2".as_ptr());
+        let album = c"spotify:album:1".as_ptr();
+        let list = [one, two];
+        let with_album = [one, album];
+        let status = Some(record_status as LsbCommandCallback);
+        unsafe {
+            let play = |tracks: *const *const c_char, count: usize, track: *const c_char| {
+                lsb_connect_play_tracks(bridge, app, tracks, count, track, status, ctx)
+            };
+            let invalid = [
+                play(std::ptr::null(), 0, one),
+                play(list.as_ptr(), 0, one),
+                play(list.as_ptr(), MAX_PLAY_TRACKS + 1, one),
+                play(with_album.as_ptr(), 2, one),
+                play(list.as_ptr(), 1, two), // the start track is not in the list
+                play(list.as_ptr(), 2, std::ptr::null()),
+            ];
+            assert_eq!(invalid, [LSB_ERR_INVALID_ARGUMENT; 6]);
+            assert_eq!(play(list.as_ptr(), 2, two), LSB_ERR_NOT_LOGGED_IN); // valid: needs a login
+            lsb_free(bridge);
+        }
+        assert!(recorder.events.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn only_safe_ids_and_uris_pass() {
         assert!(valid_device_id("a1B2-c_3"));
         for bad in ["", "a/b", "a?b", "../x", "a b", &"a".repeat(129)] {
@@ -1014,10 +1065,12 @@ mod connect_tests {
         }
         assert!(valid_context(PLAYLIST));
         assert!(valid_context("spotify:user:jason.w:collection"));
+        assert!(valid_context("spotify:album:4aawyAB9vmqN3uQ7FjRGTy"));
         for bad in [
             "spotify:playlist:",
             "spotify:playlist:a/b",
-            "spotify:album:1",
+            "spotify:album:",
+            "spotify:album:a/b",
             "spotify:user::collection",
             "spotify:user:a:b:collection",
             "spotify:user:a\nb:collection",

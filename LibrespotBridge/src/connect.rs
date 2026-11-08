@@ -42,6 +42,12 @@ pub(crate) enum Command {
         context: String,
         track: Option<String>,
     },
+    /// Plays a plain list of tracks with no context URI, from `track`: the liked songs of
+    /// an album, so that only they play.
+    PlayTracks {
+        tracks: Vec<String>,
+        track: String,
+    },
     Pause,
     Resume,
     Next,
@@ -88,9 +94,15 @@ fn is_base62(id: &str) -> bool {
     !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
-/// A playlist, or Liked Songs ("spotify:user:<name>:collection").
+/// The most tracks in one `PlayTracks` command.
+pub(crate) const MAX_PLAY_TRACKS: usize = 500;
+
+/// A playlist, an album, or Liked Songs ("spotify:user:<name>:collection").
 pub(crate) fn valid_context(uri: &str) -> bool {
-    if let Some(id) = uri.strip_prefix("spotify:playlist:") {
+    if let Some(id) = uri
+        .strip_prefix("spotify:playlist:")
+        .or_else(|| uri.strip_prefix("spotify:album:"))
+    {
         return is_base62(id);
     }
     let user = uri
@@ -135,7 +147,29 @@ pub(crate) fn request(
     let option = |endpoint: &str, on: bool| {
         format!(r#"{{"command":{{"value":{on},{logging},"endpoint":"{endpoint}"}}}}"#)
     };
+    let play_command = |context: String, skip_to: String| {
+        format!(
+            concat!(
+                r#"{{"command":{{"context":{},"#,
+                r#""play_origin":{{"feature_identifier":"harmony","feature_version":"4.11.0"}},"#,
+                r#""options":{{"license":"on-demand","skip_to":{},"player_options_override":{{}}}},"#,
+                r#"{},"endpoint":"play"}}}}"#
+            ),
+            context, skip_to, logging
+        )
+    };
     let body = match command {
+        Command::PlayTracks { tracks, track } => {
+            let list: Vec<String> = tracks
+                .iter()
+                .map(|t| format!(r#"{{"uri":{}}}"#, json(t)))
+                .collect();
+            let context = format!(
+                r#"{{"uri":"","url":"","metadata":{{}},"pages":[{{"tracks":[{}]}}]}}"#,
+                list.join(",")
+            );
+            play_command(context, format!(r#"{{"track_uri":{}}}"#, json(track)))
+        }
         Command::Play { context, track } => {
             let skip_to = match track {
                 Some(track) => format!(r#"{{"track_uri":{}}}"#, json(track)),
@@ -143,15 +177,8 @@ pub(crate) fn request(
             };
             let uri = json(context);
             let url = json(&format!("context://{context}"));
-            format!(
-                concat!(
-                    r#"{{"command":{{"context":{{"uri":{},"url":{},"metadata":{{}}}},"#,
-                    r#""play_origin":{{"feature_identifier":"harmony","feature_version":"4.11.0"}},"#,
-                    r#""options":{{"license":"on-demand","skip_to":{},"player_options_override":{{}}}},"#,
-                    r#"{},"endpoint":"play"}}}}"#
-                ),
-                uri, url, skip_to, logging
-            )
+            let context = format!(r#"{{"uri":{uri},"url":{url},"metadata":{{}}}}"#);
+            play_command(context, skip_to)
         }
         Command::Pause => simple("pause"),
         Command::Resume => simple("resume"),
@@ -729,6 +756,41 @@ pub unsafe extern "C" fn lsb_connect_play(
         .map(|uri| Command::Play {
             context: uri.to_owned(),
             track,
+        });
+    queue_command(bridge, device_id, command, on_result, context)
+}
+
+/// Plays a plain list of tracks on a device, from `track_uri`, with no context URI.
+///
+/// # Safety
+/// `bridge` must be valid. `track_uris` must point to `count` NUL-terminated strings, and
+/// the other strings must be NUL-terminated. `context` and `on_result` must be safe to call
+/// from any thread.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_play_tracks(
+    bridge: *mut crate::LsbBridge,
+    device_id: *const c_char,
+    track_uris: *const *const c_char,
+    count: usize,
+    track_uri: *const c_char,
+    on_result: Option<LsbCommandCallback>,
+    context: *mut c_void,
+) -> i32 {
+    if track_uris.is_null() || count == 0 || count > MAX_PLAY_TRACKS {
+        return LSB_ERR_INVALID_ARGUMENT;
+    }
+    let mut tracks = Vec::with_capacity(count);
+    for &uri in std::slice::from_raw_parts(track_uris, count) {
+        match read_str(uri) {
+            Some(uri) if valid_track(uri) => tracks.push(uri.to_owned()),
+            _ => return LSB_ERR_INVALID_ARGUMENT,
+        }
+    }
+    let command = read_str(track_uri)
+        .filter(|uri| tracks.iter().any(|t| t == uri))
+        .map(|uri| Command::PlayTracks {
+            tracks,
+            track: uri.to_owned(),
         });
     queue_command(bridge, device_id, command, on_result, context)
 }
