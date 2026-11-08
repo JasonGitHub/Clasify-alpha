@@ -248,8 +248,15 @@ struct PocketScreen: View {
         .accessibilityLabel(label)
     }
 
+    /// The message that shows in place of the content. The song panel shows its own, inside
+    /// the panel, so its cover still turns over while the album loads (CLA-46).
+    private var message: Labels.Message? {
+        if case .albumPanel = top.screen { return nil }
+        return Labels.message(for: top, in: state)
+    }
+
     @ViewBuilder private var content: some View {
-        if let message = Labels.message(for: top, in: state) {
+        if let message {
             MessageView(message: message)
         } else if state.coverFlowFrame != nil || state.nowOverPanel {
             // Cover Flow, its song panel over it, and Now Playing when the cover flew there.

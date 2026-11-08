@@ -153,7 +153,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     var fx: [Effect] = []
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
     func fetch(_ screen: Screen) {
-        let key = AppState.readKey(screen)  // an album and Albums read Liked Songs
+        let key = AppState.readKey(screen)  // Albums and Cover Flow read Liked Songs, an album itself
         fx.append(key.isEmpty ? .fetchPlaylists(token: s.tok) : .fetchTracks(token: s.tok, playlist: key))
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
@@ -229,19 +229,20 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.extraTracks.append(track)
         if s.extraTracks.count > extraTrackLimit { s.extraTracks.removeFirst(s.extraTracks.count - extraTrackLimit) }
     }
-    /// Puts the playlist list in, and keeps Liked Songs and the tracks already read for
-    /// playlists that are still there.
+    /// Puts the playlist list in, and keeps Liked Songs, the albums already read and the
+    /// tracks already read for playlists that are still there.
     func setPlaylists(_ playlists: [Playlist]) {
         let read = Dictionary(s.library.map { ($0.id, $0.tracks) }, uniquingKeysWith: { a, _ in a })
-        let kept = Set(playlists.map(\.id)).union([Playlist.likedSongsID])
+        let albums = s.library.filter { Album.isID($0.id) }
+        let kept = Set(playlists.map(\.id) + albums.map(\.id)).union([Playlist.likedSongsID])
         // The playing playlist is gone: keep the playing track's details for Now Playing.
-        if let ref = s.current, !kept.contains(AppState.source(ref.playlist)), let track = s.track(ref) { keepExtra(track) }
+        if let ref = s.current, !Album.isID(ref.playlist), !kept.contains(ref.playlist), let track = s.track(ref) { keepExtra(track) }
         s.loadedTracks = s.loadedTracks.intersection(kept)
         s.library = s.library.filter { $0.id == Playlist.likedSongsID } + playlists.map {
             var p = $0
             if s.loadedTracks.contains(p.id) { p.tracks = read[p.id] ?? [] }
             return p
-        }
+        } + albums
         s.playlistsLoaded = true
         s.readAt[AppState.readKey(.playlists)] = now
     }
@@ -535,7 +536,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             for f in s.stack where AppState.readKey(f.screen) == id && !screens.contains(f.screen) { screens.append(f.screen) }
             let old = screens.map { s.rows(for: Frame(screen: $0)) }
             // The playing track left the list (or its album): keep its details for Now Playing.
-            let playing = s.current.flatMap { AppState.source($0.playlist) == id ? s.track($0) : nil }
+            // An album that was not read shows its liked songs, so it changes with Liked Songs.
+            let pl = s.current?.playlist ?? ""
+            let shows = pl == id || (id == Playlist.likedSongsID && Album.isID(pl) && !s.loadedTracks.contains(pl))
+            let playing = shows ? s.current.flatMap { s.track($0) } : nil
             s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
             if let ref = s.current, let playing, s.track(ref) == nil { keepExtra(playing) }
             s.readAt[id] = now

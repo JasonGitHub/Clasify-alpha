@@ -61,7 +61,7 @@ func sampleState() -> AppState {
         #expect(Labels.now(in: s)?.list == "Nevermind" && Labels.now(in: s)?.count == "1 of 1")
         s.stack = [Frame(screen: .main), Frame(screen: .albums), Frame(screen: .tracks(playlist: album.id))]
         s.library[0].tracks[0].album = nil  // its last song left Liked Songs
-        #expect(Labels.message(for: s.top, in: s)?.body.hasPrefix("Like songs from this album") == true)
+        #expect(Labels.message(for: s.top, in: s)?.body.hasPrefix("Spotify has no songs for this album") == true)
         s.stack.removeLast()
         #expect(Labels.message(for: s.top, in: s)?.title == "No albums")
         // Cover Flow shows the same albums, so it has the same words.

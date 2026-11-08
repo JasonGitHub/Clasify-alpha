@@ -565,6 +565,24 @@ import Testing
         #expect(shot.isLight(Self.screenLeft + 10, Self.listTop + 120))
     }
 
+    /// CLA-46: while the album loads, the panel shows with its top bar, and the loading
+    /// message is inside it, not in place of Cover Flow.
+    @Test func coverFlowSongPanelWhileItLoads() throws {
+        var s = sampleState()
+        let clouds = Album(id: "spotify:album:c", name: "Clouds", artist: "Joni Mitchell")
+        s.library[0].tracks = [Track(id: "t0", title: "Song 0", artist: "Joni Mitchell", duration: 200, album: clouds)]
+        s.stack.append(Frame(screen: .coverFlow))
+        s.stack.append(Frame(screen: .albumPanel(album: "spotify:album:c"), loading: true, token: 1))
+        let shot = try render(s, "cover-flow-panel-loading")
+        let bar = shot.rgb(Self.screenLeft + 150, Self.listTop + 9 + 30)
+        #expect(bar.b > bar.r + 30 && bar.b < 200, "bar \(bar)")
+        // No song row: the liked song does not show while the whole album loads.
+        #expect(!shot.isBlue(Self.screenLeft + 150, Self.listTop + 9 + 41 + 11))
+        #expect(shot.isLight(Self.screenLeft + 10, Self.listTop + 120))  // the glass beside the panel
+        let loading = AlbumPanel.Shown(s)
+        #expect(loading?.message?.title == "Loading…" && loading?.text(in: s).songs.isEmpty == true)
+    }
+
     @Test func theCoverFliesFromThePanelToNowPlayingsCover() {
         let size = CGSize(width: 244, height: 197)
         func at(_ fly: Double, _ p: CGPoint) -> CGPoint { p.applying(FlyEffect(fly: fly).effectValue(size: size)) }

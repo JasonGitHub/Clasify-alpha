@@ -83,9 +83,9 @@ enum Labels {
         case .login where state.restoring:
             return Message(title: "Signing in…", spinner: true)
         case .tracks(let id) where Album.isID(id) && state.rows(for: frame).isEmpty:
-            return Message(title: "No songs", body: "Like songs from this album in Spotify. Press MENU to go back.")
+            return Message(title: "No songs", body: "Spotify has no songs for this album. Press MENU to go back.")
         case .albumPanel where state.rows(for: frame).isEmpty:
-            return Message(title: "No songs", body: "Like songs from this album in Spotify. Press MENU to go back.")
+            return Message(title: "No songs", body: "Spotify has no songs for this album. Press MENU to go back.")
         case .tracks where state.rows(for: frame).isEmpty:
             return Message(title: "No songs", body: "Add songs to this playlist in Spotify. Press MENU to go back.")
         case .albums where state.rows(for: frame).isEmpty, .coverFlow where state.rows(for: frame).isEmpty:

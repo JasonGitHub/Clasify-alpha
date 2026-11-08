@@ -792,7 +792,13 @@ mod library_tests {
                 lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
                 LSB_ERR_NOT_LOGGED_IN
             );
+            // An album reads all its songs (CLA-46).
             let uri = album.as_ptr();
+            assert_eq!(
+                lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
+                LSB_ERR_NOT_LOGGED_IN
+            );
+            let uri = c"spotify:artist:1".as_ptr();
             assert_eq!(
                 lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
                 LSB_ERR_INVALID_ARGUMENT
