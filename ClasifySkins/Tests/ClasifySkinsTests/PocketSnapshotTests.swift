@@ -519,8 +519,8 @@ import Testing
             let side = shot.rgb(Self.screenLeft + x, Self.listTop + 82)
             #expect(side.b > 150 && side.r < 60, "side \(side)")
         }
-        // The album name, bold ink, on the line at 159.
-        #expect((100...200).contains { shot.isDark(Self.screenLeft + $0, Self.listTop + 168) })
+        // The album name, bold black, on the line at 164.
+        #expect((100...200).contains { shot.isDark(Self.screenLeft + $0, Self.listTop + 172) })
 
         // A fast spin: the big letter box over the middle cover, dark over the red.
         s.letterUntil = 1
