@@ -158,8 +158,7 @@ struct PocketScreen: View {
     private var header: some View {
         // The title on the left; OFF and the blue play or pause mark on the right.
         HStack(spacing: 6) {
-            Text(Labels.title(top.screen, in: state))
-                .lineLimit(1)
+            FadeLine(Text(Labels.title(top.screen, in: state)))
                 .frame(maxWidth: .infinity, alignment: .leading)
             if state.offline {
                 Text("OFF").font(.helvetica(9, bold: true)).foregroundStyle(Pocket.offline)
@@ -211,7 +210,7 @@ struct PocketScreen: View {
                 // Its middle sits on the middle of the text's x-height, as in the mockup.
                 IconView(.barNote, width: 11, height: 11).accessibilityHidden(true)
                     .alignmentGuide(.firstTextBaseline) { _ in Pocket.barNoteBaseline }
-                Text("\(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")").lineLimit(1)
+                FadeLine(Text("\(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")"))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(Labels.time(state.t)).monospacedDigit()
@@ -322,12 +321,11 @@ struct PocketRow: View {
                         Marquee(text: label, loop: Labels.marqueeLoop(text.label))
                     }
                 } else {
-                    label.lineLimit(1)
+                    FadeLine(label)
                 }
                 if !text.detail.isEmpty {
-                    Text(text.detail)
+                    FadeLine(Text(text.detail))
                         .font(Pocket.detailFont)
-                        .lineLimit(1)
                         .foregroundStyle(selected ? Pocket.detailSelected : Pocket.detail)
                 }
             }
