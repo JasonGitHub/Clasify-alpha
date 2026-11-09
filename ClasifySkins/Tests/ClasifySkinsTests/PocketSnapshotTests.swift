@@ -73,7 +73,7 @@ import Testing
         var s = AppState()
         s.restoring = false
         let shot = try render(s, "login")
-        #expect(shot.isBlue(150, Self.rowCenter(0)))  // "Log in with Spotify" is selected
+        #expect(shot.isBlue(100, Self.rowCenter(0) + 77))  // "Log in with Spotify" is selected, under the words (card AX)
         let headerTop = shot.rgb(50, 34), want = try reference(0xffffff)
         #expect(near(headerTop, want), "header top \(headerTop)")  // no glass shadow over the header
         #expect(shot.isLight(150, 42))  // the header, right of the title
@@ -1124,17 +1124,23 @@ import Testing
         func check(_ shot: Snapshot) -> Bool {  // the green check on the small device's screen
             any(shot, x: 225...300, y: 60...120) { r, g, b in g > r + 60 && g > b + 30 }
         }
+        func blue(_ shot: Snapshot) -> String {  // where the selection shows, for a failure message
+            let ys = (Self.listTop...Self.screenBottom).filter { shot.isBlue(100, $0) }
+            return "blue rows \(ys.first ?? -1)...\(ys.last ?? -1)"
+        }
         let firstRow = Self.rowCenter(0) + 77
         s.stack = [Frame(screen: .login)]
-        let login = try render(s, "login", time: 10)
-        #expect(headline(login) && login.isBlue(100, firstRow) && !login.isBlue(100, Self.rowCenter(0)))
+        let login = try render(s, "login-words", time: 10)
+        #expect(headline(login))
+        #expect(login.isBlue(100, firstRow) && !login.isBlue(100, Self.rowCenter(0)), "\(blue(login))")
         #expect(!check(login))
         s.stack.append(Frame(screen: .auth, token: 1))
         let wait = try render(s, "login-wait", time: 10)
-        #expect(headline(wait) && wait.isBlue(100, firstRow) && !wait.isBlue(100, firstRow + 23))  // Open browser again
+        #expect(headline(wait))
+        #expect(wait.isBlue(100, firstRow) && !wait.isBlue(100, firstRow + 23), "\(blue(wait))")  // Open browser again
         s.stack[1] = Frame(screen: .loginFailed)
         let failed = try render(s, "login-failed", time: 10)
-        #expect(headline(failed) && failed.isBlue(100, firstRow))
+        #expect(headline(failed) && failed.isBlue(100, firstRow), "\(blue(failed))")
         s.stack = [Frame(screen: .loggedIn)]
         let done = try render(s, "logged-in", time: 10)
         #expect(headline(done) && !done.isBlue(100, firstRow) && check(done))  // no rows
