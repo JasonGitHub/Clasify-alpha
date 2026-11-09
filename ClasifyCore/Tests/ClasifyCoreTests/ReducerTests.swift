@@ -50,9 +50,9 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(s.top.screen == .now && s.wheelMovesBar)
         send(&s, .select)  // the time bar
-        #expect(s.wheelMovesBar)
-        send(&s, .menu)  // the song list
-        #expect(!s.wheelMovesBar)
+        #expect(s.nowMode == .scrub && s.wheelMovesBar)
+        send(&s, .menu, .menu)  // the time bar ends, then the song list
+        #expect(s.top.screen == .tracks(playlist: "focus") && !s.wheelMovesBar)
         #expect(!mainMenu().wheelMovesBar && !AppState().wheelMovesBar)
     }
 
