@@ -1103,4 +1103,40 @@ import Testing
         #expect(black.isDark(preview.x, preview.y) && black.isDark(body.x, body.y))  // both devices are black
         #expect(black.isBlue(183, 392) && !hint(black))  // the glow first; the press hint comes at 12.2 s
     }
+
+    /// Card AX: the login screens are split like the color pick. A headline and a line sit over
+    /// the rows, which start 77 points under the title bar. "You’re in" shows the green check.
+    @Test func theLoginScreensShowTheWordsTheRowsAndTheSmallDevice() throws {
+        var s = AppState()
+        s.setupDone = true
+        func any(_ shot: Snapshot, x: ClosedRange<Int>, y: ClosedRange<Int>, _ test: (Int, Int, Int) -> Bool) -> Bool {
+            for py in y {
+                for px in x {
+                    let c = shot.rgb(px, py)
+                    if test(c.r, c.g, c.b) { return true }
+                }
+            }
+            return false
+        }
+        func headline(_ shot: Snapshot) -> Bool {  // dark bold text 9 points under the title bar
+            any(shot, x: 42...120, y: 60...74) { r, g, b in max(r, g, b) < 100 }
+        }
+        func check(_ shot: Snapshot) -> Bool {  // the green check on the small device's screen
+            any(shot, x: 225...300, y: 60...120) { r, g, b in g > r + 60 && g > b + 30 }
+        }
+        let firstRow = Self.rowCenter(0) + 77
+        s.stack = [Frame(screen: .login)]
+        let login = try render(s, "login", time: 10)
+        #expect(headline(login) && login.isBlue(100, firstRow) && !login.isBlue(100, Self.rowCenter(0)))
+        #expect(!check(login))
+        s.stack.append(Frame(screen: .auth, token: 1))
+        let wait = try render(s, "login-wait", time: 10)
+        #expect(headline(wait) && wait.isBlue(100, firstRow) && !wait.isBlue(100, firstRow + 23))  // Open browser again
+        s.stack[1] = Frame(screen: .loginFailed)
+        let failed = try render(s, "login-failed", time: 10)
+        #expect(headline(failed) && failed.isBlue(100, firstRow))
+        s.stack = [Frame(screen: .loggedIn)]
+        let done = try render(s, "logged-in", time: 10)
+        #expect(headline(done) && !done.isBlue(100, firstRow) && check(done))  // no rows
+    }
 }

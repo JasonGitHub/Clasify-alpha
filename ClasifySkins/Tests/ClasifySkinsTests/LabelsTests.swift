@@ -27,9 +27,9 @@ func sampleState() -> AppState {
 @Suite struct LabelsTests {
     @Test func titlesFollowTheMockup() {
         let s = sampleState()
-        #expect(Labels.title(.login, in: s) == "Clasify")
+        #expect(Labels.title(.login, in: s) == "Log In")  // card AX
         #expect(Labels.title(.main, in: s) == "Clasify")
-        #expect(Labels.title(.auth, in: s) == "Sign in")
+        #expect(Labels.title(.auth, in: s) == "Log In")
         #expect(Labels.title(.tracks(playlist: "spotify:playlist:a"), in: s) == "Road Trip")
         #expect(Labels.title(.confirm, in: s) == "Log out?")
         #expect(Labels.title(.now, in: s) == "Now Playing")
@@ -44,6 +44,22 @@ func sampleState() -> AppState {
         #expect(Labels.message(for: Frame(screen: .hello), in: s) == nil)  // PocketHello draws it
         #expect(Labels.message(for: Frame(screen: .spotifyApp), in: s)?.title == "One more thing")
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
+    }
+
+    /// Card AX: each login screen has its own headline, and only the first has the footnote.
+    @Test func theLoginScreensUseTheBoardWords() {
+        var s = sampleState()
+        let words = { (screen: Screen) in Labels.setupWords(for: Frame(screen: screen), in: s) }
+        #expect(words(.login) == .init(headline: "Your music is on Spotify", line: "We’ll open your browser.", footnote: "We never see your password."))
+        #expect(words(.auth) == .init(headline: "Take your time", line: "Your browser is open.\nLog in there."))
+        #expect(words(.loginFailed) == .init(headline: "That didn’t work", line: "No problem, it happens."))
+        #expect(words(.loggedIn) == .init(headline: "You’re in", line: "Nice to meet you."))
+        #expect(words(.main) == nil && words(.color) == nil)
+        #expect(Labels.row(.logIn, on: .login, in: s) == .init(label: "Log in with Spotify"))  // no chevron
+        #expect(Labels.row(.openBrowser, on: .auth, in: s).label == "Open browser again")
+        #expect(Labels.row(.tryAgain, on: .loginFailed, in: s).label == "Try again")
+        s.restoring = true  // "Signing in…" shows on the whole screen, as before
+        #expect(words(.login) == nil && Labels.title(.login, in: s) == "Clasify")
     }
 
     @Test func theSongPanelShowsTheAlbumAndItsSongs() {
@@ -122,7 +138,7 @@ func sampleState() -> AppState {
         #expect(Labels.message(for: frame, in: s)?.title == "Can’t reach Spotify")
         #expect(Labels.message(for: Frame(screen: .playlists), in: s) == nil)
         #expect(Labels.message(for: Frame(screen: .tracks(playlist: "spotify:playlist:b")), in: s)?.title == "No songs")
-        #expect(Labels.message(for: Frame(screen: .auth), in: s)?.spinner == true)
+        #expect(Labels.message(for: Frame(screen: .auth), in: s) == nil)  // card AX: its rows show
         #expect(Labels.message(for: Frame(screen: .about), in: s) == nil)  // About draws its own screen
         #expect(Labels.aboutVersion == "Version \(Labels.version)")
         s.restoring = true

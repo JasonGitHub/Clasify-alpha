@@ -133,15 +133,17 @@ struct PocketScreen: View {
         // A half screen (the main menu, Playlists) is a 150 point pane (half the screen) with a shadow, over
         // covers on the right. The panel stays between them, so it does not start again.
         // With Album Art set to Now Playing or Off, they are full-width lists and load no covers.
-        // The color pick is split the same way, with the small device on the right (card AW).
-        let split = state.isHalf(top.screen) || top.screen == .color
+        // The setup screens are split the same way, with the small device on the right (cards AW, AX).
+        let preview = setupPreview
+        let split = state.isHalf(top.screen) || preview != nil
         let width: CGFloat = split ? Pocket.paneWidth : Pocket.screenWidth
         ZStack(alignment: .leading) {
             if split {
                 // On the way out, the covers stay until the pane has widened over them.
                 Group {
-                    if top.screen == .color {
-                        SetupPreview(color: state.shownColor).frame(width: Pocket.screenWidth - Pocket.paneWidth)
+                    if let preview {
+                        SetupPreview(color: state.shownColor, screen: preview.screen, cable: preview.cable)
+                            .frame(width: Pocket.screenWidth - Pocket.paneWidth)
                     } else {
                         MainArtPanel(tracks: state.mainArt)
                     }
@@ -237,7 +239,7 @@ struct PocketScreen: View {
             }
             // The battery, 7 points after the play mark. A Mac with no battery shows none, and
             // the setup screens show none (Round 13).
-            if top.screen != .color, let battery = Labels.battery(in: state) {
+            if setupPreview == nil, let battery = Labels.battery(in: state) {
                 BatteryView(battery: battery).padding(.leading, 1)
             }
         }
@@ -257,6 +259,13 @@ struct PocketScreen: View {
         .frame(width: 10, height: 11, alignment: .topLeading)
         .accessibilityElement()
         .accessibilityLabel(label)
+    }
+
+    /// The small device of a setup screen. Nil on other screens, and while a stored login is
+    /// restored: that shows "Signing in…" on the whole screen.
+    private var setupPreview: (screen: PreviewScreen, cable: SyncCable.Plug?)? {
+        if top.screen == .login && state.restoring { return nil }
+        return PreviewScreen.of(top.screen)
     }
 
     /// The message that shows in place of the content. The song panel shows its own, inside
@@ -334,21 +343,23 @@ struct PocketList: View {
         // 5 of them fit: 36.6 points over the bar, 41.2 with no bar.
         let height = (state.showsBar ? Pocket.listHeight - Pocket.barHeight - 1 : Pocket.listHeight)
             / CGFloat(state.shownRows)
+        let words = Labels.setupWords(for: top, in: state)
         VStack(spacing: 0) {
+            if let words { SetupMessage(words: words) }  // card AX: the rows start under it
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),
                           selected: index == top.sel, scrolls: scrolls, height: height)
             }
             if top.screen == .color { ColorPickWords(state: state).layoutPriority(1) }  // its line sits at the bottom
-            if top.screen == .login {
-                Text("Opens your browser to sign in. Playlists are read-only.")
-                    .font(.helvetica(11))
-                    .lineSpacing(2)
-                    .foregroundStyle(Pocket.gray)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.horizontal, .top], 10)
-            }
             Spacer(minLength: 0)
+            if let footnote = words?.footnote, !footnote.isEmpty {  // at the bottom, as on the color pick
+                Text(footnote)
+                    .font(.helvetica(10))
+                    .foregroundStyle(Color(hex: 0x5d6772))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(EdgeInsets(top: 0, leading: 9, bottom: 10, trailing: 6))
+            }
         }
         .overlay(alignment: .topTrailing) {
             if scrolls { scrollBar(first: first, count: rows.count) }

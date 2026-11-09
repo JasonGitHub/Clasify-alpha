@@ -104,16 +104,20 @@ public enum Screen: Equatable, Sendable {
     case login, auth, main, playlists, albums, tracks(playlist: String), settings, confirm, about, now, coverFlow
     case albumPanel(album: String)
     /// The first launch setup (Round 13), in order: `hello` (card AT), `color` (AW), then
-    /// `login` and `auth` (AX), `spotifyApp` (BB, only when the Spotify app is missing) and
+    /// `login`, `auth`, `loginFailed` and `loggedIn` (AX), `spotifyApp` (BB, only when the Spotify app is missing) and
     /// `yourMusic` (AY, the first library read). BB also shows at a later launch when the
     /// Spotify app is missing.
     case hello, color, spotifyApp, yourMusic
+    /// The login (card AX, changes 171 and 175): it failed, or it worked. `loggedIn` shows for
+    /// `AppState.beatTime`, then the next step opens. Every login uses them, not only setup.
+    case loginFailed, loggedIn
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
-        case .login, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color: true
-        case .auth, .about, .now, .coverFlow, .hello, .spotifyApp, .yourMusic: false
+        case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color:
+            true
+        case .about, .now, .coverFlow, .hello, .spotifyApp, .yourMusic, .loggedIn: false
         }
     }
 
@@ -156,6 +160,9 @@ public enum Row: Equatable, Sendable {
     case playlist(String), album(String), track(String)
     case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, about, logOut
     case cancel, confirmLogOut
+    /// Rows of the login (card AX): open the browser again while it waits (170), and try
+    /// again after a failed login (171). `cancel` stops the login.
+    case openBrowser, tryAgain
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
 }
@@ -249,6 +256,10 @@ public struct AppState: Equatable, Sendable {
     /// When the color pick (card AW) opened, and when the wheel first turned on it (0 before
     /// that). A skin times the rim light, the hint and the center glow from them.
     public var colorAt: Double = 0, colorTurnAt: Double = 0
+    /// When the "You’re in" screen (card AX, change 175) moves on by itself. 0 when it does not show.
+    public var beatUntil: Double = 0
+    /// Seconds that "You’re in" shows before the next step.
+    public static let beatTime = 1.5
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false
@@ -556,7 +567,9 @@ public struct AppState: Equatable, Sendable {
         case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
-        case .auth, .about, .now, .hello, .spotifyApp, .yourMusic: []
+        case .auth: [.openBrowser, .cancel]
+        case .loginFailed: [.tryAgain, .cancel]
+        case .about, .now, .hello, .spotifyApp, .yourMusic, .loggedIn: []
         }
     }
 

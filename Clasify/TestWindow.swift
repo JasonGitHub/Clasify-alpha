@@ -107,7 +107,9 @@ private struct TestPanel: View {
         if top.error { return "Can’t load. Press Select to try again." }
         switch top.screen {
         case .login where state.restoring: return "Signing in…"
-        case .auth: return "Waiting for browser… Approve Clasify in your browser. Menu cancels."
+        case .auth: return "Your browser is open. Log in there."
+        case .loginFailed: return "That didn’t work. No problem, it happens."
+        case .loggedIn: return "You’re in. Nice to meet you."
         case .now: return "Select switches the wheel between volume and scrub."
         case .about: return "Clasify test build"
         case .hello: return "Press Select to begin."
@@ -119,7 +121,7 @@ private struct TestPanel: View {
     private func title(_ screen: Screen) -> String {
         switch screen {
         case .login, .main: "Clasify"
-        case .auth: "Sign in"
+        case .auth, .loginFailed, .loggedIn: "Log In"
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
@@ -157,6 +159,8 @@ private struct TestPanel: View {
         case .about: "About"
         case .logOut: "Log Out"
         case .cancel: "Cancel"
+        case .openBrowser: "Open browser again"
+        case .tryAgain: "Try again"
         case .confirmLogOut: "Log Out"
         case .color(let color): color.rawValue
         }

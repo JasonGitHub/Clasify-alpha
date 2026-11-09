@@ -379,6 +379,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fetch(s.top.screen)
                 return
             }
+            if s.top.screen == .loggedIn {  // card AX: a press goes on at once
+                s.beatUntil = 0
+                return setupNext()
+            }
             if s.top.screen == .hello {  // card AT: a press begins setup
                 s.stack = [Frame(screen: .color)]
                 s.top.sel = DeviceColor.allCases.firstIndex(of: s.deviceColor) ?? 0
@@ -399,6 +403,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .logIn:
                 s.authAttempt += 1
                 s.stack.append(Frame(screen: .auth, token: s.authAttempt))
+                fx.append(.logIn(token: s.authAttempt))
+            case .openBrowser, .tryAgain:
+                // A new login opens the browser again. The bridge stops the older one, and
+                // the new token makes its `.authDone` stale.
+                s.authAttempt += 1
+                s.stack[s.stack.count - 1] = Frame(screen: .auth, token: s.authAttempt)
                 fx.append(.logIn(token: s.authAttempt))
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
             case .coverFlow:
@@ -433,7 +443,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.aboutScene = s.aboutOpens % AppState.aboutScenes; s.aboutOpens += 1
                 s.stack.append(Frame(screen: .about))
             case .logOut: s.stack.append(Frame(screen: .confirm))
-            case .cancel: s.stack.removeLast()
+            case .cancel:
+                if s.top.screen == .auth { fx.append(.cancelLogIn) }
+                s.stack.removeLast()
             case .confirmLogOut: signOut("Logged out"); fx.append(.logOut)
             }
 
@@ -468,6 +480,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
+            if s.beatUntil > 0 && now >= s.beatUntil {  // "You’re in" moves on
+                s.beatUntil = 0
+                if s.top.screen == .loggedIn { setupNext() }
+            }
             if s.artUntil > 0 && now > s.artUntil {  // the covers follow the row
                 s.artUntil = 0
                 if let row = s.halfRow { s.artRow = row }
@@ -628,11 +644,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .authDone(let token, let ok):
             guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
             // A login that worked counts even if the app went offline since: its token is saved.
-            if !ok { s.stack.removeLast(); return toast("Can’t reach Spotify") }
+            // Card AX: a failed login says so in place of the wait (171). One that worked shows
+            // "You’re in" for a beat (175), then goes on.
+            if !ok { s.stack[s.stack.count - 1] = Frame(screen: .loginFailed); return }
             s.signedIn = true
             fx.append(.prefetch)
-            if s.setupDone { toast("Signed in") }
-            setupNext()
+            s.stack = [Frame(screen: .loggedIn)]
+            s.beatUntil = now + AppState.beatTime
 
         case .offline(let on):
             if on && s.isPlaying { s.isPlaying = false; fx.append(.pause); toast("Connection lost. Paused") }
