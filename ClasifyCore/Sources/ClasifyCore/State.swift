@@ -484,10 +484,12 @@ public struct AppState: Equatable, Sendable {
     }
 
     /// An album in Liked Songs, by its URI, with the artist as `albums` gives it. When its last
-    /// song left Liked Songs, the album of a kept track (such as the playing one), so the
-    /// title bar and Now Playing keep its name.
+    /// song left Liked Songs, the album from its read songs (CLA-49), or of a kept track (such
+    /// as the playing one), so the title bar, the song panel and Now Playing keep its name.
     public func album(_ id: String) -> Album? {
-        let track = tracks(in: Playlist.likedSongsID).first { $0.album?.id == id } ?? extraTracks.first { $0.album?.id == id }
+        let read = Album.isID(id) ? library.first(where: { $0.id == id })?.tracks : nil
+        let track = tracks(in: Playlist.likedSongsID).first { $0.album?.id == id }
+            ?? read?.first { $0.album?.id == id } ?? extraTracks.first { $0.album?.id == id }
         guard let track, var album = track.album else { return nil }
         if album.artist == nil { album.artist = track.artist.isEmpty ? nil : track.artist }
         return album

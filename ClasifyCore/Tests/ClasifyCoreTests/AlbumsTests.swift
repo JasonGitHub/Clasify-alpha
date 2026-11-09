@@ -125,6 +125,23 @@ func withLikedAlbums() -> AppState {
         #expect(s.extraTracks.map(\.id) == ["u2"] && s.track(ref)?.album?.id == "spotify:album:u")
     }
 
+    /// CLA-49: the last liked song of a read album leaves Liked Songs while the album plays.
+    /// The album keeps its name for the title bar, the panel and Now Playing.
+    @Test func aReadAlbumKeepsItsNameWhenItsLikedSongsLeave() {
+        var s = withLikedAlbums()
+        send(&s, .wheel(2), .select, .wheel(2), .select)  // MTV Unplugged
+        send(&s, .tracksLoaded(token: 1, playlist: "spotify:album:u", tracks: Self.unplugged))
+        send(&s, .wheel(1), .select)  // u2 plays
+        let before = s.album("spotify:album:u")
+        #expect(before?.name == "MTV Unplugged In New York" && before?.artist == "Nirvana")
+        s.refreshing = [Playlist.likedSongsID]
+        let others = likedAlbums.filter { $0.album?.id != "spotify:album:u" }
+        send(&s, .tracksRefreshed(playlist: Playlist.likedSongsID, tracks: others))
+        #expect(!s.albums.contains { $0.id == "spotify:album:u" })  // no longer in Albums
+        #expect(s.album("spotify:album:u") == before && s.extraTracks.isEmpty)
+        #expect(s.track(TrackRef(playlist: "spotify:album:u", track: "u2"))?.title == "u2")
+    }
+
     @Test func anAlbumThatWasNotReadFollowsLikedSongs() {
         // Spotify plays an album that Clasify did not read: it shows the album's liked songs.
         var s = withLikedAlbums()
