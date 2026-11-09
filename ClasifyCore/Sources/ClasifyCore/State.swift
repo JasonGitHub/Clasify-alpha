@@ -243,6 +243,9 @@ public struct AppState: Equatable, Sendable {
     /// The Spotify app is on this Mac, as the app last found it. Nil before the first check:
     /// setup then counts it as there, so that a slow check does not stop it.
     public var spotifyApp: Bool?
+    /// When Hello (card AT) opened, in `Dependencies.now` time. A skin times the hello word,
+    /// the center glow and the begin text from it.
+    public var helloAt: Double = 0
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false

@@ -102,9 +102,7 @@ enum Labels {
                 spinner: true)
         case .now where state.current == nil:
             return Message(title: "")
-        // Setup screens that CLA-51 to CLA-55 draw. Until then they show their words as a message.
-        case .hello:
-            return Message(title: "hello", body: "Press center button to begin")
+        // Setup screens that CLA-52 to CLA-55 draw. Until then they show their words as a message.
         case .spotifyApp:
             return Message(title: "One more thing", body: "We also need the Spotify app on this Mac.")
         default:

@@ -11,15 +11,18 @@ struct ClickWheel: View {
     var catchesScroll = true
     /// The wheel moves a bar, not a list: a trackpad scroll goes the other way (CLA-48).
     var movesBar = false
+    /// On Hello: when it opened. The center then glows (card AT, change 166).
+    var helloAt: Double?
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        movesBar: Bool = false, pressed: Zone? = nil
+        movesBar: Bool = false, helloAt: Double? = nil, pressed: Zone? = nil
     ) {
         self.input = input
         self.color = color
         self.catchesScroll = catchesScroll
         self.movesBar = movesBar
+        self.helloAt = helloAt
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
 
@@ -138,6 +141,7 @@ struct ClickWheel: View {
                     .clipShape(Circle())
             }
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
+            .background { if let helloAt { HelloGlow(helloAt: helloAt, radius: Self.centerRadius) } }
             .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)
     }
 

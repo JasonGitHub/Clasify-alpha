@@ -142,11 +142,13 @@ struct PocketScreen: View {
                     .modifier(DoorHalf(side: 1))
             }
             VStack(spacing: 0) {
-                VStack(spacing: 0) {
-                    header
-                    Pocket.line.frame(height: 1)
+                if top.screen != .hello {  // Hello fills the whole screen, with no title bar
+                    VStack(spacing: 0) {
+                        header
+                        Pocket.line.frame(height: 1)
+                    }
+                    .modifier(DoorsHeader())
                 }
-                .modifier(DoorsHeader())
                 ZStack(alignment: .leading) {
                     // Each screen keeps its own width while it slides, so its text does not reflow.
                     content.frame(width: width).frame(maxHeight: .infinity)
@@ -265,6 +267,9 @@ struct PocketScreen: View {
             PocketNowPlaying(state: state, input: input)
         } else if top.screen == .about {
             PocketAbout(scene: state.aboutScene)
+        } else if top.screen == .hello {
+            // A click on the screen begins setup too (change 167).
+            PocketHello(helloAt: state.helloAt).contentShape(Rectangle()).onTapGesture { input(.select) }
         } else {
             PocketList(state: state)
         }

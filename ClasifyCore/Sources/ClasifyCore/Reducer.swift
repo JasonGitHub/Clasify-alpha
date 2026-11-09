@@ -607,7 +607,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .launch:
             guard !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
-            if !s.setupDone { s.stack = [Frame(screen: .hello)] }
+            if !s.setupDone { s.stack = [Frame(screen: .hello)]; s.helloAt = now }
             s.authAttempt += 1; s.restoring = true
             fx.append(.restoreSession(token: s.authAttempt))
 

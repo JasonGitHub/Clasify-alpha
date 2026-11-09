@@ -15,6 +15,7 @@ import Testing
         var s = AppState()
         #expect(send(&s, .launch) == [.restoreSession(token: 1)])
         #expect(s.stack == [Frame(screen: .hello)] && s.restoring && s.navSeq == 0)  // the first screen does not slide in
+        #expect(s.helloAt == 100)  // the skin times the hello from here
         #expect(send(&s, .wheel(1), .menu, .restored(token: 1, ok: false)).isEmpty)
         #expect(s.stack == [Frame(screen: .hello)])  // a turn and MENU do nothing on Hello
         send(&s, .select)  // a press begins setup
@@ -83,7 +84,7 @@ import Testing
     @Test func aLaterLaunchSkipsSetupAndChecksTheSpotifyApp() {
         var s = afterSetup()
         send(&s, .spotifyAppFound(true), .launch)
-        #expect(s.stack == [Frame(screen: .login)])
+        #expect(s.stack == [Frame(screen: .login)] && s.helloAt == 0)
         send(&s, .restored(token: 1, ok: true))
         #expect(s.stack == [Frame(screen: .main)])
         s = afterSetup()

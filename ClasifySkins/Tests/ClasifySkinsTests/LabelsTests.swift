@@ -41,7 +41,7 @@ func sampleState() -> AppState {
         #expect(Labels.title(.color, in: s) == "Pick Your Color" && Labels.title(.yourMusic, in: s) == "Your Music")
         #expect(Labels.title(.spotifyApp, in: s) == "Spotify App" && Labels.title(.hello, in: s) == "")
         #expect(Labels.row(.color(.black), on: .color, in: s) == Labels.RowText(label: "Black"))
-        #expect(Labels.message(for: Frame(screen: .hello), in: s)?.body == "Press center button to begin")
+        #expect(Labels.message(for: Frame(screen: .hello), in: s) == nil)  // PocketHello draws it
         #expect(Labels.message(for: Frame(screen: .spotifyApp), in: s)?.title == "One more thing")
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
