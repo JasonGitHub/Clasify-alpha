@@ -103,12 +103,17 @@ public enum Screen: Equatable, Sendable {
     /// the song panel that a Cover Flow cover turns into: all songs of the album (CLA-46).
     case login, auth, main, playlists, albums, tracks(playlist: String), settings, confirm, about, now, coverFlow
     case albumPanel(album: String)
+    /// The first launch setup (Round 13), in order: `hello` (card AT), `color` (AW), then
+    /// `login` and `auth` (AX), `spotifyApp` (BB, only when the Spotify app is missing) and
+    /// `yourMusic` (AY, the first library read). BB also shows at a later launch when the
+    /// Spotify app is missing.
+    case hello, color, spotifyApp, yourMusic
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
-        case .login, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel: true
-        case .auth, .about, .now, .coverFlow: false
+        case .login, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color: true
+        case .auth, .about, .now, .coverFlow, .hello, .spotifyApp, .yourMusic: false
         }
     }
 
@@ -151,6 +156,8 @@ public enum Row: Equatable, Sendable {
     case playlist(String), album(String), track(String)
     case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, about, logOut
     case cancel, confirmLogOut
+    /// A row of the setup screen `color` (card AW).
+    case color(DeviceColor)
 }
 
 /// The playing track, by ID, so a library reload that reorders things can't point it elsewhere.
@@ -230,6 +237,12 @@ public struct AppState: Equatable, Sendable {
     /// Token of a Liked Songs load that should start a shuffle when it finishes.
     public var shuffleToken: Int?
     public var signedIn = false
+    /// The first launch setup ended once. Saved with the settings, so later launches skip
+    /// Hello, the color pick and the first library read.
+    public var setupDone = false
+    /// The Spotify app is on this Mac, as the app last found it. Nil before the first check:
+    /// setup then counts it as there, so that a slow check does not stop it.
+    public var spotifyApp: Bool?
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false
@@ -460,7 +473,7 @@ public struct AppState: Equatable, Sendable {
         switch screen {
         case .playlists: playlistsLoaded
         case .tracks(let id), .albumPanel(let id): loadedTracks.contains(id)
-        case .albums, .coverFlow: loadedTracks.contains(Playlist.likedSongsID)
+        case .albums, .coverFlow, .yourMusic: loadedTracks.contains(Playlist.likedSongsID)
         default: true
         }
     }
@@ -469,7 +482,7 @@ public struct AppState: Equatable, Sendable {
     public static func readKey(_ screen: Screen) -> String {
         switch screen {
         case .tracks(let id), .albumPanel(let id): id  // an album reads all its songs (CLA-46)
-        case .albums, .coverFlow: Playlist.likedSongsID
+        case .albums, .coverFlow, .yourMusic: Playlist.likedSongsID  // setup reads Liked Songs first
         default: ""
         }
     }
@@ -529,7 +542,8 @@ public struct AppState: Equatable, Sendable {
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
         case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
-        case .auth, .about, .now: []
+        case .color: DeviceColor.allCases.map { .color($0) }
+        case .auth, .about, .now, .hello, .spotifyApp, .yourMusic: []
         }
     }
 

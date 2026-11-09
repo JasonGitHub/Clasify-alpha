@@ -24,8 +24,12 @@ public enum Action: Equatable, Sendable {
     /// The session came back after a drop, so changes can be missed. Every read counts as
     /// old, and the lists on screen are read again at once.
     case libraryStale
-    /// The app started. It tries to log in again with the stored login.
+    /// The app started. It tries to log in again with the stored login. Before the first
+    /// launch setup ends, it shows Hello (card AT) first.
     case launch
+    /// The app looked for the Spotify app on this Mac: at launch, and every 3 s while the
+    /// `spotifyApp` screen (card BB) shows. When it is found there, setup goes on.
+    case spotifyAppFound(Bool)
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
     case authDone(token: Int, ok: Bool)
     /// The restore that `.launch` started finished.
@@ -264,6 +268,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if s.current != nil { fx.append(.stop) }
         s.isPlaying = false; s.current = nil; s.t = 0; s.beforeLoad = nil; s.loadPending = false
     }
+    /// The next setup step after the login: the Spotify app screen if the app is missing,
+    /// else the first library read, else the main menu.
+    func setupNext() {
+        if s.spotifyApp == false { s.stack = [Frame(screen: .spotifyApp)]; return }
+        guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
+        s.tok += 1
+        s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
+        fetch(.yourMusic)
+    }
     func signOut(_ msg: String) {
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
@@ -365,6 +378,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fetch(s.top.screen)
                 return
             }
+            if s.top.screen == .hello {  // card AT: a press begins setup
+                s.stack = [Frame(screen: .color)]
+                s.top.sel = DeviceColor.allCases.firstIndex(of: s.deviceColor) ?? 0
+                return
+            }
             if s.top.screen == .coverFlow {
                 // The cover turns over into the song panel with the album's songs (card AF).
                 let albums = s.albums
@@ -406,6 +424,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .albumArt: s.albumArt = s.albumArt.next
             case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
+            case .color(let color):  // card AW: a press saves the color, then the login
+                s.deviceColor = color
+                if s.signedIn { setupNext() } else { s.stack.append(Frame(screen: .login)) }
             case .about:
                 s.aboutScene = s.aboutOpens % AppState.aboutScenes; s.aboutOpens += 1
                 s.stack.append(Frame(screen: .about))
@@ -579,24 +600,37 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.readAt[id] = now
             }
             finishLoad(token, ok: tracks != nil)
+            if s.top.screen == .yourMusic && !s.top.error {  // the first library read ended setup
+                s.setupDone = true
+                s.stack = [Frame(screen: .main)]
+            }
 
         case .launch:
             guard !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
+            if !s.setupDone { s.stack = [Frame(screen: .hello)] }
             s.authAttempt += 1; s.restoring = true
             fx.append(.restoreSession(token: s.authAttempt))
+
+        case .spotifyAppFound(let found):
+            s.spotifyApp = found
+            if found && s.top.screen == .spotifyApp { setupNext() }
 
         case .restored(let token, let ok):
             guard s.restoring, s.authAttempt == token else { return }  // from before a reset
             s.restoring = false
-            if ok { s.stack = [Frame(screen: .main)]; s.signedIn = true; fx.append(.prefetch) }
+            guard ok else { return }
+            s.signedIn = true; fx.append(.prefetch)
+            // During setup, Hello and the color pick stay. The login screen goes on.
+            if s.top.screen == .login { setupNext() }
 
         case .authDone(let token, let ok):
             guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
             // A login that worked counts even if the app went offline since: its token is saved.
             if !ok { s.stack.removeLast(); return toast("Can’t reach Spotify") }
-            s.stack = [Frame(screen: .main)]; s.signedIn = true
+            s.signedIn = true
             fx.append(.prefetch)
-            toast("Signed in")
+            if s.setupDone { toast("Signed in") }
+            setupNext()
 
         case .offline(let on):
             if on && s.isPlaying { s.isPlaying = false; fx.append(.pause); toast("Connection lost. Paused") }
@@ -614,26 +648,30 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let (tok, gen, auth, art) = (s.tok, s.playGen, s.authAttempt, s.artTok)  // keep counters so callbacks from before the reset stay stale
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
-            let battery = s.battery  // the Mac's battery, which a reset does not change
+            let (battery, spotifyApp) = (s.battery, s.spotifyApp)  // the Mac, which a reset does not change
             let aboutOpens = s.aboutOpens  // About counts from launch, not from a reset
             s = AppState()
             s.aboutOpens = aboutOpens
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
-            s.battery = battery
+            s.battery = battery; s.spotifyApp = spotifyApp
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let wasOverPanel = s.nowOverPanel
-    let wasAuth = s.top.screen == .auth
+    let wasSignedIn = s.signedIn
     let rowBefore = s.halfRow
     let wasOffline = s.offline
     let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
     apply()
     // A new screen slides in: from the right when it opens, from the left on a way back.
-    // The main menu after the login wait counts as opening. A reset does not slide.
-    if case .reset = action {} else if (s.stack.count, s.top.screen) != (before.0, before.1) {
+    // The screen after a login counts as opening. A reset and the first screen at launch do not slide.
+    let slides = switch action {
+    case .reset, .launch: false
+    default: true
+    }
+    if slides && (s.stack.count, s.top.screen) != (before.0, before.1) {
         s.navSeq += 1
-        s.navForward = s.stack.count >= before.0 || (wasAuth && s.top.screen == .main)
+        s.navForward = s.stack.count >= before.0 || (s.signedIn && !wasSignedIn)
         // Between a half screen and a full one, the whole screen moves; otherwise only the content.
         let whole = s.isHalf(before.1) != s.isHalf(s.top.screen)
         if whole { s.wholeSeq += 1 }
