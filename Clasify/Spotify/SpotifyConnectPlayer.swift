@@ -636,6 +636,7 @@ final class SpotifyConnectPlayer: Player {
            app.isActive || !app.isHidden {
             app.hide()
             NSApp.activate()
+            DeviceWindow.raise()  // so the device window does not stay behind (CLA-47)
             log.notice("Spotify was visible after launch; hid it")
         }
     }
