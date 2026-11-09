@@ -45,6 +45,17 @@ func playing(_ i: Int = 0) -> AppState {
 }
 
 @Suite struct ReducerTests {
+    /// CLA-48: a trackpad scroll moves a list with the fingers, and a bar the other way.
+    @Test func theWheelMovesABarOnlyOnNowPlaying() {
+        var s = playing()
+        #expect(s.top.screen == .now && s.wheelMovesBar)
+        send(&s, .select)  // the time bar
+        #expect(s.wheelMovesBar)
+        send(&s, .menu)  // the song list
+        #expect(!s.wheelMovesBar)
+        #expect(!mainMenu().wheelMovesBar && !AppState().wheelMovesBar)
+    }
+
     @Test func wheelMovesSelectionScrollsAndSetsVolume() {
         var s = mainMenu()
         send(&s, .wheel(-3))

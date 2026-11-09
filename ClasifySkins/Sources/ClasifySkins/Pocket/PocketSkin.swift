@@ -32,7 +32,7 @@ public struct PocketSkin: View {
         // The bezel and the wheel, centered, with the mockup's 55.8 point gap between them.
         VStack(spacing: 55.8) {
             PocketScreen(state: state, input: input)
-            ClickWheel(input: input, color: state.deviceColor, catchesScroll: interactive, pressed: pressed)
+            ClickWheel(input: input, color: state.deviceColor, catchesScroll: interactive, movesBar: state.wheelMovesBar, pressed: pressed)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.
         .padding(.top, 25.8)

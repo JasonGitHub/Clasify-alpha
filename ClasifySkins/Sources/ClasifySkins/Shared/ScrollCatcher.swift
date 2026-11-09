@@ -9,20 +9,25 @@ struct ScrollCatcher: NSViewRepresentable {
     /// Scroll distance for one detent, as in the mockup. One mouse-wheel line is one detent.
     static let step: CGFloat = 40
 
+    /// The wheel moves a bar (`AppState.wheelMovesBar`), so fingers up on a trackpad are +1.
+    var movesBar = false
     let onDetent: @MainActor (Int) -> Void
 
     func makeNSView(context: Context) -> CatcherView {
         let view = CatcherView()
         view.onDetent = onDetent
+        view.movesBar = movesBar
         return view
     }
 
     func updateNSView(_ view: CatcherView, context: Context) {
         view.onDetent = onDetent
+        view.movesBar = movesBar
     }
 
     final class CatcherView: NSView {
         var onDetent: @MainActor (Int) -> Void = { _ in }
+        var movesBar = false
         private var distance: CGFloat = 0
         private var monitor: Any?
 
@@ -47,9 +52,16 @@ struct ScrollCatcher: NSViewRepresentable {
             let radius = min(bounds.width, bounds.height) / 2
             guard hypot(point.x - bounds.midX, point.y - bounds.midY) <= radius else { return false }
             if event.phase == .began { distance = 0 }
-            // A trackpad reports points, a mouse wheel lines. Down the list is positive, as in a browser.
-            let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : ScrollCatcher.step
-            distance -= event.scrollingDeltaY * scale
+            if event.hasPreciseScrollingDeltas {
+                // A trackpad, in points. Follow the fingers, not the natural scrolling setting
+                // (CLA-48): with it on, fingers down give a positive delta. In a list, fingers
+                // down are the next row; on a bar, fingers up are more.
+                let down = event.isDirectionInvertedFromDevice ? event.scrollingDeltaY : -event.scrollingDeltaY
+                distance += movesBar ? -down : down
+            } else {
+                // A mouse wheel, in lines: down the list is positive, as in a browser.
+                distance -= event.scrollingDeltaY * ScrollCatcher.step
+            }
             while distance >= ScrollCatcher.step { distance -= ScrollCatcher.step; onDetent(1) }
             while distance <= -ScrollCatcher.step { distance += ScrollCatcher.step; onDetent(-1) }
             return true
