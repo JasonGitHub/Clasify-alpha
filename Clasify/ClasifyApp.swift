@@ -18,6 +18,7 @@ enum Launcher {
 /// and it moves when you drag the device.
 @available(macOS 15, *)
 struct PlainWindowApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
 
     var body: some Scene {
@@ -37,6 +38,7 @@ struct PlainWindowApp: App {
 
 /// macOS 14: the device in a normal window frame.
 struct FramedWindowApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
 
     var body: some Scene {
@@ -47,6 +49,33 @@ struct FramedWindowApp: App {
         }
         .windowResizability(.contentSize)
         .commands { DebugCommands(model: model) }
+    }
+}
+
+/// A Dock click brings the device window to the front, also when Clasify is active and the
+/// window is behind another app's window (CLA-47). With no window, SwiftUI opens one.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        !DeviceWindow.raise()
+    }
+}
+
+@MainActor
+enum DeviceWindow {
+    /// Puts the device window in front and makes Clasify active: back from the Dock when it
+    /// is minimized. Returns false when there is no such window, for example after a close.
+    @discardableResult static func raise() -> Bool {
+        // Not a panel, the menu bar or a menu. The plain window may not say that it can be
+        // key, so a window that can is only preferred.
+        let windows = NSApp.windows.filter {
+            !($0 is NSPanel) && $0.level == .normal && ($0.isVisible || $0.isMiniaturized)
+        }
+        guard let window = windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return false }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        return true
     }
 }
 
