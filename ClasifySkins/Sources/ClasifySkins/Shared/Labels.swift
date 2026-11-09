@@ -17,6 +17,11 @@ enum Labels {
         case .confirm: "Log out?"
         case .about: "About"
         case .now: "Now Playing"
+        // Setup (Round 13). Hello shows no title bar text.
+        case .hello: ""
+        case .color: "Pick Your Color"
+        case .spotifyApp: "Spotify App"
+        case .yourMusic: "Your Music"
         }
     }
 
@@ -63,6 +68,7 @@ enum Labels {
         case .logOut: return RowText(label: "Log out", opens: true)
         case .cancel: return RowText(label: "Cancel")
         case .confirmLogOut: return RowText(label: "Log out")
+        case .color(let color): return RowText(label: color.rawValue)
         }
     }
 
@@ -96,6 +102,11 @@ enum Labels {
                 spinner: true)
         case .now where state.current == nil:
             return Message(title: "")
+        // Setup screens that CLA-51 to CLA-55 draw. Until then they show their words as a message.
+        case .hello:
+            return Message(title: "hello", body: "Press center button to begin")
+        case .spotifyApp:
+            return Message(title: "One more thing", body: "We also need the Spotify app on this Mac.")
         default:
             return nil
         }

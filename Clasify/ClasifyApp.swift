@@ -147,6 +147,8 @@ final class AppModel {
             // The queue is .main, so this runs on the main actor.
             MainActor.assumeIsolated { store?.send(.activated) }
         }
+        // Setup shows the Spotify App screen (card BB) only when the app is missing.
+        store.send(.spotifyAppFound(Self.spotifyAppInstalled))
         store.send(.launch)  // restores the stored login
         // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
@@ -154,6 +156,7 @@ final class AppModel {
         // and resets the player when the session signs out.
         ticker = Task { [weak store, weak player, artwork] in
             var signedIn = false
+            var spotifyCheck = 0.0  // when the Spotify App screen last looked for the app
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let state = store?.state else { return }
@@ -162,6 +165,11 @@ final class AppModel {
                 signedIn = state.signedIn
                 artwork.prefetchNext(in: state)
                 let now = Dependencies.live.now()
+                // While the Spotify App screen shows, look for the app every 3 s, quietly (change 174).
+                if state.top.screen == .spotifyApp, now - spotifyCheck >= 3 {
+                    spotifyCheck = now
+                    store?.send(.spotifyAppFound(Self.spotifyAppInstalled))
+                }
                 let toastDone = state.toastUntil > 0 && now > state.toastUntil
                 let overlayDone = state.overlayUntil > 0 && now > state.overlayUntil
                 let scrollDone = state.scrollUntil > 0 && now > state.scrollUntil
@@ -170,5 +178,11 @@ final class AppModel {
                 if toastDone || overlayDone || scrollDone || artDone || letterDone { store?.send(.tick) }
             }
         }
+    }
+
+    /// The Spotify desktop app is on this Mac. Launch Services finds it by its bundle ID; this
+    /// does not start it.
+    static var spotifyAppInstalled: Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: SpotifyConnectPlayer.bundleID) != nil
     }
 }

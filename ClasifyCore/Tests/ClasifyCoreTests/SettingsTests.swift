@@ -18,15 +18,17 @@ final class FakeSettings: SettingsStore {
     let store = FakeSettings()
     var saved = Settings()
     saved.shuffle = true; saved.repeatMode = .one; saved.albumArt = .nowPlaying; saved.deviceColor = .black; saved.clicker = false
+    saved.setupDone = true
     saved.save(to: store)
     #expect(store.values == [
         "settings.shuffle": "true", "settings.repeat": "One",
         "settings.albumArt": "Now Playing", "settings.deviceColor": "Black", "settings.clicker": "false",
+        "setup.done": "true",
     ])
     #expect(Settings(from: store) == saved)
     store.values = [
         "settings.shuffle": "yes", "settings.repeat": "Twice", "settings.albumArt": "On", "settings.deviceColor": "Gold",
-        "settings.clicker": "1",
+        "settings.clicker": "1", "setup.done": "yes",
     ]
     #expect(Settings(from: store) == Settings())  // unknown values give the defaults
 }

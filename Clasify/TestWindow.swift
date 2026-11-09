@@ -110,6 +110,8 @@ private struct TestPanel: View {
         case .auth: return "Waiting for browser… Approve Clasify in your browser. Menu cancels."
         case .now: return "Select switches the wheel between volume and scrub."
         case .about: return "Clasify test build"
+        case .hello: return "Press Select to begin."
+        case .spotifyApp: return "Install the Spotify app."
         default: return nil
         }
     }
@@ -126,6 +128,10 @@ private struct TestPanel: View {
         case .confirm: "Log out?"
         case .about: "About"
         case .now: "Now Playing"
+        case .hello: "Hello"
+        case .color: "Pick Your Color"
+        case .spotifyApp: "Spotify App"
+        case .yourMusic: "Your Music"
         }
     }
 
@@ -152,6 +158,7 @@ private struct TestPanel: View {
         case .logOut: "Log Out"
         case .cancel: "Cancel"
         case .confirmLogOut: "Log Out"
+        case .color(let color): color.rawValue
         }
     }
 

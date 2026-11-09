@@ -29,9 +29,16 @@ func send(_ s: inout AppState, _ actions: [Action]) -> [Effect] {
     return actions.flatMap { reduce(&s, $0, e) }
 }
 
+/// A later launch: the first launch setup ended before, so the login screen shows first.
+func afterSetup() -> AppState {
+    var s = AppState()
+    s.setupDone = true
+    return s
+}
+
 /// Signed in on the main menu. Nothing of the library is read yet.
 func mainMenu() -> AppState {
-    var s = AppState()
+    var s = afterSetup()
     send(&s, .select, .authDone(token: 1, ok: true))
     return s
 }
@@ -53,7 +60,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.nowMode == .scrub && s.wheelMovesBar)
         send(&s, .menu, .menu)  // the time bar ends, then the song list
         #expect(s.top.screen == .tracks(playlist: "focus") && !s.wheelMovesBar)
-        #expect(!mainMenu().wheelMovesBar && !AppState().wheelMovesBar)
+        #expect(!mainMenu().wheelMovesBar && !afterSetup().wheelMovesBar)
     }
 
     @Test func wheelMovesSelectionScrollsAndSetsVolume() {
@@ -190,7 +197,7 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func menuPopsButNotFromRoot() {
-        var s = AppState()
+        var s = afterSetup()
         send(&s, .menu)
         #expect(s.stack.count == 1)
 
@@ -444,7 +451,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// At first open, nothing has read Liked Songs into the state yet, so the main menu reads it
     /// for its covers. The Playlists list keeps one row per playlist.
     @Test func theMainMenuReadsLikedSongsForItsCoversAtFirstOpen() {
-        var s = AppState()
+        var s = afterSetup()
         #expect(send(&s, .launch, .restored(token: 1, ok: true)).last == .readArtTracks(token: 1, playlist: Playlist.likedSongsID))
         #expect(s.artRow == .coverFlow && s.mainArt.isEmpty)
         #expect(send(&s, .wheel(3), .tick, now: 101).isEmpty)  // Liked Songs: the read already runs
@@ -457,7 +464,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.library.map(\.id) == [Playlist.likedSongsID, "focus"] && s.rows(for: s.top) == [.playlist("focus")])
         #expect(s.tracks(in: Playlist.likedSongsID) == Self.likedCovers.tracks)  // the list load keeps the read
         // Offline at first open, nothing is read.
-        s = AppState()
+        s = afterSetup()
         send(&s, .offline(true))
         send(&s, .launch, .restored(token: 1, ok: true))
         #expect(s.artReads.isEmpty)
@@ -466,7 +473,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// A cover read from before a logout or reset must not end the new session's read,
     /// and must not put the old account's tracks in the new session.
     @Test func aCoverReadFromBeforeALogoutIsIgnored() {
-        var s = AppState()
+        var s = afterSetup()
         #expect(send(&s, .launch, .restored(token: 1, ok: true)).last == .readArtTracks(token: 1, playlist: Playlist.likedSongsID))
         send(&s, .expire, .select, .authDone(token: s.authAttempt + 1, ok: true))  // log in again while read 1 runs
         #expect(s.top.screen == .main && s.artReads == [Playlist.likedSongsID: 2])
@@ -481,7 +488,7 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func screenChangesSlideInFromTheRightOrTheLeft() {
-        var s = AppState()
+        var s = afterSetup()
         send(&s, .select)  // the login wait opens
         #expect(s.navSeq == 1 && s.navForward)
         send(&s, .authDone(token: 1, ok: true))  // the main menu replaces login: still forward
@@ -723,7 +730,7 @@ func playing(_ i: Int = 0) -> AppState {
         s.refreshing = []
         send(&s, .menu, .menu)  // the main menu: only the playlist list
         #expect(send(&s, .activated, now: 300) == [.refreshPlaylists])
-        s = AppState()
+        s = afterSetup()
         #expect(send(&s, .activated) == [])  // signed out
     }
 
@@ -841,16 +848,16 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func loginAndRestorePrefetchTheLibrary() {
-        var s = AppState()
+        var s = afterSetup()
         #expect(send(&s, .select, .authDone(token: 1, ok: true)) == [.logIn(token: 1), .prefetch, .readArtTracks(token: 1, playlist: Playlist.likedSongsID)])
-        s = AppState()
+        s = afterSetup()
         #expect(send(&s, .launch, .restored(token: 1, ok: true)) == [.restoreSession(token: 1), .prefetch, .readArtTracks(token: 1, playlist: Playlist.likedSongsID)])
-        s = AppState()
+        s = afterSetup()
         #expect(send(&s, .launch, .restored(token: 1, ok: false)) == [.restoreSession(token: 1)])
     }
 
     @Test func authDoneSignsInOrFailsOffline() {
-        var s = AppState()
+        var s = afterSetup()
         #expect(send(&s, .select) == [.logIn(token: 1)])
         send(&s, .offline(true), .authDone(token: 1, ok: false))  // offline, the login fails
         #expect(s.top.screen == .login && !s.signedIn && s.toast == "Can’t reach Spotify")
@@ -863,13 +870,13 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func failedLoginGoesBackToLogin() {
-        var s = AppState()
+        var s = afterSetup()
         send(&s, .select, .authDone(token: 1, ok: false))
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.toast == "Can’t reach Spotify")
     }
 
     @Test func menuCancelsLogin() {
-        var s = AppState()
+        var s = afterSetup()
         send(&s, .select)
         #expect(send(&s, .menu) == [.cancelLogIn])
         #expect(s.stack == [Frame(screen: .login)])
@@ -878,7 +885,7 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func launchRestoresTheStoredLogin() {
-        var s = AppState()
+        var s = afterSetup()
         #expect(send(&s, .launch) == [.restoreSession(token: 1)])
         #expect(s.restoring && s.rows(for: s.top) == [])
         send(&s, .restored(token: 1, ok: true))
@@ -887,14 +894,14 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func failedRestoreOffersLogIn() {
-        var s = AppState()
+        var s = afterSetup()
         send(&s, .launch, .restored(token: 1, ok: false))
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && !s.restoring)
         #expect(s.rows(for: s.top) == [.logIn])
     }
 
     @Test func noLoginWhileRestoring() {
-        var s = AppState()
+        var s = afterSetup()
         #expect(send(&s, .launch, .wheel(1), .select, .menu) == [.restoreSession(token: 1)])
         #expect(s.stack == [Frame(screen: .login)] && s.restoring)
         send(&s, .reset, .restored(token: 1, ok: true))  // from before the reset
@@ -910,7 +917,7 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func expireSignsOut() {
-        var s = AppState()
+        var s = afterSetup()
         #expect(send(&s, .expire) == [] && s.toast == "")
         s = playing()
         #expect(send(&s, .expire) == [.stop, .logOut])
@@ -922,7 +929,7 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func resetRestoresInitialState() {
         var s = playing()
         #expect(send(&s, .reset) == [.stop])
-        var fresh = AppState()
+        var fresh = afterSetup()
         fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt; fresh.artTok = s.artTok
         (fresh.navSeq, fresh.wholeSeq) = (s.navSeq, s.wholeSeq)
         #expect(s == fresh && s.tok == 2 && s.navSeq > 0)  // the reset keeps the screen identity: no slide
@@ -1056,7 +1063,7 @@ func playing(_ i: Int = 0) -> AppState {
 
 @MainActor @Test func storeRunsLoginEffects() async {
     let lib = FakeLibrary()
-    let store = Store(player: FakePlayer(), library: lib, env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    let store = Store(player: FakePlayer(), library: lib, state: afterSetup(), env: Dependencies(now: { 0 }, random: { _ in 0 }))
     lib.loginResult = false
     store.send(.launch)
     while store.state.restoring { await Task.yield() }
@@ -1073,7 +1080,7 @@ func playing(_ i: Int = 0) -> AppState {
 
 @MainActor @Test func storeFetchesLibraryAndDeliversLoaded() async {
     let lib = FakeLibrary()
-    var s = AppState()
+    var s = afterSetup()
     send(&s, .select, .authDone(token: 1, ok: true))
     let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
     store.send(.wheel(1)); store.send(.select)  // Playlists
@@ -1088,7 +1095,7 @@ func playing(_ i: Int = 0) -> AppState {
 
 @MainActor @Test func storeRunsPrefetchAfterLogin() async {
     let lib = FakeLibrary()
-    let store = Store(player: FakePlayer(), library: lib, env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    let store = Store(player: FakePlayer(), library: lib, state: afterSetup(), env: Dependencies(now: { 0 }, random: { _ in 0 }))
     store.send(.launch)
     while !lib.calls.contains("prefetch") { await Task.yield() }
     #expect(lib.calls == ["restoreSession", "prefetch"])
