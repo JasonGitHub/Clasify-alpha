@@ -9,14 +9,17 @@ struct ClickWheel: View {
     var color = DeviceColor.silver
     /// False in snapshot tests, which cannot draw the AppKit scroll view.
     var catchesScroll = true
+    /// The wheel moves a bar, not a list: a trackpad scroll goes the other way (CLA-48).
+    var movesBar = false
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        pressed: Zone? = nil
+        movesBar: Bool = false, pressed: Zone? = nil
     ) {
         self.input = input
         self.color = color
         self.catchesScroll = catchesScroll
+        self.movesBar = movesBar
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
 
@@ -86,7 +89,7 @@ struct ClickWheel: View {
             center
         }
         .frame(width: Self.size, height: Self.size)
-        .background { if catchesScroll { ScrollCatcher { input(.wheel($0)) } } }
+        .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
         .contentShape(Circle())
         .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
         .onContinuousHover { phase in
