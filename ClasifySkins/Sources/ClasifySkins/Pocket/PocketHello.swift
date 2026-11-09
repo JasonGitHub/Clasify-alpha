@@ -15,9 +15,13 @@ enum Hello {
 
     /// The start point and the cubic curves (control 1, control 2, end), in path units.
     static let curves: (start: CGPoint, curves: [(CGPoint, CGPoint, CGPoint)]) = {
-        let numbers = pathData.split(whereSeparator: { " \nMC".contains($0) }).compactMap { Double($0) }
-        let points = stride(from: 0, to: numbers.count - 1, by: 2).map { CGPoint(x: numbers[$0], y: numbers[$0 + 1]) }
-        let curves = stride(from: 1, to: points.count - 2, by: 3).map { (points[$0], points[$0 + 1], points[$0 + 2]) }
+        let separators: Set<Character> = [" ", "\n", "M", "C"]
+        let words: [Substring] = pathData.split(whereSeparator: { separators.contains($0) })
+        let numbers: [Double] = words.compactMap { Double(String($0)) }
+        var points: [CGPoint] = []
+        for i in stride(from: 0, to: numbers.count - 1, by: 2) { points.append(CGPoint(x: numbers[i], y: numbers[i + 1])) }
+        var curves: [(CGPoint, CGPoint, CGPoint)] = []
+        for i in stride(from: 1, to: points.count - 2, by: 3) { curves.append((points[i], points[i + 1], points[i + 2])) }
         return (points[0], curves)
     }()
 
@@ -36,7 +40,10 @@ enum Hello {
     static func ease(_ x: Double) -> Double {
         let x = min(max(x, 0), 1)
         func bezier(_ u: Double, _ a: Double, _ b: Double) -> Double {
-            3 * (1 - u) * (1 - u) * u * a + 3 * (1 - u) * u * u * b + u * u * u
+            let m: Double = 1 - u
+            let first: Double = 3 * m * m * u * a
+            let second: Double = 3 * m * u * u * b
+            return first + second + u * u * u
         }
         var lo = 0.0, hi = 1.0
         for _ in 0..<30 {  // the x curve only grows, so halving finds u
@@ -112,22 +119,28 @@ enum Hello {
         for (c1, c2, end) in curves.curves {
             for k in 0..<400 {
                 let u = Double(k) / 400, m = 1 - u
-                let x = m * m * m * p0.x + 3 * m * m * u * c1.x + 3 * m * u * u * c2.x + u * u * u * end.x
-                let y = m * m * m * p0.y + 3 * m * m * u * c1.y + 3 * m * u * u * c2.y + u * u * u * end.y
+                let w0: Double = m * m * m, w1: Double = 3 * m * m * u, w2: Double = 3 * m * u * u, w3: Double = u * u * u
+                let x: Double = w0 * Double(p0.x) + w1 * Double(c1.x) + w2 * Double(c2.x) + w3 * Double(end.x)
+                let y: Double = w0 * Double(p0.y) + w1 * Double(c1.y) + w2 * Double(c2.y) + w3 * Double(end.y)
                 points.append(CGPoint(x: (50 + x * unit) / size, y: (72.5 + y * unit) / size))
             }
             p0 = end
         }
         var first: [Int: Int] = [:]  // key x * 1000 + y: the first sample that turns it on
         for (i, p) in points.enumerated() {
-            for x in Int(p.x - pen - 1)..<Int(p.x + pen + 2) {
-                for y in Int(p.y - pen - 1)..<Int(p.y + pen + 2) where first[x * 1000 + y] == nil {
-                    if hypot(Double(x) + 0.5 - p.x, Double(y) + 0.5 - p.y) <= pen { first[x * 1000 + y] = i }
+            let px = Double(p.x), py = Double(p.y)
+            for x in Int(px - pen - 1)..<Int(px + pen + 2) {
+                for y in Int(py - pen - 1)..<Int(py + pen + 2) where first[x * 1000 + y] == nil {
+                    let dx: Double = Double(x) + 0.5 - Double(p.x), dy: Double = Double(y) + 0.5 - Double(p.y)
+                    if (dx * dx + dy * dy).squareRoot() <= pen { first[x * 1000 + y] = i }
                 }
             }
         }
-        return first.map { (x: $0.key / 1000, y: $0.key % 1000, part: min(39, $0.value * 40 / points.count)) }
-            .sorted { ($0.part, $0.y, $0.x) < ($1.part, $1.y, $1.x) }
+        var pixels: [(x: Int, y: Int, part: Int)] = []
+        for (key, sample) in first {
+            pixels.append((x: key / 1000, y: key % 1000, part: min(39, sample * 40 / points.count)))
+        }
+        return pixels.sorted { a, b in (a.part, a.y, a.x) < (b.part, b.y, b.x) }
     }()
 }
 
