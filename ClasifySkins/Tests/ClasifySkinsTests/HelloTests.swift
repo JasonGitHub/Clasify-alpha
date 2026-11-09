@@ -49,4 +49,17 @@ import Testing
         let first = Hello.pixels.filter { $0.part == 0 }
         #expect(first.contains { abs(Double($0.x) - 33.8) < 3 && abs(Double($0.y) - 67.1) < 3 })
     }
+
+    /// Card AW: the rim light goes around every 3 s; the turn hint after 9 s; after the first
+    /// turn, the press hint after 3 pulses.
+    @Test func theColorPickTeachesTheTurnThenThePress() {
+        #expect(close(ColorPick.rimAngle(at: 0), 0) && close(ColorPick.rimAngle(at: 1.5), 180) && close(ColorPick.rimAngle(at: 3), 0))
+        let before = ColorPick.hint(openedAt: 100, turnedAt: 0, now: 109)
+        #expect(before.text == "Turn the wheel to try one" && before.opacity == 0)
+        #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 0, now: 109.4).opacity, 1))
+        let after = ColorPick.hint(openedAt: 100, turnedAt: 104, now: 111.2)
+        #expect(after.text == "Then press center button" && after.opacity == 0)
+        #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 104, now: 111.6).opacity, 1))
+        #expect(Hello.pulse(-1) == 0 && close(Hello.pulse(0.4), 1) && close(Hello.pulse(1.6), 0.55))
+    }
 }

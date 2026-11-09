@@ -1,6 +1,6 @@
 import Foundation
 
-/// The settings that stay after a restart: Shuffle, Repeat, Album Art, Body (the device color)
+/// The settings that stay after a restart: Shuffle, Repeat, Album Art, Color (the device color)
 /// and Clicker, and whether the first launch setup ended.
 public struct Settings: Equatable, Sendable {
     public var shuffle = false

@@ -15,6 +15,9 @@ public struct PocketSkin: View {
     var pressed: ClickWheel.Zone?
 
     @FocusState private var focused: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The small device on a setup screen: no glow, no rim light, no focus and no drop shadow.
+    @Environment(\.pocketPreview) private var preview
 
     public init(state: AppState, send: @escaping @MainActor (Action) -> Void) {
         self.state = state
@@ -33,14 +36,22 @@ public struct PocketSkin: View {
         VStack(spacing: 55.8) {
             PocketScreen(state: state, input: input)
             ClickWheel(
-                input: input, color: state.deviceColor, catchesScroll: interactive, movesBar: state.wheelMovesBar,
-                helloAt: state.top.screen == .hello ? state.helloAt : nil, pressed: pressed)
+                input: input, color: state.shownColor, catchesScroll: interactive, movesBar: state.wheelMovesBar,
+                glowFrom: glowFrom, rimFrom: rimFrom, pressed: pressed)
+                .animation(.easeInOut(duration: 0.25), value: state.shownColor)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.
         .padding(.top, 25.8)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
-        .background { device(state.deviceColor) }
-        .focusable()
+        .background {
+            // A new color crossfades in 0.25 s (card AW, change 150).
+            ZStack {
+                device(.silver).opacity(state.shownColor == .silver ? 1 : 0)
+                device(.black).opacity(state.shownColor == .black ? 1 : 0)
+            }
+            .animation(.easeInOut(duration: 0.25), value: state.shownColor)
+        }
+        .focusable(!preview)
         .focused($focused)
         .focusEffectDisabled()
         .onKeyPress(phases: [.down, .repeat]) { press in
@@ -52,10 +63,27 @@ public struct PocketSkin: View {
             input(action)
             return .handled
         }
-        .onAppear { focused = true }
+        .onAppear { if !preview { focused = true } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             "Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
+    }
+
+    /// The center glows on Hello from 16 s (from the start with Reduce Motion), and on the color
+    /// pick from the first turn.
+    private var glowFrom: Double? {
+        if preview { return nil }
+        switch state.top.screen {
+        case .hello: return state.helloAt + (reduceMotion ? 0 : Hello.glowAt)
+        case .color where state.colorTurnAt > 0: return state.colorTurnAt
+        default: return nil
+        }
+    }
+
+    /// The rim light goes around on the color pick until the first turn. Not with Reduce Motion.
+    private var rimFrom: Double? {
+        guard !preview, !reduceMotion, state.top.screen == .color, state.colorTurnAt == 0 else { return nil }
+        return state.colorAt
     }
 
     /// The device body: silver, or black (round 8, card Z), with a light line inside the top
@@ -84,7 +112,7 @@ public struct PocketSkin: View {
                     .mask(LinearGradient.vertical(.white, .clear, .clear))
             }
             .overlay { shape.strokeBorder(Color(hex: black ? 0x1c1c1c : 0x9c9c9c), lineWidth: 1) }
-            .shadow(color: black ? .black.opacity(0.45) : Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
+            .shadow(color: preview ? .clear : black ? .black.opacity(0.45) : Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
     }
 
     static var silverBody: [Gradient.Stop] { [
