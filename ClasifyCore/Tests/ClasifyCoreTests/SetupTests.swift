@@ -35,6 +35,19 @@ import Testing
         #expect(s.top.screen == .color && s.top.sel == 1)  // the pick starts on the color that is set
     }
 
+    /// Card AW: a turn tries the color on the device at once. A press saves it.
+    @Test func theColorPickTriesAColorOnAtTheFirstTurn() {
+        var s = onColor()
+        #expect(s.colorAt == 100 && s.colorTurnAt == 0 && s.shownColor == .silver)
+        send(&s, .wheel(1), now: 105)
+        #expect(s.colorTurnAt == 105 && s.shownColor == .black && s.deviceColor == .silver)
+        send(&s, .wheel(-1), now: 107)  // only the first turn counts
+        #expect(s.colorTurnAt == 105 && s.shownColor == .silver)
+        send(&s, .wheel(1), .select, now: 108)
+        #expect(s.top.screen == .login && s.deviceColor == .black && s.shownColor == .black)
+        #expect(mainMenu().shownColor == .silver)  // off the color pick, the setting shows
+    }
+
     @Test func aLoginInSetupReadsTheLibraryThenOpensTheMainMenu() {
         var s = onColor()
         #expect(send(&s, .select, .select) == [.logIn(token: 2)])

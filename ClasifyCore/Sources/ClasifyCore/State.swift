@@ -246,6 +246,9 @@ public struct AppState: Equatable, Sendable {
     /// When Hello (card AT) opened, in `Dependencies.now` time. A skin times the hello word,
     /// the center glow and the begin text from it.
     public var helloAt: Double = 0
+    /// When the color pick (card AW) opened, and when the wheel first turned on it (0 before
+    /// that). A skin times the rim light, the hint and the center glow from them.
+    public var colorAt: Double = 0, colorTurnAt: Double = 0
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false
@@ -295,6 +298,13 @@ public struct AppState: Equatable, Sendable {
     /// Now Playing shows the playing track's cover.
     public var showsNowPlayingArt: Bool { albumArt != .off }
     public var deviceColor = DeviceColor.silver
+    /// The color the device shows: on the color pick (card AW), the selected row's color, so a
+    /// turn tries it on at once; else the setting.
+    public var shownColor: DeviceColor {
+        let colors = DeviceColor.allCases
+        guard top.screen == .color, colors.indices.contains(top.sel) else { return deviceColor }
+        return colors[top.sel]
+    }
     public var clicker = true
     /// The About art scene that shows, from 0. Each open of About shows the next scene, and the
     /// first open after launch shows scene 0. In memory only: nothing is saved.

@@ -95,10 +95,15 @@ enum Hello {
     /// The center glow's opacity at time `t` since Hello opened: off before 16 s (from the start
     /// with Reduce Motion), a 0.4 s fade in, then a pulse between 1 and 0.55 every 2.4 s.
     static func glow(at t: Double, reduceMotion: Bool) -> Double {
-        let on = reduceMotion ? 0 : glowAt
-        if t < on { return 0 }
-        if t < on + 0.4 { return (t - on) / 0.4 }
-        return 0.775 + 0.225 * cos(2 * .pi * (t - on - 0.4) / pulse)
+        pulse(t - (reduceMotion ? 0 : glowAt))
+    }
+
+    /// The center glow's opacity `t` seconds after it starts, on Hello and on the color pick
+    /// (change 147): a 0.4 s fade in, then a pulse between 1 and 0.55 every 2.4 s.
+    static func pulse(_ t: Double) -> Double {
+        if t < 0 { return 0 }
+        if t < 0.4 { return t / 0.4 }
+        return 0.775 + 0.225 * cos(2 * .pi * (t - 0.4) / pulse)
     }
 
     /// "Press center button to begin": after 3 pulses of the glow, a 0.4 s fade in. Then it stays.
@@ -164,19 +169,34 @@ struct PocketHello: View {
     /// When Hello opened, in `Date.timeIntervalSinceReferenceDate` time.
     let helloAt: Double
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Seconds since Hello opened, for snapshot tests.
+    /// A fixed clock for snapshot tests, in the same time as `helloAt`.
     @Environment(\.animationTime) private var fixedTime
+    /// In the small device of the setup screens, Hello is a still T4 Nano Rainbow (card AW).
+    @Environment(\.pocketPreview) private var preview
 
     static let nano: [Color] = ([0x8e5cc6, 0x2d8be0, 0x3fb6c9, 0x5cc24a, 0xf2c230, 0xf28a30, 0xe65c9c] as [UInt32]).map { Color(hex: $0) }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
-            let t = max(0, fixedTime ?? context.date.timeIntervalSinceReferenceDate - helloAt)
-            screen(at: t)
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil || preview)) { context in
+            let t = max(0, (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - helloAt)
+            if preview { still } else { screen(at: t) }
         }
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
         .accessibilityElement()
         .accessibilityLabel("Hello. Press center button to begin.")
+    }
+
+    /// The preview's screen: the T4 line, still and whole, 260 points wide.
+    private var still: some View {
+        ZStack {
+            EllipticalGradient(colors: [.white.opacity(0.95), .white.opacity(0)])
+                .frame(width: 240, height: 150)
+                .position(x: Pocket.screenWidth / 2, y: Pocket.screenHeight * 0.44)
+            HelloWord()
+                .stroke(HelloGlass.across(Self.nano), style: StrokeStyle(lineWidth: 6 * 260 / 300, lineCap: .round, lineJoin: .round))
+                .frame(width: 260, height: 104)
+        }
+        .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
     }
 
     private func screen(at t: Double) -> some View {
@@ -295,17 +315,16 @@ struct HelloGlass: View {
     }
 }
 
-/// The soft blue glow around the wheel's center on Hello (change 166): a 1.5 point ring
-/// #7db7f5 and a blurred glow, pulsing.
-struct HelloGlow: View {
-    let helloAt: Double
+/// The soft blue glow around the wheel's center (changes 147 and 166): a 1.5 point ring
+/// #7db7f5 and a blurred glow, pulsing from time `from`.
+struct CenterGlow: View {
+    let from: Double
     let radius: CGFloat
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil)) { context in
-            let t = max(0, fixedTime ?? context.date.timeIntervalSinceReferenceDate - helloAt)
+            let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
             ZStack {
                 // box-shadow 0 0 16px 4px rgba(90,163,240,0.7): a circle 4 points wider, blurred.
                 Circle().fill(Color(hex: 0x5aa3f0, opacity: 0.7))
@@ -315,9 +334,21 @@ struct HelloGlow: View {
                 Circle().stroke(Color(hex: 0x7db7f5), lineWidth: 1.5)
                     .frame(width: radius * 2 + 1.5, height: radius * 2 + 1.5)
             }
-            .opacity(Hello.glow(at: t, reduceMotion: reduceMotion))
+            .opacity(Hello.pulse(t))
         }
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+private struct PocketPreviewKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// The small device on the setup screens' right side: still, with no glow and no input.
+    var pocketPreview: Bool {
+        get { self[PocketPreviewKey.self] }
+        set { self[PocketPreviewKey.self] = newValue }
     }
 }

@@ -11,18 +11,22 @@ struct ClickWheel: View {
     var catchesScroll = true
     /// The wheel moves a bar, not a list: a trackpad scroll goes the other way (CLA-48).
     var movesBar = false
-    /// On Hello: when it opened. The center then glows (card AT, change 166).
-    var helloAt: Double?
+    /// When the center starts to glow: on Hello (card AT, change 166) and after the first turn
+    /// on the color pick (card AW, change 150). Nil: no glow.
+    var glowFrom: Double?
+    /// When the rim light starts to go around, on the color pick (card AW, change 148).
+    var rimFrom: Double?
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        movesBar: Bool = false, helloAt: Double? = nil, pressed: Zone? = nil
+        movesBar: Bool = false, glowFrom: Double? = nil, rimFrom: Double? = nil, pressed: Zone? = nil
     ) {
         self.input = input
         self.color = color
         self.catchesScroll = catchesScroll
         self.movesBar = movesBar
-        self.helloAt = helloAt
+        self.glowFrom = glowFrom
+        self.rimFrom = rimFrom
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
 
@@ -89,6 +93,7 @@ struct ClickWheel: View {
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
             key(.next) { IconView(.next, width: 19.8, height: 10.2) }
             key(.play) { IconView(.playPause, width: 24.6, height: 9.6) }
+            if let rimFrom { RimLight(from: rimFrom) }
             center
         }
         .frame(width: Self.size, height: Self.size)
@@ -141,7 +146,7 @@ struct ClickWheel: View {
                     .clipShape(Circle())
             }
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
-            .background { if let helloAt { HelloGlow(helloAt: helloAt, radius: Self.centerRadius) } }
+            .background { if let glowFrom { CenterGlow(from: glowFrom, radius: Self.centerRadius) } }
             .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)
     }
 

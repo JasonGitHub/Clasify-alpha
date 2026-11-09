@@ -133,13 +133,21 @@ struct PocketScreen: View {
         // A half screen (the main menu, Playlists) is a 150 point pane (half the screen) with a shadow, over
         // covers on the right. The panel stays between them, so it does not start again.
         // With Album Art set to Now Playing or Off, they are full-width lists and load no covers.
-        let split = state.isHalf(top.screen)
+        // The color pick is split the same way, with the small device on the right (card AW).
+        let split = state.isHalf(top.screen) || top.screen == .color
         let width: CGFloat = split ? Pocket.paneWidth : Pocket.screenWidth
         ZStack(alignment: .leading) {
             if split {
                 // On the way out, the covers stay until the pane has widened over them.
-                MainArtPanel(tracks: state.mainArt).padding(.leading, Pocket.paneWidth).transition(stay)
-                    .modifier(DoorHalf(side: 1))
+                Group {
+                    if top.screen == .color {
+                        SetupPreview(color: state.shownColor).frame(width: Pocket.screenWidth - Pocket.paneWidth)
+                    } else {
+                        MainArtPanel(tracks: state.mainArt)
+                    }
+                }
+                .padding(.leading, Pocket.paneWidth).transition(stay)
+                .modifier(DoorHalf(side: 1))
             }
             VStack(spacing: 0) {
                 if top.screen != .hello {  // Hello fills the whole screen, with no title bar
@@ -205,8 +213,8 @@ struct PocketScreen: View {
         .padding(EdgeInsets(top: 6.6, leading: 6.6, bottom: 7.8, trailing: 6.6))
         .background {
             // Near black on the black device (round 8, card Z), with a fainter highlight.
-            RoundedRectangle(cornerRadius: 7.8).fill(state.deviceColor == .black ? Color(hex: 0x050505) : Pocket.bezel)
-                .shadow(color: .white.opacity(state.deviceColor == .black ? 0.18 : 0.7), radius: 0, y: 1)
+            RoundedRectangle(cornerRadius: 7.8).fill(state.shownColor == .black ? Color(hex: 0x050505) : Pocket.bezel)
+                .shadow(color: .white.opacity(state.shownColor == .black ? 0.18 : 0.7), radius: 0, y: 1)
         }
         .foregroundStyle(Pocket.ink)
         // .contain, not .combine: the shuffle and repeat buttons on Now Playing must stay
@@ -227,8 +235,9 @@ struct PocketScreen: View {
             case .paused: mark(.pause, label: "Paused")
             case nil: EmptyView()
             }
-            // The battery, 7 points after the play mark. A Mac with no battery shows none.
-            if let battery = Labels.battery(in: state) {
+            // The battery, 7 points after the play mark. A Mac with no battery shows none, and
+            // the setup screens show none (Round 13).
+            if top.screen != .color, let battery = Labels.battery(in: state) {
                 BatteryView(battery: battery).padding(.leading, 1)
             }
         }
@@ -330,6 +339,7 @@ struct PocketList: View {
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),
                           selected: index == top.sel, scrolls: scrolls, height: height)
             }
+            if top.screen == .color { ColorPickWords(state: state).layoutPriority(1) }  // its line sits at the bottom
             if top.screen == .login {
                 Text("Opens your browser to sign in. Playlists are read-only.")
                     .font(.helvetica(11))

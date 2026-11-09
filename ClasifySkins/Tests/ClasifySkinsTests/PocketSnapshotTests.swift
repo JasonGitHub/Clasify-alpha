@@ -1075,4 +1075,32 @@ import Testing
         let begin = try render(s, "hello-text", time: 23.6)
         #expect(begin.isBlue(ring.x, ring.y) && text(begin))
     }
+
+    /// The color pick (card AW): the rows on the left, the small device on the right, the
+    /// rim light and the turn hint before the first turn; after it, the new color and the glow.
+    @Test func theColorPickShowsTheSmallDeviceAndTriesTheColorOn() throws {
+        var s = AppState()
+        s.stack = [Frame(screen: .color)]
+        func hint(_ shot: Snapshot) -> Bool {  // dark text under the two rows, in the left pane
+            for y in 106...117 {
+                for x in 45...120 {
+                    let c = shot.rgb(x, y)
+                    if c.r < 140 && c.g < 140 { return true }
+                }
+            }
+            return false
+        }
+        let preview = (x: 209, y: 224)  // the small device's body, near its bottom
+        let body = (x: 20, y: 590)  // the big device's body, near its bottom
+        let silver = try render(s, "color-pick", time: 10)
+        #expect(silver.isBlue(100, Self.rowCenter(0)))  // Silver is selected
+        #expect(hint(silver) && silver.isLight(preview.x, preview.y) && silver.isLight(body.x, body.y))
+        #expect(!silver.isBlue(183, 392))  // no center glow before the turn
+        s.top.sel = 1
+        s.colorTurnAt = 5
+        let black = try render(s, "color-pick-black", time: 7.8)
+        #expect(black.isBlue(100, Self.rowCenter(1)))
+        #expect(black.isDark(preview.x, preview.y) && black.isDark(body.x, body.y))  // both devices are black
+        #expect(black.isBlue(183, 392) && !hint(black))  // the glow first; the press hint comes at 12.2 s
+    }
 }
