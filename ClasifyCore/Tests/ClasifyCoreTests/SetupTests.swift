@@ -83,7 +83,7 @@ import Testing
     /// and reports after the read, change nothing.
     @Test func theFirstReadCountsUp() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select, .playlistsRefreshed([]))  // no names to wait for
         #expect(s.top.screen == .yourMusic && s.readDone == 0 && s.readTotal == 0)
         send(&s, .readProgress(Playlist.likedSongsID, done: 0, total: 1240, albums: 0), .readProgress(Playlist.likedSongsID, done: 300, total: 1240, albums: 84))
         #expect(s.readDone == 300 && s.readTotal == 1240 && s.readAlbums == 84)  // change 188
@@ -127,17 +127,50 @@ import Testing
         #expect(late.setupDone && late.namesHold == 0)
     }
 
+    /// CLA-74: the read at login can end Liked Songs before the playlist list comes. "Getting
+    /// your music" then waits for the list, and for its names as in change 191.
+    @Test func aReadBeforeTheListWaitsForTheNames() {
+        var s = onColor()
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        #expect(s.namesAt == 0 && s.refreshing.contains(AppState.readKey(.playlists)))
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+        #expect(s.top.loading && !s.setupDone && s.namesHold == .infinity && s.loadedTracks == [Playlist.likedSongsID])
+        #expect(s.readDone == liked.tracks.count && s.readTotal == liked.tracks.count)  // the bar is full
+        send(&s, .tick, now: 300)
+        #expect(s.top.loading && !s.setupDone)  // it waits for the list
+        let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
+        send(&s, .playlistsRefreshed(names), now: 302)
+        // The sixth name has shown at 302 + 0.5 + 5 × 0.6 + 0.3 = 305.8 s.
+        #expect(s.namesAt == 302 && abs(s.namesHold - 305.8) < 1e-9 && s.top.loading && !s.setupDone)
+        send(&s, .tick, now: 305.8)
+        #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 308.3) < 1e-9)
+    }
+
+    /// CLA-74: when the list fails, or has no playlists, setup goes on at once.
+    @Test func aReadBeforeAListThatFailsOrIsEmptyGoesOn() {
+        let lists: [[Playlist]?] = [nil, []]
+        for list in lists {
+            var s = onColor()
+            send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+            send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+            #expect(s.top.loading && s.namesHold == .infinity)
+            send(&s, .playlistsRefreshed(list), now: 202)
+            #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && s.beatUntil == 204.5)
+        }
+    }
+
     @Test func aPressOnAllSetGoesOnAtOnce() {
         var s = onColor()
         send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.top.screen == .yourMusic && send(&s, .select).isEmpty && s.top.screen == .yourMusic)  // no press while it reads
-        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
+        send(&s, .playlistsRefreshed([]), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
         #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0)
     }
 
     @Test func aFailedFirstReadShowsTheErrorAndRetries() {
         var s = onColor()
         send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .playlistsRefreshed([]))  // no names to wait for
         send(&s, .readProgress(Playlist.likedSongsID, done: 900, total: 1240, albums: 0), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
         #expect(s.top.screen == .yourMusic && s.top.error && !s.setupDone)
         #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: Playlist.likedSongsID)])
@@ -249,19 +282,46 @@ import Testing
     }
 }
 
+/// Waits until `done` is true, for at most 10 s, so a test cannot loop forever. With `tick`, it
+/// sends `.tick` meanwhile, as the app's ticker does, so timed holds can end.
+@MainActor func waitFor(_ store: Store, tick: Bool = false, until done: (AppState) -> Bool) async {
+    let deadline = ContinuousClock.now + .seconds(10)
+    while !done(store.state) && ContinuousClock.now < deadline {
+        if tick { store.send(.tick) }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+}
+
 @MainActor @Test func storeSavesTheEndOfSetup() async {
     let saved = FakeSettings()
-    let store = Store(player: FakePlayer(), library: FakeLibrary(), env: Dependencies(now: { 0 }, random: { _ in 0 }), settings: saved)
+    // A real clock from 100 s: "Getting your music" holds until the playlist names have shown (CLA-74).
+    let start = ContinuousClock.now
+    let clock = Dependencies(now: {
+        let d = ContinuousClock.now - start
+        return 100 + Double(d.components.seconds) + Double(d.components.attoseconds) * 1e-18
+    }, random: { _ in 0 })
+    let store = Store(player: FakePlayer(), library: FakeLibrary(), env: clock, settings: saved)
     store.send(.launch)
     #expect(store.state.top.screen == .hello)
-    while store.state.restoring { await Task.yield() }  // the fake restores a stored login
+    await waitFor(store) { !$0.restoring }  // the fake restores a stored login
     store.send(.select)
     store.send(.select)
     #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == nil)
-    while !store.state.setupDone { await Task.yield() }
+    await waitFor(store, tick: true) { $0.setupDone }
     #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == "true")  // "You’re all set"
-    #expect(store.state.readDone == 1 && store.state.readTotal == 2)  // the library's progress reached the store
+    #expect(store.state.readTotal == 2 && store.state.readDone >= 1)  // the bar ends full, or at the last report
     store.send(.select)
     #expect(store.state.top.screen == .main)
     #expect(Settings(from: saved).setupDone)
+}
+
+/// Change 188: the library's progress reports reach the store.
+@MainActor @Test func storePassesTheReadProgressOn() {
+    var s = AppState()
+    send(&s, .launch, .restored(token: 1, ok: true), .select, .select)  // "Getting your music"
+    let lib = FakeLibrary()
+    let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 100 }, random: { _ in 0 }))
+    #expect(store.state.top.screen == .yourMusic && store.state.top.loading)
+    lib.onProgress?(Playlist.likedSongsID, 1, 2, 1)
+    #expect(store.state.readDone == 1 && store.state.readTotal == 2 && store.state.readAlbums == 1)
 }

@@ -288,6 +288,23 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.setupDone = true
         s.beatUntil = now + AppState.allSetTime
     }
+    /// Liked Songs is read and "Getting your music" waited for the playlist names (change 191,
+    /// CLA-74): the read worked, also if offline since.
+    func endHeldRead() {
+        s.namesHold = 0
+        guard s.top.screen == .yourMusic && s.top.loading else { return }
+        s.top.loading = false; s.top.error = false
+        endFirstRead()
+    }
+    /// Change 191: holds "Getting your music" until the last playlist name has shown. False
+    /// when every name has shown already, or there are none.
+    func holdForNames() -> Bool {
+        let n = s.firstReadNames.count
+        let shown = s.namesAt + AppState.nameStart + AppState.nameGap * Double(n - 1) + AppState.nameFade
+        guard n > 0 && now < shown else { return false }
+        s.namesHold = shown
+        return true
+    }
     /// The next setup step after the login: the Spotify app screen if the app is missing,
     /// else the first library read, else the main menu.
     func setupNext() {
@@ -596,13 +613,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
-            if s.namesHold > 0 && now >= s.namesHold {  // change 191: every name has shown
-                s.namesHold = 0
-                if s.top.screen == .yourMusic && s.top.loading {  // the read worked, also if offline since
-                    s.top.loading = false; s.top.error = false
-                    endFirstRead()
-                }
-            }
+            if s.namesHold > 0 && now >= s.namesHold { endHeldRead() }  // change 191: every name has shown
             if s.beatUntil > 0 && now >= s.beatUntil {  // "You’re in" moves on
                 s.beatUntil = 0
                 if s.top.screen == .loggedIn { setupNext() }
@@ -681,11 +692,18 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .playlistsRefreshed(let playlists):
             // Not asked for in this session, for example from before a sign-out.
-            guard s.refreshing.remove(AppState.readKey(.playlists)) != nil, let playlists else { return }
+            guard s.refreshing.remove(AppState.readKey(.playlists)) != nil else { return }
+            // CLA-74: Liked Songs was read first, and "Getting your music" waits for the list.
+            let waiting = s.namesHold == .infinity
+            guard let playlists else {
+                if waiting { endHeldRead() }  // no names to show: setup goes on
+                return
+            }
             let old = s.rows(for: Frame(screen: .playlists))
             setPlaylists(playlists)
             keepSelection(on: .playlists, old: old)
             if s.top.screen == .yourMusic && s.top.loading { s.namesAt = now }  // the names fill in from now
+            if waiting && !holdForNames() { endHeldRead() }  // no playlists: setup goes on
 
         case .activated: refreshShown()
 
@@ -744,12 +762,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.loadedTracks.insert(id)
                 s.readAt[id] = now
             }
-            if s.top.screen == .yourMusic, let tracks, s.namesAt > 0, !s.offline {
+            if s.top.screen == .yourMusic, let tracks, !s.offline {
                 // Card AY, change 191: "Getting your music" stays until every name has shown.
-                let n = s.firstReadNames.count
-                let shown = s.namesAt + AppState.nameStart + AppState.nameGap * Double(n - 1) + AppState.nameFade
-                if n > 0 && now < shown {
-                    s.namesHold = shown
+                // CLA-74: when the read at login ended before the playlist list came, it also
+                // waits for the list.
+                let listPending = s.namesAt == 0 && s.refreshing.contains(AppState.readKey(.playlists))
+                if listPending { s.namesHold = .infinity }
+                if listPending || (s.namesAt > 0 && holdForNames()) {
                     // The bar and the counts end full, also if the last reports come late.
                     s.readDone = tracks.count; s.readTotal = tracks.count
                     s.readAlbums = Set(tracks.compactMap { $0.album?.id }).count
