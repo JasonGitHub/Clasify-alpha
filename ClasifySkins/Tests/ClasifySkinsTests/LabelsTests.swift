@@ -327,11 +327,24 @@ func sampleState() -> AppState {
     @Test func clickIsAShortMonoWAV() {
         let wav = Clicker.wav()
         let samples = Clicker.samples()
-        #expect(samples.count == 176)  // 4 ms at 44.1 kHz
+        #expect(samples.count == 528)  // 11.979 ms at 44.1 kHz
         let size: Int = 44 + samples.count * 2  // the header, then 16-bit samples
         #expect(wav.count == size)
         #expect(wav.prefix(4) == Data("RIFF".utf8))
-        #expect(samples.contains { $0 != 0 })
+    }
+
+    /// CLA-87: the N24 click. The spot values come from the formula in the spec, worked out
+    /// apart from this code.
+    @Test func theN24ClickPeaksAtHalfAndFadesToZero() {
+        let samples = Clicker.samples()
+        #expect(Clicker.modes.count == 24)
+        let peak = samples.map { abs(Int($0)) }.max() ?? 0
+        #expect((16383...16384).contains(peak))  // peak 0.5 of 32767
+        #expect(Int(samples[48]) == peak)  // the peak is at 1.09 ms
+        #expect(samples.last == 0)  // the fade ends at 0
+        for (i, value) in [(0, 1342), (10, 389), (24, 6242), (100, -2501), (300, -152)] {
+            #expect(abs(Int(samples[i]) - value) <= 1, "sample \(i)")
+        }
     }
 
     @Test func theMarqueeLoopFollowsTheLabelLength() {
