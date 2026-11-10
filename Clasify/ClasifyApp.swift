@@ -2,21 +2,9 @@ import ClasifyCore
 import ClasifySkins
 import SwiftUI
 
-/// Picks the window style. All window code that needs macOS 15 is in `PlainWindowApp`.
+/// The app: only the device shows. The window has no frame and a clear background, and it
+/// moves when you drag the device. Minimum macOS is 15 for this plain window style (CLA-81).
 @main
-enum Launcher {
-    @MainActor static func main() {
-        if #available(macOS 15, *) {
-            PlainWindowApp.main()
-        } else {
-            FramedWindowApp.main()
-        }
-    }
-}
-
-/// macOS 15: only the device shows. The window has no frame and a clear background,
-/// and it moves when you drag the device.
-@available(macOS 15, *)
 struct PlainWindowApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var model = AppModel()
@@ -33,23 +21,6 @@ struct PlainWindowApp: App {
         .windowStyle(.plain)
         .windowResizability(.contentSize)
         .windowBackgroundDragBehavior(.enabled)
-        .commands { DebugCommands(model: model); HelpCommands() }
-        HowToUseWindow()
-    }
-}
-
-/// macOS 14: the device in a normal window frame.
-struct FramedWindowApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var model = AppModel()
-
-    var body: some Scene {
-        WindowGroup("Clasify", id: DeviceWindow.id) {
-            AppContent(model: model)
-                .padding(24)
-                .background(Color(red: 0xc9 / 255, green: 0xd3 / 255, blue: 0xdc / 255))  // the mockup's page
-        }
-        .windowResizability(.contentSize)
         .commands { DebugCommands(model: model); HelpCommands() }
         HowToUseWindow()
     }

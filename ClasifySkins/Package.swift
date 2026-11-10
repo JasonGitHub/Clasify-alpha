@@ -5,7 +5,7 @@ import PackageDescription
 // A package of its own, so `swift test` runs their snapshot tests on macOS without the app.
 let package = Package(
     name: "ClasifySkins",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [.library(name: "ClasifySkins", targets: ["ClasifySkins"])],
     dependencies: [.package(path: "../ClasifyCore")],
     targets: [
