@@ -273,7 +273,8 @@ struct ClickWheel: View {
 }
 
 /// A wheel label that a first-time hint lights (card BA, change 151): soft blue #3f8de0 with a
-/// #5aa3f0 glow, as the mockup's text-shadow 0 0 6px and 0 0 14px. It pulses between full and
+/// #5aa3f0 glow in three layers at the pulse peak: blur 4 pt 95%, 10 pt 65% and 18 pt 40%
+/// (change 205). It pulses between full and
 /// 55% every 2.4 s, as the center glow does. With Reduce Motion, it stays full.
 private struct GlowingLabel<Label: View>: View {
     let from: Double
@@ -286,8 +287,9 @@ private struct GlowingLabel<Label: View>: View {
             let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
             label
                 .foregroundStyle(Color(hex: 0x3f8de0))
-                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.9), radius: 3)
-                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.55), radius: 7)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.95), radius: 4)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.65), radius: 10)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.4), radius: 18)
                 .opacity(reduceMotion ? 1 : 0.775 + 0.225 * cos(2 * .pi * max(t, 0) / Hello.pulse))
         }
         .allowsHitTesting(false)
