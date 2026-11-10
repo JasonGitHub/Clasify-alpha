@@ -288,7 +288,8 @@ public struct AppState: Equatable, Sendable {
     /// albums (card AY, change 188). 0 of 0 before the library knows the total.
     public var readDone = 0, readTotal = 0, readAlbums = 0
     /// The first library read ended before all its playlist names showed (card AY, change
-    /// 191): "Getting your music" stays until then. 0 when it does not wait.
+    /// 191): "Getting your music" stays until then. 0 when it does not wait. Like every
+    /// deadline that `.tick` ends, the app's ticker must check it, or `.tick` never comes.
     public var namesHold: Double = 0
     /// The names on the small screen during the first read: each fades in and rises over
     /// `nameFade`, `nameGap` after the one before it, from `nameStart` after they came.
