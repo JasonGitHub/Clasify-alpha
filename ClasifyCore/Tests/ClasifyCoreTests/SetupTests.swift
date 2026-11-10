@@ -58,6 +58,8 @@ import Testing
         #expect(s.colorTurns == 0)  // change 202: one step each way
         send(&s, .wheel(-1), now: 107.5)  // at the top: no color change, but the light moves
         #expect(s.colorTurns == -1 && s.shownColor == .silver)
+        send(&s, .menu, .select, now: 108)  // back to Hello and in again: the count runs on
+        #expect(s.top.screen == .color && s.colorTurns == -1)
         send(&s, .wheel(1), .select, now: 108)
         #expect(s.top.screen == .login && s.deviceColor == .black && s.shownColor == .black)
         #expect(mainMenu().shownColor == .silver)  // off the color pick, the setting shows

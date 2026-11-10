@@ -509,7 +509,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .hello {  // card AT: a press begins setup
                 s.stack = [Frame(screen: .color)]
                 s.top.sel = DeviceColor.allCases.firstIndex(of: s.deviceColor) ?? 0
-                s.colorAt = now; s.colorTurnAt = 0; s.colorTurns = 0
+                s.colorAt = now; s.colorTurnAt = 0  // `colorTurns` runs on: a reset would read as a step
                 return
             }
             if s.top.screen == .coverFlow {
