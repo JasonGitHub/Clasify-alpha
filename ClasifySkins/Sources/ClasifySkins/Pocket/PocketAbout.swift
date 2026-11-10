@@ -67,7 +67,7 @@ struct PocketAbout: View {
 
     /// 96 pt, on a soft ground shadow 52 x 7 pt that ends 3 pt under the box. The poses are
     /// stacked: the new one fades in over the old one in 0.3 s (CSS ease), so the body never
-    /// dims. A cut (the wave in and out) shows at once.
+    /// dims; the old one fades out after. A cut (the wave in and out) shows at once.
     private var capybara: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
@@ -78,12 +78,14 @@ struct PocketAbout: View {
                     .offset(y: 47.5)
                 ForEach(AboutPose.allCases, id: \.self) { pose in
                     if let image = Self.poses[pose] {
-                        let on = pose == now.pose, under = !now.cut && pose == now.from && into < 0.32
+                        // The old pose stays whole under the new one for 0.32 s, then fades out in 0.3 s.
+                        let on = pose == now.pose, under = !now.cut && pose == now.from && into < 0.62
                         Image(nsImage: image).resizable().interpolation(.high)
                             .scaleEffect(on && pose == .sleep ? Self.breath(into) : CGSize(width: 1, height: 1),
                                          anchor: UnitPoint(x: 0.5, y: 0.85))
                             .rotationEffect(.degrees(on && pose == .wave ? Self.rock(into) : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
-                            .opacity(on ? (now.cut ? 1 : Self.bezier(0.25, 0.1, 0.25, 1, into / 0.3)) : under ? 1 : 0)
+                            .opacity(on ? (now.cut ? 1 : Self.bezier(0.25, 0.1, 0.25, 1, into / 0.3))
+                                     : under ? 1 - Self.bezier(0.25, 0.1, 0.25, 1, (into - 0.32) / 0.3) : 0)
                             .zIndex(on ? 2 : under ? 1 : 0)
                     }
                 }
