@@ -308,6 +308,8 @@ struct SetupProgress: View {
     /// When the playlist names came (`AppState.namesAt`), and how many show. nil before.
     var namesFrom: Double?
     var names = 0
+    /// The playlist list is still being read: the bar and the counts wait at 0 for it.
+    var waitsForNames = false
     @Environment(\.animationTime) private var fixedTime
 
     /// Change 197: how far the bar and the counts may be, `t` seconds after the names came:
@@ -316,6 +318,14 @@ struct SetupProgress: View {
         guard names > 0 else { return 1 }
         let time = AppState.nameStart + AppState.nameGap * Double(names - 1) + AppState.nameFade
         return min(1, max(0, t / time))
+    }
+
+    /// How far the bar and the counts may be at `now` (change 197): 0 while the list is read,
+    /// so they start when it comes and never jump back; then `grow(at:names:)`. 1 when there are
+    /// no names to wait for, for example when the list read failed.
+    nonisolated static func grow(now: Double, namesFrom: Double?, names: Int, waiting: Bool) -> Double {
+        if let namesFrom { return grow(at: now - namesFrom, names: names) }
+        return waiting ? 0 : 1
     }
 
     /// The numbers that show at `grow`: the real ones, scaled down and rounded down. The songs
@@ -349,7 +359,7 @@ struct SetupProgress: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil || namesFrom == nil)) { context in
             let now = fixedTime ?? context.date.timeIntervalSinceReferenceDate
-            let grow = namesFrom.map { Self.grow(at: now - $0, names: names) } ?? 1
+            let grow = Self.grow(now: now, namesFrom: namesFrom, names: names, waiting: waitsForNames)
             content(Self.shown(done: done, total: total, playlists: playlists, albums: albums, grow: grow))
         }
     }

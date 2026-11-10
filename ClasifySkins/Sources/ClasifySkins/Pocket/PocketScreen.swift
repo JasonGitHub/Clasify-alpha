@@ -417,7 +417,8 @@ struct PocketList: View {
             if top.screen == .yourMusic && top.loading {  // card AY, at the row place
                 SetupProgress(done: state.readDone, total: state.readTotal,
                               playlists: state.namesAt > 0 ? state.playlistCount : nil, albums: state.readAlbums,
-                              namesFrom: state.namesAt > 0 ? state.namesAt : nil, names: state.firstReadNames.count)
+                              namesFrom: state.namesAt > 0 ? state.namesAt : nil, names: state.firstReadNames.count,
+                              waitsForNames: state.refreshing.contains(AppState.readKey(.playlists)))
             }
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),

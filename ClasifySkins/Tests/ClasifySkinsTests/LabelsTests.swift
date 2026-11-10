@@ -80,6 +80,11 @@ func sampleState() -> AppState {
         let full = SetupProgress.shown(done: 455, total: 455, playlists: 107, albums: 84, grow: 1)
         #expect(full.done == 455 && full.playlists == 107 && full.albums == 84)  // they end at the real totals
         #expect(SetupProgress.shown(done: 100, total: 455, playlists: nil, albums: 30, grow: 0.5).done == 100)  // a slower read
+        // Liked Songs read before the list came: 0 until the list comes, then it grows from 0.
+        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, waiting: true) == 0)
+        #expect(SetupProgress.grow(now: 101, namesFrom: 101, names: 6, waiting: false) == 0)
+        #expect(abs(SetupProgress.grow(now: 102.9, namesFrom: 101, names: 6, waiting: false) - 0.5) < 1e-9)
+        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, waiting: false) == 1)  // the list read failed: the real values
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
 
