@@ -334,14 +334,14 @@ func sampleState() -> AppState {
 
     /// CLA-87: the N24 click. The spot values come from the formula in the spec, worked out
     /// apart from this code.
-    @Test func theN24ClickPeaksAtHalfAndFadesToZero() {
+    @Test func theN24ClickPeaksAt028AndFadesToZero() {
         let samples = Clicker.samples()
         #expect(Clicker.modes.count == 24)
         let peak = samples.map { abs(Int($0)) }.max() ?? 0
-        #expect((16383...16384).contains(peak))  // peak 0.5 of 32767
+        #expect((9174...9175).contains(peak))  // peak 0.28 of 32767 (CLA-91)
         #expect(Int(samples[48]) == peak)  // the peak is at 1.09 ms
         #expect(samples.last == 0)  // the fade ends at 0
-        for (i, value) in [(0, 1342), (10, 389), (24, 6242), (100, -2501), (300, -152)] {
+        for (i, value) in [(0, 752), (10, 218), (24, 3495), (100, -1401), (300, -85)] {
             #expect(abs(Int(samples[i]) - value) <= 1, "sample \(i)")
         }
     }
