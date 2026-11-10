@@ -289,6 +289,18 @@ func sampleState() -> AppState {
         #expect(!KeyCatcher.takes([.shift, .command]))
     }
 
+    /// CLA-79: keys for the device window, or for no window while the device is in front.
+    @Test func windowKeysGoToTheDeviceOnly() {
+        let device = NSObject(), help = NSObject()
+        #expect(KeyCatcher.isForDevice(event: device, device: device, front: device, active: true))
+        #expect(KeyCatcher.isForDevice(event: device, device: device, front: help, active: false))  // its own key event
+        #expect(KeyCatcher.isForDevice(event: nil, device: device, front: device, active: true))  // the plain window is not key
+        #expect(!KeyCatcher.isForDevice(event: nil, device: device, front: device, active: false))  // another app
+        #expect(!KeyCatcher.isForDevice(event: nil, device: device, front: help, active: true))  // How to Use in front
+        #expect(!KeyCatcher.isForDevice(event: nil, device: device, front: nil, active: true))
+        #expect(!KeyCatcher.isForDevice(event: help, device: device, front: device, active: true))  // How to Use is key
+    }
+
     @Test func wheelZonesFollowTheMockup() {
         // The 225 point wheel: its center is at 112.5, and the center button's radius is 40.8.
         #expect(ClickWheel.zone(at: CGPoint(x: 112.5, y: 112.5)) == .center)
