@@ -33,6 +33,14 @@ final class SessionKeeper {
             player?.sessionRestored()
             self?.store?.send(.libraryStale)  // changes made during the drop show
         }
+        // A browser login (the first launch, or after Log out or an expired session) registers
+        // the player too, so that Clasify adopts what Spotify plays, as after a stored login
+        // (CLA-60). The library was just read for this login, so it is not stale.
+        library.loggedIn = { [weak self, weak player] in
+            self?.backoff.reset()
+            self?.notBefore = .now
+            player?.sessionRestored()
+        }
         Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))

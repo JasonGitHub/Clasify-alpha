@@ -53,6 +53,8 @@ final class LibrespotLibrary: Library {
     private var restoring: Task<Restore, Never>?
     /// Runs after each background login that worked, from a library read or from `SessionKeeper`.
     var restored: @MainActor () -> Void = {}
+    /// Runs after each browser login that worked (CLA-60). The library is new, so nothing is stale.
+    var loggedIn: @MainActor () -> Void = {}
     /// The newest bridge login (it may be done). Bridge logins run one at a time. Each event also
     /// carries its login id, so a late event of an older login is ignored.
     private var bridgeLogin: Task<Void, Never>?
@@ -69,6 +71,7 @@ final class LibrespotLibrary: Library {
     func logIn() async -> Bool {
         do {
             try await browserLogIn()
+            loggedIn()
             return true
         } catch {
             let status = (error as? BridgeError)?.status ?? 0
