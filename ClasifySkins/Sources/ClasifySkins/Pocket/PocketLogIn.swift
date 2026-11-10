@@ -26,8 +26,10 @@ enum PreviewScreen: Equatable {
         case .loggedIn: return (screen: PreviewScreen.mark(ok: true, word: "Logged in"), cable: SyncCable.Plug.light)
         case .yourMusic where state.top.error: return nil  // the error message fills the screen
         case .yourMusic where state.top.loading:
-            let names = state.library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name)
-            return (screen: PreviewScreen.names(Array(names), from: state.musicAt), cable: SyncCable.Plug.light)
+            let names = state.namesAt > 0
+                ? Array(state.library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name))
+                : []
+            return (screen: PreviewScreen.names(names, from: state.namesAt), cable: SyncCable.Plug.light)
         case .yourMusic: return (screen: PreviewScreen.mark(ok: true, word: "Synced"), cable: SyncCable.Plug.on)
         default: return nil
         }

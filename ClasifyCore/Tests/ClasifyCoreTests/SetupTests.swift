@@ -57,9 +57,9 @@ import Testing
         // Card AY: Liked Songs, and the playlist names for the small screen (change 141).
         #expect(send(&s, .tick, now: 101.5) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID), .refreshPlaylists])
         #expect(s.stack == [Frame(screen: .yourMusic, loading: true, token: 1)] && s.signedIn && s.navForward)
-        #expect(s.toast == "" && !s.setupDone && s.musicAt == 101.5)
-        send(&s, .playlistsRefreshed([focusInfo]), now: 102)
-        #expect(s.top.loading && s.library.map(\.id) == ["focus"])  // the names show; the read goes on
+        #expect(s.toast == "" && !s.setupDone && s.namesAt == 0)
+        send(&s, .playlistsRefreshed([focusInfo]), now: 106)  // a slow read: they still fill in one by one from now
+        #expect(s.top.loading && s.library.map(\.id) == ["focus"] && s.namesAt == 106)  // the read goes on
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 110)
         // "You’re all set" for 2.5 s (change 140), then the main menu.
         #expect(s.stack == [Frame(screen: .yourMusic, token: 1)] && s.setupDone && s.loadedTracks == [Playlist.likedSongsID])

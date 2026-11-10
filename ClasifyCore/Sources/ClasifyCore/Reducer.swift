@@ -277,10 +277,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
-        s.musicAt = now
         fetch(.yourMusic)
         // Card AY, change 141: the small screen fills with the playlist names meanwhile.
-        if !s.playlistsLoaded && s.refreshing.insert(AppState.readKey(.playlists)).inserted { fx.append(.refreshPlaylists) }
+        if s.playlistsLoaded {
+            s.namesAt = now
+        } else if s.refreshing.insert(AppState.readKey(.playlists)).inserted {
+            s.namesAt = 0
+            fx.append(.refreshPlaylists)
+        }
     }
     /// "Linked" on the Spotify App screen ended (card BB, change 174): back to where it was
     /// opened over, or on with setup.
@@ -592,6 +596,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let old = s.rows(for: Frame(screen: .playlists))
             setPlaylists(playlists)
             keepSelection(on: .playlists, old: old)
+            if s.top.screen == .yourMusic && s.top.loading { s.namesAt = now }  // the names fill in from now
 
         case .activated: refreshShown()
 

@@ -1158,6 +1158,7 @@ import Testing
         // "You’re all set" and the green check.
         s.library = [Playlist(id: "spotify:playlist:a", name: "Road Trip", tracks: [])]
         s.stack = [Frame(screen: .yourMusic, loading: true, token: 1)]
+        s.namesAt = 1  // the names came at 1 s, so at 10 s all show
         let reading = try render(s, "your-music", time: 10)
         let bar = Self.listTop + 77 + 3  // its middle; at 10 s its blue part is about 31 to 77 points into the pane
         #expect(headline(reading) && reading.isBlue(85, bar) && !reading.isBlue(170, bar) && !check(reading))

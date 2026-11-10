@@ -266,8 +266,9 @@ public struct AppState: Equatable, Sendable {
     public static let beatTime = 1.5
     /// Seconds that "You’re all set" (card AY, change 140) shows before the main menu: no hurry.
     public static let allSetTime = 2.5
-    /// When the first library read (card AY) began. A skin times the playlist names from it.
-    public var musicAt: Double = 0
+    /// When the playlist names came during the first library read (card AY). A skin fills
+    /// them in one by one from then. 0 before they come.
+    public var namesAt: Double = 0
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false
