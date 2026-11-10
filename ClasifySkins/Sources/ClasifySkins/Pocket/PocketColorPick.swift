@@ -6,10 +6,13 @@ enum ColorPick {
     /// Change 200: until the first turn, the comet goes 180° clockwise from 9 o'clock over the
     /// top to 3 o'clock in 2.9 s, then rests 1 s.
     static let sweep = 2.9, loop = 3.9
-    /// Change 202: the light under the thumb fades in in 0.3 s and glides 0.16 s to each new
-    /// angle. 0.6 s after the last move it fades out in 0.6 s. Its long tail fades in in 0.35 s.
-    /// The waiting light fades out in 0.4 s at the first touch.
-    static let fadeIn = 0.3, glide = 0.16, hold = 0.6, fadeOut = 0.6, tailIn = 0.35, waitingOut = 0.4
+    /// Change 202: the light under the thumb fades in in 0.3 s (ease-out). 0.6 s after the last
+    /// move it fades out in 0.6 s (ease-in-out). Its long tail fades in once in 0.35 s. The
+    /// waiting light fades out in 0.4 s at the first color step.
+    static let fadeIn = 0.3, hold = 0.6, fadeOut = 0.6, tailIn = 0.35, waitingOut = 0.4
+    /// The light glides to each new angle, and flips its direction, in 0.16 s,
+    /// cubic-bezier(.25, .6, .35, 1).
+    static let glide = Animation.timingCurve(0.25, 0.6, 0.35, 1, duration: 0.16)
     /// Change 203: the device color crossfades in 0.45 s, on the device and the small preview.
     static let colorFade = 0.45
     /// "Turn the wheel to try one" fades in 2 s after the pick opens (changes 149 and 179).
@@ -18,21 +21,35 @@ enum ColorPick {
     static let pressHintAfter = 7.2
 
     /// The waiting comet `t` seconds after the pick opened: its angle in degrees, clockwise from
-    /// 3 o'clock; its opacity, which fades in and out at the ends; and its long tail, which
-    /// follows the speed of the sine ease (full at 12 o'clock). Nil while it rests.
+    /// 3 o'clock; its opacity, which fades in and out with a smoothstep over the first and last
+    /// 12% of the sweep; and its long tail, which follows the speed of the sine ease (full at
+    /// 12 o'clock). Nil while it rests.
     static func waiting(at t: Double) -> (angle: Double, opacity: Double, longTail: Double)? {
         guard t >= 0 else { return nil }
         let x = t.truncatingRemainder(dividingBy: loop) / sweep
         guard x <= 1 else { return nil }
         let eased = (1 - cos(.pi * x)) / 2
-        return (180 + 180 * eased, min(1, x / 0.1, (1 - x) / 0.1), sin(.pi * x))
+        return (180 + 180 * eased, smoothstep(min(1, x / 0.12, (1 - x) / 0.12)), sin(.pi * x))
     }
 
-    /// The light under the thumb: its opacity and its long tail, `since` seconds after it came
-    /// and `idle` seconds after the last move.
-    static func following(since: Double, idle: Double) -> (opacity: Double, longTail: Double) {
-        let fade = min(max(since / fadeIn, 0), 1) * min(max(1 - (idle - hold) / fadeOut, 0), 1)
-        return (fade, min(max(since / tailIn, 0), 1))
+    /// 3f² − 2f³ for f in 0...1.
+    static func smoothstep(_ f: Double) -> Double {
+        let f = min(max(f, 0), 1)
+        return f * f * (3 - 2 * f)
+    }
+
+    /// The light's angle after a thumb move: the thumb's angle, reached the short way from the
+    /// light's angle, which is not wrapped (change 202, point 13).
+    static func glideAngle(from angle: Double, to thumb: Double) -> Double {
+        var gap = (thumb - angle).truncatingRemainder(dividingBy: 360)
+        if gap > 180 { gap -= 360 } else if gap <= -180 { gap += 360 }
+        return angle + gap
+    }
+
+    /// The light's angle after `steps` trackpad or key steps: 24° a step from the light, or for
+    /// a new light from 12 o'clock (point 16).
+    static func stepAngle(from angle: Double?, steps: Int) -> Double {
+        (angle ?? -90) + Double(steps) * ClickWheel.detent
     }
 
     /// The hint under the rows and its opacity at time `now`: before the first turn, the turn
@@ -131,47 +148,55 @@ struct SetupPreview: View {
 }
 
 /// The comet on the wheel (card AW, change 201), drawn at 3 o'clock and turned into place.
-/// A dot head #8cc2f8 with a small white shine and a #5aa3f0 glow, at radius 105. A short tail
-/// of 15° always shows; the long tail of 60° shows by `longTail`. Each tail tapers from 4.2 pt
-/// to a point and fades from 90% at the head to 0. The paths never change: a frame changes
-/// only the rotation and two opacities.
+/// One 60° band, 4.2 pt wide at the head to a point, #6aaef5 along the line from the tail tip
+/// to the head. The long tail is the band with long stops, shown by `longTail`; the short tail
+/// is the same band with short stops, always shown. Under each band a softer copy, 2.5 pt
+/// wider, glows. A dot head #8cc2f8 with a white shine and a #5aa3f0 glow, at radius 105. The
+/// paths never change: a frame changes only the rotation and the opacities.
 struct Comet: View {
     var longTail: Double
     nonisolated static let radius: CGFloat = 105
+    static let longStops: [(Double, Double)] = [(0, 0), (0.45, 0.18), (0.8, 0.55), (1, 0.9)]
+    static let shortStops: [(Double, Double)] = [(0.72, 0), (0.9, 0.5), (1, 0.9)]
 
     var body: some View {
         let head = CGPoint(x: ClickWheel.size / 2 + Self.radius, y: ClickWheel.size / 2)
         ZStack {
-            Self.tail(60).opacity(longTail)
-            Self.tail(15)
+            Self.band(Self.longStops).opacity(longTail)
+            Self.band(Self.shortStops)
             Circle().fill(Color(hex: 0x5aa3f0, opacity: 0.45)).frame(width: 11, height: 11).blur(radius: 2.5)
                 .position(head)
             Circle().fill(Color(hex: 0x8cc2f8)).frame(width: 5.4, height: 5.4).position(head)
-            Circle().fill(Color.white.opacity(0.85)).frame(width: 1.8, height: 1.8)
-                .position(x: head.x - 0.8, y: head.y - 0.9)
+            Circle().fill(Color.white.opacity(0.85)).frame(width: 2.2, height: 2.2)
+                .position(x: head.x - 0.6, y: head.y - 0.6)
         }
         .frame(width: ClickWheel.size, height: ClickWheel.size)
-        .clipShape(Circle())  // the glow stays on the wheel
+        .clipShape(Circle().inset(by: ClickWheel.size / 2 - 112))  // the glow stays on the wheel
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
 
-    private static func tail(_ span: Double) -> some View {
-        let fill = AngularGradient(
-            stops: [.init(color: Color(hex: 0x6aaef5, opacity: 0), location: 0), .init(color: Color(hex: 0x6aaef5, opacity: 0.9), location: 1)],
-            center: .center, startAngle: .degrees(-span), endAngle: .degrees(0))
-        return Tail(span: span).fill(fill)
-            .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.45), radius: 2.5)
+    /// The band with its glow. The gradient runs from the tail tip (165.0, 21.6) to the head
+    /// (217.5, 112.5) in the 225 point box.
+    private static func band(_ stops: [(Double, Double)]) -> some View {
+        let size = ClickWheel.size
+        let fill = LinearGradient(
+            stops: stops.map { stop in Gradient.Stop(color: Color(hex: 0x6aaef5, opacity: stop.1), location: stop.0) },
+            startPoint: UnitPoint(x: 165.0 / size, y: 21.6 / size), endPoint: UnitPoint(x: 217.5 / size, y: 112.5 / size))
+        return ZStack {
+            ZStack { Band().fill(fill); Band().stroke(fill, lineWidth: 2.5) }
+                .opacity(0.5)
+                .blur(radius: 2.5)
+            Band().fill(fill)
+        }
     }
 
-    /// A tail behind a clockwise head at 3 o'clock: 4.2 pt wide at the head, to a point.
-    struct Tail: Shape {
-        let span: Double
-
+    /// The 60° band behind a clockwise head at 3 o'clock: 4.2 pt wide at the head, to a point.
+    struct Band: Shape {
         func path(in rect: CGRect) -> Path {
             let c = CGPoint(x: rect.midX, y: rect.midY), steps = 24
             func point(_ k: Int, _ side: CGFloat) -> CGPoint {
-                let f = Double(k) / Double(steps), a = -span * f * .pi / 180
+                let f = Double(k) / Double(steps), a = -60 * f * .pi / 180
                 let r = Comet.radius + side * 2.1 * (1 - f)
                 return CGPoint(x: c.x + r * cos(a), y: c.y + r * sin(a))
             }
@@ -185,7 +210,7 @@ struct Comet: View {
     }
 }
 
-/// The waiting comet until the first touch (change 200).
+/// The waiting comet until the first color step (change 200).
 struct WaitingComet: View {
     let from: Double
     @Environment(\.animationTime) private var fixedTime
@@ -201,20 +226,29 @@ struct WaitingComet: View {
     }
 }
 
-/// The light under the thumb (change 202). It glides to each new angle, head first in the
-/// turn direction, and fades out after the last move.
+/// The light under the thumb (change 202). There is one for the whole pick: it glides to each
+/// new angle and flips on each color step, and it fades in and out from where it is.
 struct ThumbComet: View {
     let light: ClickWheel.ThumbLight
+    @State private var opacity = 0.0
+    @State private var tail = 0.0
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60)) { context in
-            let now = context.date.timeIntervalSinceReferenceDate
-            let shown = ColorPick.following(since: now - light.from, idle: now - light.last)
-            Comet(longTail: shown.longTail)
-                .scaleEffect(x: 1, y: light.clockwise ? 1 : -1)  // the tail behind the head
-                .rotationEffect(.degrees(light.angle))
-                .animation(.easeOut(duration: ColorPick.glide), value: light.angle)
-                .opacity(shown.opacity)
-        }
+        Comet(longTail: tail)
+            .scaleEffect(x: 1, y: light.clockwise ? 1 : -1)  // the tail behind the head
+            .animation(ColorPick.glide, value: light.clockwise)
+            .rotationEffect(.degrees(light.angle))
+            .animation(ColorPick.glide, value: light.angle)
+            .opacity(opacity)
+            .onAppear {
+                withAnimation(.easeOut(duration: ColorPick.tailIn)) { tail = 1 }  // once
+                fade(light.on)
+            }
+            .onChange(of: light.on) { _, on in fade(on) }
+    }
+
+    private func fade(_ on: Bool) {
+        let curve = on ? Animation.easeOut(duration: ColorPick.fadeIn) : .easeInOut(duration: ColorPick.fadeOut)
+        withAnimation(curve) { opacity = on ? 1 : 0 }
     }
 }
