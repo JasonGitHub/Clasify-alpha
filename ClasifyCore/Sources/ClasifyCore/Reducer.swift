@@ -663,7 +663,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             } else if !found && s.signedIn && s.setupDone {
                 // Change 131: the app went away while Clasify was open (a play found it gone).
                 // The screen opens over this one, and closes back to it when the app is found.
-                s.stack.append(Frame(screen: .spotifyApp))
+                if s.top.screen == .loggedIn {  // over "You’re in", it takes its place: then on to the main menu
+                    s.beatUntil = 0
+                    s.stack = [Frame(screen: .spotifyApp)]
+                } else {
+                    s.stack.append(Frame(screen: .spotifyApp))
+                }
             }
 
         case .restored(let token, let ok):

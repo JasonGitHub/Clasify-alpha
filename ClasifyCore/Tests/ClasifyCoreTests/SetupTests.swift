@@ -120,6 +120,17 @@ import Testing
         #expect(s.stack == [Frame(screen: .login)])
     }
 
+    /// A login after a logout, when the player then finds the Spotify app gone: the screen takes
+    /// the place of "You’re in", and the app found goes on to the main menu.
+    @Test func theSpotifyAppScreenReplacesYoureIn() {
+        var s = afterSetup()
+        send(&s, .select, .authDone(token: 1, ok: true), .spotifyAppFound(false), now: 10)
+        #expect(s.stack == [Frame(screen: .spotifyApp)] && s.beatUntil == 0)
+        send(&s, .spotifyAppFound(true), now: 20)
+        send(&s, .tick, now: 21.5)
+        #expect(s.stack == [Frame(screen: .main)])
+    }
+
     /// A first play that fails under the Spotify App screen leaves no empty Now Playing, and a
     /// read that ended under it starts again when it closes.
     @Test func closingTheSpotifyAppScreenCleansUpUnderIt() {
