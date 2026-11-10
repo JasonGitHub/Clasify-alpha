@@ -165,6 +165,75 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.screen == .now && s.isPlaying && s.current == TrackRef(playlist: "focus", track: "f3"))
     }
 
+    /// CLA-61: Play with nothing to resume plays Liked Songs and opens Now Playing, with no toast.
+    @Test func playWithNothingToResumePlaysLikedSongs() {
+        // Shuffle off, Liked Songs not read yet: it loads, then the first song plays in order.
+        var s = mainMenu()
+        #expect(send(&s, .play) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
+        #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.toast == "")
+        let first: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
+        #expect(send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == first)
+        #expect(s.top.screen == .now && s.isPlaying && !s.shuffle && s.current == TrackRef(playlist: "liked", track: "l0"))
+
+        // Shuffle on, Liked Songs read: it shuffles at once, as Shuffle Songs does.
+        s = mainMenu()
+        send(&s, .toggleShuffle, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .menu, .menu)
+        #expect(s.top.screen == .main && s.current == nil && s.shuffle)
+        let shuffled: [Effect] = [.setShuffle(true), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
+        #expect(send(&s, .play) == shuffled)
+        #expect(s.top.screen == .now && s.isPlaying && s.toast == "")
+
+        // A second Play while Liked Songs loads opens nothing more; the pending start stays.
+        s = mainMenu()
+        send(&s, .play)
+        #expect(send(&s, .play) == [] && s.stack.count == 2 && s.shuffleToken == 1)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        #expect(s.top.screen == .now && s.stack.count == 3 && s.current?.track == "l0")
+        // Play while Liked Songs loads from its own row: it plays when the read ends.
+        s = mainMenu()
+        send(&s, .wheel(3), .select)
+        #expect(send(&s, .play) == [] && s.stack.count == 2 && s.shuffleToken == 1)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        #expect(s.top.screen == .now && s.current?.track == "l0" && !s.shuffle)
+        // The Shuffle setting counts when the load ends: on at the Play, off when the songs come.
+        s = mainMenu()
+        send(&s, .toggleShuffle, .play, .toggleShuffle)
+        let inOrder: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
+        #expect(send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == inOrder)
+        #expect(!s.shuffle && s.current?.track == "l0")
+        // Play while another list loads: nothing, quietly.
+        s = mainMenu()
+        send(&s, .wheel(1), .select)  // Playlists loads
+        #expect(send(&s, .play) == [] && s.stack.count == 2 && s.shuffleToken == nil && s.toast == "")
+
+        // Shuffle Songs after an in-order Play still shuffles.
+        s = mainMenu()
+        send(&s, .play, .menu, .wheel(4), .select)
+        send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        #expect(s.top.screen == .now && s.shuffle)
+
+        // No songs in Liked Songs: nothing plays, quietly.
+        s = mainMenu()
+        let none = Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: [])
+        send(&s, .play, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: none.tracks))
+        #expect(s.current == nil && s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.toast == "")
+
+        // Offline: the usual toast, no read.
+        s = mainMenu()
+        send(&s, .offline(true))
+        #expect(send(&s, .play) == [] && s.toast == "Offline. Can’t start playback")
+
+        // A Play in the adopt window wins: the late .adopted is dropped.
+        s = mainMenu()
+        send(&s, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .menu, .play)
+        send(&s, .adopted(track: "x9", playlist: nil, playing: true, position: 30, generation: 0))
+        #expect(s.current == TrackRef(playlist: "liked", track: "l0"))
+
+        // Not during setup or at login.
+        s = afterSetup()
+        #expect(send(&s, .play) == [] && s.current == nil)
+    }
+
     @Test func shuffleSongsLoadsLikedSongsFirst() {
         var s = mainMenu()  // fresh sign-in: nothing read yet
         #expect(send(&s, .wheel(4), .select) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
@@ -209,10 +278,7 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     @Test func playTogglesAndBlocksResumeOffline() {
-        var s = mainMenu()
-        send(&s, .play)
-        #expect(s.toast == "Nothing playing yet")
-        s = playing()
+        var s = playing()
         #expect(send(&s, .play) == [.pause] && !s.isPlaying)
         send(&s, .offline(true))
         #expect(send(&s, .play) == [] && s.toast == "Offline. Can’t resume")

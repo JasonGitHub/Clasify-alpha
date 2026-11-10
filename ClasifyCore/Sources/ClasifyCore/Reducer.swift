@@ -183,7 +183,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if s.top.screen == .coverFlow && !s.top.error { placeCoverFlow() }
         if s.shuffleToken == token && !s.top.error {
             s.shuffleToken = nil
-            shuffleLiked()
+            if s.pendingPlay { startLiked() } else { shuffleLiked() }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
@@ -323,6 +323,33 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.shuffle = true  // before play, so the engine gets shuffle on with the load
         play(Playlist.likedSongsID, liked[env.random(liked.count)].id)
     }
+    func playLikedInOrder() {
+        guard let first = s.tracks(in: Playlist.likedSongsID).first else { return }  // no songs: nothing to do
+        play(Playlist.likedSongsID, first.id)
+    }
+    /// Liked Songs as the Shuffle setting says now: a random start in shuffle, or the first song.
+    func startLiked() {
+        if s.shuffle { shuffleLiked() } else { playLikedInOrder() }
+    }
+    /// Play with nothing to resume (CLA-61): Liked Songs, as the Shuffle setting says. Shuffle
+    /// on starts at a random song, as Shuffle Songs does. Liked Songs that is not read yet
+    /// loads first, as for Shuffle Songs.
+    func playLiked() {
+        if s.offline { return toast(offlineStart) }
+        // While a list loads, open nothing more, so no frame is left loading under another.
+        if s.top.loading {
+            // Liked Songs that loads starts when it is read. A start already pending stays as it is.
+            guard s.top.screen == .tracks(playlist: Playlist.likedSongsID), s.shuffleToken != s.top.token else { return }
+            s.shuffleToken = s.top.token; s.pendingPlay = true
+            return
+        }
+        s.pendingPlay = true
+        if s.loadedTracks.contains(Playlist.likedSongsID) {
+            startLiked()
+        } else {
+            open(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
+        }
+    }
     /// Cover Flow opens on the playing album, else on the album it showed last, else on the
     /// middle album (card AE).
     func placeCoverFlow() {
@@ -459,6 +486,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .likedSongs: open(.tracks(playlist: Playlist.likedSongsID))
             case .shuffleSongs:
                 if s.offline { return toast(offlineStart) }
+                s.pendingPlay = false
                 if s.loadedTracks.contains(Playlist.likedSongsID) {
                     shuffleLiked()
                 } else {  // not read yet: load, then shuffle
@@ -501,7 +529,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .cycleRepeat: setRepeat(s.repeatMode.next)
 
         case .play:
-            guard s.current != nil else { return toast("Nothing playing yet") }
+            guard s.current != nil else {
+                // CLA-61: nothing to resume, so Liked Songs plays. Only on the main screens:
+                // never during setup, at login, or on the Spotify App screen.
+                guard s.signedIn, s.stack.first?.screen == .main, s.top.screen != .spotifyApp else { return }
+                return playLiked()
+            }
             if !s.isPlaying && s.offline { return toast("Offline. Can’t resume") }
             s.isPlaying.toggle()
             fx.append(s.isPlaying ? .resume : .pause)

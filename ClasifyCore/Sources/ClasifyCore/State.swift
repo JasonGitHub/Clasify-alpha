@@ -244,8 +244,11 @@ public struct AppState: Equatable, Sendable {
     public var seekTrack: String?
     /// Bumped on every login attempt; `.authDone` echoes it back.
     public var authAttempt = 0
-    /// Token of a Liked Songs load that should start a shuffle when it finishes.
+    /// Token of a Liked Songs load that should start Liked Songs when it finishes.
     public var shuffleToken: Int?
+    /// That start comes from Play with nothing to resume (CLA-61): it follows the Shuffle
+    /// setting when the load ends. Else it comes from Shuffle Songs and always shuffles.
+    public var pendingPlay = false
     public var signedIn = false
     /// The first launch setup ended once. Saved with the settings, so later launches skip
     /// Hello, the color pick and the first library read.
