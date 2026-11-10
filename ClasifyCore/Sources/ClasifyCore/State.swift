@@ -424,12 +424,27 @@ public struct AppState: Equatable, Sendable {
     /// `navSeq` when the play/pause hint ended. The next hint waits for a later visit to Now
     /// Playing (change 177). -1 before.
     public var hintPlaySeq = -1
-    /// When `.tick` next moves the hint on: its tip shows, or it ends. 0 with no hint. Like every
-    /// deadline that `.tick` ends, the app's ticker must check it, or `.tick` never comes.
+    /// When `.tick` next moves the hint on: its tip shows, or it ends. 0 when nothing is due: no
+    /// hint, or a tour tip that shows (it waits for its press). Like every deadline that `.tick`
+    /// ends, the app's ticker must check it, or `.tick` never comes.
     public var hintDue: Double {
-        guard hint != nil else { return 0 }
+        guard let hint else { return 0 }
+        if hint.isTour { return hintTip ? 0 : hintAt + Self.tourTipAfter }
         return hintAt + Self.hintTipAfter + (hintTip ? Self.hintTipTime : 0)
     }
+    /// When the tip of the hint that shows starts to fade in.
+    public var hintTipAt: Double {
+        guard let hint, hint.isTour else { return hintAt + Self.hintTipAfter }
+        return hint == .tourPlay ? hintAt + Self.tourTipAfter : hintAt
+    }
+    /// The first-run tour (card BA.1, change 199): the step that runs, also while it waits to
+    /// show. `hint` is that step while it shows. nil when no tour runs.
+    public var tour: Hint?
+    /// The song that showed when step 2 was pressed. Step 3 shows when another song shows.
+    /// nil when it shows at once (Previous started the same song again).
+    public var tourFrom: TrackRef?
+    /// Change 199: the Play tip comes after 1 pulse. Step 2 waits for 3 s of music.
+    public static let tourTipAfter = 2.4, tourMusic = 3.0
     public var offline = false
 
     public init() {}
@@ -707,4 +722,10 @@ public enum Hint: String, CaseIterable, Sendable {
     case playPause
     /// Change 177: after the play/pause hint, on a later visit to Now Playing, until the first next press.
     case next
+    /// The first-run tour (card BA.1, change 199), right after setup. Each step waits for its
+    /// press: Play on the main menu, then Previous or Next on Now Playing, then MENU. Any other
+    /// input ends the tour. `tourPlay` in `hintsDone` means the tour ran.
+    case tourPlay = "tour.play", tourNext = "tour.next", tourMenu = "tour.menu"
+
+    public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu }
 }

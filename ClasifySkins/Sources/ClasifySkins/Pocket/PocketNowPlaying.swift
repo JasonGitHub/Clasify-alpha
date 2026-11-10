@@ -128,7 +128,8 @@ struct PocketNowPlaying: View {
     }
 
     private var tipShows: Bool {
-        state.hintTip && (state.hint == .playPause || state.hint == .next) && state.toast.isEmpty
+        // The tour's steps 2 and 3 too (card BA.1): no bar and no times under the tip.
+        state.hintTip && [.playPause, .next, .tourNext, .tourMenu].contains(state.hint) && state.toast.isEmpty
     }
 
     /// The bottom row: a 33.6 point slot, the 191.4 point bar and a 38.4 point slot, 21 points

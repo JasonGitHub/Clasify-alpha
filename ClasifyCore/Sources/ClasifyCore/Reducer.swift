@@ -366,6 +366,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
         s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
+        s.tour = nil; s.tourFrom = nil
     }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)
@@ -604,6 +605,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .play:
             if s.setupDone { s.hintsDone.insert(.playPause) }  // card BA, change 176: any press ends that hint
+            // The tour's Play starts Liked Songs on Now Playing, also when Spotify already had a
+            // song when Clasify started (change 199).
+            if s.tour == .tourPlay && s.top.screen == .main { return playLiked() }
             guard s.current != nil else {
                 // CLA-61: nothing to resume, so Liked Songs plays. Only on the main screens:
                 // never during setup, at login, or on the Spotify App screen.
@@ -630,7 +634,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
             // Card BA, change 195: the tip after 3 pulses, then the end after 10 s.
-            if s.hint != nil && now >= s.hintDue { if s.hintTip { endHint(done: true) } else { s.hintTip = true } }
+            if s.hintDue > 0 && now >= s.hintDue { if s.hintTip { endHint(done: true) } else { s.hintTip = true } }
             if s.namesHold > 0 && now >= s.namesHold { endHeldRead() }  // change 191: every name has shown
             if s.beatUntil > 0 && now >= s.beatUntil {  // "You’re in" moves on
                 s.beatUntil = 0
@@ -898,6 +902,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let playHintDone = s.hintsDone.contains(.playPause)
+    let trackBefore = (s.current, s.t)
     let wasOverPanel = s.nowOverPanel
     let wasSignedIn = s.signedIn
     let rowBefore = s.halfRow
@@ -966,6 +971,65 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     // opened from the main menu, with no load or message; going deeper, it starts again on the
     // new list. Changes 176 and 177: the play/pause hint, then on a later visit the next hint,
     // show on Now Playing once a song has played 10 s.
+    /// Card BA.1, change 199: the first-run tour. It starts when "You’re all set" goes on to the
+    /// main menu, once ever. Each step waits for its press, with no time-out. Any other input,
+    /// or a sign-out, ends it for good. The finished tour also ends the BA hints (CTO rule).
+    func tour() {
+        var started = false
+        if s.tour == nil && before.1 == .yourMusic && s.top.screen == .main && s.setupDone && !s.hintsDone.contains(.tourPlay) {
+            s.tour = .tourPlay; s.hintsDone.insert(.tourPlay)  // saved: never again
+            started = true  // by the press on "You’re all set", which is not "something else"
+        }
+        guard let step = s.tour else { return }
+        func end(finished: Bool) {
+            s.tour = nil; s.tourFrom = nil
+            if s.hint?.isTour == true { endHint(done: false) }
+            if finished { s.hintsDone.formUnion([.menu, .playPause, .next]) }
+        }
+        guard s.signedIn, s.setupDone, s.stack.first?.screen == .main else { return end(finished: false) }
+        switch started ? nil : action {
+        // Offline, the press does nothing but its toast, and the step stays. With no liked
+        // songs there is nothing to play, so the tour ends.
+        case .play? where step == .tourPlay:
+            if s.top.screen != .main { s.tour = .tourNext } else if !s.offline { return end(finished: false) }
+        case .next? where step == .tourNext, .prev? where step == .tourNext:
+            // Step 3 shows with the new song. Previous after 3 s starts the same song again,
+            // so then it shows at once.
+            var restarted = false
+            if case .prev = action { restarted = trackBefore.1 > 3 }
+            if s.offline && !restarted { break }
+            s.tour = .tourMenu
+            s.tourFrom = restarted ? nil : trackBefore.0
+        case .menu? where step == .tourMenu: return end(finished: true)
+        case .wheel?, .select?, .menu?, .play?, .next?, .prev?, .toggleShuffle?, .cycleRepeat?:
+            return end(finished: false)
+        default: break
+        }
+        // The first song did not load: back to the Play step on the main menu.
+        if s.tour == .tourNext && s.current == nil { s.tour = .tourPlay }
+        // A tour tip has no time-out, so a toast that waits for it (offline, Spotify closed)
+        // would never show. The tip gives way, and it comes back after the toast.
+        if !s.heldToast.isEmpty && s.hint?.isTour == true { endHint(done: false) }
+        // The step that shows. Step 2 keeps its tip until the new song shows, so the time bar
+        // does not come back between the steps (Jason 17:37 JST). Once step 2 has shown
+        // (`.tourNext` in `hintsDone`), it shows again after a toast, also when offline paused.
+        let shown: Hint? = switch s.tour {
+        case .tourPlay?: s.top.screen == .main ? .tourPlay : nil
+        case .tourNext?:
+            s.top.screen == .now && s.current != nil
+                && (s.hintsDone.contains(.tourNext) || (s.isPlaying && s.t >= AppState.tourMusic)) ? .tourNext : nil
+        case .tourMenu?:
+            // Next at the end of the list stops the music on the same song: that counts too.
+            s.top.screen != .now ? nil : (s.tourFrom == nil || s.current != s.tourFrom || !s.isPlaying) ? .tourMenu : .tourNext
+        default: nil
+        }
+        guard shown != s.hint else { return }
+        if shown == nil { return endHint(done: false) }
+        if s.hint == nil && !s.toast.isEmpty { return }  // a status toast goes first
+        s.hint = shown; s.hintAt = now; s.hintTip = shown != .tourPlay
+        if shown == .tourNext { s.hintsDone.insert(.tourNext) }
+    }
+    if case .reset = action {} else { tour() }
     if case .reset = action {} else {
         if !playHintDone && s.hintsDone.contains(.playPause) { s.hintPlaySeq = s.navSeq }
         func playing() -> Bool {
@@ -979,15 +1043,17 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()
             case .next: return playing() && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
+            case .tourPlay, .tourNext, .tourMenu: return false  // see `tour()`
             }
         }
-        if let hint = s.hint, !fits(hint) {
+        if s.tour != nil {  // the tour shows its own hints
+        } else if let hint = s.hint, !fits(hint) {
             endHint(done: false)
         } else if s.hint == .menu && (s.stack.count, s.top.screen) != (before.0, before.1) {
             s.hintAt = now; s.hintTip = false
         }
         let played = s.t >= AppState.hintPlayTime
-        if s.hint == nil && s.toast.isEmpty, let hint = Hint.allCases.first(where: { fits($0) && ($0 == .menu || played) }) {
+        if s.tour == nil && s.hint == nil && s.toast.isEmpty, let hint = Hint.allCases.first(where: { fits($0) && ($0 == .menu || played) }) {
             s.hint = hint; s.hintAt = now; s.hintTip = false
         }
     }

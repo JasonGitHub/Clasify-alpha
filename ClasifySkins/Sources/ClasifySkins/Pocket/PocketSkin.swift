@@ -71,12 +71,13 @@ public struct PocketSkin: View {
     /// The wheel label of the first-time hint that shows (card BA, change 151).
     private var labelGlow: ClickWheel.LabelGlow? {
         guard !preview, let hint = state.hint else { return nil }
-        let zone: ClickWheel.Zone = switch hint {
-        case .menu: .menu
-        case .playPause: .play
-        case .next: .next
+        let zones: [ClickWheel.Zone] = switch hint {
+        case .menu, .tourMenu: [.menu]
+        case .playPause, .tourPlay: [.play]
+        case .next: [.next]
+        case .tourNext: [.prev, .next]
         }
-        return ClickWheel.LabelGlow(zone: zone, from: state.hintAt)
+        return ClickWheel.LabelGlow(zones: zones, from: state.hintAt)
     }
 
     /// The rim light goes around on the color pick until the first turn. Not with Reduce Motion.

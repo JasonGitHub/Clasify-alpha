@@ -16,11 +16,12 @@ struct ClickWheel: View {
     var glowFrom: Double?
     /// When the rim light starts to go around, on the color pick (card AW, change 148).
     var rimFrom: Double?
-    /// The label that glows for a first-time hint (card BA, change 151), and when it started.
+    /// The labels that glow for a first-time hint (card BA, change 151), and when they started.
+    /// The tour's step 2 lights Previous and Next together (card BA.1, change 199).
     var label: LabelGlow?
 
     struct LabelGlow {
-        var zone: Zone
+        var zones: [Zone]
         var from: Double
     }
 
@@ -133,7 +134,7 @@ struct ClickWheel: View {
     private func key<Label: View>(_ zone: Zone, @ViewBuilder label: () -> Label) -> some View {
         let rect = Self.zones.first { $0.0 == zone }?.1 ?? .zero
         return Group {
-            if let glow = self.label, glow.zone == zone {
+            if let glow = self.label, glow.zones.contains(zone) {
                 GlowingLabel(from: glow.from, label: label())
             } else {
                 label()
