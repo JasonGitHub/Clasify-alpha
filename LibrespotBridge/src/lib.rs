@@ -20,8 +20,8 @@ pub use connect::{
     LSB_OPTION_REPEAT_CONTEXT, LSB_OPTION_REPEAT_TRACK, LSB_OPTION_SHUFFLE,
 };
 pub use library::{
-    lsb_read_playlists, lsb_read_track, lsb_read_tracks, LsbPlaylist, LsbPlaylistsCallback,
-    LsbTrack, LsbTracksCallback,
+    lsb_read_playlists, lsb_read_track, lsb_read_tracks, lsb_read_tracks_progress, LsbPlaylist,
+    LsbPlaylistsCallback, LsbProgressCallback, LsbTrack, LsbTracksCallback,
 };
 pub use oauth::{
     lsb_oauth_cancel, lsb_oauth_login, lsb_oauth_refresh, LsbToken, LsbTokenCallback,

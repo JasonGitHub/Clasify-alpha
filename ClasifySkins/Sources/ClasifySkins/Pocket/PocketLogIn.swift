@@ -268,11 +268,17 @@ struct SyncCable: View {
     }
 }
 
-/// The first library read's bar (card AY, change 141): 6 points, a faint track and a part in
-/// the selection blue that moves to and fro. The library gives no count yet, so it shows no
-/// number and no fill.
+/// The first library read's bar (card AY, change 141): 6 points, a faint track and a fill in
+/// the selection blue, with "312 of 1,240 songs" under it. Until the library knows the total,
+/// a part of the blue moves to and fro, with no number.
 struct SetupProgress: View {
+    let done: Int, total: Int
     @Environment(\.animationTime) private var fixedTime
+
+    /// "312 of 1,240 songs", or nil before the total is known.
+    static func count(done: Int, total: Int) -> String? {
+        total > 0 ? "\(min(done, total).formatted()) of \(total.formatted()) songs" : nil
+    }
 
     /// The moving part's left edge, as a part of the free track, at time `t`: 0 to 1 and back in 2.4 s, eased.
     static func position(at t: Double) -> Double {
@@ -281,6 +287,35 @@ struct SetupProgress: View {
     }
 
     var body: some View {
+        let count = Self.count(done: done, total: total)
+        VStack(alignment: .leading, spacing: 6) {
+            if total > 0 {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(Color(hex: 0x1b1f24, opacity: 0.10))
+                        Capsule().fill(Pocket.selection)
+                            .frame(width: max(6, geo.size.width * CGFloat(min(done, total)) / CGFloat(total)))
+                    }
+                }
+                .frame(height: 6)
+                .animation(.linear(duration: 0.3), value: done)  // the fill grows between the library's reports
+            } else {
+                sweep
+            }
+            if let count {
+                Text(count)
+                    .font(.helvetica(11))
+                    .monospacedDigit()
+                    .foregroundStyle(Color(hex: 0x5d6772))
+            }
+        }
+        .padding(.horizontal, 9)
+        .accessibilityElement()
+        .accessibilityLabel(count ?? "Getting your music")
+    }
+
+    /// Before the total is known: a part of the blue moves to and fro.
+    private var sweep: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil)) { context in
             let x = Self.position(at: fixedTime ?? context.date.timeIntervalSinceReferenceDate)
             GeometryReader { geo in
@@ -294,8 +329,5 @@ struct SetupProgress: View {
             }
             .frame(height: 6)
         }
-        .padding(.horizontal, 9)
-        .accessibilityElement()
-        .accessibilityLabel("Getting your music")
     }
 }

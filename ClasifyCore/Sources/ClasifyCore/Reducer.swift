@@ -30,6 +30,9 @@ public enum Action: Equatable, Sendable {
     /// The app looked for the Spotify app on this Mac: at launch, and every 3 s while the
     /// `spotifyApp` screen (card BB) shows. When it is found there, setup goes on.
     case spotifyAppFound(Bool)
+    /// A track read is this far: `done` of `total` items have their details. The first library
+    /// read (card AY, change 141) counts up with it.
+    case readProgress(String, done: Int, total: Int)
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
     case authDone(token: Int, ok: Bool)
     /// The restore that `.launch` started finished.
@@ -277,6 +280,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
+        s.readDone = 0; s.readTotal = 0
         fetch(.yourMusic)
         // Card AY, change 141: the small screen fills with the playlist names meanwhile.
         if s.playlistsLoaded {
@@ -667,6 +671,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if !s.setupDone { s.stack = [Frame(screen: .hello)]; s.helloAt = now }
             s.authAttempt += 1; s.restoring = true
             fx.append(.restoreSession(token: s.authAttempt))
+
+        case .readProgress(let id, let done, let total):
+            guard s.top.screen == .yourMusic, s.top.loading, id == AppState.readKey(.yourMusic) else { return }
+            s.readDone = done; s.readTotal = total
 
         case .spotifyAppFound(let found):
             let was = s.spotifyApp

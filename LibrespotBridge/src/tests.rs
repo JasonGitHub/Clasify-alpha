@@ -653,6 +653,16 @@ mod library_tests {
         delivered.lock().unwrap().push((status, message, rows));
     }
 
+    extern "C" fn record_progress(_context: *mut c_void, _done: usize, _total: usize) {}
+
+    /// CLA-55: a read reports 0 first, then the end of each batch of track details.
+    #[test]
+    fn progress_counts_each_batch_of_details() {
+        assert_eq!(progress_steps(0).collect::<Vec<_>>(), [0]);
+        assert_eq!(progress_steps(100).collect::<Vec<_>>(), [0, 100]);
+        assert_eq!(progress_steps(250).collect::<Vec<_>>(), [0, 100, 200, 250]);
+    }
+
     extern "C" fn record_tracks(
         context: *mut c_void,
         status: i32,
@@ -805,6 +815,20 @@ mod library_tests {
             );
             assert_eq!(
                 lsb_read_tracks(bridge, none, None, ctx),
+                LSB_ERR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                lsb_read_tracks_progress(
+                    bridge,
+                    none,
+                    Some(record_progress),
+                    Some(record_tracks),
+                    ctx
+                ),
+                LSB_ERR_NOT_LOGGED_IN
+            );
+            assert_eq!(
+                lsb_read_tracks_progress(bridge, none, Some(record_progress), None, ctx),
                 LSB_ERR_INVALID_ARGUMENT
             );
             let track = c"spotify:track:4uLU6hMCjMI75M1A2tKUQC";

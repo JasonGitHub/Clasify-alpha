@@ -128,6 +128,13 @@ int32_t lsb_read_playlists(LsbBridge *bridge, LsbPlaylistsCallback on_result, vo
 // local files and tracks without details are left out.
 int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
                         LsbTracksCallback on_result, void *context);
+// How far a read is: done of total items have their details.
+typedef void (*LsbProgressCallback)(void *context, size_t done, size_t total);
+// Like lsb_read_tracks. on_progress, when not NULL, gets 0 of the total first, then the
+// count after each batch of track details, on the same thread and always before on_result.
+int32_t lsb_read_tracks_progress(LsbBridge *bridge, const char *playlist_uri,
+                                 LsbProgressCallback on_progress, LsbTracksCallback on_result,
+                                 void *context);
 // The details of one track ("spotify:track:<id>"), for a track that plays from outside
 // the library. The callback gets one track, or count 0 when Spotify has none for it.
 int32_t lsb_read_track(LsbBridge *bridge, const char *track_uri,

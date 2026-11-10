@@ -133,17 +133,19 @@ final class LibrespotClient: @unchecked Sendable {
     }
 
     /// All tracks of a playlist, or of Liked Songs when `playlistURI` is nil.
-    func tracks(playlistURI: String?) async throws -> [Track] {
+    /// `progress` gets how many of the list's items have their details, and how many there
+    /// are, on a bridge thread, before the result (CLA-55).
+    func tracks(playlistURI: String?, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> [Track] {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[Track], any Error>) in
-            let box = Unmanaged.passRetained(ResultBox(continuation)).toOpaque()
+            let box = Unmanaged.passRetained(TracksBox(ResultBox(continuation), progress: progress)).toOpaque()
             let status: Int32
             if let playlistURI {
-                status = lsb_read_tracks(handle, playlistURI, tracksCallback, box)
+                status = lsb_read_tracks_progress(handle, playlistURI, tracksProgress, tracksBoxCallback, box)
             } else {
-                status = lsb_read_tracks(handle, nil, tracksCallback, box)
+                status = lsb_read_tracks_progress(handle, nil, tracksProgress, tracksBoxCallback, box)
             }
             if status != LSB_OK {
-                Unmanaged<ResultBox<[Track]>>.fromOpaque(box).takeRetainedValue()
+                Unmanaged<TracksBox>.fromOpaque(box).takeRetainedValue().result
                     .resume(.failure(BridgeError(status: status, message: "cannot read tracks")))
             }
         }
@@ -211,6 +213,18 @@ final class ResultBox<Value: Sendable>: Sendable {
     func resume(_ result: Result<Value, BridgeError>) { continuation.resume(with: result.mapError { $0 as any Error }) }
 }
 
+/// A track read's result and its progress, behind one context pointer. The bridge calls the
+/// progress only before the result, which releases the box.
+final class TracksBox: Sendable {
+    let result: ResultBox<[Track]>
+    let progress: @Sendable (Int, Int) -> Void
+
+    init(_ result: ResultBox<[Track]>, progress: @escaping @Sendable (Int, Int) -> Void) {
+        self.result = result
+        self.progress = progress
+    }
+}
+
 /// The bridge's event context. It lives as long as the app.
 private final class EventBox: Sendable {
     let pendingLogin: OSAllocatedUnfairLock<PendingLogin>
@@ -262,7 +276,27 @@ private func tracksCallback(
 ) {
     guard let context else { return }
     let box = Unmanaged<ResultBox<[Track]>>.fromOpaque(context).takeRetainedValue()
-    guard status == LSB_OK else { return box.resume(.failure(failure(status, message))) }
+    box.resume(trackResult(status, message, items, count))
+}
+
+private func tracksProgress(_ context: UnsafeMutableRawPointer?, _ done: Int, _ total: Int) {
+    guard let context else { return }
+    Unmanaged<TracksBox>.fromOpaque(context).takeUnretainedValue().progress(done, total)
+}
+
+private func tracksBoxCallback(
+    _ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?,
+    _ items: UnsafePointer<LsbTrack>?, _ count: Int
+) {
+    guard let context else { return }
+    let box = Unmanaged<TracksBox>.fromOpaque(context).takeRetainedValue()
+    box.result.resume(trackResult(status, message, items, count))
+}
+
+private func trackResult(
+    _ status: Int32, _ message: UnsafePointer<CChar>?, _ items: UnsafePointer<LsbTrack>?, _ count: Int
+) -> Result<[Track], BridgeError> {
+    guard status == LSB_OK else { return .failure(failure(status, message)) }
     let tracks = UnsafeBufferPointer(start: items, count: items == nil ? 0 : count).map {
         Track(
             id: string($0.uri) ?? "", title: string($0.title) ?? "", artist: string($0.artist) ?? "",
@@ -270,7 +304,7 @@ private func tracksCallback(
             album: Album.from(id: string($0.album_uri), name: string($0.album_name), artist: string($0.album_artist)),
             disc: Int($0.disc_number), number: Int($0.track_number), largeCoverID: string($0.large_cover_id))
     }
-    box.resume(.success(tracks))
+    return .success(tracks)
 }
 
 private func tokenCallback(_ context: UnsafeMutableRawPointer?, _ result: UnsafePointer<LsbToken>?) {

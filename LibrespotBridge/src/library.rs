@@ -305,21 +305,42 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
         .collect()
 }
 
-pub(crate) async fn read_tracks(session: &Session, uri: &str) -> Result<Vec<Track>, String> {
+/// `progress` gets how many of the list's items have their details, and how many there are:
+/// first 0, then after each batch of `METADATA_BATCH`.
+pub(crate) async fn read_tracks(
+    session: &Session,
+    uri: &str,
+    progress: impl FnMut(usize, usize),
+) -> Result<Vec<Track>, String> {
     let uris = context_track_uris(&SessionPages(session), uri).await?;
-    read_metadata(session, &uris).await
+    read_metadata(session, &uris, progress).await
+}
+
+/// The ends of the batches of `METADATA_BATCH` over `total` items, after a 0 for the start.
+pub(crate) fn progress_steps(total: usize) -> impl Iterator<Item = usize> {
+    std::iter::once(0)
+        .chain((1..=total.div_ceil(METADATA_BATCH)).map(move |i| (i * METADATA_BATCH).min(total)))
 }
 
 /// The details of `uris`, in the same order, in batches of `METADATA_BATCH`.
-async fn read_metadata(session: &Session, uris: &[String]) -> Result<Vec<Track>, String> {
+async fn read_metadata(
+    session: &Session,
+    uris: &[String],
+    mut progress: impl FnMut(usize, usize),
+) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::with_capacity(uris.len());
-    for chunk in uris.chunks(METADATA_BATCH) {
+    let mut steps = progress_steps(uris.len());
+    if let Some(start) = steps.next() {
+        progress(start, uris.len());
+    }
+    for (chunk, done) in uris.chunks(METADATA_BATCH).zip(steps) {
         let response = session
             .spclient()
             .get_extended_metadata(metadata_request(chunk))
             .await
             .map_err(|e| format!("cannot read track details: {e}"))?;
         tracks.extend(decode_metadata(&response, chunk));
+        progress(done, uris.len());
     }
     Ok(tracks)
 }
@@ -374,7 +395,18 @@ pub type LsbTracksCallback = extern "C" fn(
     count: usize,
 );
 
+/// How far a read is: `done` of `total` items have their details.
+pub type LsbProgressCallback = extern "C" fn(context: *mut c_void, done: usize, total: usize);
+
 pub(crate) struct Context(pub *mut c_void);
+
+impl Context {
+    /// The pointer, through the whole value, so a closure captures `Context` (which is Send)
+    /// and not the bare pointer.
+    pub(crate) fn ptr(&self) -> *mut c_void {
+        self.0
+    }
+}
 
 // SAFETY: the header requires that `context` and the callback are safe to call
 // from any thread. The bridge never reads through `context` itself.
@@ -534,6 +566,23 @@ pub unsafe extern "C" fn lsb_read_tracks(
     on_result: Option<LsbTracksCallback>,
     context: *mut c_void,
 ) -> i32 {
+    lsb_read_tracks_progress(bridge, playlist_uri, None, on_result, context)
+}
+
+/// Like `lsb_read_tracks`, and `on_progress` (when not NULL) gets how far the read is, on
+/// the same bridge thread, always before `on_result`: first 0 of the total, then after each
+/// batch of track details.
+///
+/// # Safety
+/// As for `lsb_read_tracks`. `on_progress` must be safe to call from any thread.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_read_tracks_progress(
+    bridge: *mut crate::LsbBridge,
+    playlist_uri: *const c_char,
+    on_progress: Option<LsbProgressCallback>,
+    on_result: Option<LsbTracksCallback>,
+    context: *mut c_void,
+) -> i32 {
     let Some(callback) = on_result else {
         return LSB_ERR_INVALID_ARGUMENT;
     };
@@ -553,7 +602,13 @@ pub unsafe extern "C" fn lsb_read_tracks(
     (*bridge).runtime.spawn(async move {
         let context = context;
         let uri = uri.unwrap_or_else(|| liked_songs_uri(&session.username()));
-        let result = read_tracks(&session, &uri).await;
+        let progress_context = Context(context.0);
+        let report = move |done, total| {
+            if let Some(on_progress) = on_progress {
+                on_progress(progress_context.ptr(), done, total);
+            }
+        };
+        let result = read_tracks(&session, &uri, report).await;
         deliver_tracks(callback, context.0, result, session.is_invalid());
     });
     LSB_OK
@@ -587,7 +642,7 @@ pub unsafe extern "C" fn lsb_read_track(
     let context = Context(context);
     (*bridge).runtime.spawn(async move {
         let context = context;
-        let result = read_metadata(&session, &[uri]).await;
+        let result = read_metadata(&session, &[uri], |_, _| {}).await;
         deliver_tracks(callback, context.0, result, session.is_invalid());
     });
     LSB_OK
