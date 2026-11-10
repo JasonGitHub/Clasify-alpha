@@ -22,7 +22,7 @@ struct PlainWindowApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup("Clasify") {
+        WindowGroup("Clasify", id: DeviceWindow.id) {
             AppContent(model: model)
                 // Room for the device's shadow, which the window would cut off.
                 .padding(EdgeInsets(top: 10, leading: 30, bottom: 50, trailing: 30))
@@ -43,7 +43,7 @@ struct FramedWindowApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup("Clasify") {
+        WindowGroup("Clasify", id: DeviceWindow.id) {
             AppContent(model: model)
                 .padding(24)
                 .background(Color(red: 0xc9 / 255, green: 0xd3 / 255, blue: 0xdc / 255))  // the mockup's page
@@ -82,19 +82,34 @@ struct HelpCommands: Commands {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        !DeviceWindow.raise()
+        if DeviceWindow.raise() { return false }
+        // Only How to Use shows. SwiftUI opens a window by itself only when none shows.
+        if flag, let open = DeviceWindow.open {
+            open()
+            return false
+        }
+        return true
     }
 }
 
 @MainActor
 enum DeviceWindow {
+    static let id = "device"
+    /// Opens a new device window. AppContent sets it, because only a view gets `openWindow`.
+    static var open: (() -> Void)?
+
+    /// The How to Use window (CLA-77) is not the device.
+    private static func isHelp(_ window: NSWindow) -> Bool {
+        window.title == HowToUse.title || window.identifier?.rawValue.hasPrefix(HowToUseWindow.id) == true
+    }
+
     /// Puts the device window in front and makes Clasify active: back from the Dock when it
     /// is minimized. Returns false when there is no such window, for example after a close.
     @discardableResult static func raise() -> Bool {
         // Not a panel, the menu bar or a menu. The plain window may not say that it can be
         // key, so a window that can is only preferred.
         let windows = NSApp.windows.filter {
-            !($0 is NSPanel) && $0.level == .normal && ($0.isVisible || $0.isMiniaturized)
+            !($0 is NSPanel) && $0.level == .normal && ($0.isVisible || $0.isMiniaturized) && !isHelp($0)
         }
         guard let window = windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return false }
         if window.isMiniaturized { window.deminiaturize(nil) }
@@ -107,8 +122,16 @@ enum DeviceWindow {
 /// The skin, or the temporary test window while the skin is new.
 struct AppContent: View {
     let model: AppModel
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        content.onAppear {
+            let openWindow = openWindow
+            DeviceWindow.open = { openWindow(id: DeviceWindow.id) }
+        }
+    }
+
+    @ViewBuilder private var content: some View {
         if model.showsTestWindow || model.store == nil {
             TestWindow(store: model.store)
                 .background(Color(nsColor: .windowBackgroundColor))
