@@ -7,8 +7,8 @@ import SwiftUI
 /// Between the main menu and Cover Flow (`AppState.navMove` is `.doors`), the menu opens like two doors
 /// instead (Round 9, card AE, change 82): the left half (the title bar and the list) slides
 /// left and fades out, and the right half (the covers) slides right. Cover Flow is behind
-/// them, with no title bar and no names. The title bar slides down with the doors, then the
-/// names fade in.
+/// them, with no title bar and no names. The names fade in as the doors finish, then the title
+/// bar slides down (CLA-73).
 /// MENU does the reverse. The views read the stage from `doorsStage`. On the way in, a new copy
 /// of the main menu opens the doors over Cover Flow (`PocketScreen.doorsMenu`), with this
 /// modifier as its insertion: the removed main menu cannot (CLA-63).
@@ -46,9 +46,10 @@ struct DoorsStage: Equatable {
     /// The opacity of Cover Flow's album and artist names.
     var names = 1.0
 
-    /// Opening: the doors take 0.25 s, speeding up. The title bar slides down with them,
-    /// from 0 s to 0.25 s, slowing down. The names fade in from 0.2 s to 0.3 s (CLA-70).
-    static let openTime = 0.3
+    /// Opening: the doors take 0.25 s, speeding up. The names fade in from 0.2 s to 0.3 s
+    /// (CLA-70). After the doors open, the title bar slides down from 0.25 s to 0.5 s,
+    /// slowing down, as in the mockup (CLA-73).
+    static let openTime = 0.5
     /// Closing: the names go at once and the title bar slides up in 0.1 s. Then the doors
     /// close in 0.25 s, slowing down.
     static let closeTime = 0.35
@@ -71,7 +72,7 @@ struct DoorsStage: Equatable {
             open = Self.easeIn.value(at: clamp(t / 0.25))
         case (true, false):  // Cover Flow, behind the doors
             let t = Self.openTime * (1 - side)
-            headerY = -20 * (1 - Self.easeOut.value(at: clamp(t / 0.25)))
+            headerY = -20 * (1 - Self.easeOut.value(at: clamp((t - 0.25) / 0.25)))
             names = clamp((t - 0.2) / 0.1)
         case (false, true):  // Cover Flow, before the doors close over it
             let t = Self.closeTime * abs(side)
