@@ -498,6 +498,44 @@ import Testing
         #expect(close(closing(0.35).open, 0))
     }
 
+    /// On the way in, a new copy of the main menu opens its doors over Cover Flow (CLA-63). Here
+    /// it is drawn alone at fixed stages, so the gap between the doors is empty.
+    @Test func theMainMenuDoorsOpenAsTheirOwnLayer() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
+        s.top.sel = 1
+        s.artRow = .nowPlaying
+        s.refreshArt()
+        func doors(_ open: Double, _ name: String) throws -> NSBitmapImageRep {
+            var stage = DoorsStage()
+            stage.open = open
+            let view = PocketScreen(state: s, doorsOnly: true)
+                .environment(\.doorsStage, stage)
+                .environment(\.animationTime, 1)
+                .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
+                .clipped()
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = CGFloat(Snapshot.scale)
+            let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+            if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
+               let png = bitmap.representation(using: .png, properties: [:]) {
+                try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-\(name).png"))
+            }
+            return bitmap
+        }
+        func alpha(_ b: NSBitmapImageRep, _ x: Int, _ y: Int) -> CGFloat {
+            b.colorAt(x: x * Snapshot.scale, y: y * Snapshot.scale)?.alphaComponent ?? 0
+        }
+        let closed = try doors(0, "doors-closed")
+        #expect(alpha(closed, 40, 100) > 0.9 && alpha(closed, 150, 100) > 0.9 && alpha(closed, 240, 100) > 0.9)
+        // Half open: the pane is 75 points left at half opacity, the covers 75 points right.
+        let half = try doors(0.5, "doors-half-open")
+        #expect(alpha(half, 150, 100) < 0.1, "gap \(alpha(half, 150, 100))")
+        #expect(alpha(half, 240, 100) > 0.9)
+        let pane = alpha(half, 40, 100)
+        #expect(pane > 0.3 && pane < 0.7, "pane \(pane)")
+    }
+
     @Test func coverFlowShowsTheMiddleAlbumAndTheLetter() throws {
         let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
         let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
