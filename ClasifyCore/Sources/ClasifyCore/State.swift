@@ -115,9 +115,10 @@ public enum Screen: Equatable, Sendable {
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
-        case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color:
+        case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
+            .spotifyApp:
             true
-        case .about, .now, .coverFlow, .hello, .spotifyApp, .yourMusic, .loggedIn: false
+        case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn: false
         }
     }
 
@@ -163,6 +164,8 @@ public enum Row: Equatable, Sendable {
     /// Rows of the login (card AX): open the browser again while it waits (170), and try
     /// again after a failed login (171). `cancel` stops the login.
     case openBrowser, tryAgain
+    /// The Spotify App screen's row (card BB): opens the Spotify download page in the browser.
+    case getSpotifyApp
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
 }
@@ -256,7 +259,8 @@ public struct AppState: Equatable, Sendable {
     /// When the color pick (card AW) opened, and when the wheel first turned on it (0 before
     /// that). A skin times the rim light, the hint and the center glow from them.
     public var colorAt: Double = 0, colorTurnAt: Double = 0
-    /// When the "You’re in" screen (card AX, change 175) moves on by itself. 0 when it does not show.
+    /// When "You’re in" (card AX, change 175) or "Linked" on the Spotify App screen (card BB,
+    /// change 174) moves on by itself. 0 when neither shows.
     public var beatUntil: Double = 0
     /// Seconds that "You’re in" shows before the next step.
     public static let beatTime = 1.5
@@ -569,7 +573,8 @@ public struct AppState: Equatable, Sendable {
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]
         case .loginFailed: [.tryAgain, .cancel]
-        case .about, .now, .hello, .spotifyApp, .yourMusic, .loggedIn: []
+        case .spotifyApp: [.getSpotifyApp]
+        case .about, .now, .hello, .yourMusic, .loggedIn: []
         }
     }
 

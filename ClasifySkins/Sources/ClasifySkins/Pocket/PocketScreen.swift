@@ -265,7 +265,7 @@ struct PocketScreen: View {
     /// restored: that shows "Signing in…" on the whole screen.
     private var setupPreview: (screen: PreviewScreen, cable: SyncCable.Plug?)? {
         if top.screen == .login && state.restoring { return nil }
-        return PreviewScreen.of(top.screen)
+        return PreviewScreen.of(top.screen, in: state)
     }
 
     /// The message that shows in place of the content. The song panel shows its own, inside

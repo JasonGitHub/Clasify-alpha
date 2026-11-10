@@ -72,6 +72,7 @@ enum Labels {
         case .color(let color): return RowText(label: color.rawValue)
         case .openBrowser: return RowText(label: "Open browser again")
         case .tryAgain: return RowText(label: "Try again")
+        case .getSpotifyApp: return RowText(label: "Get Spotify App")  // card BB: no chevron
         }
     }
 
@@ -101,9 +102,6 @@ enum Labels {
             return Message(title: "No albums", body: "Like songs in Spotify to see their albums. Press MENU to go back.")
         case .now where state.current == nil:
             return Message(title: "")
-        // Setup screens that CLA-52 to CLA-55 draw. Until then they show their words as a message.
-        case .spotifyApp:
-            return Message(title: "One more thing", body: "We also need the Spotify app on this Mac.")
         default:
             return nil
         }
@@ -117,7 +115,8 @@ enum Labels {
         var footnote = ""
     }
 
-    /// Nil on screens that are not a login screen, and while a stored login is restored.
+    /// Also the Spotify App screen's words (card BB, change 131). Nil on other screens, and
+    /// while a stored login is restored.
     static func setupWords(for frame: Frame, in state: AppState) -> SetupWords? {
         switch frame.screen {
         case .login where !state.restoring:
@@ -127,6 +126,7 @@ enum Labels {
         case .auth: SetupWords(headline: "Take your time", line: "Your browser is open.\nLog in there.")
         case .loginFailed: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")
         case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
+        case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         default: nil
         }
     }
