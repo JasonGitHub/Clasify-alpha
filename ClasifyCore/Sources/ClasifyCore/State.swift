@@ -272,6 +272,9 @@ public struct AppState: Equatable, Sendable {
     /// How far the first library read is: `readDone` of `readTotal` songs. 0 of 0 before the
     /// library knows the total.
     public var readDone = 0, readTotal = 0
+    /// The Spotify session expired (card AX, change 181). The login screen then says "Log in
+    /// again". A logout, a login that works and a reset clear it.
+    public var sessionEnded = false
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false

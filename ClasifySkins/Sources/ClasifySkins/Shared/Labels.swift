@@ -120,6 +120,10 @@ enum Labels {
     /// while a stored login is restored.
     static func setupWords(for frame: Frame, in state: AppState) -> SetupWords? {
         switch frame.screen {
+        case .login where !state.restoring && state.sessionEnded:  // card AX, change 181
+            SetupWords(
+                headline: "Log in again", line: "Your Spotify session ended.",
+                footnote: "We never see your password.")
         case .login where !state.restoring:
             SetupWords(
                 headline: "Your music is on Spotify", line: "We’ll open your browser.",

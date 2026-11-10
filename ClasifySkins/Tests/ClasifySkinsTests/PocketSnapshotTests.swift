@@ -814,7 +814,7 @@ import Testing
         let loading = try render(s, "loading")
         #expect(!loading.isBlue(150, Self.rowCenter(0)))  // no list while loading
         s.stack = [Frame(screen: .login)]
-        s.toast = "Logged out"
+        s.toast = "Connection lost. Paused"
         let shot = try render(s, "toast")
         let toastX: Int = Self.screenLeft + 24, toastY: Int = 225  // 6 points above the toast's bottom, 26 above the screen's
         #expect(shot.isDark(toastX, toastY))  // the toast's dark box
