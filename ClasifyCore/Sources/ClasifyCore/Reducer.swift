@@ -332,6 +332,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// loads first, as for Shuffle Songs.
     func playLiked() {
         if s.offline { return toast(offlineStart) }
+        // While a list loads, open nothing more, so no frame is left loading under another.
+        if s.top.loading {
+            // Liked Songs that loads starts when it is read. A start already pending stays as it is.
+            guard s.top.screen == .tracks(playlist: Playlist.likedSongsID), s.shuffleToken != s.top.token else { return }
+            s.shuffleToken = s.top.token; s.pendingInOrder = !s.shuffle
+            return
+        }
         s.pendingInOrder = !s.shuffle
         if s.loadedTracks.contains(Playlist.likedSongsID) {
             if s.shuffle { shuffleLiked() } else { playLikedInOrder() }

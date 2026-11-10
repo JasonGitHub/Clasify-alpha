@@ -183,6 +183,23 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .play) == shuffled)
         #expect(s.top.screen == .now && s.isPlaying && s.toast == "")
 
+        // A second Play while Liked Songs loads opens nothing more; the pending start stays.
+        s = mainMenu()
+        send(&s, .play)
+        #expect(send(&s, .play) == [] && s.stack.count == 2 && s.shuffleToken == 1)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        #expect(s.top.screen == .now && s.stack.count == 3 && s.current?.track == "l0")
+        // Play while Liked Songs loads from its own row: it plays when the read ends.
+        s = mainMenu()
+        send(&s, .wheel(3), .select)
+        #expect(send(&s, .play) == [] && s.stack.count == 2 && s.shuffleToken == 1)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        #expect(s.top.screen == .now && s.current?.track == "l0" && !s.shuffle)
+        // Play while another list loads: nothing, quietly.
+        s = mainMenu()
+        send(&s, .wheel(1), .select)  // Playlists loads
+        #expect(send(&s, .play) == [] && s.stack.count == 2 && s.shuffleToken == nil && s.toast == "")
+
         // Shuffle Songs after an in-order Play still shuffles.
         s = mainMenu()
         send(&s, .play, .menu, .wheel(4), .select)
