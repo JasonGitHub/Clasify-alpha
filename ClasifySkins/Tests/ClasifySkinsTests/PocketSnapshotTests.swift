@@ -891,6 +891,32 @@ import Testing
         #expect(box + 60 < side, "box \(box), side \(side)")  // the tip, by its middle; it does not fill the width
     }
 
+    /// Changes 176 and 195: on Now Playing the play/pause label lights, and its tip takes the
+    /// time bar's place, 15 points above the screen's bottom.
+    @Test func thePlayHintTipTakesTheTimeBarsPlace() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
+        s.isPlaying = true
+        s.t = 61
+        s.stack.append(Frame(screen: .now))
+        let plain = try render(s, "hint-play-none")
+        s.hint = .playPause
+        s.hintAt = -7; s.hintTip = true  // at the render's time 1, the tip shows
+        let tip = try render(s, "hint-play-tip")
+        // The play/pause label: 50 x 32 points at the wheel's bottom. The wheel starts at 70.5 x 321.
+        func lit(_ shot: Snapshot) -> Bool {
+            (511..<543).contains { y in (158..<208).contains { x in shot.isBlue(x, y) } }
+        }
+        #expect(!lit(plain) && lit(tip))
+        func light(_ shot: Snapshot, _ x: Int, _ y: Int) -> Int { let c = shot.rgb(x, y); return max(c.r, c.g, c.b) }
+        let box = light(tip, Self.screenLeft + 150, Self.screenBottom - 15 - 6)
+        let under = light(plain, Self.screenLeft + 150, Self.screenBottom - 15 - 6)
+        #expect(box + 60 < under, "box \(box), under \(under)")  // the tip, by its middle
+        // The time bar's filled start, left of the tip, is gone.
+        let barY = Self.screenBottom - 14 - 11
+        #expect(plain.rgb(Self.screenLeft + 60, barY) != tip.rgb(Self.screenLeft + 60, barY))
+    }
+
     @Test func theCenterLooksPressedInAndDarkensWhenPressed() throws {
         let wheelTop: Int = 321  // device border 1, padding 24.8, bezel 239.4, gap 55.8
         let middle: Int = wheelTop + 112, nearTop: Int = middle - 30, nearBottom: Int = middle + 30

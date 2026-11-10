@@ -417,6 +417,12 @@ public struct AppState: Equatable, Sendable {
     public var heldToast = ""
     /// The tip comes after 3 glow pulses of 2.4 s (change 195), and stays for at most 10 s.
     public static let hintTipAfter = 7.2, hintTipTime = 10.0
+    /// The play/pause and next hints wait until a song has played this many seconds on Now
+    /// Playing (changes 176 and 177).
+    public static let hintPlayTime = 10.0
+    /// `navSeq` when the play/pause hint ended. The next hint waits for a later visit to Now
+    /// Playing (change 177). -1 before.
+    public var hintPlaySeq = -1
     /// When `.tick` next moves the hint on: its tip shows, or it ends. 0 with no hint. Like every
     /// deadline that `.tick` ends, the app's ticker must check it, or `.tick` never comes.
     public var hintDue: Double {
@@ -696,4 +702,8 @@ public struct AppState: Equatable, Sendable {
 public enum Hint: String, CaseIterable, Sendable {
     /// Change 139: on the first list opened from the main menu, until the first MENU press.
     case menu
+    /// Change 176: on Now Playing, after the first song played 10 s, until the first play/pause press.
+    case playPause
+    /// Change 177: after the play/pause hint, on a later visit to Now Playing, until the first next press.
+    case next
 }

@@ -90,6 +90,70 @@ import Testing
         #expect(s.toast == "" && s.hint == .menu && s.hintAt == 102)
     }
 
+    /// Changes 176 and 177: after a song played 10 s on Now Playing, the play/pause label glows.
+    /// A press ends it for good. The next hint waits for a later visit to Now Playing.
+    @Test func thePlayThenTheNextHintShowOnNowPlaying() {
+        var s = mainMenu()
+        s.hintsDone = [.menu]
+        send(&s, openFocus(1))
+        send(&s, .select)
+        #expect(s.top.screen == .now && s.hint == nil)
+        send(&s, .position(9.5, generation: s.playGen), now: 300)
+        #expect(s.hint == nil)
+        send(&s, .position(10, generation: s.playGen), now: 301)
+        #expect(s.hint == .playPause && s.hintAt == 301)
+        send(&s, .tick, now: 308.2)
+        #expect(s.hintTip)
+        send(&s, .play, now: 309)  // pause
+        #expect(s.hint == nil && !s.isPlaying && s.hintsDone == [.menu, .playPause])
+        send(&s, .play, .position(20, generation: s.playGen), now: 310)
+        #expect(s.isPlaying && s.hint == nil)  // not in the same visit
+        send(&s, .menu, .wheel(1), .select, now: 311)  // another song: Now Playing again
+        send(&s, .position(10, generation: s.playGen), now: 321)
+        #expect(s.top.screen == .now && s.hint == .next && s.hintAt == 321)
+        send(&s, .next, now: 322)
+        #expect(s.hint == nil && s.hintsDone == Set(Hint.allCases))
+    }
+
+    /// The play hint shows only while a song plays and the time bar shows. A scrub or the volume
+    /// bar stops it, and it starts again after. A failure stops it, and its message shows at once.
+    @Test func thePlayHintStopsForAScrubAndWhenPlaybackStops() {
+        var s = mainMenu()
+        s.hintsDone = [.menu]
+        send(&s, openFocus(1))
+        send(&s, .select, now: 299)
+        send(&s, .position(10, generation: s.playGen), now: 300)  // after the play, for its new generation
+        #expect(s.hint == .playPause)
+        send(&s, .select, now: 301)  // the center: scrub
+        #expect(s.nowMode == .scrub && s.hint == nil && s.hintsDone == [.menu])
+        send(&s, .menu, now: 302)  // back to the volume
+        #expect(s.nowMode == .volume && s.hint == .playPause && s.hintAt == 302)
+        send(&s, .tick, now: 309.2)
+        #expect(s.hint == .playPause && s.hintTip)
+        send(&s, .wheel(1), now: 310)  // the volume bar takes the row
+        #expect(s.overlayUntil == 311.5 && s.hint == nil && s.hintsDone == [.menu])
+        send(&s, .tick, now: 311.6)  // the volume bar hides
+        #expect(s.overlayUntil == 0 && s.hint == .playPause && s.hintAt == 311.6 && !s.hintTip)
+        send(&s, .playbackFailed("Spotify stopped", generation: s.playGen), now: 312)
+        #expect(!s.isPlaying && s.hint == nil && s.toast == "Spotify stopped" && s.heldToast.isEmpty)
+        #expect(!s.hintsDone.contains(.playPause))
+    }
+
+    /// Off Now Playing, the play hint waits. A press before it shows ends it, and the next hint too.
+    @Test func thePlayHintWaitsOffNowPlayingAndEarlyPressesEndThem() {
+        var s = mainMenu()
+        s.hintsDone = [.menu]
+        send(&s, openFocus(1))
+        send(&s, .select, .position(12, generation: 1))
+        #expect(s.hint == .playPause)
+        send(&s, .menu)
+        #expect(s.hint == nil && !s.hintsDone.contains(.playPause))
+        send(&s, .play, .play, .next)
+        #expect(s.hintsDone == Set(Hint.allCases))
+        send(&s, .wheel(1), .select, .position(30, generation: s.playGen))
+        #expect(s.top.screen == .now && s.hint == nil)
+    }
+
     /// A reset keeps the ended hints, as it keeps the settings, and drops the one that shows.
     @Test func aResetKeepsTheEndedHints() {
         var s = fresh()
