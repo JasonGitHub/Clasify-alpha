@@ -140,13 +140,7 @@ struct PocketAbout: View {
     private var plate: some View {
         ZStack(alignment: .top) {
             Self.engraved(Text("Clasify").font(.helvetica(20, bold: true)), height: 23, Self.nameSteel)
-            HStack(spacing: 4) {
-                Self.engraved(Text("Made with").font(.helvetica(14)), height: 16, Self.lineSteel)
-                Heart().fill(Color(hex: 0xe0565b)).frame(width: 12, height: 11)
-                Self.engraved(Text("by CappyAI").font(.helvetica(14)), height: 16, Self.lineSteel)
-            }
-            .fixedSize()
-            .offset(y: 37)
+            signature.offset(y: 37)
             tagline.offset(y: 56)
         }
         .shadow(color: .white.opacity(0.9), radius: 0, y: 1)
@@ -155,15 +149,32 @@ struct PocketAbout: View {
         .accessibilityLabel("Clasify. AI-native craftsmanship. Made with love by CappyAI.")
     }
 
-    /// "AI-native craftsmanship" in steel, with a bright band that sweeps left to right in 1.8 s
-    /// (ease-in-out) from the start of each wave. Only the tagline has the glint (Jason 23:09 JST
-    /// 11-10).
+    /// "Made with ♥ by CappyAI" in steel. The glint sweeps the whole line as one, from the start
+    /// of each wave; the red heart has none (change 218, Jason 00:14 JST 11-11).
+    private var signature: some View {
+        func words(heart: Bool) -> some View {
+            HStack(spacing: 4) {
+                Text("Made with").font(.helvetica(14)).opacity(heart ? 0 : 1)
+                Heart().fill(Color(hex: 0xe0565b)).frame(width: 12, height: 11).opacity(heart ? 1 : 0)
+                Text("by CappyAI").font(.helvetica(14)).opacity(heart ? 0 : 1)
+            }
+            .lineLimit(1).fixedSize().frame(height: 16)
+        }
+        return glinting(words(heart: false), after: 0).overlay { words(heart: true) }
+    }
+
+    /// "AI-native craftsmanship" in steel. Its glint starts 0.15 s after the signature's.
     private var tagline: some View {
+        glinting(Text("AI-native craftsmanship").font(.helvetica(14)).lineLimit(1).fixedSize().frame(height: 16), after: 0.15)
+    }
+
+    /// `line` in the line steel, with a bright band that sweeps left to right in 1.8 s
+    /// (ease-in-out) from `after` seconds after the start of each wave.
+    private func glinting(_ line: some View, after delay: Double) -> some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
-            let line = Text("AI-native craftsmanship").font(.helvetica(14)).lineLimit(1).fixedSize().frame(height: 16)
             line.hidden().overlay {
-                ZStack { Self.lineSteel; Self.glint(Self.bezier(0.42, 0, 0.58, 1, (t - state.aboutWaveAt) / 1.8)) }
+                ZStack { Self.lineSteel; Self.glint(Self.bezier(0.42, 0, 0.58, 1, (t - state.aboutWaveAt - delay) / 1.8)) }
                     .mask { line }
             }
         }
