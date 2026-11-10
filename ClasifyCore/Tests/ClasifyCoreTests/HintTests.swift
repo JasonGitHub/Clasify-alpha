@@ -121,7 +121,8 @@ import Testing
         var s = mainMenu()
         s.hintsDone = [.menu]
         send(&s, openFocus(1))
-        send(&s, .select, .position(10, generation: s.playGen), now: 300)
+        send(&s, .select, now: 299)
+        send(&s, .position(10, generation: s.playGen), now: 300)  // after the play, for its new generation
         #expect(s.hint == .playPause)
         send(&s, .select, now: 301)  // the center: scrub
         #expect(s.nowMode == .scrub && s.hint == nil && s.hintsDone == [.menu])
