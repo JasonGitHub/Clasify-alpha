@@ -361,17 +361,28 @@ struct PocketScreen: View {
         .background(Color(hex: 0xe8eef3))
     }
 
+    /// The toast (Round 15 card BD, changes 185 and 186): a dark rounded box that fits its
+    /// text, at most 272 points wide, centered 16 points above the screen's bottom. On Now
+    /// Playing it sits 44 points up, over the time bar. The text wraps, with no "…".
     private var toast: some View {
         Text(state.toast)
-            .font(.helvetica(11))
+            .font(.helvetica(11, weight: .medium))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 7)  // 26 points tall, as in the mockup
-            .padding(.horizontal, 8)
-            .background(Color(hex: 0x1b1f24, opacity: 0.88), in: RoundedRectangle(cornerRadius: 4))
-            .padding(.horizontal, 14)
-            .padding(.bottom, 26)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 6)
+            .padding(.horizontal, 13)
+            .background {
+                // #1b1f24 at 76% over a blur of the screen behind it (the mockup's 8 point blur).
+                ZStack {
+                    Rectangle().fill(.ultraThinMaterial)
+                    Color(hex: 0x1b1f24, opacity: 0.76)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 11))
+                .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
+            }
+            .frame(maxWidth: 272)  // the box fits its text inside this
+            .padding(.bottom, top.screen == .now ? 44 : 16)
     }
 }
 
