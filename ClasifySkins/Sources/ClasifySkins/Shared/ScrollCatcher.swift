@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Turns trackpad and mouse-wheel scrolling over a round view into wheel detents.
-/// SwiftUI on macOS 14 has no scroll-event API outside a ScrollView, so this is a small AppKit view.
+/// SwiftUI has no scroll-event API outside a ScrollView, so this is a small AppKit view.
 /// Put it in the background of the view. It never takes clicks or drags: it watches the window's
 /// scroll events and takes only the ones inside its circle.
 struct ScrollCatcher: NSViewRepresentable {
