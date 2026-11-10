@@ -1,3 +1,4 @@
+import AppKit
 import ClasifyCore
 import CoreGraphics
 import SwiftUI
@@ -259,6 +260,33 @@ func sampleState() -> AppState {
         #expect(PocketSkin.action(for: "x") == nil)
         #expect(PocketSkin.repeats(.wheel(1)))
         #expect(!PocketSkin.repeats(.play) && !PocketSkin.repeats(.select) && !PocketSkin.repeats(.next))
+    }
+
+    @Test func windowKeysMapToTheDeviceKeys() {
+        #expect(KeyCatcher.key(keyCode: 126, characters: nil) == .upArrow)
+        #expect(KeyCatcher.key(keyCode: 125, characters: nil) == .downArrow)
+        #expect(KeyCatcher.key(keyCode: 123, characters: nil) == .leftArrow)
+        #expect(KeyCatcher.key(keyCode: 124, characters: nil) == .rightArrow)
+        #expect(KeyCatcher.key(keyCode: 36, characters: "\r") == .return)
+        #expect(KeyCatcher.key(keyCode: 76, characters: "\u{3}") == .return)
+        #expect(KeyCatcher.key(keyCode: 53, characters: nil) == .escape)
+        #expect(KeyCatcher.key(keyCode: 51, characters: nil) == .delete)
+        #expect(KeyCatcher.key(keyCode: 49, characters: " ") == .space)
+        #expect(KeyCatcher.key(keyCode: 1, characters: "s") == "s")
+        #expect(KeyCatcher.key(keyCode: 15, characters: "R") == "R")
+        #expect(KeyCatcher.key(keyCode: 0, characters: nil) == nil)
+        #expect(KeyCatcher.key(keyCode: 0, characters: "") == nil)
+        #expect(PocketSkin.action(for: KeyCatcher.key(keyCode: 15, characters: "r")!) == .cycleRepeat)
+    }
+
+    @Test func menuShortcutKeysPassOn() {
+        #expect(KeyCatcher.takes([]))
+        #expect(KeyCatcher.takes([.shift, .capsLock]))
+        #expect(KeyCatcher.takes([.numericPad, .function]))  // arrow keys carry these
+        #expect(!KeyCatcher.takes([.command]))
+        #expect(!KeyCatcher.takes([.option]))
+        #expect(!KeyCatcher.takes([.control]))
+        #expect(!KeyCatcher.takes([.shift, .command]))
     }
 
     @Test func wheelZonesFollowTheMockup() {

@@ -14,9 +14,8 @@ public struct PocketSkin: View {
     /// A wheel button drawn pressed, for snapshot tests.
     var pressed: ClickWheel.Zone?
 
-    @FocusState private var focused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The small device on a setup screen: no glow, no rim light, no focus and no drop shadow.
+    /// The small device on a setup screen: no glow, no rim light, no keys and no drop shadow.
     @Environment(\.pocketPreview) private var preview
 
     public init(state: AppState, send: @escaping @MainActor (Action) -> Void) {
@@ -51,19 +50,8 @@ public struct PocketSkin: View {
             }
             .animation(.easeInOut(duration: 0.25), value: state.shownColor)
         }
-        .focusable(!preview)
-        .focused($focused)
-        .focusEffectDisabled()
-        .onKeyPress(phases: [.down, .repeat]) { press in
-            // Keys with Command, Option or Control belong to the menus.
-            guard press.modifiers.isDisjoint(with: [.command, .option, .control]),
-                  let action = Self.action(for: press.key)
-            else { return .ignored }
-            if press.phase == .repeat && !Self.repeats(action) { return .handled }
-            input(action)
-            return .handled
-        }
-        .onAppear { if !preview { focused = true } }
+        // Keys come through a window-level monitor, not SwiftUI focus (CLA-79).
+        .background { if interactive && !preview { KeyCatcher { key($0, repeated: $1) } } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             "Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
@@ -151,6 +139,14 @@ public struct PocketSkin: View {
         case "r", "R": .cycleRepeat
         default: nil
         }
+    }
+
+    /// Sends the action for a key. Returns false for a key the device does not use, so it goes on
+    /// to the menus.
+    private func key(_ key: KeyEquivalent, repeated: Bool) -> Bool {
+        guard let action = Self.action(for: key) else { return false }
+        if !repeated || Self.repeats(action) { input(action) }
+        return true
     }
 
     /// A held arrow key turns the wheel on. A held Space, Return or skip key acts once.
