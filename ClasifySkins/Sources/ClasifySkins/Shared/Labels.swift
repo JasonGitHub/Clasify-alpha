@@ -161,10 +161,6 @@ enum Labels {
     /// The line under "You’re all set" (card AY, change 189): always the same, with no song count.
     static let ready = "Enjoy your music."
 
-    /// The About screen's fine print (card E). "Not affiliated with Spotify" moves to the macOS
-    /// About window later (Jason, 11-07 17:08 JST).
-    static var aboutVersion: String { "Version \(version)" }
-
     /// The app's version, or the mockup's when the bundle has none, as in tests.
     static var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"

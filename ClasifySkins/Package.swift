@@ -9,11 +9,11 @@ let package = Package(
     products: [.library(name: "ClasifySkins", targets: ["ClasifySkins"])],
     dependencies: [.package(path: "../ClasifyCore")],
     targets: [
-        // Resources: the About screen's art, bundled. Skins load nothing from the network or disk.
+        // Resources: the About screen's capybara, CappyAI's own art, bundled (card BF). Skins load
+        // nothing from the network or disk.
         .target(
             name: "ClasifySkins", dependencies: [.product(name: "ClasifyCore", package: "ClasifyCore")],
-            resources: [.copy("Resources/about-castle.jpg"), .copy("Resources/about-takoyaki.jpg"),
-                        .copy("Resources/about-dotonbori.jpg")]),
+            resources: [.copy("Resources/about-hp-stand.png")]),
         .testTarget(name: "ClasifySkinsTests", dependencies: ["ClasifySkins"]),
     ]
 )

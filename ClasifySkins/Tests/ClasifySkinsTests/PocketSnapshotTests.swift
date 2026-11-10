@@ -947,44 +947,35 @@ import Testing
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
     }
 
-    /// About, option E: the art at the top fades into the glass, then the name, the line with the
-    /// red heart, and the version. Every scene has this layout.
-    @Test(arguments: [0, 1, 2]) func aboutShowsTheArtNameHeartAndVersion(scene: Int) throws {
-        #expect(PocketAbout.scenes.count == AppState.aboutScenes)
-        #expect(PocketAbout.scenes[scene].image != nil)  // the art is bundled
+    /// About, card BF: one page that scrolls 5 steps of 22.9 pt. At the top the capybara, then
+    /// the steel name and lines with the red heart. From step 3 the Licenses row is selected, and
+    /// at step 5 the legal text shows.
+    @Test func aboutScrollsOnePageWithTheCapybaraAndLicensesRow() throws {
+        #expect(PocketAbout.stand != nil)  // the art is bundled
         var s = sampleState()
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
-        s.aboutScene = scene
-        let shot = try render(s, "about-e-\(scene)")
-        let top = Self.listTop, left = Self.screenLeft
-        // The art: not the plain glass at the top of the screen.
+        let top = Self.listTop, left = Self.screenLeft, x = left + 150
         let glass = try reference(0xf4f8fb)
-        let art = (left + 10..<left + 290).filter { !near(shot.rgb($0, top + 20), glass) }
-        #expect(art.count > 100)
-        // The name: dark ink in its band, 142 to 158 points down.
-        let name = (left + 100..<left + 200).filter { x in (top + 145...top + 156).contains { shot.isDark(x, $0) } }
-        #expect(name.count > 10)
-        // The heart: red pixels in the second line's band.
-        let red = (left..<left + 300).filter { x in
-            (top + 160...top + 174).contains { y in let c = shot.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
+        let first = try render(s, "about-0")
+        // The capybara: not plain glass in its 96 pt box, 20 pt down.
+        let art = (top + 30..<top + 110).filter { !near(first.rgb(x, $0), glass) }
+        #expect(art.count > 40)
+        // The heart: red pixels in the "Made with ♥ by CappyAI" line, 187 to 200 pt down.
+        let red = (left + 60..<left + 240).filter { x in
+            (top + 187...top + 200).contains { y in let c = first.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
         }
         #expect(!red.isEmpty)
-    }
-
-    /// The second open of About shows the takoyaki, not the castle again, and the third shows Dotonbori.
-    @Test func aboutScenesDrawDifferentArt() throws {
-        var s = sampleState()
-        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
-        let castle = try render(s, "about-scene-0")
-        s.aboutScene = 1
-        let takoyaki = try render(s, "about-scene-1")
-        let top = Self.listTop + 30, left = Self.screenLeft
-        s.aboutScene = 2
-        let dotonbori = try render(s, "about-scene-2")
-        for (a, b) in [(castle, takoyaki), (takoyaki, dotonbori), (castle, dotonbori)] {
-            let differ = (left + 10..<left + 290).filter { !near(a.rgb($0, top), b.rgb($0, top)) }
-            #expect(differ.count > 50)
-        }
+        // Step 2: the Licenses row shows at 191.1 pt but is not selected.
+        s.stack[2].off = 2
+        #expect(!(try render(s, "about-2")).isBlue(x, top + 200))
+        // Step 3: the page moved up 68.7 pt and the Licenses row, now at 168.2 pt, is selected.
+        s.stack[2].off = 3
+        #expect((try render(s, "about-3")).isBlue(x, top + 179))
+        // Step 5: the legal text, at 155.5 pt, is ink on the glass.
+        s.stack[2].off = 5
+        let last = try render(s, "about-5")
+        let legal = (left + 60..<left + 240).filter { x in (top + 158...top + 195).contains { last.isDark(x, $0) } }
+        #expect(legal.count > 10)
     }
 
     /// The battery's shadow fades downward only, from y 49 to 53 of the view box: its rows have
