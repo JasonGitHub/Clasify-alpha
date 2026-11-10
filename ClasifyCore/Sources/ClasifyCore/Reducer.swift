@@ -792,7 +792,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.navSeq += 1
         s.navForward = s.stack.count >= before.0 || (s.signedIn && !wasSignedIn)
         // Between a half screen and a full one, the whole screen moves; otherwise only the content.
-        let whole = s.isHalf(before.1) != s.isHalf(s.top.screen)
+        // Hello has no title bar, so the whole screen moves to and from it too (CLA-62).
+        let whole = s.isHalf(before.1) != s.isHalf(s.top.screen) || before.1 == .hello || s.top.screen == .hello
         if whole { s.wholeSeq += 1 }
         // The cover flies only to and from a Now Playing that shows the panel's album.
         let fly = before.1 == .now ? wasOverPanel : s.nowOverPanel

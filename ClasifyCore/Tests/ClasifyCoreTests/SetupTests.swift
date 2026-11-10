@@ -18,8 +18,11 @@ import Testing
         #expect(s.helloAt == 100)  // the skin times the hello from here
         #expect(send(&s, .wheel(1), .menu, .restored(token: 1, ok: false)).isEmpty)
         #expect(s.stack == [Frame(screen: .hello)])  // a turn and MENU do nothing on Hello
+        let whole = s.wholeSeq
         send(&s, .select)  // a press begins setup
         #expect(s.stack == [Frame(screen: .color)] && s.navForward)
+        // CLA-62: Hello has no title bar, so the whole screen pushes, title bar and all.
+        #expect(s.wholeSeq == whole + 1 && s.navMove == .push)
         #expect(s.rows(for: s.top) == [.color(.silver), .color(.black)] && s.top.sel == 0)
         send(&s, .menu)  // MENU does nothing on the color pick
         #expect(s.top.screen == .color)
@@ -27,8 +30,10 @@ import Testing
 
     @Test func theColorPickSavesTheColorAndMenuOnTheLoginGoesBack() {
         var s = onColor()
+        let whole = s.wholeSeq
         send(&s, .wheel(1), .select)
         #expect(s.deviceColor == .black && s.top.screen == .login && s.rows(for: s.top) == [.logIn])
+        #expect(s.wholeSeq == whole)  // between two setup screens, only the content slides
         send(&s, .menu)  // back to the color pick, with Black selected (card AX, change 172)
         #expect(s.top.screen == .color && s.top.sel == 1 && !s.navForward)
         #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no rim light
