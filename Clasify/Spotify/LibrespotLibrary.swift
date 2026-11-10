@@ -94,6 +94,8 @@ final class LibrespotLibrary: Library {
         // A logout or another login came while the browser was open. Do not undo it.
         guard session == mine else { throw BridgeError.cancelled }
         guard let refresh = tokens.refreshToken else { throw BridgeError.noRefreshToken }
+        // `startSession` adds 1 to `session` before its first await, so this is its generation.
+        let started = session + 1
         do {
             try await startSession(tokens.accessToken)
         } catch let error as BridgeError where error.status == LSB_ERR_NOT_PREMIUM {
@@ -102,7 +104,7 @@ final class LibrespotLibrary: Library {
             // no token or an older account's token, so the login fails as on the Premium path.
             // A newer login or a logout came during the session start: save nothing, and
             // leave the session state to it.
-            guard session == mine else { throw BridgeError.cancelled }
+            guard session == started else { throw BridgeError.cancelled }
             guard RefreshTokenStore.save(refresh) else {
                 session += 1
                 username = nil
@@ -167,6 +169,7 @@ final class LibrespotLibrary: Library {
     private func refreshAndStart() async -> Restore {
         guard let refresh = RefreshTokenStore.read() else { return .refused }
         let mine = session
+        var started = -1
         do {
             let tokens = try await timed("oauth refresh") { try await LibrespotClient.oauthRefresh(refresh) }
             // A logout or a login came while the refresh ran. Do not save a token or
@@ -176,12 +179,15 @@ final class LibrespotLibrary: Library {
             // Keep the new one at once. If the Keychain refuses it, report no session,
             // so the app does not look logged in with a login that cannot come back.
             if let newRefresh = tokens.refreshToken, !RefreshTokenStore.save(newRefresh) { return .failed }
+            // `startSession` adds 1 to `session` before its first await, so this is its generation.
+            started = session + 1
             try await startSession(tokens.accessToken)
             return .done
         } catch let error as BridgeError where error.status == LSB_ERR_REFUSED {
             return .refused
         } catch let error as BridgeError where error.status == LSB_ERR_NOT_PREMIUM {
-            return .notPremium
+            // A logout or a newer login came first: this result is not for the session now.
+            return session == started ? .notPremium : .failed
         } catch {
             return .failed
         }
