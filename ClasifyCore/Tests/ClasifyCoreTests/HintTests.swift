@@ -115,6 +115,23 @@ import Testing
         #expect(s.hint == nil && s.hintsDone == Set(Hint.allCases))
     }
 
+    /// The play hint shows only while a song plays and the wheel sets the volume. A scrub stops
+    /// it, and it starts again after. A failure stops it, and its message shows at once.
+    @Test func thePlayHintStopsForAScrubAndWhenPlaybackStops() {
+        var s = mainMenu()
+        s.hintsDone = [.menu]
+        send(&s, openFocus(1))
+        send(&s, .select, .position(10, generation: s.playGen), now: 300)
+        #expect(s.hint == .playPause)
+        send(&s, .select, now: 301)  // the center: scrub
+        #expect(s.nowMode == .scrub && s.hint == nil && s.hintsDone == [.menu])
+        send(&s, .menu, now: 302)  // back to the volume
+        #expect(s.nowMode == .volume && s.hint == .playPause && s.hintAt == 302)
+        send(&s, .playbackFailed("Spotify stopped", generation: s.playGen), now: 303)
+        #expect(!s.isPlaying && s.hint == nil && s.toast == "Spotify stopped" && s.heldToast.isEmpty)
+        #expect(!s.hintsDone.contains(.playPause))
+    }
+
     /// Off Now Playing, the play hint waits. A press before it shows ends it, and the next hint too.
     @Test func thePlayHintWaitsOffNowPlayingAndEarlyPressesEndThem() {
         var s = mainMenu()

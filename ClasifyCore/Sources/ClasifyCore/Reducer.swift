@@ -968,13 +968,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     // show on Now Playing once a song has played 10 s.
     if case .reset = action {} else {
         if !playHintDone && s.hintsDone.contains(.playPause) { s.hintPlaySeq = s.navSeq }
+        func playing() -> Bool { s.top.screen == .now && s.current != nil && s.isPlaying && s.nowMode == .volume }
         func fits(_ hint: Hint) -> Bool {
             guard s.setupDone, s.signedIn, s.stack.first?.screen == .main, !s.hintsDone.contains(hint) else { return false }
             switch hint {
             case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error
-            case .playPause: return s.top.screen == .now && s.current != nil
-            case .next:
-                return s.top.screen == .now && s.current != nil && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
+            // On Now Playing, only while a song plays and the wheel sets the volume: the tip
+            // takes the time bar's place, and a scrub or a setting needs that row.
+            case .playPause: return playing()
+            case .next: return playing() && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
             }
         }
         if let hint = s.hint, !fits(hint) {
@@ -982,7 +984,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         } else if s.hint == .menu && (s.stack.count, s.top.screen) != (before.0, before.1) {
             s.hintAt = now; s.hintTip = false
         }
-        let played = s.isPlaying && s.t >= AppState.hintPlayTime
+        let played = s.t >= AppState.hintPlayTime
         if s.hint == nil && s.toast.isEmpty, let hint = Hint.allCases.first(where: { fits($0) && ($0 == .menu || played) }) {
             s.hint = hint; s.hintAt = now; s.hintTip = false
         }
