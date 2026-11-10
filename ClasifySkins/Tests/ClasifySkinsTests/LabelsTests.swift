@@ -71,6 +71,20 @@ func sampleState() -> AppState {
         #expect(words(counts) == ["107 playlists", "84 albums", "\(1240.formatted()) liked songs"])
         #expect(words(SetupProgress.counts(done: 1, total: 2, playlists: 1, albums: 1)) == ["1 playlist", "1 album", "1 liked song"])
         #expect(SetupProgress.label(counts) == "107 playlists, 84 albums, \(1240.formatted()) liked songs")
+        // Change 197: the bar and the counts grow steadily over the name time: 0.5 + 0.6 × 5 + 0.3 = 3.8 s for 6 names.
+        #expect(SetupProgress.grow(at: -1, names: 6) == 0 && SetupProgress.grow(at: 1.9, names: 6) == 0.5)
+        #expect(SetupProgress.grow(at: 3.8, names: 6) == 1 && SetupProgress.grow(at: 9, names: 6) == 1)
+        #expect(SetupProgress.grow(at: 0.4, names: 1) == 0.5 && SetupProgress.grow(at: 0, names: 0) == 1)  // no names: the real values
+        let half = SetupProgress.shown(done: 455, total: 455, playlists: 107, albums: 84, grow: 0.5)
+        #expect(half.done == 227 && half.playlists == 53 && half.albums == 42)  // rounded down
+        let full = SetupProgress.shown(done: 455, total: 455, playlists: 107, albums: 84, grow: 1)
+        #expect(full.done == 455 && full.playlists == 107 && full.albums == 84)  // they end at the real totals
+        #expect(SetupProgress.shown(done: 100, total: 455, playlists: nil, albums: 30, grow: 0.5).done == 100)  // a slower read
+        // Liked Songs read before the list came: 0 until the list comes, then it grows from 0.
+        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, waiting: true) == 0)
+        #expect(SetupProgress.grow(now: 101, namesFrom: 101, names: 6, waiting: false) == 0)
+        #expect(abs(SetupProgress.grow(now: 102.9, namesFrom: 101, names: 6, waiting: false) - 0.5) < 1e-9)
+        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, waiting: false) == 1)  // the list read failed: the real values
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
 

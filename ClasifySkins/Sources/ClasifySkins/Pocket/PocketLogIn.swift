@@ -298,12 +298,43 @@ struct SyncCable: View {
 /// The first library read's bar (card AY, change 141): 6 points, a faint track and a fill in
 /// the selection blue. Until the library knows the total, a part of the blue moves to and fro.
 /// Under it, three counts (change 188): "107 playlists", "84 albums", "455 liked songs".
+/// The bar and the counts grow at a steady speed from when the names came until the last name
+/// has shown (change 197). A slower read shows its own progress.
 struct SetupProgress: View {
     let done: Int, total: Int
     /// nil until the playlist list came.
     var playlists: Int?
     var albums = 0
+    /// When the playlist names came (`AppState.namesAt`), and how many show. nil before.
+    var namesFrom: Double?
+    var names = 0
+    /// The playlist list is still being read: the bar and the counts wait at 0 for it.
+    var waitsForNames = false
     @Environment(\.animationTime) private var fixedTime
+
+    /// Change 197: how far the bar and the counts may be, `t` seconds after the names came:
+    /// 0 to 1 at a steady speed until the last of `names` names has shown. 1 with no names.
+    nonisolated static func grow(at t: Double, names: Int) -> Double {
+        guard names > 0 else { return 1 }
+        let time = AppState.nameStart + AppState.nameGap * Double(names - 1) + AppState.nameFade
+        return min(1, max(0, t / time))
+    }
+
+    /// How far the bar and the counts may be at `now` (change 197): 0 while the list is read,
+    /// so they start when it comes and never jump back; then `grow(at:names:)`. 1 when there are
+    /// no names to wait for, for example when the list read failed.
+    nonisolated static func grow(now: Double, namesFrom: Double?, names: Int, waiting: Bool) -> Double {
+        if let namesFrom { return grow(at: now - namesFrom, names: names) }
+        return waiting ? 0 : 1
+    }
+
+    /// The numbers that show at `grow`: the real ones, scaled down and rounded down. The songs
+    /// never pass the real read, so a slower read shows its own progress.
+    nonisolated static func shown(done: Int, total: Int, playlists: Int?, albums: Int, grow: Double)
+        -> (done: Int, playlists: Int?, albums: Int) {
+        func part(_ n: Int) -> Int { Int((Double(n) * grow).rounded(.down)) }
+        return (min(done, part(total)), playlists.map(part), part(albums))
+    }
 
     /// The three count lines, as a number and its words. A line is nil until its number is
     /// known: the playlists when the list came, the albums and songs when the read has a total.
@@ -326,8 +357,17 @@ struct SetupProgress: View {
     }
 
     var body: some View {
-        let counts = Self.counts(done: done, total: total, playlists: playlists, albums: albums)
-        VStack(alignment: .leading, spacing: 6) {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil || namesFrom == nil)) { context in
+            let now = fixedTime ?? context.date.timeIntervalSinceReferenceDate
+            let grow = Self.grow(now: now, namesFrom: namesFrom, names: names, waiting: waitsForNames)
+            content(Self.shown(done: done, total: total, playlists: playlists, albums: albums, grow: grow))
+        }
+    }
+
+    private func content(_ shown: (done: Int, playlists: Int?, albums: Int)) -> some View {
+        let done = shown.done
+        let counts = Self.counts(done: done, total: total, playlists: shown.playlists, albums: shown.albums)
+        return VStack(alignment: .leading, spacing: 6) {
             if total > 0 {
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -337,7 +377,7 @@ struct SetupProgress: View {
                     }
                 }
                 .frame(height: 6)
-                .animation(.linear(duration: 0.3), value: done)  // the fill grows between the library's reports
+                .animation(.linear(duration: 0.3), value: self.done)  // the fill grows between the library's reports
             } else {
                 sweep
             }
