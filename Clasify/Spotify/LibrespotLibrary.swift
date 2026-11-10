@@ -98,8 +98,14 @@ final class LibrespotLibrary: Library {
             try await startSession(tokens.accessToken)
         } catch let error as BridgeError where error.status == LSB_ERR_NOT_PREMIUM {
             // Keep the login for "Check again" on the Premium screen (card AX, screen 135).
-            // "Log out" there forgets it.
-            _ = RefreshTokenStore.save(refresh)
+            // "Log out" there forgets it. If the Keychain refuses it, "Check again" would use
+            // no token or an older account's token, so the login fails as on the Premium path.
+            guard RefreshTokenStore.save(refresh) else {
+                session += 1
+                username = nil
+                client.logout()
+                throw BridgeError.keychain
+            }
             throw error
         }
         // Keep the login only after it worked.

@@ -40,7 +40,9 @@ public enum Action: Equatable, Sendable {
     /// The login worked, but the account is not Spotify Premium, so it ended (CLA-66). From a
     /// browser login, a restore, "Check again", or a session that found it out later. The
     /// Premium screen shows (card AX, screen 135). The stored login stays for "Check again".
-    case notPremium
+    /// `token` is the attempt of the login or restore, as in `.authDone` and `.restored`, so
+    /// a late result of an older attempt is dropped. nil: a session that is in found it out.
+    case notPremium(token: Int?)
     case offline(Bool)
     /// The Mac's battery changed, as the app reads it from IOKit. nil when the Mac has no
     /// battery (an iMac or a Mac mini): the title bar shows no battery.
@@ -779,10 +781,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.beatUntil = now + AppState.beatTime
             }
 
-        case .notPremium:
-            // Only for a login that runs or a session that is in. A late one after a logout
-            // or a reset is dropped.
-            guard s.top.screen == .auth || s.restoring || s.signedIn else { return }
+        case .notPremium(let token):
+            // Only for the login or restore that runs now, or a session that is in. A late one
+            // from an older attempt ("Open browser again"), a logout or a reset is dropped.
+            if let token {
+                let login = s.top.screen == .auth && s.top.token == token
+                guard login || (s.restoring && s.authAttempt == token) else { return }
+            } else {
+                guard s.signedIn else { return }
+            }
             s.restoring = false
             s.authAttempt += 1  // a late result of this login is stale
             if s.top.screen == .premium { return }  // "Check again": still no Premium, no change

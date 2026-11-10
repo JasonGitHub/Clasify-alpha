@@ -95,7 +95,7 @@ final class SessionKeeper {
             // No retry: a new login would end the same way. The Premium screen shows, and
             // its "Check again" logs in again (CLA-66). Signed out, so the poll stops.
             log.error("account is not Premium after \(ms, privacy: .public) ms")
-            store?.send(.notPremium)
+            store?.send(.notPremium(token: nil))
             return false
         case .failed:
             let wait = backoff.failed()

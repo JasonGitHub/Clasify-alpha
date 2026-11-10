@@ -167,7 +167,7 @@ public final class Store {
                 let library = self.library
                 Task { [weak self] in
                     let result = await library.logIn()
-                    self?.send(result == .notPremium ? .notPremium : .authDone(token: token, ok: result == .ok))
+                    self?.send(result == .notPremium ? .notPremium(token: token) : .authDone(token: token, ok: result == .ok))
                 }
             case .getSpotifyApp: onGetSpotifyApp?()
             case .getPremium: onGetPremium?()
@@ -178,7 +178,7 @@ public final class Store {
                 let library = self.library
                 Task { [weak self] in
                     let result = await library.restoreSession()
-                    self?.send(result == .notPremium ? .notPremium : .restored(token: token, ok: result == .ok))
+                    self?.send(result == .notPremium ? .notPremium(token: token) : .restored(token: token, ok: result == .ok))
                 }
             case .logOut: library.logOut()
             }
