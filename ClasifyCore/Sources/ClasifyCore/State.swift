@@ -372,13 +372,11 @@ public struct AppState: Equatable, Sendable {
     /// The Now Playing Bar setting (Round 11 card AK, change 109): the bar for the playing song
     /// on every list. Off by default.
     public var nowPlayingBar = false
-    /// The About art scene that shows, from 0. Each open of About shows the next scene, and the
-    /// first open after launch shows scene 0. In memory only: nothing is saved.
-    public var aboutScene = 0
-    /// How many times About opened since launch.
-    public var aboutOpens = 0
-    /// The About art scenes: the castle, the takoyaki, then Dotonbori.
-    public static let aboutScenes = 3
+    /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
+    public var aboutAt: Double = 0
+    /// About is one page that scrolls 5 wheel steps (card BF, change 207). Its step is the
+    /// frame's `off`. From step 3 the Licenses row is selected (change 211).
+    public static let aboutSteps = 5, aboutLicensesStep = 3
     /// nil when the Mac has no battery, or before the app reads it.
     public var battery: Battery?
     public var nowMode = NowMode.volume

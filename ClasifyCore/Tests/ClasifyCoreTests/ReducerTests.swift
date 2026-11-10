@@ -129,20 +129,28 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.deviceColor == .black)  // a saved setting: a reset keeps it
     }
 
-    @Test func aboutShowsTheNextSceneEachTimeItOpens() {
+    /// Card BF, change 207: About is one page of 5 wheel steps, one step a turn. It opens at the
+    /// top, and the scroll bar shows from 0.3 s to 1.8 s, then for 1.5 s after each step.
+    @Test func aboutScrollsFiveStepsOneATurn() {
         var s = mainMenu()
         send(&s, .wheel(5), .select, .wheel(6))  // Settings, on the About row
-        #expect(s.rows(for: s.top)[s.top.sel] == .about && s.aboutScene == 0)
-        var scenes: [Int] = []
-        for _ in 0..<4 {
-            send(&s, .select)
-            #expect(s.top.screen == .about)
-            scenes.append(s.aboutScene)
-            send(&s, .menu)
-        }
-        #expect(scenes == [0, 1, 2, 0])  // the castle, the takoyaki, Dotonbori, then the castle again
-        send(&s, .reset)
-        #expect(s.aboutOpens == 4)  // a reset keeps the count
+        #expect(s.rows(for: s.top)[s.top.sel] == .about)
+        send(&s, .select, now: 1000)
+        #expect(s.top.screen == .about && s.top.off == 0 && s.aboutAt == 1000 && abs(s.scrollUntil - 1001.8) < 1e-9)
+        var old = s
+        send(&s, .wheel(3), now: 1010)
+        #expect(s.top.off == 1 && s.scrollUntil == 1011.5 && wheelMoved(from: old, to: s))  // a fast turn moves one step
+        for _ in 0..<6 { send(&s, .wheel(1)) }
+        #expect(s.top.off == AppState.aboutSteps)  // the end of the page
+        old = s
+        send(&s, .wheel(1), now: 1020)
+        #expect(s.top.off == 5 && s.scrollUntil < 1020 && !wheelMoved(from: old, to: s))  // no bar, no click
+        send(&s, .wheel(-1))
+        #expect(s.top.off == 4)
+        send(&s, .menu)
+        #expect(s.top.screen == .settings)
+        send(&s, .select)
+        #expect(s.top.off == 0)  // it opens at the top again
     }
 
     @Test func batteryChangedSetsTheBatteryAndAResetKeepsIt() {

@@ -1,91 +1,138 @@
 import AppKit
+import ClasifyCore
 import SwiftUI
 
-/// The About screen, option E, Round 8 card AB (Jason, 11-07 17:08 JST): a capybara scene in
-/// Osaka, faded into the glass, then "Clasify", "Made with ♥ in Osaka" and the version. Each open shows the next
-/// scene (17:11 JST; Dotonbori added 17:24 JST); the store picks it. The points are from the top of the 300 x 206 area under
-/// the title bar. It is the same on both body colors.
+/// The About screen, card BF (About J1, Jason 23:05 JST 11-10, changes 207, 208, 211 and 212):
+/// one page that scrolls 5 wheel steps of 22.9 pt. The headphone capybara on its ground shadow,
+/// "Clasify", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version and
+/// Licenses rows, then the legal text. The points are from the top of the 321.5 pt page.
 struct PocketAbout: View {
-    /// A bundled art scene, with its vertical crop anchor and its VoiceOver label.
-    struct Art {
-        let image: NSImage?
-        let anchor: Double
-        let label: String
+    let state: AppState
+    /// The scroll bar waits 0.3 s after About opens.
+    @State private var barReady = false
+
+    static let step: CGFloat = 22.9, page: CGFloat = 321.5
+    /// The capybara, 440 px square. Nil only if the package was built without it.
+    @MainActor static let stand = art("about-hp-stand")
+
+    static func art(_ name: String) -> NSImage? {
+        Bundle.module.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
     }
 
-    /// The scenes in the store's order: 0 the castle, 1 the takoyaki, 2 Dotonbori. Each JPEG is
-    /// 600 x 280 px.
-    /// An image is nil only if the package was built without it.
-    @MainActor static let scenes = [
-        Art(image: art("about-castle"), anchor: 0.40, label: "Capybara at Osaka Castle"),
-        Art(image: art("about-takoyaki"), anchor: 0.45, label: "Capybara eating takoyaki"),
-        Art(image: art("about-dotonbori"), anchor: 0.5, label: "Capybara in Dotonbori"),
-    ]
+    /// The steel of "Clasify", and of the other lines (change 209).
+    static let nameSteel = steel([0x7d8892, 0x5a646e, 0x262c33, 0x3c444d, 0x8f99a3])
+    static let lineSteel = steel([0x9aa4ae, 0x76808a, 0x46505a, 0x5a646e, 0xa7b1bb])
 
-    private static func art(_ name: String) -> NSImage? {
-        Bundle.module.url(forResource: name, withExtension: "jpg").flatMap { NSImage(contentsOf: $0) }
+    private static func steel(_ colors: [UInt32]) -> LinearGradient {
+        let stops = zip(colors, [0, 0.3, 0.52, 0.7, 1]).map { Gradient.Stop(color: Color(hex: $0.0), location: $0.1) }
+        return LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
     }
-
-    let scene: Int
 
     var body: some View {
-        let current = Self.scenes[min(max(scene, 0), Self.scenes.count - 1)]
-        ZStack(alignment: .top) {
-            if let image = current.image {
-                Self.fill(image, anchor: current.anchor)
-                    .accessibilityElement()
-                    .accessibilityLabel(current.label)
-            }
-            // The art fades into the glass, with no hard edge where it ends.
-            fade.frame(height: 82).offset(y: 60)
-            // Card AB: each line box is as tall as its font (CSS line-height 1). The name's box
-            // starts at y 142, and the second line's box starts 3 pt under it, at y 161.
-            Text("Clasify").font(.helvetica(16, bold: true)).foregroundStyle(Pocket.ink)
-                .frame(height: 16)
-                .offset(y: 142)
-            HStack(spacing: 3.5) {
-                Text("Made with")
-                Heart().fill(Color(hex: 0xe0565b)).frame(width: 10, height: 9)
-                Text("in Osaka")
-            }
-            .font(.helvetica(11))
-            .foregroundStyle(Color(hex: 0x5d6772))
-            .frame(height: 11)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Made with love in Osaka")
-            .offset(y: 161)
-            Text(Labels.aboutVersion)
-                .font(.helvetica(8))
-                .foregroundStyle(Color(hex: 0x8a949e))
-                .frame(height: 8)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, 7)
+        let off = state.top.off
+        ZStack(alignment: .topLeading) {
+            page(licenses: off >= AppState.aboutLicensesStep)
+                .frame(width: Pocket.screenWidth, height: Self.page, alignment: .top)
+                .offset(y: -CGFloat(off) * Self.step)
+                .animation(.easeOut(duration: 0.15), value: off)
+            scrollBar(off)
         }
-        .frame(width: Pocket.screenWidth, height: Pocket.listHeight, alignment: .top)
+        .frame(width: Pocket.screenWidth, height: Pocket.listHeight, alignment: .topLeading)
         .clipped()
+        .task(id: state.aboutAt) {
+            barReady = false
+            try? await Task.sleep(for: .seconds(0.3))
+            barReady = true
+        }
     }
 
-    /// The art fills 300 x 140, centered across. Down, the spare height splits at `anchor`, so
-    /// 0.4 cuts 40% of it from the top and 60% from the bottom.
-    private static func fill(_ image: NSImage, anchor: Double) -> some View {
-        let box = CGSize(width: Pocket.screenWidth, height: 140)
-        let size = image.size.width > 0 && image.size.height > 0 ? image.size : box
-        let scale = max(box.width / size.width, box.height / size.height)
-        let drawn = CGSize(width: size.width * scale, height: size.height * scale)
-        return Image(nsImage: image)
-            .resizable()
-            .frame(width: drawn.width, height: drawn.height)
-            .offset(x: (box.width - drawn.width) / 2, y: (box.height - drawn.height) * anchor)
-            .frame(width: box.width, height: box.height, alignment: .topLeading)
-            .clipped()
+    private func page(licenses: Bool) -> some View {
+        ZStack(alignment: .top) {
+            capybara.offset(y: 20)
+            plate.offset(y: 127)  // under the 96 pt capybara and its 11 pt gap
+            PocketRow(text: .init(label: "Version", value: Labels.version), selected: false, scrolls: false)
+                .offset(y: 214)
+            PocketRow(text: .init(label: "Licenses", opens: true), selected: licenses, scrolls: false)
+                .offset(y: 236.9)
+            legal.offset(y: 270)
+        }
     }
 
-    /// Clear to the glass color at y 142, about rgb(226, 235, 242), with the spec's stops.
-    private var fade: some View {
-        let glass = Color(red: 226 / 255, green: 235 / 255, blue: 242 / 255)
-        let stops: [(Double, Double)] = [(0, 0), (0.18, 0.08), (0.40, 0.30), (0.63, 0.62), (0.84, 0.90), (1, 1)]
-        return LinearGradient(
-            stops: stops.map { .init(color: glass.opacity($0.1), location: $0.0) }, startPoint: .top, endPoint: .bottom)
+    /// 96 pt, on a soft ground shadow 52 x 7 pt that ends 3 pt under the box.
+    private var capybara: some View {
+        ZStack {
+            EllipticalGradient(colors: [Color(hex: 0x1b1f24, opacity: 0.2), Color(hex: 0x1b1f24, opacity: 0)])
+                .frame(width: 52, height: 7)
+                .offset(y: 47.5)
+            if let stand = Self.stand {
+                Image(nsImage: stand).resizable().interpolation(.high)
+            }
+        }
+        .frame(width: 96, height: 96)
+        .accessibilityElement()
+        .accessibilityLabel("Capybara with headphones")
+    }
+
+    /// "Clasify" 20 bold, the tagline 14, and 60 pt under the top "Made with ♥ by CappyAI" 11.
+    /// The steel has a white line under it and a faint dark line over it.
+    private var plate: some View {
+        VStack(spacing: 0) {
+            Self.engraved(Text("Clasify").font(.helvetica(20, bold: true)), height: 23, Self.nameSteel)
+            Self.engraved(Text("AI-native craftsmanship").font(.helvetica(14)), height: 16, Self.lineSteel)
+                .padding(.top, 2)
+        }
+        .overlay(alignment: .top) {
+            HStack(spacing: 3.5) {
+                Self.engraved(Text("Made with").font(.helvetica(11)), height: 13, Self.lineSteel)
+                Heart().fill(Color(hex: 0xe0565b)).frame(width: 10, height: 9)
+                Self.engraved(Text("by").font(.helvetica(11)), height: 13, Self.lineSteel)
+                Self.engraved(Text("CappyAI").font(.helvetica(11, weight: .medium)), height: 13, Self.lineSteel)
+            }
+            .fixedSize()
+            .offset(y: 60)
+        }
+        .shadow(color: .white.opacity(0.9), radius: 0, y: 1)
+        .shadow(color: .black.opacity(0.18), radius: 0, y: -0.5)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Clasify. AI-native craftsmanship. Made with love by CappyAI.")
+    }
+
+    /// 10 pt lines, 14 pt apart, each line in its own steel.
+    private var legal: some View {
+        VStack(spacing: 0) {
+            ForEach(["© 2026 CappyAI Ltd. All rights reserved.", "Spotify is a trademark of Spotify AB.",
+                     "Clasify is not affiliated with Spotify."], id: \.self) { line in
+                Self.engraved(Text(line).font(.helvetica(10)), height: 14, Self.lineSteel)
+            }
+        }
+        .shadow(color: .white.opacity(0.85), radius: 0, y: 1)
+        .shadow(color: .black.opacity(0.12), radius: 0, y: -0.5)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The text in a steel gradient that spans its line box, as CSS background-clip: text.
+    private static func engraved(_ text: Text, height: CGFloat, _ steel: LinearGradient) -> some View {
+        let line = text.lineLimit(1).fixedSize().frame(height: height)
+        return line.hidden().overlay { steel.mask { line } }
+    }
+
+    /// A 3 pt thumb, 64.1% of the track, on the right; the track is 2 pt in from the top and the
+    /// bottom. It moves with the page and shows as the list scroll bars do.
+    private func scrollBar(_ off: Int) -> some View {
+        GeometryReader { geo in
+            let track = geo.size.height
+            Capsule().fill(Color(hex: 0x5d6772))
+                .frame(height: track * 0.641)
+                .offset(y: track * 0.359 * CGFloat(off) / CGFloat(AppState.aboutSteps))
+                .animation(.easeOut(duration: 0.15), value: off)
+        }
+        .frame(width: 3)
+        .padding(.vertical, 2)
+        .padding(.trailing, 1.5)
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .opacity(barReady && state.scrollUntil > 0 ? 1 : 0)
+        .animation(.easeInOut(duration: 0.4), value: barReady && state.scrollUntil > 0)
+        .accessibilityHidden(true)
     }
 }
 

@@ -470,6 +470,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if s.colorTurnAt == 0 { s.colorTurnAt = now }  // card AW: the first turn
                 s.colorTurns += d  // change 202: the light follows the steps
             }
+            if s.top.screen == .about {
+                // Card BF, change 207: one step a turn, however fast. A step that moves shows
+                // the scroll bar for 1.5 s.
+                let off = clamp(s.top.off + d.signum(), 0, AppState.aboutSteps)
+                if off != s.top.off { s.top.off = off; s.scrollUntil = now + scrollBarTime }
+                return
+            }
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
@@ -575,8 +582,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.deviceColor = color
                 if s.signedIn { setupNext() } else { s.stack.append(Frame(screen: .login)) }
             case .about:
-                s.aboutScene = s.aboutOpens % AppState.aboutScenes; s.aboutOpens += 1
+                // Card BF: it opens at the top. The scroll bar shows from 0.3 s for 1.5 s.
                 s.stack.append(Frame(screen: .about))
+                s.aboutAt = now; s.scrollUntil = now + 0.3 + scrollBarTime
             case .logOut: s.stack.append(Frame(screen: .confirm))
             case .cancel:
                 if s.top.screen == .auth { fx.append(.cancelLogIn) }
@@ -896,9 +904,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
             let (battery, spotifyApp) = (s.battery, s.spotifyApp)  // the Mac, which a reset does not change
-            let aboutOpens = s.aboutOpens  // About counts from launch, not from a reset
             s = AppState()
-            s.aboutOpens = aboutOpens
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
             s.battery = battery; s.spotifyApp = spotifyApp
         }

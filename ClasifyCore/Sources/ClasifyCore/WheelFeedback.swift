@@ -5,6 +5,7 @@
 public func wheelMoved(from old: AppState, to new: AppState) -> Bool {
     guard old.stack.count == new.stack.count, old.top.screen == new.top.screen else { return false }
     if new.top.screen.isList || new.top.screen == .coverFlow { return old.top.sel != new.top.sel }
+    if new.top.screen == .about { return old.top.off != new.top.off }  // card BF: the page moved
     guard new.top.screen == .now, old.nowMode == new.nowMode else { return false }
     switch new.nowMode {
     case .volume: return old.volume != new.volume
