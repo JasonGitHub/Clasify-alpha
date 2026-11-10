@@ -175,7 +175,7 @@ struct PocketScreen: View {
                 .environment(\.navForward, state.navForward)
                 if state.showsBar, let now = Labels.now(in: state) {
                     Pocket.line.frame(height: 1)
-                    bar(now)
+                    NowBar(now: now, t: state.t)
                 }
             }
             .frame(width: width)
@@ -340,27 +340,6 @@ struct PocketScreen: View {
         }
     }
 
-    private func bar(_ now: Labels.NowText) -> some View {
-        HStack(spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                // A music note, the same when paused: play and pause show only in the title bar.
-                // Its middle sits on the middle of the text's x-height, as in the mockup.
-                IconView(.barNote, width: 11, height: 11).accessibilityHidden(true)
-                    .alignmentGuide(.firstTextBaseline) { _ in Pocket.barNoteBaseline }
-                FadeLine(Text("\(now.title)\(now.artist.isEmpty ? "" : " — \(now.artist)")"))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            Text(Labels.time(state.t)).monospacedDigit()
-        }
-        // The note, the song, " — artist" and the time all share one style: 10.5 bold gray.
-        .font(.helvetica(10.5, bold: true))
-        .foregroundStyle(Color(hex: 0x5d6772))
-        .padding(.leading, 9)
-        .padding(.trailing, 8)
-        .frame(height: Pocket.barHeight)  // 22.9 with the line over it, like a row
-        .background(Color(hex: 0xe8eef3))
-    }
-
     /// The toast (Round 15 card BD, changes 185 and 186): a dark rounded box that fits its
     /// text, at most 272 points wide, centered 16 points above the screen's bottom. On Now
     /// Playing it sits 44 points up, over the time bar. The text wraps, with no "…".
@@ -397,7 +376,7 @@ struct PocketList: View {
         let shown = Array(rows.indices.dropFirst(first).prefix(state.shownRows))
         let scrolls = rows.count > state.shownRows
         // The rows fill the list exactly: 206 points under the title bar, 183.1 over the bar
-        // (only song lists show it). Menus show 9 rows of 22.9. Song rows have two lines, so
+        // (card AK). Menus show 9 rows of 22.9, or 8 over the bar. Song rows have two lines, so
         // 5 of them fit: 36.6 points over the bar, 41.2 with no bar.
         let height = (state.showsBar ? Pocket.listHeight - Pocket.barHeight - 1 : Pocket.listHeight)
             / CGFloat(state.shownRows)

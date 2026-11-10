@@ -162,7 +162,7 @@ public struct Frame: Equatable, Sendable {
 public enum Row: Equatable, Sendable {
     case logIn, nowPlaying, coverFlow, playlists, albums, likedSongs, shuffleSongs, settings
     case playlist(String), album(String), track(String)
-    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, about, logOut
+    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, about, logOut
     case cancel, confirmLogOut
     /// Rows of the login (card AX): open the browser again while it waits (170), and try
     /// again after a failed login (171). `cancel` stops the login.
@@ -362,6 +362,9 @@ public struct AppState: Equatable, Sendable {
         return colors[top.sel]
     }
     public var clicker = true
+    /// The Now Playing Bar setting (Round 11 card AK, change 109): the bar for the playing song
+    /// on every list. Off by default.
+    public var nowPlayingBar = false
     /// The About art scene that shows, from 0. Each open of About shows the next scene, and the
     /// first open after launch shows scene 0. In memory only: nothing is saved.
     public var aboutScene = 0
@@ -413,12 +416,20 @@ public struct AppState: Equatable, Sendable {
     /// fingers down are +1 (the next row), whatever the natural scrolling setting (CLA-48).
     public var wheelMovesBar: Bool { top.screen == .now }
 
-    /// The bar for the playing track shows only under song lists. Menus, Playlists and Now
-    /// Playing show no bar, so the menus keep all their rows.
+    /// The bar for the playing track, at the bottom of the screen (card AK, change 110): only
+    /// with the Now Playing Bar setting on, while a song is loaded, on the main menu, Playlists,
+    /// Albums, song lists and Settings. Not on Now Playing or the Cover Flow covers. The song
+    /// panel shows its own bar inside it (`showsPanelBar`).
     public var showsBar: Bool {
-        guard current != nil, case .tracks = top.screen else { return false }
-        return true
+        guard nowPlayingBar, current != nil else { return false }
+        switch top.screen {
+        case .main, .playlists, .albums, .tracks, .settings: return true
+        default: return false
+        }
     }
+
+    /// Cover Flow's song panel shows the bar inside its bottom edge (change 112).
+    public var showsPanelBar: Bool { nowPlayingBar && current != nil }
 
     /// The Cover Flow frame, while Cover Flow or its song panel shows. Its `sel` is the album
     /// in the middle, also while the panel shows the album's songs.
@@ -444,12 +455,13 @@ public struct AppState: Equatable, Sendable {
     }
 
     /// The list rows that show at once: `visibleRows`, or `trackRows` for the taller two-line
-    /// song rows. The bar takes no row: the song rows get shorter while it shows.
+    /// song rows. With the bar, one-line lists show one row less (change 111), and the song
+    /// rows get shorter instead. The song panel's bar takes a row of the panel.
     public var shownRows: Int {
         switch top.screen {
         case .tracks, .albums: return trackRows  // two-line rows
-        case .albumPanel: return panelRows
-        default: return visibleRows
+        case .albumPanel: return showsPanelBar ? panelRows - 1 : panelRows
+        default: return showsBar ? visibleRows - 1 : visibleRows
         }
     }
 
@@ -610,7 +622,7 @@ public struct AppState: Equatable, Sendable {
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
-        case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut]
+        case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]

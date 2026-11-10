@@ -40,7 +40,7 @@ struct AlbumPanelCard: View {
 
     var body: some View {
         let text = panel.text(in: state)
-        let height = AlbumPanel.height(songs: text.songs.count)
+        let height = AlbumPanel.height(songs: text.songs.count, bar: panel.bar)
         Group {
             if turn < 0.5 {
                 // The cover, stretched to the card, so the card's scale makes it 120 x 120 again.
@@ -49,7 +49,8 @@ struct AlbumPanelCard: View {
                     .scaleEffect(x: AlbumPanel.width / CoverFlowStrip.side, y: height / CoverFlowStrip.side, anchor: .topLeading)
                     .frame(width: AlbumPanel.width, height: height, alignment: .topLeading)
             } else {
-                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: state.scrollUntil > 0, message: panel.message)
+                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: state.scrollUntil > 0,
+                           message: panel.message, now: panel.bar ? Labels.now(in: state) : nil, t: state.t)
                     // The back of the card: turned over once more, so it reads the right way.
                     .scaleEffect(x: turn < 1 ? -1 : 1, y: 1)
             }
@@ -100,26 +101,38 @@ struct AlbumPanel: View {
     let scrollBar: Bool
     /// Loading, an error or no songs: it shows in place of the rows (CLA-46).
     var message: Labels.Message? = nil
+    /// The playing song, for the bar inside the panel's bottom edge (card AK, change 112). Nil: no bar.
+    var now: Labels.NowText? = nil
+    var t: Double = 0
 
     /// 244 points wide, 28 from each side and 9 under the title bar.
     static let width: CGFloat = 244, left: CGFloat = 28, top: CGFloat = 9
     static let barHeight: CGFloat = 41, rowHeight: CGFloat = 23
 
-    /// 41 + 23 a song, at least 188 (the same 9 point gap below as above) and at most 197.
-    static func height(songs: Int) -> CGFloat {
-        max(188, min(197, barHeight + rowHeight * CGFloat(songs)))
+    /// The bar for the playing song inside the bottom edge: 22.9 points with its line (card AK).
+    static let nowBarHeight = Pocket.barHeight + 1
+
+    /// 41 + 23 a song (+ 22.9 for the bar), at least 188 (the same 9 point gap below as above)
+    /// and at most 197.
+    static func height(songs: Int, bar: Bool = false) -> CGFloat {
+        max(188, min(197, barHeight + rowHeight * CGFloat(songs) + (bar ? nowBarHeight : 0)))
+    }
+
+    /// The height of the rows' room: under the top bar, and over the bar for the playing song.
+    static func rowsHeight(_ height: CGFloat, bar: Bool = false) -> CGFloat {
+        height - barHeight - (bar ? nowBarHeight : 0)
     }
 
     /// How far the rows move up: `off` rows, but never past the last row's bottom at the
-    /// panel's bottom.
-    static func scroll(off: Int, songs: Int, height: CGFloat) -> CGFloat {
-        min(CGFloat(max(off, 0)) * rowHeight, max(0, rowHeight * CGFloat(songs) - (height - barHeight)))
+    /// bottom of the rows' room.
+    static func scroll(off: Int, songs: Int, height: CGFloat, bar: Bool = false) -> CGFloat {
+        min(CGFloat(max(off, 0)) * rowHeight, max(0, rowHeight * CGFloat(songs) - rowsHeight(height, bar: bar)))
     }
 
     /// The scroll bar's thumb in a track `track` points long: its length shows the part of the
     /// list on screen, at least `PocketList.minThumb`. Nil when all rows fit.
-    static func thumb(track: CGFloat, songs: Int, scroll: CGFloat, height: CGFloat) -> (length: CGFloat, offset: CGFloat)? {
-        let view = height - barHeight, all = rowHeight * CGFloat(songs)
+    static func thumb(track: CGFloat, songs: Int, scroll: CGFloat, height: CGFloat, bar: Bool = false) -> (length: CGFloat, offset: CGFloat)? {
+        let view = rowsHeight(height, bar: bar), all = rowHeight * CGFloat(songs)
         guard all > view else { return nil }
         let length = max(PocketList.minThumb, track * view / all)
         return (length, (track - length) * scroll / (all - view))
@@ -136,7 +149,7 @@ struct AlbumPanel: View {
     }
 
     var body: some View {
-        let scroll = Self.scroll(off: off, songs: text.songs.count, height: height)
+        let scroll = Self.scroll(off: off, songs: text.songs.count, height: height, bar: now != nil)
         VStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 FadeLine(Text(text.album)).font(.helvetica(15, bold: true)).foregroundStyle(.white)
@@ -159,8 +172,12 @@ struct AlbumPanel: View {
                     .offset(y: -scroll)
                 }
             }
-            .frame(width: Self.width, height: height - Self.barHeight, alignment: .top)
+            .frame(width: Self.width, height: Self.rowsHeight(height, bar: now != nil), alignment: .top)
             .clipped()
+            if let now {
+                Pocket.line.frame(height: 1)
+                NowBar(now: now, t: t)
+            }
         }
         .overlay(alignment: .topTrailing) { scrollBarView(scroll: scroll) }
         .frame(width: Self.width, height: height)
@@ -203,8 +220,8 @@ struct AlbumPanel: View {
     /// Our song list's scroll bar: 3 points, #5d6772, 2 points under the top bar and 2 from
     /// the right. It shows on open and while the wheel moves, then fades out over 0.4 s.
     @ViewBuilder private func scrollBarView(scroll: CGFloat) -> some View {
-        let track = height - Self.barHeight - 4
-        if let thumb = Self.thumb(track: track, songs: text.songs.count, scroll: scroll, height: height) {
+        let track = Self.rowsHeight(height, bar: now != nil) - 4
+        if let thumb = Self.thumb(track: track, songs: text.songs.count, scroll: scroll, height: height, bar: now != nil) {
             Capsule().fill(Color(hex: 0x5d6772))
                 .frame(width: 3, height: thumb.length)
                 .offset(y: thumb.offset)
@@ -223,6 +240,8 @@ struct AlbumPanel: View {
         let sel: Int, off: Int
         /// Loading, an error or no songs (CLA-46).
         let message: Labels.Message?
+        /// The bar for the playing song shows inside the panel (card AK, change 112).
+        let bar: Bool
 
         /// Nil unless the song panel is on top, or under Now Playing while its cover flies there.
         init?(_ state: AppState) {
@@ -232,6 +251,7 @@ struct AlbumPanel: View {
             sel = frame.sel
             off = frame.off
             message = Labels.message(for: frame, in: state)
+            bar = state.showsPanelBar
         }
 
         /// The panel's text. While a message shows, it has no songs, so the panel is its
@@ -263,11 +283,12 @@ struct CoverFly: View, Animatable {
 
     var body: some View {
         let text = panel.text(in: state)
-        let height = AlbumPanel.height(songs: text.songs.count)
+        let height = AlbumPanel.height(songs: text.songs.count, bar: panel.bar)
         Group {
             if fly < 0.5 {
                 // The panel's back, turned the right way, as in `AlbumPanelCard`.
-                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: false, message: panel.message)
+                AlbumPanel(text: text, sel: panel.sel, off: panel.off, height: height, scrollBar: false,
+                           message: panel.message, now: panel.bar ? Labels.now(in: state) : nil, t: state.t)
                     .scaleEffect(x: -1, y: 1)
             } else {
                 CoverArt(image: state.albumCovers[panel.album].flatMap { artwork.lookup($0) }, notesSize: 51)

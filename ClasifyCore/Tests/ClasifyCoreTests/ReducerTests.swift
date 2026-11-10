@@ -84,6 +84,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func listKeepsTheSelectionInTheRowsThatShow() {
         var s = mainMenu()
+        s.nowPlayingBar = true
         send(&s, openFocus(1))
         send(&s, .wheel(7))
         #expect(s.shownRows == 5 && s.top.sel == 7 && s.top.off == 3)
@@ -109,13 +110,13 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .select)
         #expect(s.albumArt == .all && s.isHalf(.main) && s.isHalf(.playlists) && s.showsNowPlayingArt)
         #expect(!s.rows(for: s.top).contains(.skin))  // only the Pocket skin in 1.0
-        #expect(s.rows(for: s.top).count == 7)  // no Playback engine, EQ or Skin row in 1.0
+        #expect(s.rows(for: s.top).count == 8)  // no Playback engine, EQ or Skin row in 1.0
     }
 
     @Test func deviceColorGoesSilverBlackSilver() {
         var s = mainMenu()
         send(&s, .wheel(5), .select)
-        #expect(s.rows(for: s.top) == [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .about, .logOut])
+        #expect(s.rows(for: s.top) == [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut])
         #expect(s.deviceColor == .silver)  // the default
         send(&s, .wheel(3), .select)
         #expect(s.deviceColor == .black && s.top.screen == .settings)
@@ -128,7 +129,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func aboutShowsTheNextSceneEachTimeItOpens() {
         var s = mainMenu()
-        send(&s, .wheel(5), .select, .wheel(5))  // Settings, on the About row
+        send(&s, .wheel(5), .select, .wheel(6))  // Settings, on the About row
         #expect(s.rows(for: s.top)[s.top.sel] == .about && s.aboutScene == 0)
         var scenes: [Int] = []
         for _ in 0..<4 {
@@ -365,17 +366,42 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.volume == 100)  // 60 + 8 x 5: on Now Playing each step stays one step
     }
 
-    @Test func theBarShowsOnlyOnSongLists() {
+    /// Card AK: with Now Playing Bar off (the default), no list shows the bar, also not song lists.
+    @Test func theBarIsOffByDefault() {
         var s = playing()
-        #expect(!s.showsBar && s.shownRows == 9)  // Now Playing
+        #expect(!s.nowPlayingBar && !s.showsBar && s.shownRows == 9)  // Now Playing
         send(&s, .menu)
-        #expect(s.showsBar && s.shownRows == 5)  // five two-line song rows over the bar
+        #expect(!s.showsBar && s.shownRows == 5)  // five taller song rows fill the screen
         send(&s, .menu)
-        #expect(!s.showsBar && s.shownRows == 9)  // Playlists: 9 rows, no bar
+        #expect(!s.showsBar && s.shownRows == 9)  // Playlists
         send(&s, .menu)
-        #expect(!s.showsBar && s.shownRows == 9)  // the main menu
+        #expect(!s.showsBar && s.shownRows == 9 && !s.showsPanelBar)  // the main menu
+    }
+
+    /// Card AK, changes 109-111: Settings' Now Playing Bar row turns the bar on. Then it shows on
+    /// every list while a song is loaded, and one-line lists show 8 rows.
+    @Test func nowPlayingBarShowsTheBarOnEveryList() {
+        var s = mainMenu()
+        send(&s, .wheel(5), .select, .wheel(5))  // Settings, on the Now Playing Bar row
+        #expect(s.rows(for: s.top)[s.top.sel] == .nowPlayingBar)
+        send(&s, .select)
+        #expect(s.nowPlayingBar && s.top.screen == .settings && !s.showsBar)  // nothing loaded: no bar
+        send(&s, .select)
+        #expect(!s.nowPlayingBar)  // a second press turns it off
+        s = playing()
+        s.nowPlayingBar = true
+        #expect(!s.showsBar && s.shownRows == 9)  // never on Now Playing
+        send(&s, .menu)
+        #expect(s.showsBar && s.shownRows == 5)  // song lists keep 5 rows, over the bar
+        send(&s, .menu)
+        #expect(s.showsBar && s.shownRows == 8)  // Playlists: 8 rows over the bar
+        send(&s, .menu)
+        #expect(s.showsBar && s.shownRows == 8 && s.showsPanelBar)  // the main menu
+        send(&s, .wheel(10), .select)  // Settings: its 8 rows fit over the bar
+        #expect(s.top.screen == .settings && s.showsBar && s.shownRows == 8)
         s = mainMenu()
-        send(&s, openFocus(1))  // a song list with nothing playing: 5 taller rows
+        s.nowPlayingBar = true
+        send(&s, openFocus(1))  // a song list with nothing playing: no bar
         #expect(s.top.screen == .tracks(playlist: "focus") && !s.showsBar && s.shownRows == 5)
     }
 
@@ -1055,7 +1081,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func logOutGoesThroughConfirm() {
         var s = playing()
-        send(&s, .menu, .menu, .menu, .wheel(5), .select, .wheel(6), .select)
+        send(&s, .menu, .menu, .menu, .wheel(5), .select, .wheel(7), .select)
         #expect(s.top.screen == .confirm)
         send(&s, .select)  // Cancel
         #expect(s.top.screen == .settings)

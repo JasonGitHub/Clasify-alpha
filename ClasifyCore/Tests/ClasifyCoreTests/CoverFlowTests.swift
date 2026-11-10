@@ -193,7 +193,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         var s = withCoverFlow(tenAlbums)
         send(&s, .select, now: 150)
         #expect(s.coverFlowAlbum != nil)
-        send(&s, .menu, .wheel(5), .select, .wheel(6), .select, .wheel(1), .select, now: 151)  // Settings, Log out, Log out
+        send(&s, .menu, .wheel(5), .select, .wheel(7), .select, .wheel(1), .select, now: 151)  // Settings, Log out, Log out
         #expect(s.top.screen == .login && s.coverFlowAlbum == nil && s.letterUntil == 0)
     }
 
@@ -246,6 +246,20 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         send(&s, .menu, now: 153)  // the panel turns back into the cover
         #expect(s.top.screen == .coverFlow && s.navMove == .flip && !s.navForward)
         #expect(s.albums[s.top.sel].name == "Clouds")
+    }
+
+    /// Card AK, change 112: with Now Playing Bar on and a song loaded, the panel shows the bar
+    /// inside its bottom edge, so one song row less fits. The covers view shows no bar.
+    @Test func theSongPanelShowsTheBarInside() {
+        var s = withPanel()
+        s.nowPlayingBar = true
+        send(&s, .select, now: 151)
+        #expect(!s.showsPanelBar && s.shownRows == panelRows)  // nothing loaded yet
+        send(&s, .select, .menu, now: 152)  // play the first song, then back to the panel
+        #expect(s.top.screen == .albumPanel(album: "spotify:album:5") && s.showsPanelBar && !s.showsBar)
+        #expect(s.shownRows == panelRows - 1)
+        send(&s, .menu, now: 153)
+        #expect(s.top.screen == .coverFlow && !s.showsBar)
     }
 
     @Test func aSongInThePanelPlaysInTheAlbumAndFliesToNowPlaying() {

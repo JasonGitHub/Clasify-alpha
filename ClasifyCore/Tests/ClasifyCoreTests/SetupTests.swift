@@ -242,7 +242,7 @@ import Testing
         send(&s, .spotifyAppFound(true), .select)  // a press on "Linked" goes on at once
         #expect(s.stack == [Frame(screen: .main)])  // no library read: straight to the main menu
         // A login after a logout skips setup too.
-        send(&s, .wheel(5), .select, .wheel(6), .select, .wheel(1), .select, .select)
+        send(&s, .wheel(5), .select, .wheel(7), .select, .wheel(1), .select, .select)
         #expect(s.top == Frame(screen: .auth, token: 2) && s.toast == "")  // change 181: no toast
         send(&s, .authDone(token: 2, ok: true), .select)
         #expect(s.stack == [Frame(screen: .main)])
