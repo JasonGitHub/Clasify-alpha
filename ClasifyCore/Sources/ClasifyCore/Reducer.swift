@@ -163,6 +163,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
     func fetch(_ screen: Screen) {
         let key = AppState.readKey(screen)  // Albums and Cover Flow read Liked Songs, an album itself
+        if screen == .yourMusic { s.readDone = 0; s.readTotal = 0 }  // each first read, or retry, counts from 0
         fx.append(key.isEmpty ? .fetchPlaylists(token: s.tok) : .fetchTracks(token: s.tok, playlist: key))
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
@@ -280,7 +281,6 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
-        s.readDone = 0; s.readTotal = 0
         fetch(.yourMusic)
         // Card AY, change 141: the small screen fills with the playlist names meanwhile.
         if s.playlistsLoaded {

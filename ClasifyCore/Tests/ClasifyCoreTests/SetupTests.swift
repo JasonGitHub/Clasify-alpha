@@ -94,9 +94,13 @@ import Testing
 
     @Test func aFailedFirstReadShowsTheErrorAndRetries() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 900, total: 1240), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
         #expect(s.top.screen == .yourMusic && s.top.error && !s.setupDone)
         #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: Playlist.likedSongsID)])
+        #expect(s.readDone == 0 && s.readTotal == 0)  // the retry counts from 0 again
+        send(&s, .readProgress(Playlist.likedSongsID, done: 300, total: 1240))
+        #expect(s.readDone == 300)
         send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
         #expect(s.stack == [Frame(screen: .main)] && s.setupDone)
     }
