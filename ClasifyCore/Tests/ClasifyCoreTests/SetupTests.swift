@@ -127,6 +127,38 @@ import Testing
         #expect(late.setupDone && late.namesHold == 0)
     }
 
+    /// CLA-74: the read at login can end Liked Songs before the playlist list comes. "Getting
+    /// your music" then waits for the list, and for its names as in change 191.
+    @Test func aReadBeforeTheListWaitsForTheNames() {
+        var s = onColor()
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        #expect(s.namesAt == 0 && s.refreshing.contains(AppState.readKey(.playlists)))
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+        #expect(s.top.loading && !s.setupDone && s.namesHold == .infinity && s.loadedTracks == [Playlist.likedSongsID])
+        #expect(s.readDone == liked.tracks.count && s.readTotal == liked.tracks.count)  // the bar is full
+        send(&s, .tick, now: 300)
+        #expect(s.top.loading && !s.setupDone)  // it waits for the list
+        let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
+        send(&s, .playlistsRefreshed(names), now: 302)
+        // The sixth name has shown at 302 + 0.5 + 5 × 0.6 + 0.3 = 305.8 s.
+        #expect(s.namesAt == 302 && abs(s.namesHold - 305.8) < 1e-9 && s.top.loading && !s.setupDone)
+        send(&s, .tick, now: 305.8)
+        #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 308.3) < 1e-9)
+    }
+
+    /// CLA-74: when the list fails, or has no playlists, setup goes on at once.
+    @Test func aReadBeforeAListThatFailsOrIsEmptyGoesOn() {
+        let lists: [[Playlist]?] = [nil, []]
+        for list in lists {
+            var s = onColor()
+            send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+            send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+            #expect(s.top.loading && s.namesHold == .infinity)
+            send(&s, .playlistsRefreshed(list), now: 202)
+            #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && s.beatUntil == 204.5)
+        }
+    }
+
     @Test func aPressOnAllSetGoesOnAtOnce() {
         var s = onColor()
         send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
