@@ -114,14 +114,17 @@ public enum Screen: Equatable, Sendable {
     /// The login worked, but the account is not Spotify Premium (card AX, screen 135). Clasify
     /// needs Premium to play. "Check again" logs in again with the stored login.
     case premium
+    /// About's Licenses list, and the text of license `License.all[i]` with the names of the
+    /// parts under it (card BF, change 213).
+    case licenses, license(Int)
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium:
+            .spotifyApp, .premium, .licenses:
             true
-        case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn: false
+        case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
     }
 
@@ -174,6 +177,8 @@ public enum Row: Equatable, Sendable {
     case checkPremium, getPremium, premiumLogOut
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
+    /// A row of the Licenses list: license `License.all[i]` (card BF, change 213).
+    case license(Int)
 }
 
 /// The playing track, by ID, so a library reload that reorders things can't point it elsewhere.
@@ -680,7 +685,8 @@ public struct AppState: Equatable, Sendable {
         case .loginFailed: [.tryAgain, .cancel]
         case .spotifyApp: [.getSpotifyApp]
         case .premium: [.checkPremium, .getPremium, .premiumLogOut]
-        case .about, .now, .hello, .yourMusic, .loggedIn: []
+        case .licenses: License.all.indices.map { .license($0) }
+        case .about, .now, .hello, .yourMusic, .loggedIn, .license: []
         }
     }
 

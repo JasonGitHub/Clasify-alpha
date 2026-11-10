@@ -130,6 +130,8 @@ private struct TestPanel: View {
         case .settings: "Settings"
         case .confirm: "Log out?"
         case .about: "About"
+        case .licenses: "Licenses"
+        case .license(let i): License.all.indices.contains(i) ? License.all[i].name : "License"
         case .now: "Now Playing"
         case .hello: "Hello"
         case .color: "Pick Your Color"
@@ -169,6 +171,7 @@ private struct TestPanel: View {
         case .premiumLogOut: "Log out"
         case .confirmLogOut: "Log Out"
         case .color(let color): color.rawValue
+        case .license(let i): License.all.indices.contains(i) ? License.all[i].name : "License"
         }
     }
 

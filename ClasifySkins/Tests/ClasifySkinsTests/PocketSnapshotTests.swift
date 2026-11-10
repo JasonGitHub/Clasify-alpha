@@ -1003,6 +1003,27 @@ import Testing
         #expect(brighter.count > 5)
     }
 
+    /// Change 213: the Licenses list has one row a license, the first selected. A license's text
+    /// screen shows its name in bold, then gray text lines, and moves a line a step.
+    @Test func licensesListAndTextShow() throws {
+        var s = sampleState()
+        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about), Frame(screen: .licenses)]
+        let list = try render(s, "licenses")
+        #expect(list.isBlue(Self.screenLeft + 170, Self.rowCenter(0)))
+        #expect(!list.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
+        s.stack.append(Frame(screen: .license(0)))
+        let text = try render(s, "license-mit")
+        let top = Self.listTop, left = Self.screenLeft
+        let name = (left + 100..<left + 200).filter { x in (top + 10...top + 28).contains { text.isDark(x, $0) } }
+        #expect(name.count > 10)
+        let ink = (left + 18..<left + 200).filter { x in (top + 36...top + 46).contains { text.isDark(x, $0) } }
+        #expect(ink.count > 20)  // the first line of the text
+        s.stack[4].off = 2
+        let moved = try render(s, "license-mit-2")
+        let differ = (left + 18..<left + 280).filter { !near(text.rgb($0, top + 41), moved.rgb($0, top + 41)) }
+        #expect(differ.count > 10)
+    }
+
     /// The battery's shadow fades downward only, from y 49 to 53 of the view box: its rows have
     /// the same color at both ends, and the lower row is much lighter than the upper one.
     @Test func theBatteryShadowFadesDownward() throws {
