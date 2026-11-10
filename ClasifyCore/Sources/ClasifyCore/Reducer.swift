@@ -308,13 +308,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             fetch(s.top.screen)
         }
     }
-    func signOut(_ msg: String) {
+    /// Goes straight to the login screen, with no toast (card AX, change 181).
+    func signOut() {
         stop()
-        s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
+        s.stack = [Frame(screen: .login)]; s.signedIn = false; s.sessionEnded = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
         s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
-        toast(msg)
+        s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
     }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)
@@ -484,7 +485,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .cancel:
                 if s.top.screen == .auth { fx.append(.cancelLogIn) }
                 s.stack.removeLast()
-            case .confirmLogOut: signOut("Logged out"); fx.append(.logOut)
+            case .confirmLogOut: signOut(); fx.append(.logOut)
             }
 
         case .menu:
@@ -711,7 +712,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Card AX: a failed login says so in place of the wait (171). One that worked shows
             // "You’re in" for a beat (175), then goes on.
             if !ok { s.stack[s.stack.count - 1] = Frame(screen: .loginFailed); return }
-            s.signedIn = true
+            s.signedIn = true; s.sessionEnded = false
             fx.append(.prefetch)
             s.stack = [Frame(screen: .loggedIn)]
             s.beatUntil = now + AppState.beatTime
@@ -724,8 +725,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.battery = battery
 
         case .expire:
-            // Forget the stored login too, so that a later .launch does not restore it.
-            if s.signedIn { signOut("Session expired. Log in again"); fx.append(.logOut) }
+            // Forget the stored login too, so that a later .launch does not restore it. The login
+            // screen says "Log in again", and after the login the main menu opens (change 181).
+            if s.signedIn { signOut(); s.sessionEnded = true; fx.append(.logOut) }
 
         case .reset:
             stop()

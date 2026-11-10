@@ -65,6 +65,10 @@ func sampleState() -> AppState {
         #expect(words(.auth) == .init(headline: "Take your time", line: "Your browser is open.\nLog in there."))
         #expect(words(.loginFailed) == .init(headline: "That didn’t work", line: "No problem, it happens."))
         #expect(words(.loggedIn) == .init(headline: "You’re in", line: "Nice to meet you."))
+        s.sessionEnded = true  // change 181: the same screen after the session expired
+        #expect(words(.login) == .init(headline: "Log in again", line: "Your Spotify session ended.", footnote: "We never see your password."))
+        #expect(words(.auth)?.headline == "Take your time" && words(.loginFailed)?.headline == "That didn’t work")
+        s.sessionEnded = false
         #expect(words(.main) == nil && words(.color) == nil)
         #expect(Labels.row(.logIn, on: .login, in: s) == .init(label: "Log in with Spotify"))  // no chevron
         #expect(Labels.row(.openBrowser, on: .auth, in: s).label == "Open browser again")

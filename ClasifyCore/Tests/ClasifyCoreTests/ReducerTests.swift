@@ -960,10 +960,20 @@ func playing(_ i: Int = 0) -> AppState {
         var s = afterSetup()
         #expect(send(&s, .expire) == [] && s.toast == "")
         s = playing()
+        send(&s, .offline(true), .offline(false))  // a toast that still shows
+        #expect(s.toast == "Connection lost. Paused")
         #expect(send(&s, .expire) == [.stop, .logOut])
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.current == nil && s.library.isEmpty)
         #expect(!s.playlistsLoaded && s.loadedTracks.isEmpty)
-        #expect(s.toast == "Session expired. Log in again")
+        // Card AX, change 181: no toast. The login screen says "Log in again".
+        #expect(s.toast == "" && s.sessionEnded)
+        // The same login screens; after the login, the main menu with no library read (AY).
+        send(&s, .select)
+        #expect(s.top.screen == .auth && s.sessionEnded)
+        send(&s, .authDone(token: s.authAttempt, ok: true))
+        #expect(s.stack == [Frame(screen: .loggedIn)] && !s.sessionEnded)
+        send(&s, .select)
+        #expect(s.stack == [Frame(screen: .main)])
     }
 
     @Test func resetRestoresInitialState() {
@@ -984,7 +994,8 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .select)  // Cancel
         #expect(s.top.screen == .settings)
         #expect(send(&s, .select, .wheel(1), .select) == [.stop, .logOut])
-        #expect(s.top.screen == .login && s.toast == "Logged out" && s.current == nil)
+        #expect(s.top.screen == .login && s.toast == "" && s.current == nil)  // change 181: no toast
+        #expect(!s.sessionEnded)  // the normal login words
     }
 }
 
