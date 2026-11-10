@@ -15,7 +15,7 @@ public struct PocketSkin: View {
     var pressed: ClickWheel.Zone?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The small device on a setup screen: no glow, no rim light, no keys and no drop shadow.
+    /// The small device on a setup screen: no glow, no comet, no keys and no drop shadow.
     @Environment(\.pocketPreview) private var preview
 
     public init(state: AppState, send: @escaping @MainActor (Action) -> Void) {
@@ -36,19 +36,20 @@ public struct PocketSkin: View {
             PocketScreen(state: state, input: input)
             ClickWheel(
                 input: input, color: state.shownColor, catchesScroll: interactive, movesBar: state.wheelMovesBar,
-                glowFrom: glowFrom, rimFrom: rimFrom, label: labelGlow, pressed: pressed)
-                .animation(.easeInOut(duration: 0.25), value: state.shownColor)
+                glowFrom: glowFrom, cometFrom: cometFrom, followsThumb: !preview && state.top.screen == .color,
+                turns: state.colorTurns, label: labelGlow, pressed: pressed)
+                .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.
         .padding(.top, 25.8)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
-            // A new color crossfades in 0.25 s (card AW, change 150).
+            // A new color crossfades in 0.45 s (card AW, changes 150 and 203).
             ZStack {
                 device(.silver).opacity(state.shownColor == .silver ? 1 : 0)
                 device(.black).opacity(state.shownColor == .black ? 1 : 0)
             }
-            .animation(.easeInOut(duration: 0.25), value: state.shownColor)
+            .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
         }
         // Keys come through a window-level monitor, not SwiftUI focus (CLA-79).
         .background { if interactive && !preview { KeyCatcher { key($0, repeated: $1) } } }
@@ -80,8 +81,9 @@ public struct PocketSkin: View {
         return ClickWheel.LabelGlow(zones: zones, from: state.hintAt)
     }
 
-    /// The rim light goes around on the color pick until the first turn. Not with Reduce Motion.
-    private var rimFrom: Double? {
+    /// The waiting comet goes over the wheel on the color pick until the first turn (change
+    /// 200). Not with Reduce Motion.
+    private var cometFrom: Double? {
         guard !preview, !reduceMotion, state.top.screen == .color, state.colorTurnAt == 0 else { return nil }
         return state.colorAt
     }
