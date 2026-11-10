@@ -72,6 +72,10 @@ func sampleState() -> AppState {
         #expect(words(counts) == ["107 playlists", "84 albums", "\(1240.formatted()) liked songs"])
         #expect(words(SetupProgress.counts(done: 1, total: 2, playlists: 1, albums: 1)) == ["1 playlist", "1 album", "1 liked song"])
         #expect(SetupProgress.label(counts) == "107 playlists, 84 albums, \(1240.formatted()) liked songs")
+        // CLA-84: the number column is as wide as the largest final count from the start.
+        #expect(SetupProgress.widest(playlists: 107, albums: 84, total: 1240) == 1240.formatted())
+        #expect(SetupProgress.widest(playlists: 2100, albums: 84, total: 455) == 2100.formatted())
+        #expect(SetupProgress.widest(playlists: nil, albums: 0, total: 0) == "0")
         // Change 197: the bar and the counts grow steadily over the name time: 0.5 + 0.34 × 5 + 0.3 = 2.5 s for 6 names (CLA-80).
         #expect(SetupProgress.grow(at: -1, names: 6) == 0 && abs(SetupProgress.grow(at: 1.25, names: 6) - 0.5) < 1e-9)
         #expect(SetupProgress.grow(at: 2.4, names: 6) < 1 && SetupProgress.grow(at: 2.51, names: 6) == 1 && SetupProgress.grow(at: 9, names: 6) == 1)
