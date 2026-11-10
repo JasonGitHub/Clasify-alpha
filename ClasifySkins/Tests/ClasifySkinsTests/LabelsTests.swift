@@ -52,6 +52,8 @@ func sampleState() -> AppState {
         #expect(Labels.setupWords(for: Frame(screen: .yourMusic), in: s)?.headline == "You’re all set")
         #expect(Labels.ready(0) == "Your music is ready." && Labels.ready(1) == "1 song is ready.")
         #expect(Labels.ready(1240) == "\(1240.formatted()) songs are ready.")
+        #expect(SetupProgress.count(done: 0, total: 0) == nil)
+        #expect(SetupProgress.count(done: 300, total: 1240) == "300 of \(1240.formatted()) songs")
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
 

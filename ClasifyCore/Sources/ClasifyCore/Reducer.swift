@@ -30,6 +30,9 @@ public enum Action: Equatable, Sendable {
     /// The app looked for the Spotify app on this Mac: at launch, and every 3 s while the
     /// `spotifyApp` screen (card BB) shows. When it is found there, setup goes on.
     case spotifyAppFound(Bool)
+    /// A track read is this far: `done` of `total` items have their details. The first library
+    /// read (card AY, change 141) counts up with it.
+    case readProgress(String, done: Int, total: Int)
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
     case authDone(token: Int, ok: Bool)
     /// The restore that `.launch` started finished.
@@ -160,6 +163,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
     func fetch(_ screen: Screen) {
         let key = AppState.readKey(screen)  // Albums and Cover Flow read Liked Songs, an album itself
+        if screen == .yourMusic { s.readDone = 0; s.readTotal = 0 }  // each first read, or retry, counts from 0
         fx.append(key.isEmpty ? .fetchPlaylists(token: s.tok) : .fetchTracks(token: s.tok, playlist: key))
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
@@ -667,6 +671,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if !s.setupDone { s.stack = [Frame(screen: .hello)]; s.helloAt = now }
             s.authAttempt += 1; s.restoring = true
             fx.append(.restoreSession(token: s.authAttempt))
+
+        case .readProgress(let id, let done, let total):
+            guard s.top.screen == .yourMusic, s.top.loading, id == AppState.readKey(.yourMusic) else { return }
+            // Each report hops to the main actor in its own task, so two can come out of order.
+            // For the same read, the count never goes back.
+            s.readDone = total == s.readTotal ? max(s.readDone, done) : done
+            s.readTotal = total
 
         case .spotifyAppFound(let found):
             let was = s.spotifyApp

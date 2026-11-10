@@ -57,6 +57,8 @@ final class LibrespotLibrary: Library {
     /// carries its login id, so a late event of an older login is ignored.
     private var bridgeLogin: Task<Void, Never>?
 
+    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int) -> Void)?
+
     init(client: LibrespotClient) {
         self.client = client
     }
@@ -240,11 +242,15 @@ final class LibrespotLibrary: Library {
         let client = self.client
         let uri = id == Playlist.likedSongsID ? nil : id
         let name = uri ?? "Liked Songs"
+        // How far the read is, for the first library read's count (card AY, CLA-55).
+        let report: @Sendable (Int, Int) -> Void = { [weak self] done, total in
+            Task { @MainActor in self?.onProgress?(id, done, total) }
+        }
         let task = trackReads[id] ?? Task<[Track], any Error> {
             do {
                 // The time covers the context read and the metadata batches.
                 return try await timed(uri == nil ? "liked songs read" : Album.isID(id) ? "album read" : "playlist read", count: { $0.count }) {
-                    try await client.tracks(playlistURI: uri)
+                    try await client.tracks(playlistURI: uri, progress: report)
                 }
             } catch let error as BridgeError {
                 log.error("cannot read \(name, privacy: .public): status \(error.status, privacy: .public)")

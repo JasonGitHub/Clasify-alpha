@@ -269,6 +269,9 @@ public struct AppState: Equatable, Sendable {
     /// When the playlist names came during the first library read (card AY). A skin fills
     /// them in one by one from then. 0 before they come.
     public var namesAt: Double = 0
+    /// How far the first library read is: `readDone` of `readTotal` songs. 0 of 0 before the
+    /// library knows the total.
+    public var readDone = 0, readTotal = 0
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false

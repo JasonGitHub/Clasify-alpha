@@ -1162,6 +1162,9 @@ import Testing
         let reading = try render(s, "your-music", time: 10)
         let bar = Self.listTop + 77 + 3  // its middle; at 10 s its blue part is about 31 to 77 points into the pane
         #expect(headline(reading) && reading.isBlue(85, bar) && !reading.isBlue(170, bar) && !check(reading))
+        s.readDone = 300; s.readTotal = 1240  // the count: the fill reaches about 24% of the bar
+        let counting = try render(s, "your-music-count", time: 10)
+        #expect(counting.isBlue(48, bar) && !counting.isBlue(120, bar))
         s.stack = [Frame(screen: .yourMusic, token: 1)]
         s.setupDone = true
         let allSet = try render(s, "your-music-all-set", time: 10)

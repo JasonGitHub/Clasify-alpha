@@ -68,6 +68,22 @@ import Testing
         #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0)
     }
 
+    /// Change 141: the first read counts up as the library reports how far it is. Other reads,
+    /// and reports after the read, change nothing.
+    @Test func theFirstReadCountsUp() {
+        var s = onColor()
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        #expect(s.top.screen == .yourMusic && s.readDone == 0 && s.readTotal == 0)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 0, total: 1240), .readProgress(Playlist.likedSongsID, done: 300, total: 1240))
+        #expect(s.readDone == 300 && s.readTotal == 1240)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 200, total: 1240))  // a late report
+        #expect(s.readDone == 300)
+        send(&s, .readProgress("focus", done: 5, total: 8))  // another read
+        #expect(s.readDone == 300 && s.readTotal == 1240)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .readProgress(Playlist.likedSongsID, done: 1240, total: 1240))
+        #expect(s.readDone == 300)  // late: the read has ended
+    }
+
     @Test func aPressOnAllSetGoesOnAtOnce() {
         var s = onColor()
         send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
@@ -78,9 +94,13 @@ import Testing
 
     @Test func aFailedFirstReadShowsTheErrorAndRetries() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 900, total: 1240), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
         #expect(s.top.screen == .yourMusic && s.top.error && !s.setupDone)
         #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: Playlist.likedSongsID)])
+        #expect(s.readDone == 0 && s.readTotal == 0)  // the retry counts from 0 again
+        send(&s, .readProgress(Playlist.likedSongsID, done: 300, total: 1240))
+        #expect(s.readDone == 300)
         send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
         #expect(s.stack == [Frame(screen: .main)] && s.setupDone)
     }
@@ -197,6 +217,7 @@ import Testing
     #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == nil)
     while !store.state.setupDone { await Task.yield() }
     #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == "true")  // "You’re all set"
+    #expect(store.state.readDone == 1 && store.state.readTotal == 2)  // the library's progress reached the store
     store.send(.select)
     #expect(store.state.top.screen == .main)
     #expect(Settings(from: saved).setupDone)
