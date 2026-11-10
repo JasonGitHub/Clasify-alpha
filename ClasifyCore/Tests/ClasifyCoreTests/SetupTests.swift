@@ -120,6 +120,27 @@ import Testing
         #expect(s.stack == [Frame(screen: .login)])
     }
 
+    /// A first play that fails under the Spotify App screen leaves no empty Now Playing, and a
+    /// read that ended under it starts again when it closes.
+    @Test func closingTheSpotifyAppScreenCleansUpUnderIt() {
+        var s = mainMenu()
+        send(&s, openFocus(1))
+        send(&s, .select)  // the first track: Now Playing opens, and the load starts
+        let list = Array(s.stack.dropLast())
+        send(&s, .spotifyAppFound(false), .loadFailed("Install the Spotify app to play music", generation: s.playGen))
+        #expect(s.current == nil && s.toast.isEmpty)
+        send(&s, .spotifyAppFound(true), .select)
+        #expect(s.stack == list && s.top.screen == .tracks(playlist: "focus"))  // the list, not an empty Now Playing
+        s = mainMenu()
+        send(&s, .wheel(1), .select)  // Playlists starts to read
+        #expect(s.top.loading && s.top.token == 1)
+        send(&s, .spotifyAppFound(false), .playlistsLoaded(token: 1, playlists: [focusInfo]))  // dropped under the screen
+        #expect(send(&s, .spotifyAppFound(true), .select) == [.fetchPlaylists(token: 2)])  // so it reads again
+        #expect(s.top == Frame(screen: .playlists, loading: true, token: 2))
+        send(&s, .playlistsLoaded(token: 2, playlists: [focusInfo]))
+        #expect(!s.top.loading && s.rows(for: s.top) == [.playlist("focus")])
+    }
+
     @Test func aLaterLaunchSkipsSetupAndChecksTheSpotifyApp() {
         var s = afterSetup()
         send(&s, .spotifyAppFound(true), .launch)

@@ -283,7 +283,19 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// opened over, or on with setup.
     func leaveSpotifyApp() {
         s.beatUntil = 0
-        if s.stack.count > 1 { s.stack.removeLast() } else { setupNext() }
+        guard s.stack.count > 1 else { return setupNext() }
+        s.stack.removeLast()
+        // A load that failed under this screen left an empty Now Playing: back to its list.
+        if s.top.screen == .now && s.current == nil && s.stack.count > 1 {
+            s.stack.removeLast(); s.nowMode = .volume; s.overlayUntil = 0
+        }
+        // A read that ended under this screen was dropped, because its frame was not on top.
+        if s.top.loading {
+            s.tok += 1
+            if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }
+            s.top.token = s.tok
+            fetch(s.top.screen)
+        }
     }
     func signOut(_ msg: String) {
         stop()
