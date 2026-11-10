@@ -126,11 +126,11 @@ import Testing
         var s = mainMenu()
         send(&s, openFocus(1))
         send(&s, .select)  // the first track: Now Playing opens, and the load starts
-        let list = Array(s.stack.dropLast())
+        let list = s.stack.dropLast().map(\.screen)  // the main menu's selection moves with its Now Playing row
         send(&s, .spotifyAppFound(false), .loadFailed("Install the Spotify app to play music", generation: s.playGen))
         #expect(s.current == nil && s.toast.isEmpty)
         send(&s, .spotifyAppFound(true), .select)
-        #expect(s.stack == list && s.top.screen == .tracks(playlist: "focus"))  // the list, not an empty Now Playing
+        #expect(s.stack.map(\.screen) == list && s.top.screen == .tracks(playlist: "focus"))  // the list, not an empty Now Playing
         s = mainMenu()
         send(&s, .wheel(1), .select)  // Playlists starts to read
         #expect(s.top.loading && s.top.token == 1)
