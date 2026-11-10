@@ -69,7 +69,7 @@ public struct PocketSkin: View {
             "Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
     }
 
-    /// The center glows on Hello from 16 s (from the start with Reduce Motion), and on the color
+    /// The center glows on Hello from 13 s (from the start with Reduce Motion), and on the color
     /// pick from the first turn.
     private var glowFrom: Double? {
         if preview { return nil }

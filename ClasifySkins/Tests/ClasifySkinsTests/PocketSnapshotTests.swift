@@ -1049,8 +1049,8 @@ import Testing
         _ = try render(s, "confirm")
     }
 
-    /// Hello (card AT): the word writes itself in five looks; the center glows from 16 s, and
-    /// the begin text shows after 3 pulses. `time` is seconds since Hello opened.
+    /// Hello (card AT): the word writes itself in four looks; the center glows from 13 s, and
+    /// the begin text shows at 14.9 s. `time` is seconds since Hello opened.
     @Test func helloWritesItsLooksThenGlowsThenShowsTheText() throws {
         var s = AppState()
         s.stack = [Frame(screen: .hello)]
@@ -1065,14 +1065,12 @@ import Testing
             }
             return false
         }
-        let pixel = try render(s, "hello-t1-pixel", time: 2.4)
-        #expect(pixel.isDark(ink.x, ink.y) && !pixel.isBlue(ring.x, ring.y))
-        #expect(pixel.isLight(150, 51))  // no title bar, so no line under it
-        let line = try render(s, "hello-t2-ink", time: 5.4)
-        #expect(line.isDark(ink.x, ink.y) && !text(line))
-        let glass = try render(s, "hello-t5-glow", time: 21.2)
+        let line = try render(s, "hello-t2-ink", time: 2.4)
+        #expect(line.isDark(ink.x, ink.y) && !line.isBlue(ring.x, ring.y) && !text(line))
+        #expect(line.isLight(150, 51))  // no title bar, so no line under it
+        let glass = try render(s, "hello-t5-glow", time: 13.4)
         #expect(glass.isBlue(ring.x, ring.y) && !text(glass))
-        let begin = try render(s, "hello-text", time: 23.6)
+        let begin = try render(s, "hello-text", time: 18.2)
         #expect(begin.isBlue(ring.x, ring.y) && text(begin))
     }
 
