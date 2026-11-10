@@ -246,6 +246,7 @@ private func eventCallback(_ context: UnsafeMutableRawPointer?, _ event: UnsafeP
     switch Int32(raw.kind) {
     case LSB_EVENT_LOGGED_IN: result = .success(string(raw.message) ?? "")
     case LSB_EVENT_ERROR: result = .failure(BridgeError(status: LSB_ERR_NOT_LOGGED_IN, message: string(raw.message) ?? "login failed"))
+    case LSB_EVENT_NOT_PREMIUM: result = .failure(BridgeError(status: LSB_ERR_NOT_PREMIUM, message: "not Spotify Premium"))
     default: return
     }
     let loginID = raw.login_id

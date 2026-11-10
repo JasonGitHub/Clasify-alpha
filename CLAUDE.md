@@ -41,7 +41,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 
 - One store holds all app state. Only the reducer changes it. The reducer is plain Swift with no UI or engine imports.
 - Skins send input actions (wheel, select, menu, play, next, prev) and render state. No logic in skins.
-- All playback goes through the `Player` protocol. Code above it must not know which engine is playing. librespot is pinned to one version.
+- All playback goes through the `Player` protocol. Code above it must not know which engine is playing. librespot is pinned to one version. librespot-core is vendored in `LibrespotBridge/vendor/librespot-core` with one patch (CLA-66: no `exit(1)` for a non-Premium account); re-apply it on update.
 - EQ and spectrum are out of 1.0, because the audio does not pass through Clasify. Don't show the EQ setting. Media keys: none in Clasify; the hidden Spotify app handles them (Jason tested 2026-11-08, CLA-42 canceled). Update check: URLSession, not Sparkle.
 
 ## Testing

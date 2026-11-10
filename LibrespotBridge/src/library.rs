@@ -15,7 +15,8 @@ use librespot_protocol::playlist4_external::SelectedListContent;
 use protobuf::{EnumOrUnknown, Message};
 
 use crate::{
-    read_str, with_session, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_NOT_LOGGED_IN, LSB_ERR_READ, LSB_OK,
+    read_str, with_session, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_NOT_LOGGED_IN, LSB_ERR_NOT_PREMIUM,
+    LSB_ERR_READ, LSB_OK,
 };
 
 /// Rootlist items to ask for in one request.
@@ -515,11 +516,19 @@ pub(crate) fn deliver_tracks(
     }
 }
 
-/// The current session. A session that dropped counts as no login.
+/// The current session. A session that dropped counts as no login. A session whose
+/// account type came late and is not Premium ends, and reports LSB_ERR_NOT_PREMIUM.
 pub(crate) unsafe fn session(bridge: *mut crate::LsbBridge) -> Result<Session, i32> {
     let mut session = None;
     let status = with_session(bridge, |s| session = Some(s.clone()));
     match session {
+        Some(session) if crate::account_status(&session) == LSB_ERR_NOT_PREMIUM => {
+            if !session.is_invalid() {
+                let _guard = (*bridge).runtime.enter();
+                session.shutdown();
+            }
+            Err(LSB_ERR_NOT_PREMIUM)
+        }
         Some(session) if session.is_invalid() => Err(LSB_ERR_NOT_LOGGED_IN),
         Some(session) => Ok(session),
         None => Err(status),
