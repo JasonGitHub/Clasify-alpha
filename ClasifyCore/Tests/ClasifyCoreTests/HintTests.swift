@@ -149,7 +149,7 @@ import Testing
         send(&s, .menu)
         #expect(s.hint == nil && !s.hintsDone.contains(.playPause))
         send(&s, .play, .play, .next)
-        #expect(s.hintsDone == Set(Hint.allCases))
+        #expect(s.hintsDone == [.menu, .playPause, .next])
         send(&s, .wheel(1), .select, .position(30, generation: s.playGen))
         #expect(s.top.screen == .now && s.hint == nil)
     }
