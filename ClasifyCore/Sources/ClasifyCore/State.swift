@@ -262,8 +262,13 @@ public struct AppState: Equatable, Sendable {
     /// When "You’re in" (card AX, change 175) or "Linked" on the Spotify App screen (card BB,
     /// change 174) moves on by itself. 0 when neither shows.
     public var beatUntil: Double = 0
-    /// Seconds that "You’re in" shows before the next step.
+    /// Seconds that "You’re in" and "Linked" show before the next step.
     public static let beatTime = 1.5
+    /// Seconds that "You’re all set" (card AY, change 140) shows before the main menu: no hurry.
+    public static let allSetTime = 2.5
+    /// When the playlist names came during the first library read (card AY). A skin fills
+    /// them in one by one from then. 0 before they come.
+    public var namesAt: Double = 0
     /// A restore of the stored login runs. The login screen offers no Log in row meanwhile,
     /// so a browser login cannot race it. Skins show "Signing in…".
     public var restoring = false

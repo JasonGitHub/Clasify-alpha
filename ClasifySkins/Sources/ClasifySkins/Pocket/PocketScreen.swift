@@ -346,6 +346,7 @@ struct PocketList: View {
         let words = Labels.setupWords(for: top, in: state)
         VStack(spacing: 0) {
             if let words { SetupMessage(words: words) }  // card AX: the rows start under it
+            if top.screen == .yourMusic && top.loading { SetupProgress() }  // card AY, at the row place
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),
                           selected: index == top.sel, scrolls: scrolls, height: height)

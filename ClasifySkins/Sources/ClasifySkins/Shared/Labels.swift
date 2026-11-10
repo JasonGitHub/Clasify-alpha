@@ -85,6 +85,7 @@ enum Labels {
 
     /// Nil when the screen shows a list, Now Playing or About.
     static func message(for frame: Frame, in state: AppState) -> Message? {
+        if frame.screen == .yourMusic && !frame.error { return nil }  // card AY draws its own words
         if frame.loading { return Message(title: "Loading…", spinner: true) }
         if frame.error {
             return Message(title: "Can’t reach Spotify", body: "Check your connection, then press center to retry.")
@@ -127,7 +128,18 @@ enum Labels {
         case .loginFailed: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")
         case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
+        case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
+        case .yourMusic: SetupWords(headline: "You’re all set", line: ready(state.tracks(in: Playlist.likedSongsID).count))
         default: nil
+        }
+    }
+
+    /// The line under "You’re all set" (card AY, change 140): how many songs are ready.
+    static func ready(_ songs: Int) -> String {
+        switch songs {
+        case 0: "Your music is ready."
+        case 1: "1 song is ready."
+        default: "\(songs.formatted()) songs are ready."
         }
     }
 
