@@ -76,6 +76,8 @@ import Testing
         #expect(s.top.screen == .yourMusic && s.readDone == 0 && s.readTotal == 0)
         send(&s, .readProgress(Playlist.likedSongsID, done: 0, total: 1240), .readProgress(Playlist.likedSongsID, done: 300, total: 1240))
         #expect(s.readDone == 300 && s.readTotal == 1240)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 200, total: 1240))  // a late report
+        #expect(s.readDone == 300)
         send(&s, .readProgress("focus", done: 5, total: 8))  // another read
         #expect(s.readDone == 300 && s.readTotal == 1240)
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .readProgress(Playlist.likedSongsID, done: 1240, total: 1240))

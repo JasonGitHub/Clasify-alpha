@@ -276,7 +276,7 @@ struct SetupProgress: View {
     @Environment(\.animationTime) private var fixedTime
 
     /// "312 of 1,240 songs", or nil before the total is known.
-    static func count(done: Int, total: Int) -> String? {
+    nonisolated static func count(done: Int, total: Int) -> String? {
         total > 0 ? "\(min(done, total).formatted()) of \(total.formatted()) songs" : nil
     }
 

@@ -674,7 +674,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .readProgress(let id, let done, let total):
             guard s.top.screen == .yourMusic, s.top.loading, id == AppState.readKey(.yourMusic) else { return }
-            s.readDone = done; s.readTotal = total
+            // Each report hops to the main actor in its own task, so two can come out of order.
+            // For the same read, the count never goes back.
+            s.readDone = total == s.readTotal ? max(s.readDone, done) : done
+            s.readTotal = total
 
         case .spotifyAppFound(let found):
             let was = s.spotifyApp
