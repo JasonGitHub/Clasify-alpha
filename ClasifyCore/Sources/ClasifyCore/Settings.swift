@@ -1,7 +1,8 @@
 import Foundation
 
 /// The settings that stay after a restart: Shuffle, Repeat, Album Art, Color (the device color),
-/// Clicker and Now Playing Bar, and whether the first launch setup ended.
+/// Clicker and Now Playing Bar, whether the first launch setup ended, and the first-time hints
+/// that ended (card BA).
 public struct Settings: Equatable, Sendable {
     public var shuffle = false
     public var repeatMode = RepeatMode.off
@@ -10,6 +11,7 @@ public struct Settings: Equatable, Sendable {
     public var clicker = true
     public var nowPlayingBar = false
     public var setupDone = false
+    public var hintsDone: Set<Hint> = []
 
     public init() {}
 
@@ -22,6 +24,7 @@ public struct Settings: Equatable, Sendable {
         static let clicker = "settings.clicker"
         static let nowPlayingBar = "settings.nowPlayingBar"
         static let setupDone = "setup.done"
+        static let hintsDone = "hints.done"
     }
 
     /// The saved settings. A missing or unknown value gives the default.
@@ -34,6 +37,9 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.clicker).flatMap({ Bool($0) }) { clicker = v }
         if let v = store.string(forKey: Key.nowPlayingBar).flatMap({ Bool($0) }) { nowPlayingBar = v }
         if let v = store.string(forKey: Key.setupDone).flatMap({ Bool($0) }) { setupDone = v }
+        if let v = store.string(forKey: Key.hintsDone) {  // the raw values, with commas; unknown ones are dropped
+            hintsDone = Set(v.split(separator: ",").compactMap { Hint(rawValue: String($0)) })
+        }
     }
 
     public func save(to store: some SettingsStore) {
@@ -44,6 +50,7 @@ public struct Settings: Equatable, Sendable {
         store.set(String(clicker), forKey: Key.clicker)
         store.set(String(nowPlayingBar), forKey: Key.nowPlayingBar)
         store.set(String(setupDone), forKey: Key.setupDone)
+        store.set(hintsDone.map(\.rawValue).sorted().joined(separator: ","), forKey: Key.hintsDone)
     }
 }
 
@@ -64,6 +71,7 @@ extension AppState {
             (v.shuffle, v.repeatMode, v.albumArt, v.deviceColor, v.clicker) = (shuffle, repeatMode, albumArt, deviceColor, clicker)
             v.nowPlayingBar = nowPlayingBar
             v.setupDone = setupDone
+            v.hintsDone = hintsDone
             return v
         }
         set {
@@ -71,6 +79,7 @@ extension AppState {
                 (newValue.shuffle, newValue.repeatMode, newValue.albumArt, newValue.deviceColor, newValue.clicker)
             nowPlayingBar = newValue.nowPlayingBar
             setupDone = newValue.setupDone
+            hintsDone = newValue.hintsDone
         }
     }
 }

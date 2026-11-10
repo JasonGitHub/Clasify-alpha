@@ -168,7 +168,17 @@ func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { max(lo, min(hi, v)) }
 public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -> [Effect] {
     let now = env.now()
     var fx: [Effect] = []
-    func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
+    /// A status toast. While a hint shows, it waits until the hint ends (card BA).
+    func toast(_ msg: String) {
+        if s.hint != nil { s.heldToast = msg; return }
+        s.toast = msg; s.toastUntil = now + 1.8
+    }
+    /// The hint stops. `done`: it ended for good. A toast that waited shows now.
+    func endHint(done: Bool) {
+        if done, let hint = s.hint { s.hintsDone.insert(hint) }
+        s.hint = nil; s.hintAt = 0; s.hintTip = false
+        if !s.heldToast.isEmpty { toast(s.heldToast); s.heldToast = "" }
+    }
     func fetch(_ screen: Screen) {
         let key = AppState.readKey(screen)  // Albums and Cover Flow read Liked Songs, an album itself
         if screen == .yourMusic { s.readDone = 0; s.readTotal = 0; s.readAlbums = 0; s.namesHold = 0 }  // each first read, or retry, counts from 0
@@ -355,6 +365,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
+        s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
     }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)
@@ -584,6 +595,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.stack.count < 2 { return }
             if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
+            // Card BA, change 151: the first MENU press back toward the main menu ends the MENU
+            // hint for good, also before it shows.
+            if s.setupDone && s.stack.first?.screen == .main { s.hintsDone.insert(.menu) }
 
         case .toggleShuffle: toggleShuffle()
         case .cycleRepeat: setRepeat(s.repeatMode.next)
@@ -613,6 +627,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
+            // Card BA, change 195: the tip after 3 pulses, then the end after 10 s.
+            if s.hint != nil && now >= s.hintDue { if s.hintTip { endHint(done: true) } else { s.hintTip = true } }
             if s.namesHold > 0 && now >= s.namesHold { endHeldRead() }  // change 191: every name has shown
             if s.beatUntil > 0 && now >= s.beatUntil {  // "You’re in" moves on
                 s.beatUntil = 0
@@ -942,5 +958,19 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.
     if s.top.screen.isList { s.top.off = clamp(s.top.off, s.top.sel - s.shownRows + 1, s.top.sel) }
+    // Card BA, change 139: the MENU hint shows on a list opened from the main menu, after setup,
+    // with no toast. It stops while another screen, a load or a message shows, and starts again
+    // on the next list. Going deeper, it starts again on the new list.
+    if case .reset = action {} else {
+        let fits = s.setupDone && s.signedIn && s.stack.count > 1 && s.stack.first?.screen == .main
+            && s.top.screen.isList && !s.top.loading && !s.top.error && !s.hintsDone.contains(.menu)
+        if s.hint == .menu && !fits {
+            endHint(done: false)
+        } else if s.hint == .menu && (s.stack.count, s.top.screen) != (before.0, before.1) {
+            s.hintAt = now; s.hintTip = false
+        } else if s.hint == nil && fits && s.toast.isEmpty {
+            s.hint = .menu; s.hintAt = now; s.hintTip = false
+        }
+    }
     return fx
 }

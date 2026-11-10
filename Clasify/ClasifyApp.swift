@@ -188,7 +188,9 @@ final class AppModel {
                 let beatDone = state.beatUntil > 0 && now >= state.beatUntil
                 // The first read waits until every playlist name has shown (card AY, change 191).
                 let namesDone = state.namesHold > 0 && now >= state.namesHold
-                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone { store?.send(.tick) }
+                // A first-time hint's tip shows, or the hint ends (card BA).
+                let hintDue = state.hint != nil && now >= state.hintDue
+                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue { store?.send(.tick) }
                 // When the browser login works (change 170) or the Spotify app is found (174),
                 // Clasify comes to the front.
                 // Not for "You’re all set": the library read may take long, and the person may work elsewhere.

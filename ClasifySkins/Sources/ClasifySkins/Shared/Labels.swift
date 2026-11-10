@@ -4,6 +4,13 @@ import Foundation
 /// The words and numbers that skins show. It only formats state. The reducer holds all logic.
 /// The strings come from the mockup, with "Clasify" for its old name.
 enum Labels {
+    /// A first-time hint's tip (card BA, change 195).
+    static func hintTip(_ hint: Hint) -> String {
+        switch hint {
+        case .menu: "Press MENU to go back"  // change 139
+        }
+    }
+
     static func title(_ screen: Screen, in state: AppState) -> String {
         switch screen {
         case .login where state.restoring: "Clasify"

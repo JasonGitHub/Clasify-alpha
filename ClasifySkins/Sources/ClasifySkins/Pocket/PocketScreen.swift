@@ -252,7 +252,11 @@ struct PocketScreen: View {
         }
         .animation(moveAnimation, value: state.navSeq)
         .overlay(alignment: .bottom) {
-            if !state.toast.isEmpty { toast }
+            if !state.toast.isEmpty {
+                Self.toast(state.toast, bottom: top.screen == .now ? 44 : 16)
+            } else if state.hintTip, let hint = state.hint {
+                HintTip(hint: hint, from: state.hintAt + AppState.hintTipAfter)
+            }
         }
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
         .background(Pocket.glass)  // the photo's glass has no inner shadow
@@ -341,10 +345,11 @@ struct PocketScreen: View {
     }
 
     /// The toast (Round 15 card BD, changes 185 and 186): a dark rounded box that fits its
-    /// text, at most 272 points wide, centered 16 points above the screen's bottom. On Now
-    /// Playing it sits 44 points up, over the time bar. The text wraps, with no "…".
-    private var toast: some View {
-        Text(state.toast)
+    /// text, at most 272 points wide, centered `bottom` points above the screen's bottom: 16,
+    /// and 44 on Now Playing, over the time bar. The text wraps, with no "…". A first-time
+    /// hint's tip has the same look (card BA, change 195).
+    nonisolated static func toast(_ text: String, bottom: CGFloat) -> some View {
+        Text(text)
             .font(.helvetica(11, weight: .medium))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)
@@ -353,7 +358,7 @@ struct PocketScreen: View {
             .padding(.horizontal, 13)
             .background {
                 // #1b1f24 at 60% over a blur of the screen behind it, with 6 point corners (card
-                // BD, changes 193 and 194). The mockup's blur is 10 points. SwiftUI has no material
+                // BD, change 194). The mockup's blur is 10 points. SwiftUI has no material
                 // with a set blur radius, so this keeps `.ultraThinMaterial`.
                 ZStack {
                     Rectangle().fill(.ultraThinMaterial)
@@ -363,7 +368,31 @@ struct PocketScreen: View {
                 .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
             }
             .frame(maxWidth: 272)  // the box fits its text inside this
-            .padding(.bottom, top.screen == .now ? 44 : 16)
+            .padding(.bottom, bottom)
+    }
+}
+
+/// A first-time hint's tip (card BA, change 195), in the toast look, 16 points above the
+/// screen's bottom. It fades in over 0.4 s from `from`, and out over the last 0.4 s of its
+/// 10 s. When the action is done, it goes at once. With Reduce Motion, nothing fades.
+struct HintTip: View {
+    let hint: Hint
+    let from: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.animationTime) private var fixedTime
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
+            let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
+            PocketScreen.toast(Labels.hintTip(hint), bottom: 16)
+                .opacity(reduceMotion ? 1 : Self.opacity(at: t))
+        }
+        .allowsHitTesting(false)
+    }
+
+    /// The tip's opacity `t` seconds after it starts.
+    static func opacity(at t: Double) -> Double {
+        max(0, min(1, t / 0.4, (AppState.hintTipTime - t) / 0.4))
     }
 }
 

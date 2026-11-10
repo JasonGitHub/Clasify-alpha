@@ -404,6 +404,25 @@ public struct AppState: Equatable, Sendable {
     public var letterUntil: Double = 0
     public var toast = ""
     public var toastUntil: Double = 0
+    /// The first-time hint that shows now (Round 14 card BA): its wheel label glows from
+    /// `hintAt`, and after `hintTipAfter` its tip shows (`hintTip`). nil when none shows.
+    /// Only one shows at a time.
+    public var hint: Hint?
+    public var hintAt: Double = 0
+    public var hintTip = false
+    /// The hints that ended for good: their action was done, or their tip showed in full.
+    /// Saved with the settings.
+    public var hintsDone: Set<Hint> = []
+    /// A status toast that came while a hint showed. It shows when the hint ends.
+    public var heldToast = ""
+    /// The tip comes after 3 glow pulses of 2.4 s (change 195), and stays for at most 10 s.
+    public static let hintTipAfter = 7.2, hintTipTime = 10.0
+    /// When `.tick` next moves the hint on: its tip shows, or it ends. 0 with no hint. Like every
+    /// deadline that `.tick` ends, the app's ticker must check it, or `.tick` never comes.
+    public var hintDue: Double {
+        guard hint != nil else { return 0 }
+        return hintAt + Self.hintTipAfter + (hintTip ? Self.hintTipTime : 0)
+    }
     public var offline = false
 
     public init() {}
@@ -671,4 +690,10 @@ public struct AppState: Equatable, Sendable {
         let list = albums
         return list.indices.contains(top.sel) ? Album.letter(list[top.sel].name) : nil
     }
+}
+
+/// A first-time hint (Round 14 card BA). Each shows once in Clasify's life.
+public enum Hint: String, CaseIterable, Sendable {
+    /// Change 139: on the first list opened from the main menu, until the first MENU press.
+    case menu
 }
