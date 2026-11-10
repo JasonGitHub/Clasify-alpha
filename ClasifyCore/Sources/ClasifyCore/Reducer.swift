@@ -521,6 +521,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
             if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
             if s.top.screen == .spotifyApp { return }  // card BB: MENU does nothing
+            if s.top.screen == .color && !s.setupDone {
+                // CLA-62 (Jason, 12:47 JST 11-10): back to Hello, which starts again. A color
+                // that was turned to but not pressed is dropped; the saved one stays.
+                s.stack = [Frame(screen: .hello)]; s.helloAt = now
+                return
+            }
             if s.stack.count < 2 { return }
             if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
@@ -791,6 +797,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     if slides && (s.stack.count, s.top.screen) != (before.0, before.1) {
         s.navSeq += 1
         s.navForward = s.stack.count >= before.0 || (s.signedIn && !wasSignedIn)
+        if s.top.screen == .hello { s.navForward = false }  // Hello is only ever gone back to (CLA-62)
         // Between a half screen and a full one, the whole screen moves; otherwise only the content.
         // Hello has no title bar, so the whole screen moves to and from it too (CLA-62).
         let whole = s.isHalf(before.1) != s.isHalf(s.top.screen) || before.1 == .hello || s.top.screen == .hello
