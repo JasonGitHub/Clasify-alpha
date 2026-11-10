@@ -621,7 +621,7 @@ final class SpotifyConnectPlayer: Player {
             }
         }
         // Spotify runs but has no device: it is logged out, or logged in to another account.
-        // The toast fits one line (card BD, change 194).
+        // The toast fits one line (card BD, change 193).
         throw PlayerError(message: "Use the same account in Spotify")
     }
 

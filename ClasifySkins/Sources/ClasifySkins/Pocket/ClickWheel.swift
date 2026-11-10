@@ -16,10 +16,18 @@ struct ClickWheel: View {
     var glowFrom: Double?
     /// When the rim light starts to go around, on the color pick (card AW, change 148).
     var rimFrom: Double?
+    /// The label that glows for a first-time hint (card BA, change 151), and when it started.
+    var label: LabelGlow?
+
+    struct LabelGlow {
+        var zone: Zone
+        var from: Double
+    }
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        movesBar: Bool = false, glowFrom: Double? = nil, rimFrom: Double? = nil, pressed: Zone? = nil
+        movesBar: Bool = false, glowFrom: Double? = nil, rimFrom: Double? = nil, label: LabelGlow? = nil,
+        pressed: Zone? = nil
     ) {
         self.input = input
         self.color = color
@@ -27,6 +35,7 @@ struct ClickWheel: View {
         self.movesBar = movesBar
         self.glowFrom = glowFrom
         self.rimFrom = rimFrom
+        self.label = label
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
 
@@ -123,10 +132,16 @@ struct ClickWheel: View {
 
     private func key<Label: View>(_ zone: Zone, @ViewBuilder label: () -> Label) -> some View {
         let rect = Self.zones.first { $0.0 == zone }?.1 ?? .zero
-        return label()
-            .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (black ? 0xf2f2f2 : 0x9f9f9f)))
-            .frame(width: rect.width, height: rect.height)
-            .offset(x: rect.minX, y: rect.minY)
+        return Group {
+            if let glow = self.label, glow.zone == zone {
+                GlowingLabel(from: glow.from, label: label())
+            } else {
+                label()
+                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (black ? 0xf2f2f2 : 0x9f9f9f)))
+            }
+        }
+        .frame(width: rect.width, height: rect.height)
+        .offset(x: rect.minX, y: rect.minY)
     }
 
     private var center: some View {
@@ -177,5 +192,27 @@ struct ClickWheel: View {
         if let start, !turned, Self.zone(at: value.location) == start { input(start.action) }
         turn = nil
         pressed = nil
+    }
+}
+
+/// A wheel label that a first-time hint lights (card BA, change 151): soft blue #3f8de0 with a
+/// #5aa3f0 glow, as the mockup's text-shadow 0 0 6px and 0 0 14px. It pulses between full and
+/// 55% every 2.4 s, as the center glow does. With Reduce Motion, it stays full.
+private struct GlowingLabel<Label: View>: View {
+    let from: Double
+    let label: Label
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.animationTime) private var fixedTime
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
+            let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
+            label
+                .foregroundStyle(Color(hex: 0x3f8de0))
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.9), radius: 3)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.55), radius: 7)
+                .opacity(reduceMotion ? 1 : 0.775 + 0.225 * cos(2 * .pi * max(t, 0) / Hello.pulse))
+        }
+        .allowsHitTesting(false)
     }
 }

@@ -37,7 +37,7 @@ public struct PocketSkin: View {
             PocketScreen(state: state, input: input)
             ClickWheel(
                 input: input, color: state.shownColor, catchesScroll: interactive, movesBar: state.wheelMovesBar,
-                glowFrom: glowFrom, rimFrom: rimFrom, pressed: pressed)
+                glowFrom: glowFrom, rimFrom: rimFrom, label: labelGlow, pressed: pressed)
                 .animation(.easeInOut(duration: 0.25), value: state.shownColor)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.
@@ -78,6 +78,15 @@ public struct PocketSkin: View {
         case .color where state.colorTurnAt > 0: return state.colorTurnAt
         default: return nil
         }
+    }
+
+    /// The wheel label of the first-time hint that shows (card BA, change 151).
+    private var labelGlow: ClickWheel.LabelGlow? {
+        guard !preview, let hint = state.hint else { return nil }
+        let zone: ClickWheel.Zone = switch hint {
+        case .menu: .menu
+        }
+        return ClickWheel.LabelGlow(zone: zone, from: state.hintAt)
     }
 
     /// The rim light goes around on the color pick until the first turn. Not with Reduce Motion.

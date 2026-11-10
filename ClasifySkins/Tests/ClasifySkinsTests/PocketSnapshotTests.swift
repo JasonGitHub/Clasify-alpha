@@ -855,7 +855,7 @@ import Testing
         #expect(!loading.isBlue(150, Self.rowCenter(0)))  // no list while loading
         // Round 15 card BD: a box that fits its text, centered, 16 points above the screen's
         // bottom (change 185, 186). The main menu has 6 rows, so glass is under it. The box is
-        // #1b1f24 at 60% (change 193): clearly darker than the glass.
+        // #1b1f24 at 60% (change 194): clearly darker than the glass.
         s.stack = [Frame(screen: .main)]
         s.albumArt = .off
         s.toast = "Paused while you’re offline"
@@ -866,6 +866,29 @@ import Testing
         let gap = light(Self.screenLeft + 150, bottom + 6)  // the gap under it
         let side = light(Self.screenLeft + 20, bottom - 6)  // it does not fill the width
         #expect(box + 60 < gap && box + 60 < side, "box \(box), gap \(gap), side \(side)")
+    }
+
+    /// Round 14 card BA: the MENU hint lights the MENU label (151), and after 3 pulses its tip
+    /// shows in the toast look, centered 16 points above the screen's bottom (139, 195).
+    @Test func theMenuHintLightsMenuThenShowsItsTip() throws {
+        var s = sampleState()
+        s.stack = [Frame(screen: .main), Frame(screen: .settings)]
+        let plain = try render(s, "hint-none")
+        s.hint = .menu
+        s.hintAt = -7  // at the render's time 1: 8 s of glow, and the tip shown for 0.8 s
+        let glow = try render(s, "hint-glow")
+        s.hintTip = true
+        let tip = try render(s, "hint-tip")
+        // The MENU label: 60 x 29 points at the wheel's top. The wheel starts at 70.5 x 321.
+        func lit(_ shot: Snapshot) -> Bool {
+            (325..<354).contains { y in (153..<213).contains { x in shot.isBlue(x, y) } }
+        }
+        #expect(!lit(plain) && lit(glow) && lit(tip))
+        let bottom = Self.screenBottom - 16  // the tip's bottom edge
+        func light(_ shot: Snapshot, _ x: Int, _ y: Int) -> Int { let c = shot.rgb(x, y); return max(c.r, c.g, c.b) }
+        #expect(light(glow, Self.screenLeft + 150, bottom - 6) == light(plain, Self.screenLeft + 150, bottom - 6))  // no tip yet
+        let box = light(tip, Self.screenLeft + 150, bottom - 6), side = light(tip, Self.screenLeft + 20, bottom - 6)
+        #expect(box + 60 < side, "box \(box), side \(side)")  // the tip, by its middle; it does not fill the width
     }
 
     @Test func theCenterLooksPressedInAndDarkensWhenPressed() throws {

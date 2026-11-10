@@ -30,9 +30,11 @@ func send(_ s: inout AppState, _ actions: [Action]) -> [Effect] {
 }
 
 /// A later launch: the first launch setup ended before, so the login screen shows first.
+/// The first-time hints (card BA) ended before too: `HintTests` clears them.
 func afterSetup() -> AppState {
     var s = AppState()
     s.setupDone = true
+    s.hintsDone = Set(Hint.allCases)
     return s
 }
 
