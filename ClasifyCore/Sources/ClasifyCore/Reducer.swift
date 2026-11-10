@@ -365,6 +365,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
+        s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
     }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)

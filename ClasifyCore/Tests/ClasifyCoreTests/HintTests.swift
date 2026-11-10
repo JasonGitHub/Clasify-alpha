@@ -70,6 +70,16 @@ import Testing
         #expect(s.hint == nil && s.toast == "You’re offline right now" && s.toastUntil == 102.8 && s.heldToast == "")
     }
 
+    /// A sign-out drops the hint and the toast that waited for it: no toast on the login screen.
+    @Test func aSignOutDropsTheHeldToast() {
+        var s = fresh()
+        send(&s, openFocus(1))
+        send(&s, .offline(true), .select)
+        #expect(s.hint == .menu && s.heldToast == "You’re offline right now")
+        send(&s, .expire, now: 101)
+        #expect(s.top.screen == .login && s.hint == nil && s.heldToast == "" && s.toast == "")
+    }
+
     /// A hint does not start while a toast shows. It starts when the toast goes.
     @Test func aHintWaitsForAToast() {
         var s = fresh()
