@@ -41,7 +41,7 @@ import Testing
 
         send(&s, .menu, now: 208)  // back to the main menu: done for good, the BA hints too
         #expect(s.top.screen == .main && s.tour == nil && s.hint == nil)
-        #expect(s.hintsDone == [.tourPlay, .menu, .playPause, .next])
+        #expect(s.hintsDone == [.tourPlay, .tourNext, .menu, .playPause, .next])
     }
 
     /// Any other input ends the tour quietly, for good. The BA hints stay to show later.
@@ -78,12 +78,35 @@ import Testing
         #expect(mainMenu().tour == nil)
     }
 
-    /// A status toast waits until the tour's tip is gone. A sign-out ends the tour.
-    @Test func aToastWaitsAndASignOutEndsTheTour() {
+    /// The tour's Play starts Liked Songs, also when Spotify already had a song at the start.
+    @Test func playStartsLikedSongsOverAnAdoptedSong() {
+        var s = allSet()
+        send(&s, .adopted(track: "x9", playlist: nil, playing: true, position: 30, generation: s.playGen), now: 110.5)
+        send(&s, .select, now: 111)
+        #expect(s.tour == .tourPlay && s.current != nil)
+        send(&s, .play, now: 112)
+        #expect(s.top.screen == .now && s.isPlaying && s.current?.playlist == Playlist.likedSongsID && s.tour == .tourNext)
+    }
+
+    /// Offline, a press shows its toast. The step stays, and its hint comes back after the toast.
+    /// A sign-out ends the tour.
+    @Test func offlineTheStepStaysAndASignOutEndsTheTour() {
         var s = allSet()
         send(&s, .select, now: 111)
-        send(&s, .offline(true), .play, now: 112)  // offline: Play cannot start, so its toast waits
+        send(&s, .offline(true), .play, now: 112)
+        #expect(s.tour == .tourPlay && s.hint == nil && !s.toast.isEmpty)
+        send(&s, .tick, now: 120)
+        #expect(s.tour == .tourPlay && s.hint == .tourPlay)
+        send(&s, .offline(false), .play, now: 121)
+        send(&s, .position(5, generation: s.playGen), now: 122)
+        #expect(s.hint == .tourNext)
+        send(&s, .offline(true), .next, now: 123)
         #expect(s.tour == .tourNext && s.hint == nil && !s.toast.isEmpty)
+        send(&s, .tick, now: 130)
+        #expect(s.tour == .tourNext && s.hint == .tourNext)
+        send(&s, .offline(false), .next, now: 131)
+        #expect(s.tour == .tourMenu)
+
         s = allSet()
         send(&s, .select, now: 111)
         send(&s, .expire, now: 112)

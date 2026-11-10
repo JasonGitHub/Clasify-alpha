@@ -605,6 +605,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .play:
             if s.setupDone { s.hintsDone.insert(.playPause) }  // card BA, change 176: any press ends that hint
+            // The tour's Play starts Liked Songs on Now Playing, also when Spotify already had a
+            // song when Clasify started (change 199).
+            if s.tour == .tourPlay && s.top.screen == .main { return playLiked() }
             guard s.current != nil else {
                 // CLA-61: nothing to resume, so Liked Songs plays. Only on the main screens:
                 // never during setup, at login, or on the Spotify App screen.
@@ -985,13 +988,16 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         }
         guard s.signedIn, s.setupDone, s.stack.first?.screen == .main else { return end(finished: false) }
         switch started ? nil : action {
-        case .play? where step == .tourPlay: s.tour = .tourNext
+        // Offline, the press does nothing but its toast. The step stays, and its hint goes away
+        // so the toast shows. The hint comes back after the toast.
+        case .play? where step == .tourPlay: if s.offline { endHint(done: false) } else { s.tour = .tourNext }
         case .next? where step == .tourNext, .prev? where step == .tourNext:
-            s.tour = .tourMenu
             // Step 3 shows with the new song. Previous after 3 s starts the same song again,
             // so then it shows at once.
             var restarted = false
             if case .prev = action { restarted = trackBefore.1 > 3 }
+            if s.offline && !restarted { endHint(done: false); break }
+            s.tour = .tourMenu
             s.tourFrom = restarted ? nil : trackBefore.0
         case .menu? where step == .tourMenu: return end(finished: true)
         case .wheel?, .select?, .menu?, .play?, .next?, .prev?, .toggleShuffle?, .cycleRepeat?:
@@ -999,10 +1005,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         default: break
         }
         // The step that shows. Step 2 keeps its tip until the new song shows, so the time bar
-        // does not come back between the steps (Jason 17:37 JST).
+        // does not come back between the steps (Jason 17:37 JST). Once step 2 has shown
+        // (`.tourNext` in `hintsDone`), it shows again after a toast, also when offline paused.
         let shown: Hint? = switch s.tour {
         case .tourPlay?: s.top.screen == .main ? .tourPlay : nil
-        case .tourNext?: s.top.screen == .now && s.current != nil && (s.hint == .tourNext || (s.isPlaying && s.t >= AppState.tourMusic)) ? .tourNext : nil
+        case .tourNext?:
+            s.top.screen == .now && s.current != nil
+                && (s.hintsDone.contains(.tourNext) || (s.isPlaying && s.t >= AppState.tourMusic)) ? .tourNext : nil
         case .tourMenu?:
             s.top.screen != .now ? nil : (s.tourFrom == nil || s.current != s.tourFrom) ? .tourMenu : .tourNext
         default: nil
@@ -1011,6 +1020,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if shown == nil { return endHint(done: false) }
         if s.hint == nil && !s.toast.isEmpty { return }  // a status toast goes first
         s.hint = shown; s.hintAt = now; s.hintTip = shown != .tourPlay
+        if shown == .tourNext { s.hintsDone.insert(.tourNext) }
     }
     if case .reset = action {} else { tour() }
     if case .reset = action {} else {
