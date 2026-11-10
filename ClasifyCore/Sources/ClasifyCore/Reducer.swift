@@ -505,7 +505,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                     s.aboutWaveAt = now
                 } else if s.top.off >= AppState.aboutLicensesStep {
                     // Change 213: the Licenses list. The pose waits as it is until About shows again.
-                    s.aboutIdleHold = pose
+                    // A press while it waves leaves it standing, as the wave's end would.
+                    s.aboutIdleHold = pose.pose == .wave ? AboutPoseNow(pose: .stand, since: now, from: .wave, cut: true) : pose
                     s.stack.append(Frame(screen: .licenses))
                 } else if pose.pose != .wave {
                     s.aboutWaveAt = now

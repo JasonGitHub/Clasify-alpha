@@ -242,6 +242,15 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.aboutPose(at: 1106.5).pose == .stand && s.aboutPose(at: 1120).pose == .sleep)
     }
 
+    /// A press at step 3 while it waves opens Licenses. Back on About it stands, not waves.
+    @Test func licensesOpenedDuringTheWaveComeBackToStand() {
+        var s = openAbout()
+        send(&s, .wheel(1), .wheel(1), .wheel(1), .select, now: 1000.6)  // waving
+        #expect(s.top.screen == .licenses && s.aboutIdleHold.pose == .stand)
+        send(&s, .menu, now: 1010)
+        #expect(s.aboutPose(at: 1010.5).pose == .stand && s.aboutPose(at: 1014).pose == .think)
+    }
+
     /// Change 213: a license row opens its text. The wheel moves it a line a step, quick steps
     /// more, up to the step where its last line is on the screen's last line.
     @Test func aLicenseTextScrollsToItsLastLine() {
