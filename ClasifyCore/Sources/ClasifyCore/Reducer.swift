@@ -466,7 +466,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 return
             }
             if s.top.screen == .coverFlow { return moveCoverFlow(d, wheel: true) }
-            if s.top.screen == .color && s.colorTurnAt == 0 { s.colorTurnAt = now }  // card AW: the first turn
+            if s.top.screen == .color {
+                if s.colorTurnAt == 0 { s.colorTurnAt = now }  // card AW: the first turn
+                s.colorTurns += d  // change 202: the light follows the steps
+            }
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
@@ -506,7 +509,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .hello {  // card AT: a press begins setup
                 s.stack = [Frame(screen: .color)]
                 s.top.sel = DeviceColor.allCases.firstIndex(of: s.deviceColor) ?? 0
-                s.colorAt = now; s.colorTurnAt = 0
+                s.colorAt = now; s.colorTurnAt = 0  // `colorTurns` runs on: a reset would read as a step
                 return
             }
             if s.top.screen == .coverFlow {

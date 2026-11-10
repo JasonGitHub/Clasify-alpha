@@ -14,8 +14,12 @@ struct ClickWheel: View {
     /// When the center starts to glow: on Hello (card AT, change 166) and after the first turn
     /// on the color pick (card AW, change 150). Nil: no glow.
     var glowFrom: Double?
-    /// When the rim light starts to go around, on the color pick (card AW, change 148).
-    var rimFrom: Double?
+    /// When the waiting comet starts, on the color pick until the first turn (card AW, change 200).
+    var cometFrom: Double?
+    /// On the color pick a light follows the thumb (change 202). `turns` is
+    /// `AppState.colorTurns`: a step from the trackpad or a key moves the light 24°.
+    var followsThumb = false
+    var turns = 0
     /// The labels that glow for a first-time hint (card BA, change 151), and when they started.
     /// The tour's step 2 lights Previous and Next together (card BA.1, change 199).
     var label: LabelGlow?
@@ -27,15 +31,17 @@ struct ClickWheel: View {
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        movesBar: Bool = false, glowFrom: Double? = nil, rimFrom: Double? = nil, label: LabelGlow? = nil,
-        pressed: Zone? = nil
+        movesBar: Bool = false, glowFrom: Double? = nil, cometFrom: Double? = nil, followsThumb: Bool = false,
+        turns: Int = 0, label: LabelGlow? = nil, pressed: Zone? = nil
     ) {
         self.input = input
         self.color = color
         self.catchesScroll = catchesScroll
         self.movesBar = movesBar
         self.glowFrom = glowFrom
-        self.rimFrom = rimFrom
+        self.cometFrom = cometFrom
+        self.followsThumb = followsThumb
+        self.turns = turns
         self.label = label
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
@@ -84,13 +90,50 @@ struct ClickWheel: View {
         var last: Double
         var turned = 0.0
         var moved = 0.0
+        /// The light is under this drag's thumb (change 202).
+        var anchored = false
+    }
+
+    /// The light under the thumb (change 202): its angle, clockwise from 3 o'clock and not
+    /// wrapped, so a glide never goes the long way; its direction; when it came and last moved.
+    struct ThumbLight: Equatable {
+        var angle: Double
+        var clockwise = true
+        var from: Double
+        var last: Double
     }
 
     @State private var turn: Turn?
+    @State private var light: ThumbLight?
     @State private var pressed: Zone?
     @State private var hovered: Zone?
 
     var body: some View {
+        lights(face)
+            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
+            .contentShape(Circle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Click wheel")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: input(.wheel(1))
+                case .decrement: input(.wheel(-1))
+                @unknown default: break
+                }
+            }
+            .accessibilityAction(named: "Select") { input(.select) }
+            .accessibilityAction(named: "Menu") { input(.menu) }
+            .accessibilityAction(named: "Play or pause") { input(.play) }
+            .accessibilityAction(named: "Next track") { input(.next) }
+            .accessibilityAction(named: "Previous track") { input(.prev) }
+    }
+
+    /// The wheel, its labels, the lights and the center.
+    private var face: some View {
         ZStack(alignment: .topLeading) {
             // Flat white, as in the photo: no gradient and no ring line. The mockup's shadows
             // are a faint 1 point line around it and a white line under it.
@@ -103,30 +146,38 @@ struct ClickWheel: View {
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
             key(.next) { IconView(.next, width: 19.8, height: 10.2) }
             key(.play) { IconView(.playPause, width: 24.6, height: 9.6) }
-            if let rimFrom { RimLight(from: rimFrom) }
+            comets
             center
         }
         .frame(width: Self.size, height: Self.size)
-        .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
-        .contentShape(Circle())
-        .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
-        .onContinuousHover { phase in
-            if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
+    }
+
+    /// The color pick's lights: the waiting comet until the first touch, then the light under
+    /// the thumb (changes 200 and 202).
+    @ViewBuilder private var comets: some View {
+        if let cometFrom, light == nil {
+            WaitingComet(from: cometFrom)
+                .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
         }
-        .accessibilityElement()
-        .accessibilityLabel("Click wheel")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: input(.wheel(1))
-            case .decrement: input(.wheel(-1))
-            @unknown default: break
+        if followsThumb, let light { ThumbComet(light: light) }
+    }
+
+    /// The light follows the steps, goes off the pick and goes when it has faded.
+    private func lights(_ content: some View) -> some View {
+        content
+            .onChange(of: followsThumb) { _, follows in
+                if !follows { light = nil }  // off the color pick, the light goes at once
             }
-        }
-        .accessibilityAction(named: "Select") { input(.select) }
-        .accessibilityAction(named: "Menu") { input(.menu) }
-        .accessibilityAction(named: "Play or pause") { input(.play) }
-        .accessibilityAction(named: "Next track") { input(.next) }
-        .accessibilityAction(named: "Previous track") { input(.prev) }
+            .onChange(of: turns) { old, new in
+                // A trackpad or key step. A drag moves the light itself.
+                if followsThumb && turn == nil { moveLight(by: Double(new - old) * Self.detent, to: nil, anchor: false) }
+            }
+            .task(id: light?.last) {
+                // The light has faded out: it goes, and the next move starts a new one.
+                guard let last = light?.last else { return }
+                try? await Task.sleep(for: .seconds(ColorPick.hold + ColorPick.fadeOut + 0.1))
+                if light?.last == last { light = nil }
+            }
     }
 
     private var black: Bool { color == .black }
@@ -179,12 +230,37 @@ struct ClickWheel: View {
         if delta > 180 { delta -= 360 }
         if delta < -180 { delta += 360 }
         t.last = angle
+        if followsThumb && delta != 0 {
+            moveLight(by: delta, to: angle, anchor: !t.anchored)
+            t.anchored = true
+        }
         t.turned += delta
         t.moved += abs(delta)
         while t.turned >= Self.detent { t.turned -= Self.detent; input(.wheel(1)) }
         while t.turned <= -Self.detent { t.turned += Self.detent; input(.wheel(-1)) }
         if t.moved > Self.clickSlop { pressed = nil }
         turn = t
+    }
+
+    /// Moves the light by `delta` degrees. A new light starts at `angle`, under the thumb, or
+    /// for a step with no thumb at 12 o'clock. With `anchor`, the first move of a drag, a light
+    /// that still shows goes under the thumb the short way, so it never lags behind it.
+    private func moveLight(by delta: Double, to angle: Double?, anchor: Bool) {
+        guard delta != 0 else { return }
+        let now = Date.timeIntervalSinceReferenceDate
+        if var l = light {
+            if anchor, let angle {
+                var gap = (angle - l.angle).truncatingRemainder(dividingBy: 360)
+                if gap > 180 { gap -= 360 } else if gap < -180 { gap += 360 }
+                l.angle += gap
+            } else {
+                l.angle += delta
+            }
+            l.clockwise = delta > 0; l.last = now
+            light = l
+        } else {
+            light = ThumbLight(angle: angle ?? -90, clockwise: delta > 0, from: now, last: now)
+        }
     }
 
     private func ended(_ value: DragGesture.Value) {

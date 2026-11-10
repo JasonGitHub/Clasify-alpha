@@ -47,10 +47,19 @@ import Testing
         #expect(Hello.text(at: 2.0, reduceMotion: true) == 0 && close(Hello.text(at: 2.4, reduceMotion: true), 1))
     }
 
-    /// Card AW: the rim light goes around every 3 s; the turn hint after 2 s (change 179);
+    /// Card AW: the comet waits on the wheel (change 200), then follows the thumb (change 202); the turn hint after 2 s (change 179);
     /// after the first turn, the press hint after 3 pulses.
     @Test func theColorPickTeachesTheTurnThenThePress() {
-        #expect(close(ColorPick.rimAngle(at: 0), 0) && close(ColorPick.rimAngle(at: 1.5), 180) && close(ColorPick.rimAngle(at: 3), 0))
+        // Change 200: 9 o'clock over the top to 3 o'clock in 2.9 s, fading at the ends, then 1 s of rest.
+        let start = ColorPick.waiting(at: 0), top = ColorPick.waiting(at: 1.45), end = ColorPick.waiting(at: 2.9)
+        #expect(close(start?.angle ?? 0, 180) && close(start?.opacity ?? 1, 0) && close(start?.longTail ?? 1, 0))
+        #expect(close(top?.angle ?? 0, 270) && close(top?.opacity ?? 0, 1) && close(top?.longTail ?? 0, 1))
+        #expect(close(end?.angle ?? 0, 360) && close(end?.opacity ?? 1, 0))
+        #expect(ColorPick.waiting(at: 3.4) == nil && ColorPick.waiting(at: -1) == nil && close(ColorPick.waiting(at: 3.9)?.angle ?? 0, 180))
+        // Change 202: in over 0.3 s, out 0.6 s after the last move over 0.6 s; the long tail in over 0.35 s.
+        #expect(close(ColorPick.following(since: 0.15, idle: 0).opacity, 0.5) && close(ColorPick.following(since: 0.175, idle: 0).longTail, 0.5))
+        #expect(close(ColorPick.following(since: 2, idle: 0.6).opacity, 1) && close(ColorPick.following(since: 2, idle: 0.9).opacity, 0.5))
+        #expect(close(ColorPick.following(since: 2, idle: 1.2).opacity, 0))
         let before = ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102)
         #expect(before.text == "Turn the wheel to try one" && close(before.opacity, 0))
         #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102.4).opacity, 1))

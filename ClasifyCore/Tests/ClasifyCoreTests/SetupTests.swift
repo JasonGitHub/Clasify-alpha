@@ -42,7 +42,7 @@ import Testing
         #expect(s.wholeSeq == whole)  // between two setup screens, only the content slides
         send(&s, .menu)  // back to the color pick, with Black selected (card AX, change 172)
         #expect(s.top.screen == .color && s.top.sel == 1 && !s.navForward)
-        #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no rim light
+        #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no waiting comet
         send(&s, .reset, .launch, .restored(token: 2, ok: false), .select)  // a reset keeps the settings
         #expect(s.top.screen == .color && s.top.sel == 1)  // the pick starts on the color that is set
     }
@@ -55,6 +55,11 @@ import Testing
         #expect(s.colorTurnAt == 105 && s.shownColor == .black && s.deviceColor == .silver)
         send(&s, .wheel(-1), now: 107)  // only the first turn counts
         #expect(s.colorTurnAt == 105 && s.shownColor == .silver)
+        #expect(s.colorTurns == 0)  // change 202: one step each way
+        send(&s, .wheel(-1), now: 107.5)  // at the top: no color change, but the light moves
+        #expect(s.colorTurns == -1 && s.shownColor == .silver)
+        send(&s, .menu, .select, now: 108)  // back to Hello and in again: the count runs on
+        #expect(s.top.screen == .color && s.colorTurns == -1)
         send(&s, .wheel(1), .select, now: 108)
         #expect(s.top.screen == .login && s.deviceColor == .black && s.shownColor == .black)
         #expect(mainMenu().shownColor == .silver)  // off the color pick, the setting shows

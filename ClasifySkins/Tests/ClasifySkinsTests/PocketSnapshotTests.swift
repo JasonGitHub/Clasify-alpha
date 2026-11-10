@@ -1205,7 +1205,7 @@ import Testing
     }
 
     /// The color pick (card AW): the rows on the left, the small device on the right, the
-    /// rim light and the turn hint before the first turn; after it, the new color and the glow.
+    /// waiting comet and the turn hint before the first turn; after it, the new color and the glow.
     @Test func theColorPickShowsTheSmallDeviceAndTriesTheColorOn() throws {
         var s = AppState()
         s.stack = [Frame(screen: .color)]
