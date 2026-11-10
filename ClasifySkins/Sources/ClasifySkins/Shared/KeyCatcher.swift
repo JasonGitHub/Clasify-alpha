@@ -37,8 +37,8 @@ struct KeyCatcher: NSViewRepresentable {
     }
 
     /// The key is for the device: the event is for its window, or for no window while Clasify is
-    /// active and the device is its front window (CLA-79). The plain window on macOS 15 and later
-    /// may not become key, so its keys come with no window. A key for another window, such as
+    /// active and the device is its front window (CLA-79). The plain window has no title bar, so it
+    /// cannot become key, and its keys come with no window (CLA-83). A key for another window, such as
     /// How to Use, is that window's.
     static func isForDevice(event: AnyObject?, device: AnyObject, front: AnyObject?, active: Bool) -> Bool {
         if let event { return event === device }
