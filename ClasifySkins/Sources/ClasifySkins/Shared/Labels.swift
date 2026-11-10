@@ -4,10 +4,13 @@ import Foundation
 /// The words and numbers that skins show. It only formats state. The reducer holds all logic.
 /// The strings come from the mockup, with "Clasify" for its old name.
 enum Labels {
-    /// A first-time hint's tip (card BA, change 195).
-    static func hintTip(_ hint: Hint) -> String {
+    /// A first-time hint's tip (card BA, change 195): the words, the wheel mark drawn in them
+    /// as on the wheel, the words after it, and the words for VoiceOver.
+    static func hintTip(_ hint: Hint) -> (lead: String, mark: Icon?, rest: String, spoken: String) {
         switch hint {
-        case .menu: "Press MENU to go back"  // change 139
+        case .menu: ("Press MENU to go back", nil, "", "Press MENU to go back")  // change 139
+        case .playPause: ("Press", .playPause, "to pause", "Press play/pause to pause")  // change 176
+        case .next: ("Press", .next, "for the next song", "Press next for the next song")  // change 177
         }
     }
 

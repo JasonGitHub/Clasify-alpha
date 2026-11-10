@@ -603,6 +603,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .cycleRepeat: setRepeat(s.repeatMode.next)
 
         case .play:
+            if s.setupDone { s.hintsDone.insert(.playPause) }  // card BA, change 176: any press ends that hint
             guard s.current != nil else {
                 // CLA-61: nothing to resume, so Liked Songs plays. Only on the main screens:
                 // never during setup, at login, or on the Spotify App screen.
@@ -614,6 +615,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             fx.append(s.isPlaying ? .resume : .pause)
 
         case .next:
+            if s.setupDone { s.hintsDone.insert(.next) }  // card BA, change 177: any press ends that hint
             // The skin's ⏭ button moves Cover Flow (card AE).
             if s.top.screen == .coverFlow { return moveCoverFlow(1, wheel: false) }
             guard s.current != nil else { return }
@@ -895,6 +897,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
+    let playHintDone = s.hintsDone.contains(.playPause)
     let wasOverPanel = s.nowOverPanel
     let wasSignedIn = s.signedIn
     let rowBefore = s.halfRow
@@ -958,18 +961,30 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     // The bar for the playing track comes and goes, so keep the selection in the rows that show.
     if s.top.screen.isList { s.top.off = clamp(s.top.off, s.top.sel - s.shownRows + 1, s.top.sel) }
-    // Card BA, change 139: the MENU hint shows on a list opened from the main menu, after setup,
-    // with no toast. It stops while another screen, a load or a message shows, and starts again
-    // on the next list. Going deeper, it starts again on the new list.
+    // Card BA: one first-time hint at a time, after setup, with no toast. A hint stops while its
+    // screen does not show, and starts again later. Change 139: the MENU hint shows on a list
+    // opened from the main menu, with no load or message; going deeper, it starts again on the
+    // new list. Changes 176 and 177: the play/pause hint, then on a later visit the next hint,
+    // show on Now Playing once a song has played 10 s.
     if case .reset = action {} else {
-        let fits = s.setupDone && s.signedIn && s.stack.count > 1 && s.stack.first?.screen == .main
-            && s.top.screen.isList && !s.top.loading && !s.top.error && !s.hintsDone.contains(.menu)
-        if s.hint == .menu && !fits {
+        if !playHintDone && s.hintsDone.contains(.playPause) { s.hintPlaySeq = s.navSeq }
+        func fits(_ hint: Hint) -> Bool {
+            guard s.setupDone, s.signedIn, s.stack.first?.screen == .main, !s.hintsDone.contains(hint) else { return false }
+            switch hint {
+            case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error
+            case .playPause: return s.top.screen == .now && s.current != nil
+            case .next:
+                return s.top.screen == .now && s.current != nil && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
+            }
+        }
+        if let hint = s.hint, !fits(hint) {
             endHint(done: false)
         } else if s.hint == .menu && (s.stack.count, s.top.screen) != (before.0, before.1) {
             s.hintAt = now; s.hintTip = false
-        } else if s.hint == nil && fits && s.toast.isEmpty {
-            s.hint = .menu; s.hintAt = now; s.hintTip = false
+        }
+        let played = s.isPlaying && s.t >= AppState.hintPlayTime
+        if s.hint == nil && s.toast.isEmpty, let hint = Hint.allCases.first(where: { fits($0) && ($0 == .menu || played) }) {
+            s.hint = hint; s.hintAt = now; s.hintTip = false
         }
     }
     return fx

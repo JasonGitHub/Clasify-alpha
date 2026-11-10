@@ -10,6 +10,7 @@ struct PocketNowPlaying: View {
     let state: AppState
     let input: @MainActor (Action) -> Void
     @Environment(\.artwork) private var artwork
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The last cover that showed, by cover ID. It stays while the next track's cover loads,
     /// and while the same cover loads again, so the square does not flash.
     @State private var lastCover: CoverArt.Shown?
@@ -119,7 +120,15 @@ struct PocketNowPlaying: View {
             .font(.helvetica(11.7, bold: true))
             .foregroundStyle(.black)
             .monospacedDigit()
+            // Card BA, change 195: a play/pause or next tip takes the time bar's place. The bar
+            // fades out over 0.4 s, and comes back after the tip.
+            .opacity(tipShows ? 0 : 1)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.4), value: tipShows)
         }
+    }
+
+    private var tipShows: Bool {
+        state.hintTip && (state.hint == .playPause || state.hint == .next) && state.toast.isEmpty
     }
 
     /// The bottom row: a 33.6 point slot, the 191.4 point bar and a 38.4 point slot, 21 points

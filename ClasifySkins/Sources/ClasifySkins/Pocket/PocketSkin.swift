@@ -85,6 +85,8 @@ public struct PocketSkin: View {
         guard !preview, let hint = state.hint else { return nil }
         let zone: ClickWheel.Zone = switch hint {
         case .menu: .menu
+        case .playPause: .play
+        case .next: .next
         }
         return ClickWheel.LabelGlow(zone: zone, from: state.hintAt)
     }

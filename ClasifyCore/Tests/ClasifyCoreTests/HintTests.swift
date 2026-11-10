@@ -90,6 +90,46 @@ import Testing
         #expect(s.toast == "" && s.hint == .menu && s.hintAt == 102)
     }
 
+    /// Changes 176 and 177: after a song played 10 s on Now Playing, the play/pause label glows.
+    /// A press ends it for good. The next hint waits for a later visit to Now Playing.
+    @Test func thePlayThenTheNextHintShowOnNowPlaying() {
+        var s = mainMenu()
+        s.hintsDone = [.menu]
+        send(&s, openFocus(1))
+        send(&s, .select)
+        #expect(s.top.screen == .now && s.hint == nil)
+        send(&s, .position(9.5, generation: s.playGen), now: 300)
+        #expect(s.hint == nil)
+        send(&s, .position(10, generation: s.playGen), now: 301)
+        #expect(s.hint == .playPause && s.hintAt == 301)
+        send(&s, .tick, now: 308.2)
+        #expect(s.hintTip)
+        send(&s, .play, now: 309)  // pause
+        #expect(s.hint == nil && !s.isPlaying && s.hintsDone == [.menu, .playPause])
+        send(&s, .play, .position(20, generation: s.playGen), now: 310)
+        #expect(s.isPlaying && s.hint == nil)  // not in the same visit
+        send(&s, .menu, .wheel(1), .select, now: 311)  // another song: Now Playing again
+        send(&s, .position(10, generation: s.playGen), now: 321)
+        #expect(s.top.screen == .now && s.hint == .next && s.hintAt == 321)
+        send(&s, .next, now: 322)
+        #expect(s.hint == nil && s.hintsDone == Set(Hint.allCases))
+    }
+
+    /// Off Now Playing, the play hint waits. A press before it shows ends it, and the next hint too.
+    @Test func thePlayHintWaitsOffNowPlayingAndEarlyPressesEndThem() {
+        var s = mainMenu()
+        s.hintsDone = [.menu]
+        send(&s, openFocus(1))
+        send(&s, .select, .position(12, generation: 1))
+        #expect(s.hint == .playPause)
+        send(&s, .menu)
+        #expect(s.hint == nil && !s.hintsDone.contains(.playPause))
+        send(&s, .play, .play, .next)
+        #expect(s.hintsDone == Set(Hint.allCases))
+        send(&s, .wheel(1), .select, .position(30, generation: s.playGen))
+        #expect(s.top.screen == .now && s.hint == nil)
+    }
+
     /// A reset keeps the ended hints, as it keeps the settings, and drops the one that shows.
     @Test func aResetKeepsTheEndedHints() {
         var s = fresh()

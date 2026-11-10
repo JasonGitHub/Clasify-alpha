@@ -349,11 +349,16 @@ struct PocketScreen: View {
     /// and 44 on Now Playing, over the time bar. The text wraps, with no "…". A first-time
     /// hint's tip has the same look (card BA, change 195).
     nonisolated static func toast(_ text: String, bottom: CGFloat) -> some View {
-        Text(text)
+        toastBox(bottom: bottom) {
+            Text(text).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The toast's box around any content, such as a tip with a wheel mark in its words.
+    nonisolated static func toastBox<Content: View>(bottom: CGFloat, @ViewBuilder content: () -> Content) -> some View {
+        content()
             .font(.helvetica(11, weight: .medium))
             .foregroundStyle(.white)
-            .multilineTextAlignment(.center)
-            .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 6)
             .padding(.horizontal, 13)
             .background {
@@ -373,8 +378,10 @@ struct PocketScreen: View {
 }
 
 /// A first-time hint's tip (card BA, change 195), in the toast look, 16 points above the
-/// screen's bottom. It fades in over 0.4 s from `from`, and out over the last 0.4 s of its
-/// 10 s. When the action is done, it goes at once. With Reduce Motion, nothing fades.
+/// screen's bottom. On Now Playing it sits 15 points up, in the time bar's place, and the
+/// play/pause or next mark shows in white as on the wheel. It fades in over 0.4 s from
+/// `from`, and out over the last 0.4 s of its 10 s. When the action is done, it goes at once.
+/// With Reduce Motion, nothing fades.
 struct HintTip: View {
     let hint: Hint
     let from: Double
@@ -384,10 +391,22 @@ struct HintTip: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
-            PocketScreen.toast(Labels.hintTip(hint), bottom: 16)
-                .opacity(reduceMotion ? 1 : Self.opacity(at: t))
+            let words = Labels.hintTip(hint)
+            PocketScreen.toastBox(bottom: hint == .menu ? 16 : 15) {
+                HStack(spacing: 4) {
+                    Text(words.lead)
+                    if let mark = words.mark {
+                        // The wheel's marks at 7 points tall.
+                        IconView(mark, width: mark == .playPause ? 17.5 : 13.3, height: 7)
+                        Text(words.rest)
+                    }
+                }
+            }
+            .opacity(reduceMotion ? 1 : Self.opacity(at: t))
         }
         .allowsHitTesting(false)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Labels.hintTip(hint).spoken)
     }
 
     /// The tip's opacity `t` seconds after it starts.
