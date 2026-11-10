@@ -1138,7 +1138,7 @@ func playing(_ i: Int = 0) -> AppState {
 
 @MainActor final class FakeLibrary: Library {
     var fetches: [String] = []
-    var loginResult = true
+    var loginResult: LoginResult = .ok
     var calls: [String] = []
     func playlists() async -> [Playlist]? { fetches.append("playlists"); return [focusInfo] }
     func tracks(of playlist: String) async -> [Track]? {
@@ -1153,9 +1153,9 @@ func playing(_ i: Int = 0) -> AppState {
     }
     func track(_ id: String) async -> Track? { fetches.append(id); return extra[id] }
     func prefetch() async { calls.append("prefetch") }
-    func logIn() async -> Bool { calls.append("logIn"); return loginResult }
+    func logIn() async -> LoginResult { calls.append("logIn"); return loginResult }
     func cancelLogIn() async { calls.append("cancelLogIn") }
-    func restoreSession() async -> Bool { calls.append("restoreSession"); return loginResult }
+    func restoreSession() async -> LoginResult { calls.append("restoreSession"); return loginResult }
     func logOut() { calls.append("logOut") }
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int) -> Void)?
 }
@@ -1184,7 +1184,7 @@ func playing(_ i: Int = 0) -> AppState {
 @MainActor @Test func storeRunsLoginEffects() async {
     let lib = FakeLibrary()
     let store = Store(player: FakePlayer(), library: lib, state: afterSetup(), env: Dependencies(now: { 0 }, random: { _ in 0 }))
-    lib.loginResult = false
+    lib.loginResult = .failed
     store.send(.launch)
     while store.state.restoring { await Task.yield() }
     store.send(.select)  // Log in

@@ -46,6 +46,17 @@ func sampleState() -> AppState {
         let bb = Labels.setupWords(for: Frame(screen: .spotifyApp), in: s)
         #expect(bb == .init(headline: "One more thing", line: "We also need the Spotify app on this Mac."))
         #expect(Labels.row(.getSpotifyApp, on: .spotifyApp, in: s) == .init(label: "Get Spotify App"))
+        // Card AX, screen 135 (CLA-66): no chevrons, and the login's title.
+        #expect(Labels.title(.premium, in: s) == "Log In" && Labels.message(for: Frame(screen: .premium), in: s) == nil)
+        let premium = Labels.setupWords(for: Frame(screen: .premium), in: s)
+        #expect(premium == .init(headline: "Premium needed", line: "To play music, we need Spotify Premium."))
+        #expect(Labels.row(.checkPremium, on: .premium, in: s) == .init(label: "Check again"))
+        #expect(Labels.row(.getPremium, on: .premium, in: s) == .init(label: "Get Premium"))
+        #expect(Labels.row(.premiumLogOut, on: .premium, in: s) == .init(label: "Log out"))
+        #expect(PreviewScreen.of(.premium, in: s)?.screen == .mark(ok: false, word: "No Premium"))
+        #expect(PreviewScreen.of(.premium, in: s)?.cable == .on)  // plugged in, the light resting
+        #expect(SyncCable.lightOnce(at: -0.1).opacity == 0 && SyncCable.lightOnce(at: 1.1).opacity == 0)
+        #expect(SyncCable.lightOnce(at: 0.5).opacity == 1 && abs(SyncCable.lightOnce(at: 0.5).distance - 75) < 0.5)
         // Card AY: the read, then "You’re all set" with the count.
         #expect(Labels.message(for: Frame(screen: .yourMusic, loading: true), in: s) == nil)
         #expect(Labels.setupWords(for: Frame(screen: .yourMusic, loading: true), in: s)?.headline == "Getting your music")

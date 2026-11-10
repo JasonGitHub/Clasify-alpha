@@ -8,7 +8,7 @@ enum Labels {
         switch screen {
         case .login where state.restoring: "Clasify"
         case .main: "Clasify"
-        case .login, .auth, .loginFailed, .loggedIn: "Log In"  // card AX
+        case .login, .auth, .loginFailed, .loggedIn, .premium: "Log In"  // card AX
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
@@ -73,6 +73,10 @@ enum Labels {
         case .openBrowser: return RowText(label: "Open browser again")
         case .tryAgain: return RowText(label: "Try again")
         case .getSpotifyApp: return RowText(label: "Get Spotify App")  // card BB: no chevron
+        // Card AX, screen 135: no chevrons.
+        case .checkPremium: return RowText(label: "Check again")
+        case .getPremium: return RowText(label: "Get Premium")
+        case .premiumLogOut: return RowText(label: "Log out")
         }
     }
 
@@ -131,6 +135,7 @@ enum Labels {
         case .auth: SetupWords(headline: "Take your time", line: "Your browser is open.\nLog in there.")
         case .loginFailed: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")
         case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
+        case .premium: SetupWords(headline: "Premium needed", line: "To play music, we need Spotify Premium.")  // 135
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
         case .yourMusic: SetupWords(headline: "You’re all set", line: ready(state.tracks(in: Playlist.likedSongsID).count))

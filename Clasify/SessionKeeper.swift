@@ -91,6 +91,12 @@ final class SessionKeeper {
             log.error("login refused after \(ms, privacy: .public) ms; signing out")
             store?.send(.expire)
             return false
+        case .notPremium:
+            // No retry: a new login would end the same way. The Premium screen shows, and
+            // its "Check again" logs in again (CLA-66). Signed out, so the poll stops.
+            log.error("account is not Premium after \(ms, privacy: .public) ms")
+            store?.send(.notPremium)
+            return false
         case .failed:
             let wait = backoff.failed()
             notBefore = .now + .seconds(wait)

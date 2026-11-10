@@ -67,16 +67,19 @@ final class LibrespotLibrary: Library {
 
     var isLoggedIn: Bool { username != nil }
 
-    /// Logs in through the browser. Returns false when the user cancels or the login fails.
-    func logIn() async -> Bool {
+    /// Logs in through the browser: `.failed` when the user cancels or the login fails,
+    /// `.notPremium` when the account is not Premium (CLA-66).
+    func logIn() async -> LoginResult {
         do {
             try await browserLogIn()
             loggedIn()
-            return true
+            return .ok
+        } catch let error as BridgeError where error.status == LSB_ERR_NOT_PREMIUM {
+            return .notPremium
         } catch {
             let status = (error as? BridgeError)?.status ?? 0
             log.error("login failed: status \(status, privacy: .public)")
-            return false
+            return .failed
         }
     }
 
@@ -91,7 +94,14 @@ final class LibrespotLibrary: Library {
         // A logout or another login came while the browser was open. Do not undo it.
         guard session == mine else { throw BridgeError.cancelled }
         guard let refresh = tokens.refreshToken else { throw BridgeError.noRefreshToken }
-        try await startSession(tokens.accessToken)
+        do {
+            try await startSession(tokens.accessToken)
+        } catch let error as BridgeError where error.status == LSB_ERR_NOT_PREMIUM {
+            // Keep the login for "Check again" on the Premium screen (card AX, screen 135).
+            // "Log out" there forgets it.
+            _ = RefreshTokenStore.save(refresh)
+            throw error
+        }
         // Keep the login only after it worked.
         guard RefreshTokenStore.save(refresh) else {
             session += 1
@@ -115,10 +125,17 @@ final class LibrespotLibrary: Library {
     /// no stored login, or the refresh or the login failed. The stored token stays, because
     /// the bridge cannot tell "offline" from "refused". Only `logOut` removes it.
     @discardableResult
-    func restoreSession() async -> Bool { await reconnect() == .done }
+    func restoreSession() async -> LoginResult {
+        switch await reconnect() {
+        case .done: .ok
+        case .notPremium: .notPremium
+        case .failed, .refused: .failed
+        }
+    }
 
-    /// How a login with the stored refresh token ended.
-    enum Restore: Sendable { case done, failed, refused }
+    /// How a login with the stored refresh token ended. `.notPremium`: it worked, but the
+    /// account is not Premium, so the session ended (CLA-66).
+    enum Restore: Sendable { case done, failed, refused, notPremium }
 
     /// Logs in again with the stored refresh token, for example after the session dropped.
     /// The library stays when the account is the same. `.refused` means that Spotify rejected
@@ -154,6 +171,8 @@ final class LibrespotLibrary: Library {
             return .done
         } catch let error as BridgeError where error.status == LSB_ERR_REFUSED {
             return .refused
+        } catch let error as BridgeError where error.status == LSB_ERR_NOT_PREMIUM {
+            return .notPremium
         } catch {
             return .failed
         }
@@ -205,7 +224,7 @@ final class LibrespotLibrary: Library {
 
     /// Runs a read in the session. It logs in again once when the session dropped.
     private func withSession<T: Sendable>(_ read: () async throws -> T) async -> T? {
-        if !isLoggedIn, !(await restoreSession()) { return nil }
+        if !isLoggedIn, await restoreSession() != .ok { return nil }
         let mine = session
         do {
             return try await read()
@@ -215,7 +234,7 @@ final class LibrespotLibrary: Library {
             // The account changed while it read. A restore now would log the old account in again.
             guard session == mine else { return nil }
             // The session dropped. Log in again once, then try once more.
-            guard await restoreSession() else { return nil }
+            guard await restoreSession() == .ok else { return nil }
             return try? await read()
         } catch {
             // Any other failure (a deleted playlist, a network error) would fail again after a

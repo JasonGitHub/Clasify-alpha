@@ -111,12 +111,15 @@ public enum Screen: Equatable, Sendable {
     /// The login (card AX, changes 171 and 175): it failed, or it worked. `loggedIn` shows for
     /// `AppState.beatTime`, then the next step opens. Every login uses them, not only setup.
     case loginFailed, loggedIn
+    /// The login worked, but the account is not Spotify Premium (card AX, screen 135). Clasify
+    /// needs Premium to play. "Check again" logs in again with the stored login.
+    case premium
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp:
+            .spotifyApp, .premium:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn: false
         }
@@ -166,6 +169,9 @@ public enum Row: Equatable, Sendable {
     case openBrowser, tryAgain
     /// The Spotify App screen's row (card BB): opens the Spotify download page in the browser.
     case getSpotifyApp
+    /// Rows of the Premium screen (card AX, screen 135): log in again with the stored login,
+    /// open Spotify's Premium page in the browser, and forget the login.
+    case checkPremium, getPremium, premiumLogOut
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
 }
@@ -265,7 +271,13 @@ public struct AppState: Equatable, Sendable {
     /// When "You’re in" (card AX, change 175) or "Linked" on the Spotify App screen (card BB,
     /// change 174) moves on by itself. 0 when neither shows.
     public var beatUntil: Double = 0
-    /// Seconds that "You’re in" and "Linked" show before the next step.
+    /// "Premium" shows on the Premium screen (card AX, screen 135): "Check again" found it,
+    /// and Clasify goes on after `beatTime`.
+    public var premiumFound = false
+    /// When "Check again" was pressed, or Premium was found: the sync cable's light flows once
+    /// from then. 0 before that.
+    public var premiumAt: Double = 0
+    /// Seconds that "You’re in", "Linked" and "Premium" show before the next step.
     public static let beatTime = 1.5
     /// Seconds that "You’re all set" (card AY, change 140) shows before the main menu: no hurry.
     public static let allSetTime = 2.5
@@ -589,6 +601,7 @@ public struct AppState: Equatable, Sendable {
         case .auth: [.openBrowser, .cancel]
         case .loginFailed: [.tryAgain, .cancel]
         case .spotifyApp: [.getSpotifyApp]
+        case .premium: [.checkPremium, .getPremium, .premiumLogOut]
         case .about, .now, .hello, .yourMusic, .loggedIn: []
         }
     }

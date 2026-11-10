@@ -139,6 +139,10 @@ final class AppModel {
         store.onGetSpotifyApp = {
             if let url = URL(string: "https://www.spotify.com/download/mac/") { NSWorkspace.shared.open(url) }
         }
+        // Card AX, screen 135: "Get Premium" opens Spotify's Premium page in the browser.
+        store.onGetPremium = {
+            if let url = URL(string: "https://www.spotify.com/premium/") { NSWorkspace.shared.open(url) }
+        }
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] in await keeper?.reconnect() ?? false }

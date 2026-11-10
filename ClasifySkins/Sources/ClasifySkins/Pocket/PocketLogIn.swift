@@ -9,7 +9,8 @@ enum PreviewScreen: Equatable {
     /// browser is open they breathe slowly (change 170).
     case rows(breathe: Bool)
     /// One big mark and one big word: the green check for success ("Logged in", change 175;
-    /// "Linked", change 174), else the gray cross ("Not found", change 174).
+    /// "Linked", change 174; "Premium", screen 135), else the gray cross ("Not found", change
+    /// 174; "No Premium", screen 135).
     case mark(ok: Bool, word: String)
     /// The playlist names fill in one by one from time `from`, like an iPod sync (card AY, 141).
     case names([String], from: Double)
@@ -24,6 +25,13 @@ enum PreviewScreen: Equatable {
         case .login, .loginFailed: return (screen: PreviewScreen.rows(breathe: false), cable: SyncCable.Plug.off)
         case .auth: return (screen: PreviewScreen.rows(breathe: true), cable: SyncCable.Plug.light)
         case .loggedIn: return (screen: PreviewScreen.mark(ok: true, word: "Logged in"), cable: SyncCable.Plug.light)
+        // Card AX, screen 135: the cable stays plugged in. Its light flows once when "Check
+        // again" is pressed, and again when Premium is found.
+        case .premium where state.premiumFound:
+            return (screen: PreviewScreen.mark(ok: true, word: "Premium"), cable: SyncCable.Plug.once(from: state.premiumAt))
+        case .premium:
+            let cable = state.premiumAt > 0 ? SyncCable.Plug.once(from: state.premiumAt) : SyncCable.Plug.on
+            return (screen: PreviewScreen.mark(ok: false, word: "No Premium"), cable: cable)
         case .yourMusic where state.top.error: return nil  // the error message fills the screen
         case .yourMusic where state.top.loading:
             let names = state.namesAt > 0
@@ -85,7 +93,7 @@ struct PreviewScreenContent: View {
         ZStack {
             rows.opacity(shown == 0 ? 1 : 0)
             if case .names(let list, let from) = screen { names(list, from: from) }
-            mark(ok: false, word: "Not found").opacity(shown == 1 ? 1 : 0)
+            mark(ok: false, word: Self.failWord(screen)).opacity(shown == 1 ? 1 : 0)
             mark(ok: true, word: Self.okWord(screen)).opacity(shown == 2 ? 1 : 0)
         }
         .animation(.easeInOut(duration: 0.3), value: shown)
@@ -136,7 +144,13 @@ struct PreviewScreenContent: View {
         }
     }
 
-    /// The word of the green check: "Logged in" or "Linked".
+    /// The word of the gray cross: "Not found" or "No Premium".
+    static func failWord(_ screen: PreviewScreen) -> String {
+        if case .mark(false, let word) = screen { return word }
+        return "Not found"
+    }
+
+    /// The word of the green check: "Logged in", "Linked" or "Premium".
     static func okWord(_ screen: PreviewScreen) -> String {
         if case .mark(true, let word) = screen { return word }
         return "Logged in"
@@ -182,16 +196,30 @@ struct SyncCable: View {
         case on
         /// Plugged in, and a soft blue light travels up into the device every 2.4 s.
         case light
+        /// Plugged in, and the light travels up once, in `onceTime`, from time `from` (screen 135).
+        case once(from: Double)
     }
+
+    nonisolated static let onceTime = 1.0
 
     let plug: Plug
     @Environment(\.animationTime) private var fixedTime
 
-    static let lightRound = 2.4
+    nonisolated static let lightRound = 2.4
 
     /// The light's distance along the cable from its far end, and its opacity, at time `t`.
-    static func light(at t: Double) -> (distance: Double, opacity: Double) {
-        let u = max(0, t).truncatingRemainder(dividingBy: lightRound) / lightRound
+    nonisolated static func light(at t: Double) -> (distance: Double, opacity: Double) {
+        lightPart(max(0, t).truncatingRemainder(dividingBy: lightRound) / lightRound)
+    }
+
+    /// The single light of `.once`, `t` seconds after it starts: gone before and after.
+    nonisolated static func lightOnce(at t: Double) -> (distance: Double, opacity: Double) {
+        guard t >= 0, t <= onceTime else { return (0, 0) }
+        return lightPart(t / onceTime)
+    }
+
+    /// The light at part `u` (0 to 1) of its way: it fades in, travels and fades out.
+    private nonisolated static func lightPart(_ u: Double) -> (distance: Double, opacity: Double) {
         var opacity: Double = 1
         if u < 0.1 { opacity = Hello.ease(u / 0.1) } else if u > 0.8 { opacity = 1 - Hello.ease((u - 0.8) / 0.2) }
         return (150 * Hello.ease(u), opacity)
@@ -226,7 +254,8 @@ struct SyncCable: View {
             .opacity(plugged ? 0 : 1)
             cable(Self.pluggedPath) { plugBody.offset(x: 50, y: 181) }
                 .opacity(plugged ? 1 : 0)
-            if plug == .light { flow }
+            if plug == .light { flow { Self.light(at: $0) } }
+            if case .once(let from) = plug { flow { Self.lightOnce(at: $0 - from) } }
         }
         .animation(.easeInOut(duration: 0.4), value: plugged)  // it plugs in, in 0.4 s
         .frame(width: 160, height: 210, alignment: .topLeading)
@@ -250,9 +279,9 @@ struct SyncCable: View {
     }
 
     /// The light: a 14 point dash with a soft glow, the same blue as the rim light.
-    private var flow: some View {
+    private func flow(_ at: @escaping (Double) -> (distance: Double, opacity: Double)) -> some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
-            let light = Self.light(at: fixedTime ?? context.date.timeIntervalSinceReferenceDate)
+            let light = at(fixedTime ?? context.date.timeIntervalSinceReferenceDate)
             let dash: [CGFloat] = [14, 200]
             ZStack(alignment: .topLeading) {
                 Self.pluggedPath
