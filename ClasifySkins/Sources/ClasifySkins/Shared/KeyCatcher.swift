@@ -36,6 +36,15 @@ struct KeyCatcher: NSViewRepresentable {
         }
     }
 
+    /// The key is for the device: the event is for its window, or for no window while Clasify is
+    /// active and the device is its front window (CLA-79). The plain window on macOS 15 and later
+    /// may not become key, so its keys come with no window. A key for another window, such as
+    /// How to Use, is that window's.
+    static func isForDevice(event: AnyObject?, device: AnyObject, front: AnyObject?, active: Bool) -> Bool {
+        if let event { return event === device }
+        return active && front === device
+    }
+
     /// Keys with Command, Option or Control belong to the menus. Shift and Caps Lock are fine.
     static func takes(_ modifiers: NSEvent.ModifierFlags) -> Bool {
         modifiers.intersection(.deviceIndependentFlagsMask).isDisjoint(with: [.command, .option, .control])
@@ -61,7 +70,10 @@ struct KeyCatcher: NSViewRepresentable {
 
         /// Sends the key if it is for this window and the device uses it. Returns false to pass it on.
         private func take(_ event: NSEvent) -> Bool {
-            guard let window, event.window === window, KeyCatcher.takes(event.modifierFlags) else { return false }
+            guard let window, KeyCatcher.takes(event.modifierFlags) else { return false }
+            let front = NSApp.orderedWindows.first { $0.isVisible && $0.level == .normal && !($0 is NSPanel) }
+            guard KeyCatcher.isForDevice(event: event.window, device: window, front: front, active: NSApp.isActive)
+            else { return false }
             // A text field that is typing gets its own keys.
             if window.firstResponder is NSText { return false }
             guard let key = KeyCatcher.key(keyCode: event.keyCode, characters: event.charactersIgnoringModifiers)
