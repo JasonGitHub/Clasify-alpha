@@ -62,15 +62,15 @@ public final class Clicker {
         }
     }
 
-    /// The click with the fade, scaled so the peak is 0.5, as the old click's gain. Returns 16-bit
-    /// mono samples.
+    /// The click with the fade, scaled so the peak is 0.28: 5 dB under the old 0.5 (CLA-91, card BE
+    /// change 219, Jason 00:35 JST 11-11). Returns 16-bit mono samples.
     nonisolated static func samples() -> [Int16] {
         let rate = Double(sampleRate)
         let count = Int(rate * length), fadeCount = Double(Int(rate * fade))
         let levels = (0..<count).map { i in
             wave(at: Double(i) / rate) * min(1, Double(count - 1 - i) / fadeCount)
         }
-        let gain = 0.5 / (levels.map { abs($0) }.max() ?? 1)
+        let gain = 0.28 / (levels.map { abs($0) }.max() ?? 1)
         return levels.map { Int16(($0 * gain * Double(Int16.max)).rounded()) }
     }
 

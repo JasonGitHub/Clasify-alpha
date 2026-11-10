@@ -146,7 +146,7 @@ struct PocketAbout: View {
         .shadow(color: .white.opacity(0.9), radius: 0, y: 1)
         .shadow(color: .black.opacity(0.18), radius: 0, y: -0.5)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Clasify. AI-native craftsmanship. Made with love by CappyAI.")
+        .accessibilityLabel("Clasify. Made with love by CappyAI. AI-native craftsmanship.")
     }
 
     /// "Made with ♥ by CappyAI" in steel. The glint sweeps the whole line as one, from the start
