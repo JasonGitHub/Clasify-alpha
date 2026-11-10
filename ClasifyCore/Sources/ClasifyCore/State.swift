@@ -355,8 +355,9 @@ public struct AppState: Equatable, Sendable {
     /// a screen opened, false on a way back.
     public var navSeq = 0
     public var navForward = true
-    /// Counts the moves between a half screen (`isHalf`) and a full one. On those, a skin
-    /// pushes the whole screen, with its title bar; on other moves only the content slides.
+    /// Counts the moves between a half screen (`isHalf`) and a full one, and to and from Hello.
+    /// On those, a skin pushes the whole screen, with its title bar; on other moves only the
+    /// content slides.
     public var wholeSeq = 0
     /// How the last screen change moves, so a skin can draw it (Round 9, cards AE, AF, AH).
     public var navMove = NavMove.push

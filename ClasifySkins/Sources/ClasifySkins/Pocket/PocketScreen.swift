@@ -187,8 +187,8 @@ struct PocketScreen: View {
 
     var body: some View {
         ZStack {
-            // Between a half screen and a full one, the whole screen moves, with its title bar,
-            // the pane and the covers. Other moves slide only the content (`parts`).
+            // Between a half screen and a full one, and to and from Hello, the whole screen moves,
+            // with its title bar, the pane and the covers. Other moves slide only the content (`parts`).
             // In the doors move, the main menu's doors open over Cover Flow and close over it.
             parts.frame(width: Pocket.screenWidth, height: Pocket.screenHeight, alignment: .leading)
                 .id(state.wholeSeq)
