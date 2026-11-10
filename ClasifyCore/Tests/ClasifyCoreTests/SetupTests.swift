@@ -104,24 +104,24 @@ import Testing
         send(&s, .playlistsRefreshed(names), now: 200)
         #expect(s.firstReadNames.count == 6 && s.playlistCount == 8)  // six names show; the count is all
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
-        // The sixth name has shown at 200 + 0.5 + 5 × 0.6 + 0.3 = 203.8 s.
-        #expect(s.top.loading && !s.setupDone && abs(s.namesHold - 203.8) < 1e-9)
+        // The sixth name has shown at 200 + 0.5 + 5 × 0.34 + 0.3 = 202.5 s (CLA-80).
+        #expect(s.top.loading && !s.setupDone && abs(s.namesHold - 202.5) < 1e-9)
         #expect(s.loadedTracks == [Playlist.likedSongsID])  // the songs are kept already
         let albums = Set(liked.tracks.compactMap { $0.album?.id }).count
         #expect(s.readDone == liked.tracks.count && s.readTotal == liked.tracks.count && s.readAlbums == albums)  // full
         #expect(send(&s, .select, now: 202).isEmpty && s.top.loading)  // no press meanwhile
-        send(&s, .readProgress(Playlist.likedSongsID, done: 1, total: 2, albums: 1), .tick, now: 203)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 1, total: 2, albums: 1), .tick, now: 202.2)
         #expect(s.top.loading && s.readDone == liked.tracks.count)  // a late report changes nothing
-        send(&s, .offline(true), .tick, now: 203.9)
-        #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 206.4) < 1e-9)
+        send(&s, .offline(true), .tick, now: 202.6)
+        #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 205.1) < 1e-9)
 
-        // Two names wait only for those: shown at 200 + 0.5 + 0.6 + 0.3 = 201.4 s.
+        // Two names wait only for those: shown at 200 + 0.5 + 0.34 + 0.3 = 201.14 s.
         var two = onColor()
         send(&two, .select, .select, .authDone(token: 2, ok: true), .select)
         send(&two, .playlistsRefreshed(Array(names.prefix(2))), now: 200)
         var late = two
         send(&two, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
-        #expect(abs(two.namesHold - 201.4) < 1e-9 && !two.setupDone)
+        #expect(abs(two.namesHold - 201.14) < 1e-9 && !two.setupDone)
         // A read that ends after the names waits for nothing.
         send(&late, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201.5)
         #expect(late.setupDone && late.namesHold == 0)
@@ -140,10 +140,12 @@ import Testing
         #expect(s.top.loading && !s.setupDone)  // it waits for the list
         let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
         send(&s, .playlistsRefreshed(names), now: 302)
-        // The sixth name has shown at 302 + 0.5 + 5 × 0.6 + 0.3 = 305.8 s.
-        #expect(s.namesAt == 302 && abs(s.namesHold - 305.8) < 1e-9 && s.top.loading && !s.setupDone)
-        send(&s, .tick, now: 305.8)
-        #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 308.3) < 1e-9)
+        // The sixth name has shown at 302 + 0.5 + 5 × 0.34 + 0.3 = 304.5 s.
+        #expect(s.namesAt == 302 && abs(s.namesHold - 304.5) < 1e-9 && s.top.loading && !s.setupDone)
+        send(&s, .tick, now: 304.4)
+        #expect(s.top.loading && !s.setupDone)
+        send(&s, .tick, now: 304.6)
+        #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 307.1) < 1e-9)
     }
 
     /// CLA-74: when the list fails, or has no playlists, setup goes on at once.

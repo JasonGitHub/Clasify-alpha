@@ -294,8 +294,9 @@ public struct AppState: Equatable, Sendable {
     /// `.playlistsRefreshed` then sets the deadline, or ends the read.
     public var namesHold: Double = 0
     /// The names on the small screen during the first read: each fades in and rises over
-    /// `nameFade`, `nameGap` after the one before it, from `nameStart` after they came.
-    public static let nameStart = 0.5, nameGap = 0.6, nameFade = 0.3
+    /// `nameFade`, `nameGap` after the one before it, from `nameStart` after they came. Six
+    /// names have shown 2.5 s after they came (CLA-80). The 191 hold and the skin use these too.
+    public static let nameStart = 0.5, nameGap = 0.34, nameFade = 0.3
     /// The playlist names that show on the small screen during the first read: up to 6.
     public var firstReadNames: [String] {
         Array(library.lazy.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name))
