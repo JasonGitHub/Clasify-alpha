@@ -13,7 +13,7 @@ let package = Package(
         // nothing from the network or disk.
         .target(
             name: "ClasifySkins", dependencies: [.product(name: "ClasifyCore", package: "ClasifyCore")],
-            resources: [.copy("Resources/about-hp-stand.png")]),
+            resources: ["stand", "wave", "think", "boba", "sleep"].map { Resource.copy("Resources/about-hp-\($0).png") }),
         .testTarget(name: "ClasifySkinsTests", dependencies: ["ClasifySkins"]),
     ]
 )

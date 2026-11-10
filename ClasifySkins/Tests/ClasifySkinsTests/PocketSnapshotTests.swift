@@ -951,7 +951,7 @@ import Testing
     /// the steel name and lines with the red heart. From step 3 the Licenses row is selected, and
     /// at step 5 the legal text shows.
     @Test func aboutScrollsOnePageWithTheCapybaraAndLicensesRow() throws {
-        #expect(PocketAbout.stand != nil)  // the art is bundled
+        #expect(PocketAbout.poses.count == AboutPose.allCases.count)  // the art is bundled
         var s = sampleState()
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
         let top = Self.listTop, left = Self.screenLeft, x = left + 150
@@ -976,6 +976,31 @@ import Testing
         let last = try render(s, "about-5")
         let legal = (left + 60..<left + 240).filter { x in (top + 158...top + 195).contains { last.isDark(x, $0) } }
         #expect(legal.count > 10)
+    }
+
+    /// Change 210: the capybara waves in the first second, then stands, then sleeps. Change 209:
+    /// the glint is in the middle of the tagline 0.9 s into the wave, and gone after.
+    @Test func aboutCapybaraChangesPoseAndTheTaglineGlints() throws {
+        var s = sampleState()
+        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
+        let top = Self.listTop, left = Self.screenLeft
+        let wave = try render(s, "about-wave", time: 0.5)
+        let glint = try render(s, "about-glint", time: 0.9)
+        let stand = try render(s, "about-stand", time: 3)
+        let sleep = try render(s, "about-sleep", time: 30)
+        func differ(_ a: Snapshot, _ b: Snapshot) -> Int {
+            (left + 102..<left + 198).reduce(0) { n, x in
+                n + stride(from: top + 20, to: top + 116, by: 4).filter { !near(a.rgb(x, $0), b.rgb(x, $0)) }.count
+            }
+        }
+        #expect(differ(wave, stand) > 40)
+        #expect(differ(sleep, stand) > 40)
+        // The tagline, 152 to 168 pt down: brighter in its middle while the band passes.
+        func light(_ c: (r: Int, g: Int, b: Int)) -> Int { c.r + c.g + c.b }
+        let brighter = (left + 120..<left + 180).filter { x in
+            (top + 152...top + 168).contains { light(glint.rgb(x, $0)) > light(stand.rgb(x, $0)) + 60 }
+        }
+        #expect(brighter.count > 5)
     }
 
     /// The battery's shadow fades downward only, from y 49 to 53 of the view box: its rows have

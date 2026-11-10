@@ -6,14 +6,21 @@ import SwiftUI
 /// one page that scrolls 5 wheel steps of 22.9 pt. The headphone capybara on its ground shadow,
 /// "Clasify", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version and
 /// Licenses rows, then the legal text. The points are from the top of the 321.5 pt page.
+/// The capybara waves, thinks, drinks boba and sleeps as `AppState.aboutPose(at:)` says, and
+/// the tagline's glint runs with each wave (changes 209, 210).
 struct PocketAbout: View {
     let state: AppState
     /// The scroll bar waits 0.3 s after About opens.
     @State private var barReady = false
+    /// A fixed clock for snapshot tests, in the same time as `AppState.aboutAt`.
+    @Environment(\.animationTime) private var fixedTime
 
     static let step: CGFloat = 22.9, page: CGFloat = 321.5
-    /// The capybara, 440 px square. Nil only if the package was built without it.
-    @MainActor static let stand = art("about-hp-stand")
+    /// The capybara's poses, each 440 px square. A pose is missing only if the package was built
+    /// without its art.
+    @MainActor static let poses: [AboutPose: NSImage] = Dictionary(uniqueKeysWithValues: AboutPose.allCases.compactMap { pose in
+        art("about-hp-\(pose)").map { (pose, $0) }
+    })
 
     static func art(_ name: String) -> NSImage? {
         Bundle.module.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
@@ -58,19 +65,70 @@ struct PocketAbout: View {
         }
     }
 
-    /// 96 pt, on a soft ground shadow 52 x 7 pt that ends 3 pt under the box.
+    /// 96 pt, on a soft ground shadow 52 x 7 pt that ends 3 pt under the box. The poses are
+    /// stacked: the new one fades in over the old one in 0.3 s (CSS ease), so the body never
+    /// dims. A cut (the wave in and out) shows at once.
     private var capybara: some View {
-        ZStack {
-            EllipticalGradient(colors: [Color(hex: 0x1b1f24, opacity: 0.2), Color(hex: 0x1b1f24, opacity: 0)])
-                .frame(width: 52, height: 7)
-                .offset(y: 47.5)
-            if let stand = Self.stand {
-                Image(nsImage: stand).resizable().interpolation(.high)
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
+            let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
+            let now = state.aboutPose(at: t), into = t - now.since
+            ZStack {
+                EllipticalGradient(colors: [Color(hex: 0x1b1f24, opacity: 0.2), Color(hex: 0x1b1f24, opacity: 0)])
+                    .frame(width: 52, height: 7)
+                    .offset(y: 47.5)
+                ForEach(AboutPose.allCases, id: \.self) { pose in
+                    if let image = Self.poses[pose] {
+                        let on = pose == now.pose, under = !now.cut && pose == now.from && into < 0.32
+                        Image(nsImage: image).resizable().interpolation(.high)
+                            .scaleEffect(on && pose == .sleep ? Self.breath(into) : CGSize(width: 1, height: 1),
+                                         anchor: UnitPoint(x: 0.5, y: 0.85))
+                            .rotationEffect(.degrees(on && pose == .wave ? Self.rock(into) : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
+                            .opacity(on ? (now.cut ? 1 : Self.bezier(0.25, 0.1, 0.25, 1, into / 0.3)) : under ? 1 : 0)
+                            .zIndex(on ? 2 : under ? 1 : 0)
+                    }
+                }
             }
+            .frame(width: 96, height: 96)
+            .accessibilityElement()
+            .accessibilityLabel("Capybara with headphones" + Self.doing[now.pose, default: ""])
         }
-        .frame(width: 96, height: 96)
-        .accessibilityElement()
-        .accessibilityLabel("Capybara with headphones")
+    }
+
+    private static let doing: [AboutPose: String] = [.wave: ", waving", .think: ", thinking", .boba: ", drinking boba", .sleep: ", asleep"]
+
+    /// The wave rocks 0, -4°, +4°, 0 at 0, 25, 75 and 100% of 0.5 s, twice, with ease-in-out
+    /// on each part.
+    nonisolated static func rock(_ t: Double) -> Double {
+        let x = max(t, 0).truncatingRemainder(dividingBy: 0.5) / 0.5
+        func ease(_ u: Double) -> Double { bezier(0.42, 0, 0.58, 1, u) }
+        if x < 0.25 { return -4 * ease(x / 0.25) }
+        if x < 0.75 { return -4 + 8 * ease((x - 0.25) / 0.5) }
+        return 4 - 4 * ease((x - 0.75) / 0.25)
+    }
+
+    /// Asleep, it breathes: after 0.3 s, to scale (1.012, 1.03) and back every 3.2 s, with
+    /// ease-in-out on each half.
+    nonisolated static func breath(_ t: Double) -> CGSize {
+        guard t > 0.3 else { return CGSize(width: 1, height: 1) }
+        let x = (t - 0.3).truncatingRemainder(dividingBy: 3.2) / 3.2
+        let k = bezier(0.42, 0, 0.58, 1, x < 0.5 ? x * 2 : 2 - x * 2)
+        return CGSize(width: 1 + 0.012 * k, height: 1 + 0.03 * k)
+    }
+
+    /// CSS cubic-bezier(x1, y1, x2, y2) at `x`, from 0 to 1: finds the curve point with that x
+    /// by bisection, and returns its y.
+    nonisolated static func bezier(_ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double, _ x: Double) -> Double {
+        if x <= 0 { return 0 }
+        if x >= 1 { return 1 }
+        func curve(_ s: Double, _ a: Double, _ b: Double) -> Double {
+            3 * (1 - s) * (1 - s) * s * a + 3 * (1 - s) * s * s * b + s * s * s
+        }
+        var low = 0.0, high = 1.0
+        for _ in 0..<32 {
+            let mid = (low + high) / 2
+            if curve(mid, x1, x2) < x { low = mid } else { high = mid }
+        }
+        return curve((low + high) / 2, y1, y2)
     }
 
     /// "Clasify" 20 bold, the tagline 14, and 60 pt under the top "Made with ♥ by CappyAI" 11.
@@ -78,8 +136,7 @@ struct PocketAbout: View {
     private var plate: some View {
         VStack(spacing: 0) {
             Self.engraved(Text("Clasify").font(.helvetica(20, bold: true)), height: 23, Self.nameSteel)
-            Self.engraved(Text("AI-native craftsmanship").font(.helvetica(14)), height: 16, Self.lineSteel)
-                .padding(.top, 2)
+            tagline.padding(.top, 2)
         }
         .overlay(alignment: .top) {
             HStack(spacing: 3.5) {
@@ -95,6 +152,41 @@ struct PocketAbout: View {
         .shadow(color: .black.opacity(0.18), radius: 0, y: -0.5)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Clasify. AI-native craftsmanship. Made with love by CappyAI.")
+    }
+
+    /// "AI-native craftsmanship" in steel, with a bright band that sweeps left to right in 1.8 s
+    /// (ease-in-out) from the start of each wave. Only the tagline has the glint (Jason 23:09 JST
+    /// 11-10).
+    private var tagline: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
+            let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
+            let line = Text("AI-native craftsmanship").font(.helvetica(14)).lineLimit(1).fixedSize().frame(height: 16)
+            line.hidden().overlay {
+                ZStack { Self.lineSteel; Self.glint(Self.bezier(0.42, 0, 0.58, 1, (t - state.aboutWaveAt) / 1.8)) }
+                    .mask { line }
+            }
+        }
+    }
+
+    /// The CSS glint: a 100° band (clear 40%, .75 at 47%, .95 at 50%, .75 at 53%, clear 60%) in a
+    /// layer 3 times as wide as the text. At 0 the layer's right edge is on the text's right edge,
+    /// so the band is off the left; at 1 its left edge is on the text's left edge.
+    static func glint(_ progress: Double) -> some View {
+        GeometryReader { geo in
+            let w = geo.size.width, h = geo.size.height
+            let angle = 100.0 * .pi / 180, dx = sin(angle), dy = -cos(angle)
+            let length = 3 * w * abs(dx) + h * abs(dy)
+            let start = UnitPoint(x: 0.5 - dx * length / 2 / (3 * w), y: 0.5 - dy * length / 2 / h)
+            let end = UnitPoint(x: 0.5 + dx * length / 2 / (3 * w), y: 0.5 + dy * length / 2 / h)
+            let light = Color(red: 235 / 255, green: 240 / 255, blue: 245 / 255)
+            LinearGradient(stops: [
+                .init(color: .white.opacity(0), location: 0.4), .init(color: light.opacity(0.75), location: 0.47),
+                .init(color: .white.opacity(0.95), location: 0.5), .init(color: light.opacity(0.75), location: 0.53),
+                .init(color: .white.opacity(0), location: 0.6),
+            ], startPoint: start, endPoint: end)
+            .frame(width: 3 * w, height: h)
+            .offset(x: -2 * w * (1 - progress))
+        }
     }
 
     /// 10 pt lines, 14 pt apart, each line in its own steel.
