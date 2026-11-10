@@ -968,13 +968,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     // show on Now Playing once a song has played 10 s.
     if case .reset = action {} else {
         if !playHintDone && s.hintsDone.contains(.playPause) { s.hintPlaySeq = s.navSeq }
-        func playing() -> Bool { s.top.screen == .now && s.current != nil && s.isPlaying && s.nowMode == .volume }
+        func playing() -> Bool {
+            s.top.screen == .now && s.current != nil && s.isPlaying && s.nowMode == .volume && s.overlayUntil <= now
+        }
         func fits(_ hint: Hint) -> Bool {
             guard s.setupDone, s.signedIn, s.stack.first?.screen == .main, !s.hintsDone.contains(hint) else { return false }
             switch hint {
             case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error
-            // On Now Playing, only while a song plays and the wheel sets the volume: the tip
-            // takes the time bar's place, and a scrub or a setting needs that row.
+            // On Now Playing, only while a song plays and that row shows the time bar: the tip
+            // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()
             case .next: return playing() && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
             }

@@ -115,8 +115,8 @@ import Testing
         #expect(s.hint == nil && s.hintsDone == Set(Hint.allCases))
     }
 
-    /// The play hint shows only while a song plays and the wheel sets the volume. A scrub stops
-    /// it, and it starts again after. A failure stops it, and its message shows at once.
+    /// The play hint shows only while a song plays and the time bar shows. A scrub or the volume
+    /// bar stops it, and it starts again after. A failure stops it, and its message shows at once.
     @Test func thePlayHintStopsForAScrubAndWhenPlaybackStops() {
         var s = mainMenu()
         s.hintsDone = [.menu]
@@ -128,7 +128,13 @@ import Testing
         #expect(s.nowMode == .scrub && s.hint == nil && s.hintsDone == [.menu])
         send(&s, .menu, now: 302)  // back to the volume
         #expect(s.nowMode == .volume && s.hint == .playPause && s.hintAt == 302)
-        send(&s, .playbackFailed("Spotify stopped", generation: s.playGen), now: 303)
+        send(&s, .tick, now: 309.2)
+        #expect(s.hint == .playPause && s.hintTip)
+        send(&s, .wheel(1), now: 310)  // the volume bar takes the row
+        #expect(s.overlayUntil == 311.5 && s.hint == nil && s.hintsDone == [.menu])
+        send(&s, .tick, now: 311.6)  // the volume bar hides
+        #expect(s.overlayUntil == 0 && s.hint == .playPause && s.hintAt == 311.6 && !s.hintTip)
+        send(&s, .playbackFailed("Spotify stopped", generation: s.playGen), now: 312)
         #expect(!s.isPlaying && s.hint == nil && s.toast == "Spotify stopped" && s.heldToast.isEmpty)
         #expect(!s.hintsDone.contains(.playPause))
     }
