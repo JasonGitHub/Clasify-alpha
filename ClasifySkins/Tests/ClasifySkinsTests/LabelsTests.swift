@@ -61,8 +61,8 @@ func sampleState() -> AppState {
         #expect(Labels.message(for: Frame(screen: .yourMusic, loading: true), in: s) == nil)
         #expect(Labels.setupWords(for: Frame(screen: .yourMusic, loading: true), in: s)?.headline == "Getting your music")
         #expect(Labels.setupWords(for: Frame(screen: .yourMusic), in: s)?.headline == "You’re all set")
-        #expect(Labels.ready(0) == "Your music is ready." && Labels.ready(1) == "1 song is ready.")
-        #expect(Labels.ready(1240) == "\(1240.formatted()) songs are ready.")
+        // Change 189: the same line for any library, with no song count.
+        #expect(Labels.setupWords(for: Frame(screen: .yourMusic), in: s)?.line == "Enjoy your music.")
         // Card AY, change 188: three counts. Each shows when its number is known.
         func words(_ c: [(number: String, words: String)?]) -> [String?] { c.map { $0.map { "\($0.number) \($0.words)" } } }
         #expect(words(SetupProgress.counts(done: 0, total: 0, playlists: nil, albums: 0)) == [nil, nil, nil])
