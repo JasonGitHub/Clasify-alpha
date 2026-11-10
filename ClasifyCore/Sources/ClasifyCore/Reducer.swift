@@ -398,7 +398,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.top.sel = sel
         s.coverFlowAlbum = albums[sel].id
     }
-    let offlineStart = "Offline. Can’t start playback"
+    let offlineStart = "You’re offline right now"
     func toggleShuffle() { s.shuffle.toggle(); fx.append(.setShuffle(s.shuffle)) }
     func setRepeat(_ mode: RepeatMode) {
         if mode != s.repeatMode { s.repeatMode = mode; fx.append(.setRepeat(mode)) }
@@ -571,7 +571,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 guard s.signedIn, s.stack.first?.screen == .main, s.top.screen != .spotifyApp else { return }
                 return playLiked()
             }
-            if !s.isPlaying && s.offline { return toast("Offline. Can’t resume") }
+            if !s.isPlaying && s.offline { return toast("You’re offline right now") }
             s.isPlaying.toggle()
             fx.append(s.isPlaying ? .resume : .pause)
 
@@ -812,7 +812,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.beatUntil = now + AppState.beatTime
 
         case .offline(let on):
-            if on && s.isPlaying { s.isPlaying = false; fx.append(.pause); toast("Connection lost. Paused") }
+            if on && s.isPlaying { s.isPlaying = false; fx.append(.pause); toast("Paused while you’re offline") }
             s.offline = on
 
         case .batteryChanged(let battery):

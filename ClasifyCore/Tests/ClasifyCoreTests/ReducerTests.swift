@@ -221,7 +221,7 @@ func playing(_ i: Int = 0) -> AppState {
         // Offline: the usual toast, no read.
         s = mainMenu()
         send(&s, .offline(true))
-        #expect(send(&s, .play) == [] && s.toast == "Offline. Can’t start playback")
+        #expect(send(&s, .play) == [] && s.toast == "You’re offline right now")
 
         // A Play in the adopt window wins: the late .adopted is dropped.
         s = mainMenu()
@@ -281,7 +281,7 @@ func playing(_ i: Int = 0) -> AppState {
         var s = playing()
         #expect(send(&s, .play) == [.pause] && !s.isPlaying)
         send(&s, .offline(true))
-        #expect(send(&s, .play) == [] && s.toast == "Offline. Can’t resume")
+        #expect(send(&s, .play) == [] && s.toast == "You’re offline right now")
     }
 
     @Test func nextAndPrevSkipInTheEngine() {
@@ -295,7 +295,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .next) == [.next(generation: 4)])  // the engine applies shuffle and repeat
         s = playing(3)
         send(&s, .offline(true))
-        #expect(send(&s, .next, .prev) == [] && s.current?.track == "f3" && s.toast == "Offline. Can’t start playback")
+        #expect(send(&s, .next, .prev) == [] && s.current?.track == "f3" && s.toast == "You’re offline right now")
     }
 
     @Test func shuffleAndRepeatSettingsGoToEngine() {
@@ -755,15 +755,15 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.current?.track == "f5" && s.t == 0 && s.beforeLoad != nil)
         send(&s, .loadFailed("Old", generation: 1))  // from an earlier load
         #expect(s.current?.track == "f5")
-        #expect(send(&s, .loadFailed("Can’t start Spotify playback", generation: 2)) == [])
+        #expect(send(&s, .loadFailed("That didn’t play. Try again", generation: 2)) == [])
         #expect(s.current == TrackRef(playlist: "focus", track: "f2") && s.t == 40 && s.isPlaying)
-        #expect(s.toast == "Can’t start Spotify playback" && s.beforeLoad == nil)
+        #expect(s.toast == "That didn’t play. Try again" && s.beforeLoad == nil)
         send(&s, .play)  // paused before the load: it stays paused after the failure
         send(&s, .menu, .wheel(1), .select, .loadFailed("x", generation: 3))
         #expect(s.current?.track == "f2" && !s.isPlaying)
         s = playing()  // the first load fails: nothing plays, so nothing shows
-        #expect(send(&s, .loadFailed("Install the Spotify app to play music", generation: 1)) == [])
-        #expect(s.current == nil && !s.isPlaying && s.t == 0 && s.toast == "Install the Spotify app to play music")
+        #expect(send(&s, .loadFailed("We need the Spotify app to play music", generation: 1)) == [])
+        #expect(s.current == nil && !s.isPlaying && s.t == 0 && s.toast == "We need the Spotify app to play music")
         #expect(s.top.screen == .tracks(playlist: "focus"))  // no empty Now Playing: back to the list
         #expect(s.stack[0].sel == 1 && s.rows(for: s.stack[0])[1] == .playlists)  // the main menu keeps its pick
         s = playing(2)
@@ -1017,9 +1017,9 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func offlinePausesPlayback() {
         var s = playing()
         #expect(send(&s, .offline(true)) == [.pause])
-        #expect(s.offline && !s.isPlaying && s.toast == "Connection lost. Paused")
+        #expect(s.offline && !s.isPlaying && s.toast == "Paused while you’re offline")
         send(&s, .menu, .select)  // Focus track 0
-        #expect(s.top.screen == .tracks(playlist: "focus") && s.toast == "Offline. Can’t start playback")
+        #expect(s.top.screen == .tracks(playlist: "focus") && s.toast == "You’re offline right now")
     }
 
     @Test func expireSignsOut() {
@@ -1027,7 +1027,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .expire) == [] && s.toast == "")
         s = playing()
         send(&s, .offline(true), .offline(false))  // a toast that still shows
-        #expect(s.toast == "Connection lost. Paused")
+        #expect(s.toast == "Paused while you’re offline")
         #expect(send(&s, .expire) == [.stop, .logOut])
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.current == nil && s.library.isEmpty)
         #expect(!s.playlistsLoaded && s.loadedTracks.isEmpty)

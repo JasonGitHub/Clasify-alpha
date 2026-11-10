@@ -851,11 +851,16 @@ import Testing
         s.stack.append(Frame(screen: .playlists, loading: true))
         let loading = try render(s, "loading")
         #expect(!loading.isBlue(150, Self.rowCenter(0)))  // no list while loading
-        s.stack = [Frame(screen: .login)]
-        s.toast = "Connection lost. Paused"
+        // Round 15 card BD: a box that fits its text, centered, 16 points above the screen's
+        // bottom (change 185, 186). The main menu has 6 rows, so glass is under it.
+        s.stack = [Frame(screen: .main)]
+        s.albumArt = .off
+        s.toast = "Paused while you’re offline"
         let shot = try render(s, "toast")
-        let toastX: Int = Self.screenLeft + 24, toastY: Int = 225  // 6 points above the toast's bottom, 26 above the screen's
-        #expect(shot.isDark(toastX, toastY))  // the toast's dark box
+        let bottom = Self.screenBottom - 16  // the box's bottom edge
+        #expect(shot.isDark(Self.screenLeft + 150, bottom - 6))  // the box, by its middle
+        #expect(!shot.isDark(Self.screenLeft + 150, bottom + 6))  // the gap under it
+        #expect(!shot.isDark(Self.screenLeft + 20, bottom - 6))  // it does not fill the width
     }
 
     @Test func theCenterLooksPressedInAndDarkensWhenPressed() throws {

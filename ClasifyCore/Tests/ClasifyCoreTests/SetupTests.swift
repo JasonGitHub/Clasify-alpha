@@ -153,7 +153,7 @@ import Testing
     @Test func theSpotifyAppScreenOpensWhenTheAppGoesAway() {
         var s = playing()
         let before = s.stack
-        send(&s, .spotifyAppFound(false), .playbackFailed("Install the Spotify app to play music", generation: s.playGen))
+        send(&s, .spotifyAppFound(false), .playbackFailed("We need the Spotify app to play music", generation: s.playGen))
         #expect(s.stack == before + [Frame(screen: .spotifyApp)] && s.toast.isEmpty && !s.isPlaying)
         send(&s, .menu, .spotifyAppFound(false))
         #expect(s.stack == before + [Frame(screen: .spotifyApp)])
@@ -184,7 +184,7 @@ import Testing
         send(&s, openFocus(1))
         send(&s, .select)  // the first track: Now Playing opens, and the load starts
         let list = s.stack.dropLast().map(\.screen)  // the main menu's selection moves with its Now Playing row
-        send(&s, .spotifyAppFound(false), .loadFailed("Install the Spotify app to play music", generation: s.playGen))
+        send(&s, .spotifyAppFound(false), .loadFailed("We need the Spotify app to play music", generation: s.playGen))
         #expect(s.current == nil && s.toast.isEmpty)
         send(&s, .spotifyAppFound(true), .select)
         #expect(s.stack.map(\.screen) == list && s.top.screen == .tracks(playlist: "focus"))  // the list, not an empty Now Playing

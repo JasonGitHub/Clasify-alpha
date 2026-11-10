@@ -212,7 +212,7 @@ final class SpotifyConnectPlayer: Player {
         // Nothing to go on from here. Ask for a new pick.
         guard ours else {
             log.notice("play: no control and no place to go on from")
-            return send(.playbackFailed("Pick a track to play it here", generation: generation))
+            return send(.playbackFailed("Pick a song to play it here", generation: generation))
         }
         fire(LSB_COMMAND_RESUME)
     }
@@ -262,7 +262,7 @@ final class SpotifyConnectPlayer: Player {
                 Self.logFailure("transfer", error)
                 guard id == loadID else { return }
                 loading = false
-                send(.playbackFailed("Can’t move playback to this Mac. Pick a track to play it here", generation: generation))
+                send(.playbackFailed("That can’t move here. Pick a song to play it", generation: generation))
             }
         }
     }
@@ -363,7 +363,7 @@ final class SpotifyConnectPlayer: Player {
         device = nil
         deviceOptions = [:]
         // After following Spotify into a station or album, there is no place to go on from.
-        let message = followedOther ? "Spotify quit. Pick a track to play" : "Spotify quit. Press Play to go on"
+        let message = followedOther ? "Spotify closed. Pick a song to play" : "Spotify closed. Press play to go on"
         if ours { lose(message, resumable: true, reason: "Spotify quit") }
     }
 
@@ -478,7 +478,7 @@ final class SpotifyConnectPlayer: Player {
             // Spotify quit after it took the play command. The continuation stays for Play.
             guard let found = device else {
                 if resumePoint == nil { resumePoint = (trackID, playlist, self.position) }
-                return fail("Spotify quit. Press Play to go on", id, started: true)
+                return fail("Spotify closed. Press play to go on", id, started: true)
             }
             if pendingSeek == nil, let position, position >= 1 { client.fireSeek(device: found, seconds: position) }
             if !wantsRunning { client.fire(LSB_COMMAND_PAUSE, to: found) }
@@ -500,7 +500,7 @@ final class SpotifyConnectPlayer: Player {
             fail(error.message, id)
         } catch {
             Self.logFailure("play", error)
-            fail("Can’t start Spotify playback", id)
+            fail("That didn’t play. Try again", id)
         }
     }
 
@@ -616,18 +616,18 @@ final class SpotifyConnectPlayer: Player {
                 devices, computerName: name, excluding: before, allowExcluded: ContinuousClock.now >= registered)
             switch pick {
             case .found(let found): return found
-            case .ambiguous: throw PlayerError(message: "Spotify runs on several computers. Quit it on the others")
+            case .ambiguous: throw PlayerError(message: "Spotify is open on another Mac. Close it there")
             case .none: try await Task.sleep(for: .seconds(1))
             }
         }
         // Spotify runs but has no device: it is logged out, or logged in to another account.
-        throw PlayerError(message: "Log in to the Spotify app with the same account")
+        throw PlayerError(message: "Spotify uses another account. Use the same one")
     }
 
     private func launchSpotify() async throws {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) else {
             send(.spotifyAppFound(false))  // the Spotify App screen opens (card BB, change 131)
-            throw PlayerError(message: "Install the Spotify app to play music")
+            throw PlayerError(message: "We need the Spotify app to play music")
         }
         let start = ContinuousClock.now
         try await Self.open(url)
@@ -707,7 +707,7 @@ final class SpotifyConnectPlayer: Player {
             let stopped = state.activeDeviceID.isEmpty
             let reason = stopped ? "no active device" : "other device"
             movedAway = !stopped
-            return lose(stopped ? "Spotify stopped playing" : "Playing elsewhere now", resumable: stopped, reason: reason)
+            return lose(stopped ? "The music stopped in Spotify" : "Now playing on another device", resumable: stopped, reason: reason)
         }
         // Our Spotify app moved to another context: autoplay after the playlist ended, or a
         // list picked in Spotify itself. Follow it and keep control. Liked Songs can come back
