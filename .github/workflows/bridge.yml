@@ -9,10 +9,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: LibrespotBridge } }
-    env: { RUSTFLAGS: "-D warnings" }
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets
+      # -D warnings only for our code: the vendored librespot-core (CLA-66) has a
+      # warning that crates.io dependencies hide with --cap-lints.
+      - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
       - run: cc -std=c11 -Wall -Wextra -Werror -fsyntax-only -x c include/librespot_bridge.h
