@@ -6,8 +6,9 @@ import Foundation
 enum Labels {
     static func title(_ screen: Screen, in state: AppState) -> String {
         switch screen {
-        case .login, .main: "Clasify"
-        case .auth: "Sign in"
+        case .login where state.restoring: "Clasify"
+        case .main: "Clasify"
+        case .login, .auth, .loginFailed, .loggedIn: "Log In"  // card AX
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
@@ -39,7 +40,7 @@ enum Labels {
     static func row(_ row: Row, on screen: Screen, in state: AppState) -> RowText {
         func onOff(_ on: Bool) -> String { on ? "On" : "Off" }
         switch row {
-        case .logIn: return RowText(label: "Log in with Spotify", opens: true)
+        case .logIn: return RowText(label: "Log in with Spotify")  // card AX: no chevron
         case .nowPlaying: return RowText(label: "Now Playing", opens: true)
         case .playlists: return RowText(label: "Playlists", opens: true)
         case .albums: return RowText(label: "Albums", opens: true)
@@ -69,6 +70,8 @@ enum Labels {
         case .cancel: return RowText(label: "Cancel")
         case .confirmLogOut: return RowText(label: "Log out")
         case .color(let color): return RowText(label: color.rawValue)
+        case .openBrowser: return RowText(label: "Open browser again")
+        case .tryAgain: return RowText(label: "Try again")
         }
     }
 
@@ -96,10 +99,6 @@ enum Labels {
             return Message(title: "No songs", body: "Add songs to this playlist in Spotify. Press MENU to go back.")
         case .albums where state.rows(for: frame).isEmpty, .coverFlow where state.rows(for: frame).isEmpty:
             return Message(title: "No albums", body: "Like songs in Spotify to see their albums. Press MENU to go back.")
-        case .auth:
-            return Message(
-                title: "Waiting for browser…", body: "Approve Clasify in your browser. Spotify Premium required.",
-                spinner: true)
         case .now where state.current == nil:
             return Message(title: "")
         // Setup screens that CLA-52 to CLA-55 draw. Until then they show their words as a message.
@@ -107,6 +106,28 @@ enum Labels {
             return Message(title: "One more thing", body: "We also need the Spotify app on this Mac.")
         default:
             return nil
+        }
+    }
+
+    /// The words over the rows of a login screen (card AX, changes 134, 170, 171 and 175): a
+    /// headline, a line, and on the first screen a footnote at the bottom.
+    struct SetupWords: Equatable {
+        var headline: String
+        var line: String
+        var footnote = ""
+    }
+
+    /// Nil on screens that are not a login screen, and while a stored login is restored.
+    static func setupWords(for frame: Frame, in state: AppState) -> SetupWords? {
+        switch frame.screen {
+        case .login where !state.restoring:
+            SetupWords(
+                headline: "Your music is on Spotify", line: "We’ll open your browser.",
+                footnote: "We never see your password.")
+        case .auth: SetupWords(headline: "Take your time", line: "Your browser is open.\nLog in there.")
+        case .loginFailed: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")
+        case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
+        default: nil
         }
     }
 

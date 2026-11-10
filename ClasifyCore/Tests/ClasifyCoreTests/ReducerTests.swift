@@ -36,10 +36,11 @@ func afterSetup() -> AppState {
     return s
 }
 
-/// Signed in on the main menu. Nothing of the library is read yet.
+/// Signed in on the main menu. Nothing of the library is read yet. A press on "You’re in"
+/// goes on at once.
 func mainMenu() -> AppState {
     var s = afterSetup()
-    send(&s, .select, .authDone(token: 1, ok: true))
+    send(&s, .select, .authDone(token: 1, ok: true), .select)
     return s
 }
 
@@ -100,7 +101,6 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.screen == .settings)
         send(&s, .select, .wheel(1), .select, .select)
         #expect(s.shuffle && s.repeatMode == .one)
-        s.toast = ""  // the "Signed in" toast from mainMenu()
         send(&s, .wheel(1), .select)
         #expect(s.albumArt == .nowPlaying && s.skin == .pocket && s.toast.isEmpty)  // All, then Now Playing
         #expect(!s.isHalf(.main) && !s.isHalf(.playlists) && s.showsNowPlayingArt)
@@ -475,7 +475,7 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func aCoverReadFromBeforeALogoutIsIgnored() {
         var s = afterSetup()
         #expect(send(&s, .launch, .restored(token: 1, ok: true)).last == .readArtTracks(token: 1, playlist: Playlist.likedSongsID))
-        send(&s, .expire, .select, .authDone(token: s.authAttempt + 1, ok: true))  // log in again while read 1 runs
+        send(&s, .expire, .select, .authDone(token: s.authAttempt + 1, ok: true), .select)  // log in again while read 1 runs
         #expect(s.top.screen == .main && s.artReads == [Playlist.likedSongsID: 2])
         send(&s, .artTracksRead(token: 1, playlist: Playlist.likedSongsID, tracks: nil), now: 102)  // late, from the old session
         send(&s, .artTracksRead(token: 1, playlist: Playlist.likedSongsID, tracks: Self.focusCovers.tracks), now: 102)
@@ -491,16 +491,18 @@ func playing(_ i: Int = 0) -> AppState {
         var s = afterSetup()
         send(&s, .select)  // the login wait opens
         #expect(s.navSeq == 1 && s.navForward)
-        send(&s, .authDone(token: 1, ok: true))  // the main menu replaces login: still forward
+        send(&s, .authDone(token: 1, ok: true))  // "You’re in" replaces the login: still forward
         #expect(s.navSeq == 2 && s.navForward)
-        send(&s, .wheel(3))  // no screen change
-        #expect(s.navSeq == 2)
-        send(&s, .select)  // Liked Songs opens
+        send(&s, .select)  // the main menu replaces it: forward
         #expect(s.navSeq == 3 && s.navForward)
+        send(&s, .wheel(3))  // no screen change
+        #expect(s.navSeq == 3)
+        send(&s, .select)  // Liked Songs opens
+        #expect(s.navSeq == 4 && s.navForward)
         send(&s, .menu)  // back
-        #expect(s.navSeq == 4 && !s.navForward)
+        #expect(s.navSeq == 5 && !s.navForward)
         send(&s, .reset)
-        #expect(s.navSeq == 4)  // the same screen identity, so no slide
+        #expect(s.navSeq == 5)  // the same screen identity, so no slide
     }
 
     @Test func onlyMovesBetweenAHalfScreenAndAFullOnePushTheWholeScreen() {
@@ -795,7 +797,7 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func playbackFailedPausesAndShowsToast() {
         var s = playing()
         send(&s, .playbackFailed("Old", generation: 0))  // stale load
-        #expect(s.isPlaying && s.toast == "Signed in")  // unchanged
+        #expect(s.isPlaying && s.toast.isEmpty)  // unchanged
         #expect(send(&s, .playbackFailed("Install Spotify to play music", generation: 1)) == [])
         #expect(!s.isPlaying && s.toast == "Install Spotify to play music" && s.current?.track == "f0")
     }
@@ -849,7 +851,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func loginAndRestorePrefetchTheLibrary() {
         var s = afterSetup()
-        #expect(send(&s, .select, .authDone(token: 1, ok: true)) == [.logIn(token: 1), .prefetch, .readArtTracks(token: 1, playlist: Playlist.likedSongsID)])
+        #expect(send(&s, .select, .authDone(token: 1, ok: true), .select) == [.logIn(token: 1), .prefetch, .readArtTracks(token: 1, playlist: Playlist.likedSongsID)])
         s = afterSetup()
         #expect(send(&s, .launch, .restored(token: 1, ok: true)) == [.restoreSession(token: 1), .prefetch, .readArtTracks(token: 1, playlist: Playlist.likedSongsID)])
         s = afterSetup()
@@ -860,19 +862,57 @@ func playing(_ i: Int = 0) -> AppState {
         var s = afterSetup()
         #expect(send(&s, .select) == [.logIn(token: 1)])
         send(&s, .offline(true), .authDone(token: 1, ok: false))  // offline, the login fails
-        #expect(s.top.screen == .login && !s.signedIn && s.toast == "Can’t reach Spotify")
-        send(&s, .offline(false), .select, .authDone(token: 1, ok: true))  // late, from the first attempt
-        #expect(s.top.screen == .auth && !s.signedIn)
+        #expect(s.top.screen == .loginFailed && !s.signedIn)
+        #expect(send(&s, .offline(false), .select) == [.logIn(token: 2)])  // Try again
+        send(&s, .authDone(token: 1, ok: true))  // late, from the first attempt
+        #expect(s.top == Frame(screen: .auth, token: 2) && !s.signedIn)
         send(&s, .reset, .select, .authDone(token: 2, ok: true))  // from before the reset
         #expect(s.top.screen == .auth && !s.signedIn)
         send(&s, .offline(true), .authDone(token: 3, ok: true))  // a login that worked counts offline too
-        #expect(s.stack == [Frame(screen: .main)] && s.signedIn)
+        #expect(s.stack == [Frame(screen: .loggedIn)] && s.signedIn && s.beatUntil == 101.5)
+        send(&s, .tick, now: 101.4)  // "You’re in" shows for 1.5 s
+        #expect(s.top.screen == .loggedIn)
+        send(&s, .tick, now: 101.5)
+        #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0 && s.toast.isEmpty)
     }
 
-    @Test func failedLoginGoesBackToLogin() {
+    /// Card AX, change 171: a failed login says so, with Try again and Cancel. No toast.
+    @Test func aFailedLoginOffersTryAgainAndCancel() {
         var s = afterSetup()
         send(&s, .select, .authDone(token: 1, ok: false))
-        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.toast == "Can’t reach Spotify")
+        #expect(s.stack == [Frame(screen: .login), Frame(screen: .loginFailed)] && !s.signedIn && s.toast.isEmpty)
+        #expect(s.rows(for: s.top) == [.tryAgain, .cancel] && s.top.sel == 0)
+        #expect(send(&s, .wheel(1), .select).isEmpty)  // Cancel: back to the login
+        #expect(s.stack == [Frame(screen: .login)] && !s.navForward)
+        send(&s, .select, .authDone(token: 2, ok: false), .menu)  // MENU goes back to the login too
+        #expect(s.stack == [Frame(screen: .login)])
+    }
+
+    /// Card AX, change 170: while the browser is open, the login can open it again or stop.
+    @Test func theLoginWaitOpensTheBrowserAgainOrCancels() {
+        var s = afterSetup()
+        send(&s, .select)
+        #expect(s.rows(for: s.top) == [.openBrowser, .cancel] && s.top.sel == 0)
+        let seq = s.navSeq
+        #expect(send(&s, .select) == [.logIn(token: 2)])  // the bridge stops the first login
+        #expect(s.stack == [Frame(screen: .login), Frame(screen: .auth, token: 2)] && s.navSeq == seq)  // no slide
+        send(&s, .authDone(token: 1, ok: false))  // the first login reports that it stopped
+        #expect(s.top == Frame(screen: .auth, token: 2))
+        #expect(send(&s, .wheel(1), .select) == [.cancelLogIn])  // Cancel
+        #expect(s.stack == [Frame(screen: .login)])
+    }
+
+    /// Card AX, change 175: "You’re in" goes on after 1.5 s, or at once with a press. MENU does nothing.
+    @Test func youreInGoesOnAfterABeatOrAPress() {
+        var s = afterSetup()
+        send(&s, .select, .authDone(token: 1, ok: true), now: 10)
+        #expect(s.stack == [Frame(screen: .loggedIn)] && s.rows(for: s.top).isEmpty && s.beatUntil == 11.5)
+        send(&s, .menu, .wheel(1), now: 10.5)
+        #expect(s.stack == [Frame(screen: .loggedIn)])
+        send(&s, .select, now: 10.6)
+        #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0)
+        send(&s, .tick, now: 12)  // the beat ended already: nothing more
+        #expect(s.stack == [Frame(screen: .main)])
     }
 
     @Test func menuCancelsLogin() {
@@ -933,7 +973,7 @@ func playing(_ i: Int = 0) -> AppState {
         fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt; fresh.artTok = s.artTok
         (fresh.navSeq, fresh.wholeSeq) = (s.navSeq, s.wholeSeq)
         #expect(s == fresh && s.tok == 2 && s.navSeq > 0)  // the reset keeps the screen identity: no slide
-        send(&s, .select, .authDone(token: 2, ok: true), .wheel(1), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))  // late load from before reset
+        send(&s, .select, .authDone(token: 2, ok: true), .select, .wheel(1), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)
     }
 
@@ -1071,8 +1111,8 @@ func playing(_ i: Int = 0) -> AppState {
     while lib.calls.count < 2 { await Task.yield() }
     #expect(lib.calls == ["restoreSession", "logIn"])
     while store.state.top.screen == .auth { await Task.yield() }
-    #expect(store.state.stack == [Frame(screen: .login)] && store.state.toast == "Can’t reach Spotify")
-    store.send(.select)
+    #expect(store.state.top.screen == .loginFailed)
+    store.send(.select)  // Try again
     store.send(.menu)
     while lib.calls.count < 4 { await Task.yield() }
     #expect(lib.calls.suffix(2).sorted() == ["cancelLogIn", "logIn"])
@@ -1081,7 +1121,7 @@ func playing(_ i: Int = 0) -> AppState {
 @MainActor @Test func storeFetchesLibraryAndDeliversLoaded() async {
     let lib = FakeLibrary()
     var s = afterSetup()
-    send(&s, .select, .authDone(token: 1, ok: true))
+    send(&s, .select, .authDone(token: 1, ok: true), .select)
     let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 0 }, random: { _ in 0 }))
     store.send(.wheel(1)); store.send(.select)  // Playlists
     #expect(store.state.top.loading)

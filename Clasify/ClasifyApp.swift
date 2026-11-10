@@ -157,6 +157,7 @@ final class AppModel {
         ticker = Task { [weak store, weak player, artwork] in
             var signedIn = false
             var spotifyCheck = 0.0  // when the Spotify App screen last looked for the app
+            var loggedIn = false
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let state = store?.state else { return }
@@ -175,7 +176,12 @@ final class AppModel {
                 let scrollDone = state.scrollUntil > 0 && now > state.scrollUntil
                 let artDone = state.artUntil > 0 && now > state.artUntil
                 let letterDone = state.letterUntil > 0 && now > state.letterUntil
-                if toastDone || overlayDone || scrollDone || artDone || letterDone { store?.send(.tick) }
+                // "You’re in" (card AX, change 175) goes on after its beat.
+                let beatDone = state.beatUntil > 0 && now >= state.beatUntil
+                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone { store?.send(.tick) }
+                // When the browser login works, Clasify comes to the front (change 170).
+                if state.top.screen == .loggedIn && !loggedIn { DeviceWindow.raise() }
+                loggedIn = state.top.screen == .loggedIn
             }
         }
     }

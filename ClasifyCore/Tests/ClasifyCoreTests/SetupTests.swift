@@ -29,8 +29,9 @@ import Testing
         var s = onColor()
         send(&s, .wheel(1), .select)
         #expect(s.deviceColor == .black && s.top.screen == .login && s.rows(for: s.top) == [.logIn])
-        send(&s, .menu)  // back to the color pick, with Black selected
+        send(&s, .menu)  // back to the color pick, with Black selected (card AX, change 172)
         #expect(s.top.screen == .color && s.top.sel == 1 && !s.navForward)
+        #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no rim light
         send(&s, .reset, .launch, .restored(token: 2, ok: false), .select)  // a reset keeps the settings
         #expect(s.top.screen == .color && s.top.sel == 1)  // the pick starts on the color that is set
     }
@@ -51,8 +52,9 @@ import Testing
     @Test func aLoginInSetupReadsTheLibraryThenOpensTheMainMenu() {
         var s = onColor()
         #expect(send(&s, .select, .select) == [.logIn(token: 2)])
-        let fx = send(&s, .authDone(token: 2, ok: true))
-        #expect(fx == [.prefetch, .fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
+        #expect(send(&s, .authDone(token: 2, ok: true)) == [.prefetch])
+        #expect(s.top.screen == .loggedIn && s.navForward)  // "You’re in" (card AX, change 175)
+        #expect(send(&s, .tick, now: 101.5) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
         #expect(s.stack == [Frame(screen: .yourMusic, loading: true, token: 1)] && s.signedIn && s.navForward)
         #expect(s.toast == "" && !s.setupDone)
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
@@ -61,7 +63,7 @@ import Testing
 
     @Test func aFailedFirstReadShowsTheErrorAndRetries() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
         #expect(s.top.screen == .yourMusic && s.top.error && !s.setupDone)
         #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: Playlist.likedSongsID)])
         send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks))
@@ -84,7 +86,7 @@ import Testing
 
     @Test func theSpotifyAppScreenShowsOnlyWhenTheAppIsMissing() {
         var s = onColor()
-        send(&s, .spotifyAppFound(false), .select, .select, .authDone(token: 2, ok: true))
+        send(&s, .spotifyAppFound(false), .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.stack == [Frame(screen: .spotifyApp)] && s.spotifyApp == false)
         send(&s, .menu, .select, .wheel(1), .spotifyAppFound(false))  // MENU does nothing, and the check goes on
         #expect(s.stack == [Frame(screen: .spotifyApp)])
@@ -108,8 +110,8 @@ import Testing
         // A login after a logout skips setup too.
         send(&s, .wheel(5), .select, .wheel(6), .select, .wheel(1), .select, .select)
         #expect(s.top == Frame(screen: .auth, token: 2) && s.toast == "Logged out")
-        send(&s, .authDone(token: 2, ok: true))
-        #expect(s.stack == [Frame(screen: .main)] && s.toast == "Signed in")
+        send(&s, .authDone(token: 2, ok: true), .select)
+        #expect(s.stack == [Frame(screen: .main)])
     }
 }
 

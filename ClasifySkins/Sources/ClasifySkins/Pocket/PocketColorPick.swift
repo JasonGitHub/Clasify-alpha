@@ -59,9 +59,16 @@ struct ColorPickWords: View {
 
 /// The right side of a setup screen: the small device on a white glow (card AW, change 138).
 /// It is our device drawing at 30% of its size (20% of the board's 1.5x drawing), with a soft
-/// floor shadow and no drop shadow of its own. Its screen shows a still Nano Rainbow hello.
+/// floor shadow and no drop shadow of its own. Its screen shows a still Nano Rainbow hello,
+/// or on the login screens (card AX) faint rows or the green check, with the sync cable.
 struct SetupPreview: View {
     let color: DeviceColor
+    var screen: PreviewScreen = .hello
+    var cable: SyncCable.Plug?
+
+    /// The top left corner of the device's screen in `PocketSkin`: the bezel is centered, and
+    /// the glass is 6.6 points inside it, under the 25.8 point top padding.
+    static let glass = CGPoint(x: (PocketSkin.size.width - Pocket.screenWidth) / 2, y: 25.8 + 6.6)
 
     static let scale: CGFloat = 0.3
 
@@ -76,10 +83,18 @@ struct SetupPreview: View {
                 EllipticalGradient(colors: [Color(hex: 0x141e28, opacity: 0.28), Color(hex: 0x141e28, opacity: 0)])
                     .frame(width: 90, height: 12)
                     .offset(x: 10, y: 183)
-                PocketSkin(state: Self.state(color), interactive: false)
-                    .environment(\.pocketPreview, true)
-                    .scaleEffect(Self.scale, anchor: .topLeading)
-                    .frame(width: PocketSkin.size.width * Self.scale, height: PocketSkin.size.height * Self.scale, alignment: .topLeading)
+                ZStack(alignment: .topLeading) {
+                    PocketSkin(state: Self.state(color), interactive: false)
+                    if screen != .hello {
+                        PreviewScreenContent(screen: screen)
+                            .clipShape(RoundedRectangle(cornerRadius: 2))
+                            .offset(x: Self.glass.x, y: Self.glass.y)
+                    }
+                }
+                .environment(\.pocketPreview, true)
+                .scaleEffect(Self.scale, anchor: .topLeading)
+                .frame(width: PocketSkin.size.width * Self.scale, height: PocketSkin.size.height * Self.scale, alignment: .topLeading)
+                if let cable { SyncCable(plug: cable) }
             }
             .frame(width: 110, height: 190, alignment: .topLeading)
         }

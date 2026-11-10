@@ -77,6 +77,10 @@ final class LibrespotLibrary: Library {
 
     /// Throws when the user cancels, Spotify refuses, or the Keychain refuses the token.
     private func browserLogIn() async throws {
+        // A new browser login ends any older one ("Open browser again", card AX). The bridge
+        // stops the older wait, but its tokens may already have come: it must not start a
+        // session after this one began, or this login would fail its own check below.
+        session += 1
         let mine = session
         let tokens = try await timed("oauth login") { try await LibrespotClient.oauthLogin() }
         // A logout or another login came while the browser was open. Do not undo it.
