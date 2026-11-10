@@ -137,7 +137,7 @@ struct SetupPreview: View {
 /// only the rotation and two opacities.
 struct Comet: View {
     var longTail: Double
-    static let radius: CGFloat = 105
+    nonisolated static let radius: CGFloat = 105
 
     var body: some View {
         let head = CGPoint(x: ClickWheel.size / 2 + Self.radius, y: ClickWheel.size / 2)
