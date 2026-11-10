@@ -712,7 +712,13 @@ mod library_tests {
         delivered.lock().unwrap().push((status, message, rows));
     }
 
-    extern "C" fn record_progress(_context: *mut c_void, _done: usize, _total: usize) {}
+    extern "C" fn record_progress(
+        _context: *mut c_void,
+        _done: usize,
+        _total: usize,
+        _albums: usize,
+    ) {
+    }
 
     /// CLA-55: a read reports 0 first, then the end of each batch of track details.
     #[test]
@@ -720,6 +726,29 @@ mod library_tests {
         assert_eq!(progress_steps(0).collect::<Vec<_>>(), [0]);
         assert_eq!(progress_steps(100).collect::<Vec<_>>(), [0, 100]);
         assert_eq!(progress_steps(250).collect::<Vec<_>>(), [0, 100, 200, 250]);
+    }
+
+    /// Card AY, change 188: the album count grows with each batch, each album once.
+    #[test]
+    fn album_count_counts_each_album_once() {
+        let track = |album: &str| Track {
+            album_uri: album.to_owned(),
+            ..Default::default()
+        };
+        let mut seen = std::collections::HashSet::new();
+        let first = [
+            track("spotify:album:a"),
+            track("spotify:album:b"),
+            track("spotify:album:a"),
+        ];
+        assert_eq!(count_albums(&mut seen, &first), 2);
+        let second = [
+            track(""),
+            track("spotify:album:b"),
+            track("spotify:album:c"),
+        ];
+        assert_eq!(count_albums(&mut seen, &second), 3);
+        assert_eq!(count_albums(&mut seen, &[]), 3);
     }
 
     extern "C" fn record_tracks(

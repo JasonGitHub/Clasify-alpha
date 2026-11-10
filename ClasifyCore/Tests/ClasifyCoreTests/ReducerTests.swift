@@ -1143,7 +1143,7 @@ func playing(_ i: Int = 0) -> AppState {
     func playlists() async -> [Playlist]? { fetches.append("playlists"); return [focusInfo] }
     func tracks(of playlist: String) async -> [Track]? {
         fetches.append(playlist)
-        onProgress?(playlist, 1, 2)  // how far, before the result, as the bridge reports it
+        onProgress?(playlist, 1, 2, 1)  // how far, before the result, as the bridge reports it
         return library.first { $0.id == playlist }?.tracks
     }
     var extra: [String: Track] = [:]
@@ -1157,7 +1157,7 @@ func playing(_ i: Int = 0) -> AppState {
     func cancelLogIn() async { calls.append("cancelLogIn") }
     func restoreSession() async -> LoginResult { calls.append("restoreSession"); return loginResult }
     func logOut() { calls.append("logOut") }
-    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int) -> Void)?
+    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
 }
 
 @MainActor @Test func storeReadsAnUnknownTrack() async {

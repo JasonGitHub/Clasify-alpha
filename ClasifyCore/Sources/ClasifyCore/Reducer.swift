@@ -30,9 +30,9 @@ public enum Action: Equatable, Sendable {
     /// The app looked for the Spotify app on this Mac: at launch, and every 3 s while the
     /// `spotifyApp` screen (card BB) shows. When it is found there, setup goes on.
     case spotifyAppFound(Bool)
-    /// A track read is this far: `done` of `total` items have their details. The first library
-    /// read (card AY, change 141) counts up with it.
-    case readProgress(String, done: Int, total: Int)
+    /// A track read is this far: `done` of `total` items have their details, on `albums`
+    /// albums. The first library read (card AY, changes 141 and 188) counts up with it.
+    case readProgress(String, done: Int, total: Int, albums: Int)
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
     case authDone(token: Int, ok: Bool)
     /// The restore that `.launch` or "Check again" started finished.
@@ -171,7 +171,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func toast(_ msg: String) { s.toast = msg; s.toastUntil = now + 1.8 }
     func fetch(_ screen: Screen) {
         let key = AppState.readKey(screen)  // Albums and Cover Flow read Liked Songs, an album itself
-        if screen == .yourMusic { s.readDone = 0; s.readTotal = 0 }  // each first read, or retry, counts from 0
+        if screen == .yourMusic { s.readDone = 0; s.readTotal = 0; s.readAlbums = 0; s.namesHold = 0 }  // each first read, or retry, counts from 0
         fx.append(key.isEmpty ? .fetchPlaylists(token: s.tok) : .fetchTracks(token: s.tok, playlist: key))
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
@@ -281,6 +281,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func stop() {
         if s.current != nil { fx.append(.stop) }
         s.isPlaying = false; s.current = nil; s.t = 0; s.beforeLoad = nil; s.loadPending = false
+    }
+    /// The first library read ended setup. Card AY, change 140: "You’re all set" for a beat,
+    /// then the main menu.
+    func endFirstRead() {
+        s.setupDone = true
+        s.beatUntil = now + AppState.allSetTime
     }
     /// The next setup step after the login: the Spotify app screen if the app is missing,
     /// else the first library read, else the main menu.
@@ -589,6 +595,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
+            if s.namesHold > 0 && now >= s.namesHold {  // change 191: every name has shown
+                s.namesHold = 0
+                if s.top.screen == .yourMusic && s.top.loading {  // the read worked, also if offline since
+                    s.top.loading = false; s.top.error = false
+                    endFirstRead()
+                }
+            }
             if s.beatUntil > 0 && now >= s.beatUntil {  // "You’re in" moves on
                 s.beatUntil = 0
                 if s.top.screen == .loggedIn { setupNext() }
@@ -730,12 +743,20 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.loadedTracks.insert(id)
                 s.readAt[id] = now
             }
-            finishLoad(token, ok: tracks != nil)
-            if s.top.screen == .yourMusic && !s.top.error {  // the first library read ended setup
-                // Card AY, change 140: "You’re all set" for a beat, then the main menu.
-                s.setupDone = true
-                s.beatUntil = now + AppState.allSetTime
+            if s.top.screen == .yourMusic, let tracks, s.namesAt > 0, !s.offline {
+                // Card AY, change 191: "Getting your music" stays until every name has shown.
+                let n = s.firstReadNames.count
+                let shown = s.namesAt + AppState.nameStart + AppState.nameGap * Double(n - 1) + AppState.nameFade
+                if n > 0 && now < shown {
+                    s.namesHold = shown
+                    // The bar and the counts end full, also if the last reports come late.
+                    s.readDone = tracks.count; s.readTotal = tracks.count
+                    s.readAlbums = Set(tracks.compactMap { $0.album?.id }).count
+                    return
+                }
             }
+            finishLoad(token, ok: tracks != nil)
+            if s.top.screen == .yourMusic && !s.top.error { endFirstRead() }
 
         case .launch:
             guard !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
@@ -743,12 +764,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.authAttempt += 1; s.restoring = true
             fx.append(.restoreSession(token: s.authAttempt))
 
-        case .readProgress(let id, let done, let total):
-            guard s.top.screen == .yourMusic, s.top.loading, id == AppState.readKey(.yourMusic) else { return }
+        case .readProgress(let id, let done, let total, let albums):
+            guard s.top.screen == .yourMusic, s.top.loading, s.namesHold == 0, id == AppState.readKey(.yourMusic) else { return }
             // Each report hops to the main actor in its own task, so two can come out of order.
             // For the same read, the count never goes back.
             s.readDone = total == s.readTotal ? max(s.readDone, done) : done
             s.readTotal = total
+            s.readAlbums = max(s.readAlbums, albums)
 
         case .spotifyAppFound(let found):
             let was = s.spotifyApp

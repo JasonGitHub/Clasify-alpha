@@ -34,9 +34,7 @@ enum PreviewScreen: Equatable {
             return (screen: PreviewScreen.mark(ok: false, word: "No Premium"), cable: cable)
         case .yourMusic where state.top.error: return nil  // the error message fills the screen
         case .yourMusic where state.top.loading:
-            let names = state.namesAt > 0
-                ? Array(state.library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name))
-                : []
+            let names = state.namesAt > 0 ? state.firstReadNames : []
             return (screen: PreviewScreen.names(names, from: state.namesAt), cable: SyncCable.Plug.light)
         case .yourMusic: return (screen: PreviewScreen.mark(ok: true, word: "Synced"), cable: SyncCable.Plug.on)
         default: return nil
@@ -120,7 +118,7 @@ struct PreviewScreenContent: View {
     /// Row `i`'s opacity at `t` seconds after the read began: each name fades in and rises
     /// over 0.3 s, 0.6 s after the one before it.
     static func nameOpacity(_ i: Int, at t: Double) -> Double {
-        min(max((t - 0.5 - 0.6 * Double(i)) / 0.3, 0), 1)
+        min(max((t - AppState.nameStart - AppState.nameGap * Double(i)) / AppState.nameFade, 0), 1)
     }
 
     /// The playlist names: bold 17 point rows, 27 points tall, from 20 points down.
@@ -298,15 +296,27 @@ struct SyncCable: View {
 }
 
 /// The first library read's bar (card AY, change 141): 6 points, a faint track and a fill in
-/// the selection blue, with "312 of 1,240 songs" under it. Until the library knows the total,
-/// a part of the blue moves to and fro, with no number.
+/// the selection blue. Until the library knows the total, a part of the blue moves to and fro.
+/// Under it, three counts (change 188): "107 playlists", "84 albums", "455 liked songs".
 struct SetupProgress: View {
     let done: Int, total: Int
+    /// nil until the playlist list came.
+    var playlists: Int?
+    var albums = 0
     @Environment(\.animationTime) private var fixedTime
 
-    /// "312 of 1,240 songs", or nil before the total is known.
-    nonisolated static func count(done: Int, total: Int) -> String? {
-        total > 0 ? "\(min(done, total).formatted()) of \(total.formatted()) songs" : nil
+    /// The three count lines, as a number and its words. A line is nil until its number is
+    /// known: the playlists when the list came, the albums and songs when the read has a total.
+    nonisolated static func counts(done: Int, total: Int, playlists: Int?, albums: Int) -> [(number: String, words: String)?] {
+        func line(_ n: Int?, _ one: String, _ many: String) -> (number: String, words: String)? {
+            n.map { ($0.formatted(), $0 == 1 ? one : many) }
+        }
+        let read = total > 0
+        return [
+            line(playlists, "playlist", "playlists"),
+            line(read ? albums : nil, "album", "albums"),
+            line(read ? min(done, total) : nil, "liked song", "liked songs"),
+        ]
     }
 
     /// The moving part's left edge, as a part of the free track, at time `t`: 0 to 1 and back in 2.4 s, eased.
@@ -316,7 +326,7 @@ struct SetupProgress: View {
     }
 
     var body: some View {
-        let count = Self.count(done: done, total: total)
+        let counts = Self.counts(done: done, total: total, playlists: playlists, albums: albums)
         VStack(alignment: .leading, spacing: 6) {
             if total > 0 {
                 GeometryReader { geo in
@@ -331,16 +341,31 @@ struct SetupProgress: View {
             } else {
                 sweep
             }
-            if let count {
-                Text(count)
-                    .font(.helvetica(11))
-                    .monospacedDigit()
-                    .foregroundStyle(Color(hex: 0x5d6772))
+            // The numbers right-aligned in one column, the words after them. A line not known
+            // yet keeps its place, so the lines never jump. 11 pt with a 1.35 line height.
+            Grid(alignment: .leading, horizontalSpacing: 3, verticalSpacing: 11 * 0.35) {
+                ForEach(counts.indices, id: \.self) { i in
+                    GridRow {
+                        Text(counts[i]?.number ?? "0").gridColumnAlignment(.trailing)
+                        Text(counts[i]?.words ?? "")
+                    }
+                    .opacity(counts[i] == nil ? 0 : 1)
+                }
             }
+            .font(.helvetica(11))
+            .monospacedDigit()
+            .foregroundStyle(Color(hex: 0x5d6772))
+            .fixedSize()
         }
         .padding(.horizontal, 9)
         .accessibilityElement()
-        .accessibilityLabel(count ?? "Getting your music")
+        .accessibilityLabel(Self.label(counts))
+    }
+
+    /// "107 playlists, 84 albums, 455 liked songs", or "Getting your music" before any count.
+    nonisolated static func label(_ counts: [(number: String, words: String)?]) -> String {
+        let known = counts.compactMap { $0.map { "\($0.number) \($0.words)" } }
+        return known.isEmpty ? "Getting your music" : known.joined(separator: ", ")
     }
 
     /// Before the total is known: a part of the blue moves to and fro.

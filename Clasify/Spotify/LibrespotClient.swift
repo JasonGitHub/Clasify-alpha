@@ -135,7 +135,7 @@ final class LibrespotClient: @unchecked Sendable {
     /// All tracks of a playlist, or of Liked Songs when `playlistURI` is nil.
     /// `progress` gets how many of the list's items have their details, and how many there
     /// are, on a bridge thread, before the result (CLA-55).
-    func tracks(playlistURI: String?, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> [Track] {
+    func tracks(playlistURI: String?, progress: @escaping @Sendable (Int, Int, Int) -> Void) async throws -> [Track] {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[Track], any Error>) in
             let box = Unmanaged.passRetained(TracksBox(ResultBox(continuation), progress: progress)).toOpaque()
             let status: Int32
@@ -217,9 +217,10 @@ final class ResultBox<Value: Sendable>: Sendable {
 /// progress only before the result, which releases the box.
 final class TracksBox: Sendable {
     let result: ResultBox<[Track]>
-    let progress: @Sendable (Int, Int) -> Void
+    /// Done, total, and the albums of the tracks so far.
+    let progress: @Sendable (Int, Int, Int) -> Void
 
-    init(_ result: ResultBox<[Track]>, progress: @escaping @Sendable (Int, Int) -> Void) {
+    init(_ result: ResultBox<[Track]>, progress: @escaping @Sendable (Int, Int, Int) -> Void) {
         self.result = result
         self.progress = progress
     }
@@ -280,9 +281,9 @@ private func tracksCallback(
     box.resume(trackResult(status, message, items, count))
 }
 
-private func tracksProgress(_ context: UnsafeMutableRawPointer?, _ done: Int, _ total: Int) {
+private func tracksProgress(_ context: UnsafeMutableRawPointer?, _ done: Int, _ total: Int, _ albums: Int) {
     guard let context else { return }
-    Unmanaged<TracksBox>.fromOpaque(context).takeUnretainedValue().progress(done, total)
+    Unmanaged<TracksBox>.fromOpaque(context).takeUnretainedValue().progress(done, total, albums)
 }
 
 private func tracksBoxCallback(

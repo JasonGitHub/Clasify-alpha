@@ -63,8 +63,14 @@ func sampleState() -> AppState {
         #expect(Labels.setupWords(for: Frame(screen: .yourMusic), in: s)?.headline == "You’re all set")
         #expect(Labels.ready(0) == "Your music is ready." && Labels.ready(1) == "1 song is ready.")
         #expect(Labels.ready(1240) == "\(1240.formatted()) songs are ready.")
-        #expect(SetupProgress.count(done: 0, total: 0) == nil)
-        #expect(SetupProgress.count(done: 300, total: 1240) == "300 of \(1240.formatted()) songs")
+        // Card AY, change 188: three counts. Each shows when its number is known.
+        func words(_ c: [(number: String, words: String)?]) -> [String?] { c.map { $0.map { "\($0.number) \($0.words)" } } }
+        #expect(words(SetupProgress.counts(done: 0, total: 0, playlists: nil, albums: 0)) == [nil, nil, nil])
+        #expect(SetupProgress.label(SetupProgress.counts(done: 0, total: 0, playlists: nil, albums: 0)) == "Getting your music")
+        let counts = SetupProgress.counts(done: 1300, total: 1240, playlists: 107, albums: 84)
+        #expect(words(counts) == ["107 playlists", "84 albums", "\(1240.formatted()) liked songs"])
+        #expect(words(SetupProgress.counts(done: 1, total: 2, playlists: 1, albums: 1)) == ["1 playlist", "1 album", "1 liked song"])
+        #expect(SetupProgress.label(counts) == "107 playlists, 84 albums, \(1240.formatted()) liked songs")
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
 

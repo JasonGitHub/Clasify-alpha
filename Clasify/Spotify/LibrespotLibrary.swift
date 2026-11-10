@@ -59,7 +59,7 @@ final class LibrespotLibrary: Library {
     /// carries its login id, so a late event of an older login is ignored.
     private var bridgeLogin: Task<Void, Never>?
 
-    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int) -> Void)?
+    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
 
     init(client: LibrespotClient) {
         self.client = client
@@ -280,8 +280,8 @@ final class LibrespotLibrary: Library {
         let uri = id == Playlist.likedSongsID ? nil : id
         let name = uri ?? "Liked Songs"
         // How far the read is, for the first library read's count (card AY, CLA-55).
-        let report: @Sendable (Int, Int) -> Void = { [weak self] done, total in
-            Task { @MainActor in self?.onProgress?(id, done, total) }
+        let report: @Sendable (Int, Int, Int) -> Void = { [weak self] done, total, albums in
+            Task { @MainActor in self?.onProgress?(id, done, total, albums) }
         }
         let task = trackReads[id] ?? Task<[Track], any Error> {
             do {
