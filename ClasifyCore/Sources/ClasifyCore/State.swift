@@ -284,9 +284,23 @@ public struct AppState: Equatable, Sendable {
     /// When the playlist names came during the first library read (card AY). A skin fills
     /// them in one by one from then. 0 before they come.
     public var namesAt: Double = 0
-    /// How far the first library read is: `readDone` of `readTotal` songs. 0 of 0 before the
-    /// library knows the total.
-    public var readDone = 0, readTotal = 0
+    /// How far the first library read is: `readDone` of `readTotal` songs, on `readAlbums`
+    /// albums (card AY, change 188). 0 of 0 before the library knows the total.
+    public var readDone = 0, readTotal = 0, readAlbums = 0
+    /// The first library read ended before all its playlist names showed (card AY, change
+    /// 191): "Getting your music" stays until then. 0 when it does not wait.
+    public var namesHold: Double = 0
+    /// The names on the small screen during the first read: each fades in and rises over
+    /// `nameFade`, `nameGap` after the one before it, from `nameStart` after they came.
+    public static let nameStart = 0.5, nameGap = 0.6, nameFade = 0.3
+    /// The playlist names that show on the small screen during the first read: up to 6.
+    public var firstReadNames: [String] {
+        Array(library.lazy.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name))
+    }
+    /// The number of playlists, for the first read's count (change 188).
+    public var playlistCount: Int {
+        library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.count
+    }
     /// The Spotify session expired (card AX, change 181). The login screen then says "Log in
     /// again". A logout, a login that works and a reset clear it.
     public var sessionEnded = false

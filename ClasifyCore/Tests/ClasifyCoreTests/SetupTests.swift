@@ -85,14 +85,46 @@ import Testing
         var s = onColor()
         send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.top.screen == .yourMusic && s.readDone == 0 && s.readTotal == 0)
-        send(&s, .readProgress(Playlist.likedSongsID, done: 0, total: 1240), .readProgress(Playlist.likedSongsID, done: 300, total: 1240))
-        #expect(s.readDone == 300 && s.readTotal == 1240)
-        send(&s, .readProgress(Playlist.likedSongsID, done: 200, total: 1240))  // a late report
-        #expect(s.readDone == 300)
-        send(&s, .readProgress("focus", done: 5, total: 8))  // another read
-        #expect(s.readDone == 300 && s.readTotal == 1240)
-        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .readProgress(Playlist.likedSongsID, done: 1240, total: 1240))
+        send(&s, .readProgress(Playlist.likedSongsID, done: 0, total: 1240, albums: 0), .readProgress(Playlist.likedSongsID, done: 300, total: 1240, albums: 84))
+        #expect(s.readDone == 300 && s.readTotal == 1240 && s.readAlbums == 84)  // change 188
+        send(&s, .readProgress(Playlist.likedSongsID, done: 200, total: 1240, albums: 60))  // a late report
+        #expect(s.readDone == 300 && s.readAlbums == 84)
+        send(&s, .readProgress("focus", done: 5, total: 8, albums: 3))  // another read
+        #expect(s.readDone == 300 && s.readTotal == 1240 && s.readAlbums == 84)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .readProgress(Playlist.likedSongsID, done: 1240, total: 1240, albums: 0))
         #expect(s.readDone == 300)  // late: the read has ended
+    }
+
+    /// Change 191: when Liked Songs is read before every playlist name showed, "Getting your
+    /// music" stays until the last name has shown. Then "You’re all set" as before.
+    @Test func theFirstReadWaitsForEveryName() {
+        var s = onColor()
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
+        send(&s, .playlistsRefreshed(names), now: 200)
+        #expect(s.firstReadNames.count == 6 && s.playlistCount == 8)  // six names show; the count is all
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+        // The sixth name has shown at 200 + 0.5 + 5 × 0.6 + 0.3 = 203.8 s.
+        #expect(s.top.loading && !s.setupDone && abs(s.namesHold - 203.8) < 1e-9)
+        #expect(s.loadedTracks == [Playlist.likedSongsID])  // the songs are kept already
+        let albums = Set(liked.tracks.compactMap { $0.album?.id }).count
+        #expect(s.readDone == liked.tracks.count && s.readTotal == liked.tracks.count && s.readAlbums == albums)  // full
+        #expect(send(&s, .select, now: 202).isEmpty && s.top.loading)  // no press meanwhile
+        send(&s, .readProgress(Playlist.likedSongsID, done: 1, total: 2, albums: 1), .tick, now: 203)
+        #expect(s.top.loading && s.readDone == liked.tracks.count)  // a late report changes nothing
+        send(&s, .offline(true), .tick, now: 203.9)
+        #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 206.4) < 1e-9)
+
+        // Two names wait only for those: shown at 200 + 0.5 + 0.6 + 0.3 = 201.4 s.
+        var two = onColor()
+        send(&two, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&two, .playlistsRefreshed(Array(names.prefix(2))), now: 200)
+        var late = two
+        send(&two, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+        #expect(abs(two.namesHold - 201.4) < 1e-9 && !two.setupDone)
+        // A read that ends after the names waits for nothing.
+        send(&late, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201.5)
+        #expect(late.setupDone && late.namesHold == 0)
     }
 
     @Test func aPressOnAllSetGoesOnAtOnce() {
@@ -106,11 +138,11 @@ import Testing
     @Test func aFailedFirstReadShowsTheErrorAndRetries() {
         var s = onColor()
         send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
-        send(&s, .readProgress(Playlist.likedSongsID, done: 900, total: 1240), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
+        send(&s, .readProgress(Playlist.likedSongsID, done: 900, total: 1240, albums: 0), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
         #expect(s.top.screen == .yourMusic && s.top.error && !s.setupDone)
         #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: Playlist.likedSongsID)])
-        #expect(s.readDone == 0 && s.readTotal == 0)  // the retry counts from 0 again
-        send(&s, .readProgress(Playlist.likedSongsID, done: 300, total: 1240))
+        #expect(s.readDone == 0 && s.readTotal == 0 && s.readAlbums == 0)  // the retry counts from 0 again
+        send(&s, .readProgress(Playlist.likedSongsID, done: 300, total: 1240, albums: 0))
         #expect(s.readDone == 300)
         send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
         #expect(s.stack == [Frame(screen: .main)] && s.setupDone)

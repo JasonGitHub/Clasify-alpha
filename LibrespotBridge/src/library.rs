@@ -1,7 +1,7 @@
 //! Read-only library reads through librespot's own session (spclient), not the Web API:
 //! the playlist list (rootlist), and the tracks of a playlist or of Liked Songs.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{c_char, c_void, CString};
 
 use librespot_core::{FileId, Session, SpotifyId};
@@ -306,12 +306,12 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
         .collect()
 }
 
-/// `progress` gets how many of the list's items have their details, and how many there are:
-/// first 0, then after each batch of `METADATA_BATCH`.
+/// `progress` gets how many of the list's items have their details, how many there are, and
+/// how many albums the tracks so far are on: first 0, then after each batch of `METADATA_BATCH`.
 pub(crate) async fn read_tracks(
     session: &Session,
     uri: &str,
-    progress: impl FnMut(usize, usize),
+    progress: impl FnMut(usize, usize, usize),
 ) -> Result<Vec<Track>, String> {
     let uris = context_track_uris(&SessionPages(session), uri).await?;
     read_metadata(session, &uris, progress).await
@@ -323,16 +323,28 @@ pub(crate) fn progress_steps(total: usize) -> impl Iterator<Item = usize> {
         .chain((1..=total.div_ceil(METADATA_BATCH)).map(move |i| (i * METADATA_BATCH).min(total)))
 }
 
+/// Adds the albums of `tracks` to `seen` (each album once, none for a track with no album),
+/// and returns how many albums `seen` has now (card AY, change 188).
+pub(crate) fn count_albums(seen: &mut HashSet<String>, tracks: &[Track]) -> usize {
+    for track in tracks.iter().filter(|t| !t.album_uri.is_empty()) {
+        if !seen.contains(&track.album_uri) {
+            seen.insert(track.album_uri.clone());
+        }
+    }
+    seen.len()
+}
+
 /// The details of `uris`, in the same order, in batches of `METADATA_BATCH`.
 async fn read_metadata(
     session: &Session,
     uris: &[String],
-    mut progress: impl FnMut(usize, usize),
+    mut progress: impl FnMut(usize, usize, usize),
 ) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::with_capacity(uris.len());
+    let mut albums = HashSet::new();
     let mut steps = progress_steps(uris.len());
     if let Some(start) = steps.next() {
-        progress(start, uris.len());
+        progress(start, uris.len(), 0);
     }
     for (chunk, done) in uris.chunks(METADATA_BATCH).zip(steps) {
         let response = session
@@ -340,8 +352,10 @@ async fn read_metadata(
             .get_extended_metadata(metadata_request(chunk))
             .await
             .map_err(|e| format!("cannot read track details: {e}"))?;
-        tracks.extend(decode_metadata(&response, chunk));
-        progress(done, uris.len());
+        let batch = decode_metadata(&response, chunk);
+        let album_count = count_albums(&mut albums, &batch);
+        tracks.extend(batch);
+        progress(done, uris.len(), album_count);
     }
     Ok(tracks)
 }
@@ -396,8 +410,10 @@ pub type LsbTracksCallback = extern "C" fn(
     count: usize,
 );
 
-/// How far a read is: `done` of `total` items have their details.
-pub type LsbProgressCallback = extern "C" fn(context: *mut c_void, done: usize, total: usize);
+/// How far a read is: `done` of `total` items have their details, and those tracks are on
+/// `albums` albums.
+pub type LsbProgressCallback =
+    extern "C" fn(context: *mut c_void, done: usize, total: usize, albums: usize);
 
 pub(crate) struct Context(pub *mut c_void);
 
@@ -612,9 +628,9 @@ pub unsafe extern "C" fn lsb_read_tracks_progress(
         let context = context;
         let uri = uri.unwrap_or_else(|| liked_songs_uri(&session.username()));
         let progress_context = Context(context.0);
-        let report = move |done, total| {
+        let report = move |done, total, albums| {
             if let Some(on_progress) = on_progress {
-                on_progress(progress_context.ptr(), done, total);
+                on_progress(progress_context.ptr(), done, total, albums);
             }
         };
         let result = read_tracks(&session, &uri, report).await;
@@ -651,7 +667,7 @@ pub unsafe extern "C" fn lsb_read_track(
     let context = Context(context);
     (*bridge).runtime.spawn(async move {
         let context = context;
-        let result = read_metadata(&session, &[uri], |_, _| {}).await;
+        let result = read_metadata(&session, &[uri], |_, _, _| {}).await;
         deliver_tracks(callback, context.0, result, session.is_invalid());
     });
     LSB_OK

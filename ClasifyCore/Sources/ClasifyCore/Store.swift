@@ -60,7 +60,7 @@ public protocol Library: AnyObject {
     func logOut()
     /// Called on the main actor while a track read runs: how many of the list's items have
     /// their details, and how many there are. The store sets it.
-    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int) -> Void)? { get set }
+    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? { get set }
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.
@@ -87,8 +87,8 @@ public final class Store {
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
-        library.onProgress = { [weak self] playlist, done, total in
-            self?.send(.readProgress(playlist, done: done, total: total))
+        library.onProgress = { [weak self] playlist, done, total, albums in
+            self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
         }
         if let settings {
             self.state.settings = Settings(from: settings)
