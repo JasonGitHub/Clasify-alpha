@@ -27,6 +27,31 @@ struct ClickWheel: View {
     struct LabelGlow {
         var zones: [Zone]
         var from: Double
+
+        /// The glow's strength `t` seconds after the hint shows (CLA-86): 0 at the start, 1 at
+        /// 1.2 s and 0 again at 2.4 s, then again. Each half is eased as CSS ease-in-out,
+        /// cubic-bezier(.42, 0, .58, 1).
+        nonisolated static func strength(at t: Double) -> Double {
+            let half = Hello.pulse / 2
+            let phase = max(t, 0).truncatingRemainder(dividingBy: Hello.pulse)
+            return easeInOut(phase < half ? phase / half : 2 - phase / half)
+        }
+
+        /// cubic-bezier(.42, 0, .58, 1) at `x`: finds the curve point with that x by bisection,
+        /// and returns its y.
+        nonisolated static func easeInOut(_ x: Double) -> Double {
+            if x <= 0 { return 0 }
+            if x >= 1 { return 1 }
+            func curve(_ s: Double, _ a: Double, _ b: Double) -> Double {
+                3 * (1 - s) * (1 - s) * s * a + 3 * (1 - s) * s * s * b + s * s * s
+            }
+            var low = 0.0, high = 1.0
+            for _ in 0..<32 {
+                let mid = (low + high) / 2
+                if curve(mid, 0.42, 0.58) < x { low = mid } else { high = mid }
+            }
+            return curve((low + high) / 2, 0, 1)
+        }
     }
 
     init(
@@ -272,10 +297,11 @@ struct ClickWheel: View {
     }
 }
 
-/// A wheel label that a first-time hint lights (card BA, change 151): soft blue #3f8de0 with a
-/// #5aa3f0 glow in three layers at the pulse peak, 95%, 65% and 40% (change 205): the mock's
-/// drop-shadow 4/10/18 px = radius 2/5/9. It pulses between full and 55% every 2.4 s, as the
-/// center glow does. With Reduce Motion, it stays full.
+/// A wheel label that a first-time hint lights (card BA, change 151): solid soft blue #3f8de0
+/// with a #5aa3f0 glow in three layers, 95%, 65% and 40% (change 205): the mock's drop-shadow
+/// 4/10/18 px = radius 2/5/9. Only the glow pulses (CLA-86): its radii and opacities scale with
+/// `LabelGlow.strength`, so there is no glow at the start of each 2.4 s pulse. With Reduce
+/// Motion, the glow stays full.
 private struct GlowingLabel<Label: View>: View {
     let from: Double
     let label: Label
@@ -285,12 +311,12 @@ private struct GlowingLabel<Label: View>: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
+            let p = reduceMotion ? 1 : ClickWheel.LabelGlow.strength(at: t)
             label
                 .foregroundStyle(Color(hex: 0x3f8de0))
-                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.95), radius: 2)
-                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.65), radius: 5)
-                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.4), radius: 9)
-                .opacity(reduceMotion ? 1 : 0.775 + 0.225 * cos(2 * .pi * max(t, 0) / Hello.pulse))
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.95 * p), radius: 2 * p)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.65 * p), radius: 5 * p)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.4 * p), radius: 9 * p)
         }
         .allowsHitTesting(false)
     }

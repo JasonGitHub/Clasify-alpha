@@ -47,6 +47,16 @@ import Testing
         #expect(Hello.text(at: 2.0, reduceMotion: true) == 0 && close(Hello.text(at: 2.4, reduceMotion: true), 1))
     }
 
+    /// CLA-86: a hint label stays solid and only its glow pulses, 0 to 1 to 0 in 2.4 s, each
+    /// half eased in and out.
+    @Test func theHintGlowPulsesFromNothing() {
+        let p = ClickWheel.LabelGlow.strength(at:)
+        #expect(p(0) == 0 && p(-1) == 0)
+        #expect(close(p(1.2), 1) && close(p(2.4), 0) && close(p(3.6), 1))
+        #expect(close(p(0.6), 0.5) && close(p(1.8), 0.5))  // half way by symmetry
+        #expect(close(p(0.3), 0.12916) && close(p(0.9), 0.87084))  // cubic-bezier(.42, 0, .58, 1)
+    }
+
     /// Card AW: the comet waits on the wheel (change 200), then follows the thumb (change 202); the turn hint after 2 s (change 179);
     /// after the first turn, the press hint after 3 pulses.
     @Test func theColorPickTeachesTheTurnThenThePress() {
