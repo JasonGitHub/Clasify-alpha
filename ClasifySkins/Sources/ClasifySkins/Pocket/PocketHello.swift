@@ -1,8 +1,8 @@
 import ClasifyCore
 import SwiftUI
 
-/// The Hello screen's word and times (Round 13, card AT, changes 159 to 168). Times are in
-/// seconds since Hello opened (`AppState.helloAt`). These functions only shape time.
+/// The Hello screen's word and times (Round 13, card AT, changes 159 to 168 and 178). Times
+/// are in seconds since Hello opened (`AppState.helloAt`). These functions only shape time.
 enum Hello {
     /// Our own hand-lettered "hello" (HP in round13/gen.py): one path in a 300 x 120 space.
     static let pathData = """
@@ -29,12 +29,15 @@ enum Hello {
     static let size = CGSize(width: 200, height: 80)
     static let unit = 2.0 / 3.0
 
-    // MARK: Times (change 165)
+    // MARK: Times (changes 165 and 178)
 
-    /// One loop of the five looks. Look n starts at n x `slot`.
-    static let loop = 22.5, slot = 3.0, write = 2.0, hold = 0.6, fade = 0.4
-    /// The center glow starts here and pulses; the begin text comes after 3 pulses (change 166).
-    static let glowAt = 16.0, pulse = 2.4, textAfter = 7.2
+    /// One loop of the four looks. Look n starts at n x `slot`.
+    static let loop = 19.5, slot = 3.0, write = 2.0, hold = 0.6, fade = 0.4
+    /// The last look, T5 Liquid Glass. It writes from 9.2 s.
+    static let glass = 3
+    /// The center glow starts here and pulses (change 166). The begin text comes 2 s after the
+    /// last animation (the T5 light) ends at 12.9 s: at 14.9 s, or 2 s in with Reduce Motion.
+    static let glowAt = 13.0, pulse = 2.4, textAt = 14.9, reducedTextAt = 2.0
 
     /// CSS ease-in-out, cubic-bezier(0.42, 0, 0.58, 1).
     static func ease(_ x: Double) -> Double {
@@ -53,18 +56,17 @@ enum Hello {
         return bezier((lo + hi) / 2, 0, 1)
     }
 
-    /// How much of look `look` (0 = T1 to 4 = T5) is written at loop time `t`, from 0 to 1.
-    /// T1's pixels come on in path order at an even pace; the lines write with ease-in-out.
+    /// How much of look `look` (0 = T2 to 3 = T5) is written at loop time `t`, from 0 to 1,
+    /// with ease-in-out.
     static func written(look: Int, at t: Double) -> Double {
-        let x = (t - (Double(look) * slot + 0.2)) / write
-        return look == 0 ? min(max(x, 0), 1) : ease(x)
+        ease((t - (Double(look) * slot + 0.2)) / write)
     }
 
-    /// The opacity of look `look` at loop time `t`. T1 to T4 hold 0.6 s after writing and fade in
-    /// 0.4 s. T5 stays to 22.0 s and fades by 22.4 s.
+    /// The opacity of look `look` at loop time `t`. T2 to T4 hold 0.6 s after writing and fade in
+    /// 0.4 s. T5 stays to 19.0 s and fades by 19.4 s.
     static func opacity(look: Int, at t: Double) -> Double {
         let start = Double(look) * slot
-        let end = look == 4 ? 22.0 : start + 0.2 + write + hold
+        let end = look == glass ? 19.0 : start + 0.2 + write + hold
         if t < start { return 0 }
         if t <= end { return 1 }
         return max(0, 1 - (t - end) / fade)
@@ -73,8 +75,8 @@ enum Hello {
     /// T5's wobble after it is written (0.75 s): its x and y scale.
     static func wobble(at t: Double) -> CGSize {
         let keys: [(Double, CGSize)] = [
-            (14.2, CGSize(width: 1, height: 1)), (14.45, CGSize(width: 1.035, height: 0.97)),
-            (14.7, CGSize(width: 0.99, height: 1.015)), (14.95, CGSize(width: 1, height: 1)),
+            (11.2, CGSize(width: 1, height: 1)), (11.45, CGSize(width: 1.035, height: 0.97)),
+            (11.7, CGSize(width: 0.99, height: 1.015)), (11.95, CGSize(width: 1, height: 1)),
         ]
         for (a, b) in zip(keys, keys.dropFirst()) where t >= a.0 && t < b.0 {
             let k = ease((t - a.0) / (b.0 - a.0))
@@ -83,16 +85,16 @@ enum Hello {
         return CGSize(width: 1, height: 1)
     }
 
-    /// Where the drop of light on T5 starts along the path, from 14.0 to 15.9 s. It is 5% of the
+    /// Where the drop of light on T5 starts along the path, from 11.0 to 12.9 s. It is 5% of the
     /// path long. Nil when no part of it is on the path.
     static func glint(at t: Double) -> ClosedRange<Double>? {
-        guard t >= 14.0, t <= 15.9 else { return nil }
-        let start = -0.1 + 1.2 * (t - 14.0) / 1.9
+        guard t >= 11.0, t <= 12.9 else { return nil }
+        let start = -0.1 + 1.2 * (t - 11.0) / 1.9
         let (lower, upper) = (max(start, 0), min(start + 0.05, 1))
         return upper > lower ? lower...upper : nil
     }
 
-    /// The center glow's opacity at time `t` since Hello opened: off before 16 s (from the start
+    /// The center glow's opacity at time `t` since Hello opened: off before 13 s (from the start
     /// with Reduce Motion), a 0.4 s fade in, then a pulse between 1 and 0.55 every 2.4 s.
     static func glow(at t: Double, reduceMotion: Bool) -> Double {
         pulse(t - (reduceMotion ? 0 : glowAt))
@@ -106,47 +108,11 @@ enum Hello {
         return 0.775 + 0.225 * cos(2 * .pi * (t - 0.4) / pulse)
     }
 
-    /// "Press center button to begin": after 3 pulses of the glow, a 0.4 s fade in. Then it stays.
+    /// "Press center button to begin": a 0.4 s fade in at 14.9 s (2 s with Reduce Motion).
+    /// Then it stays.
     static func text(at t: Double, reduceMotion: Bool) -> Double {
-        let start = (reduceMotion ? 0 : glowAt) + textAfter
-        return min(max((t - start) / 0.4, 0), 1)
+        min(max((t - (reduceMotion ? reducedTextAt : textAt)) / 0.4, 0), 1)
     }
-
-    // MARK: T1 Pixel (change 160)
-
-    /// The 1.875 point pixels of T1, in screen pixels, with the part of the writing (0 to 39 of
-    /// 40) that turns each on. A pixel is on where its center is within the 2.8 point pen of
-    /// the path, as gen.py draws it.
-    static let pixels: [(x: Int, y: Int, part: Int)] = {
-        let size = 1.875, pen = 2.8 / 1.875
-        var points: [CGPoint] = []
-        var p0 = curves.start
-        for (c1, c2, end) in curves.curves {
-            for k in 0..<400 {
-                let u = Double(k) / 400, m = 1 - u
-                let w0: Double = m * m * m, w1: Double = 3 * m * m * u, w2: Double = 3 * m * u * u, w3: Double = u * u * u
-                let x: Double = w0 * Double(p0.x) + w1 * Double(c1.x) + w2 * Double(c2.x) + w3 * Double(end.x)
-                let y: Double = w0 * Double(p0.y) + w1 * Double(c1.y) + w2 * Double(c2.y) + w3 * Double(end.y)
-                points.append(CGPoint(x: (50 + x * unit) / size, y: (72.5 + y * unit) / size))
-            }
-            p0 = end
-        }
-        var first: [Int: Int] = [:]  // key x * 1000 + y: the first sample that turns it on
-        for (i, p) in points.enumerated() {
-            let px = Double(p.x), py = Double(p.y)
-            for x in Int(px - pen - 1)..<Int(px + pen + 2) {
-                for y in Int(py - pen - 1)..<Int(py + pen + 2) where first[x * 1000 + y] == nil {
-                    let dx: Double = Double(x) + 0.5 - Double(p.x), dy: Double = Double(y) + 0.5 - Double(p.y)
-                    if (dx * dx + dy * dy).squareRoot() <= pen { first[x * 1000 + y] = i }
-                }
-            }
-        }
-        var pixels: [(x: Int, y: Int, part: Int)] = []
-        for (key, sample) in first {
-            pixels.append((x: key / 1000, y: key % 1000, part: min(39, sample * 40 / points.count)))
-        }
-        return pixels.sorted { a, b in (a.part, a.y, a.x) < (b.part, b.y, b.x) }
-    }()
 }
 
 /// The hello path, drawn into its frame (200 x 80 points on the screen).
@@ -161,10 +127,10 @@ struct HelloWord: Shape {
     }
 }
 
-/// The Hello screen (card AT): our "hello" writes itself in five looks, T1 Pixel, T2 Ink, T3
-/// Selection Blue, T4 Nano Rainbow and T5 Liquid Glass, one after the other, on a loop until the
-/// press. "Press center button to begin" comes late and stays. With Reduce Motion, T5 shows at
-/// once (change 168).
+/// The Hello screen (card AT): our "hello" writes itself in four looks, T2 Ink, T3 Selection
+/// Blue, T4 Nano Rainbow and T5 Liquid Glass, one after the other, on a loop until the press
+/// (change 178 cut T1 Pixel). "Press center button to begin" comes late and stays. With
+/// Reduce Motion, T5 shows at once (change 168).
 struct PocketHello: View {
     /// When Hello opened, in `Date.timeIntervalSinceReferenceDate` time.
     let helloAt: Double
@@ -209,12 +175,11 @@ struct PocketHello: View {
             if reduceMotion {
                 HelloGlass(written: 1, wobble: CGSize(width: 1, height: 1), glint: nil)
             } else {
-                HelloPixels(written: Hello.written(look: 0, at: loop)).opacity(Hello.opacity(look: 0, at: loop))
-                line(look: 1, [Pocket.ink], at: loop)
-                line(look: 2, [Color(hex: 0x6fb2f5), Color(hex: 0x1f6fd1)], at: loop)
-                line(look: 3, Self.nano, at: loop)
-                HelloGlass(written: Hello.written(look: 4, at: loop), wobble: Hello.wobble(at: loop), glint: Hello.glint(at: loop))
-                    .opacity(Hello.opacity(look: 4, at: loop))
+                line(look: 0, [Pocket.ink], at: loop)
+                line(look: 1, [Color(hex: 0x6fb2f5), Color(hex: 0x1f6fd1)], at: loop)
+                line(look: 2, Self.nano, at: loop)
+                HelloGlass(written: Hello.written(look: Hello.glass, at: loop), wobble: Hello.wobble(at: loop), glint: Hello.glint(at: loop))
+                    .opacity(Hello.opacity(look: Hello.glass, at: loop))
             }
             Text("Press center button to begin")
                 .font(.helvetica(11))
@@ -235,24 +200,6 @@ struct PocketHello: View {
                 .frame(width: Hello.size.width, height: Hello.size.height)
                 .opacity(opacity)
         }
-    }
-}
-
-/// T1 Pixel: 1-bit ink pixels of 1.875 points, solid, with no gaps, on in path order.
-struct HelloPixels: View {
-    let written: Double
-
-    var body: some View {
-        Canvas { context, _ in
-            let size = 1.875, shown = Int((written * 40).rounded(.down))
-            var path = Path()
-            for pixel in Hello.pixels where pixel.part < shown || written >= 1 {
-                // A hair wider than a pixel, so that two pixels side by side show no seam.
-                path.addRect(CGRect(x: Double(pixel.x) * size, y: Double(pixel.y) * size, width: size * 1.06, height: size * 1.06))
-            }
-            context.fill(path, with: .color(Pocket.ink))
-        }
-        .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
     }
 }
 
