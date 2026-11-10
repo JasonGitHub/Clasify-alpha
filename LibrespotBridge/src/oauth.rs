@@ -30,8 +30,10 @@ pub const OAUTH_SCOPES: &[&str] = &[
     "user-library-read",
 ];
 
-const OAUTH_PAGE: &str =
-    "<!doctype html><html><body><h1>You are logged in. Go back to Clasify.</h1></body></html>";
+/// The page the browser shows after the login (card AX, change 182). It is a separate file, so
+/// that `cargo fmt` does not change it. It has inline CSS and one inline SVG: no scripts, no
+/// links and nothing to load.
+pub(crate) const OAUTH_PAGE: &str = include_str!("oauth_page.html");
 
 /// Matches `LsbToken` in the header. The strings are valid only during the callback.
 #[repr(C)]
