@@ -960,6 +960,8 @@ func playing(_ i: Int = 0) -> AppState {
         var s = afterSetup()
         #expect(send(&s, .expire) == [] && s.toast == "")
         s = playing()
+        send(&s, .offline(true), .offline(false))  // a toast that still shows
+        #expect(s.toast == "Connection lost. Paused")
         #expect(send(&s, .expire) == [.stop, .logOut])
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn && s.current == nil && s.library.isEmpty)
         #expect(!s.playlistsLoaded && s.loadedTracks.isEmpty)

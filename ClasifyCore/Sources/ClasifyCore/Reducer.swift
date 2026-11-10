@@ -315,6 +315,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
         s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
+        s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
     }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)
