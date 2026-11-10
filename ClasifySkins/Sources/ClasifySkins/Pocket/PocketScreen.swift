@@ -61,10 +61,15 @@ enum Pocket {
 struct PocketScreen: View {
     let state: AppState
     var input: @MainActor (Action) -> Void = { _ in }
+    /// Draws only the screen's parts, with no glass, bezel or toast: the main menu's doors
+    /// over Cover Flow (`doorsMenu`).
+    var doorsOnly = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The last `navSeq` whose cover flight to Now Playing has landed.
     @State private var landedSeq = -1
+    /// The last `wholeSeq` whose doors have opened.
+    @State private var openedSeq = -1
 
     private var top: Frame { state.top }
 
@@ -185,15 +190,51 @@ struct PocketScreen: View {
         }
     }
 
-    var body: some View {
+    /// The main menu as it was under Cover Flow, while its doors open over Cover Flow. A
+    /// removed screen keeps the transition and the environment of its last update, so the old
+    /// main menu cannot open its own doors: this new copy of it does (CLA-63). MENU closes the
+    /// doors with the main menu's insertion, as before.
+    private var doorsMenu: AppState? {
+        guard !reduceMotion, state.navMove == .doors, state.navForward, top.screen == .coverFlow,
+            openedSeq != state.wholeSeq, state.stack.count >= 2
+        else { return nil }
+        var menu = state
+        menu.stack.removeLast()
+        return menu
+    }
+
+    /// The doors open as the main menu's removal did: from closed (`side` 0) to open (-1).
+    private static var doorsOpen: AnyTransition {
+        .asymmetric(insertion: .modifier(active: ScreenMove(side: 0), identity: ScreenMove(side: -1)), removal: .identity)
+    }
+
+    @ViewBuilder var body: some View {
+        if doorsOnly {
+            parts.frame(width: Pocket.screenWidth, height: Pocket.screenHeight, alignment: .leading)
+        } else {
+            device
+        }
+    }
+
+    private var device: some View {
         ZStack {
             // Between a half screen and a full one, and to and from Hello, the whole screen moves,
             // with its title bar, the pane and the covers. Other moves slide only the content (`parts`).
-            // In the doors move, the main menu's doors open over Cover Flow and close over it.
+            // The newer screen is on top. In the doors move, the main menu's doors open over Cover
+            // Flow (`doorsMenu`) and close over it. Cover Flow has its own glass, so the old main
+            // menu under it does not show.
             parts.frame(width: Pocket.screenWidth, height: Pocket.screenHeight, alignment: .leading)
+                .background { if top.screen == .coverFlow { Pocket.glass } }
                 .id(state.wholeSeq)
                 .transition(whole)
-                .zIndex(top.screen == .coverFlow ? 0 : 1)
+                .zIndex(Double(state.wholeSeq))
+            if let menu = doorsMenu {
+                PocketScreen(state: menu, doorsOnly: true)
+                    .id(state.wholeSeq)
+                    .transition(Self.doorsOpen)
+                    .zIndex(Double(state.wholeSeq) + 0.5)
+                    .accessibilityHidden(true)
+            }
         }
         .clipped()
         .environment(\.navForward, state.navForward)
@@ -202,6 +243,12 @@ struct PocketScreen: View {
             let seq = state.navSeq
             try? await Task.sleep(for: .seconds(PocketCoverFlow.flyTime))
             if !Task.isCancelled { landedSeq = seq }
+        }
+        .task(id: state.wholeSeq) {
+            // The open doors leave when the move ends.
+            let seq = state.wholeSeq
+            try? await Task.sleep(for: .seconds(DoorsStage.openTime + 0.05))
+            if !Task.isCancelled { openedSeq = seq }
         }
         .animation(moveAnimation, value: state.navSeq)
         .overlay(alignment: .bottom) {

@@ -8,7 +8,9 @@ import SwiftUI
 /// instead (Round 9, card AE, change 82): the left half (the title bar and the list) slides
 /// left and fades out, and the right half (the covers) slides right. Cover Flow is behind
 /// them, with no title bar and no names. The names fade in, then the title bar slides down.
-/// MENU does the reverse. The views read the stage from `doorsStage`.
+/// MENU does the reverse. The views read the stage from `doorsStage`. On the way in, a new copy
+/// of the main menu opens the doors over Cover Flow (`PocketScreen.doorsMenu`), with this
+/// modifier as its insertion: the removed main menu cannot (CLA-63).
 ///
 /// The move runs on a linear animation (`DoorsStage.openTime` or `closeTime`), and this
 /// modifier gives each frame its own curves. It reads the direction and the kind of move
