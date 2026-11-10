@@ -66,10 +66,14 @@ import Testing
         #expect(close(top?.angle ?? 0, 270) && close(top?.opacity ?? 0, 1) && close(top?.longTail ?? 0, 1))
         #expect(close(end?.angle ?? 0, 360) && close(end?.opacity ?? 1, 0))
         #expect(ColorPick.waiting(at: 3.4) == nil && ColorPick.waiting(at: -1) == nil && close(ColorPick.waiting(at: 3.9)?.angle ?? 0, 180))
-        // Change 202: in over 0.3 s, out 0.6 s after the last move over 0.6 s; the long tail in over 0.35 s.
-        #expect(close(ColorPick.following(since: 0.15, idle: 0).opacity, 0.5) && close(ColorPick.following(since: 0.175, idle: 0).longTail, 0.5))
-        #expect(close(ColorPick.following(since: 2, idle: 0.6).opacity, 1) && close(ColorPick.following(since: 2, idle: 0.9).opacity, 0.5))
-        #expect(close(ColorPick.following(since: 2, idle: 1.2).opacity, 0))
+        // CLA-85 fix: the fade is a smoothstep over the first and last 12% of the sweep.
+        #expect(ColorPick.smoothstep(0) == 0 && ColorPick.smoothstep(0.5) == 0.5 && ColorPick.smoothstep(2) == 1)
+        #expect(close(ColorPick.waiting(at: 0.06 * 2.9)?.opacity ?? 0, 0.5) && close(ColorPick.waiting(at: 0.12 * 2.9)?.opacity ?? 0, 1))
+        // The thumb light goes the short way to the thumb, and its angle is not wrapped.
+        #expect(ColorPick.glideAngle(from: 350, to: -170) == 190 && ColorPick.glideAngle(from: -90, to: 170) == -190)
+        // Trackpad and keys: a new light starts one step from 12 o'clock; then 24° a step.
+        #expect(ColorPick.stepAngle(from: nil, steps: 1) == -66 && ColorPick.stepAngle(from: nil, steps: -1) == -114)
+        #expect(ColorPick.stepAngle(from: 100, steps: -2) == 52)
         let before = ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102)
         #expect(before.text == "Turn the wheel to try one" && close(before.opacity, 0))
         #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102.4).opacity, 1))

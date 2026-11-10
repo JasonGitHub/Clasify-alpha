@@ -88,7 +88,8 @@ struct ClickWheel: View {
 
     static let size: CGFloat = 225
     /// A turn of this many degrees sends one detent. A turn of more than `clickSlop` cancels the click.
-    static let detent = 24.0, clickSlop = 12.0
+    nonisolated static let detent = 24.0
+    static let clickSlop = 12.0
 
     /// The mockup's button rectangles, in the wheel's coordinates.
     private static let zones: [(Zone, CGRect)] = [
@@ -115,16 +116,15 @@ struct ClickWheel: View {
         var last: Double
         var turned = 0.0
         var moved = 0.0
-        /// The light is under this drag's thumb (change 202).
-        var anchored = false
     }
 
     /// The light under the thumb (change 202): its angle, clockwise from 3 o'clock and not
-    /// wrapped, so a glide never goes the long way; its direction; when it came and last moved.
+    /// wrapped, so a glide never goes the long way; its direction; whether it shows; and when
+    /// it last moved. There is one for the whole pick; it only fades.
     struct ThumbLight: Equatable {
         var angle: Double
         var clockwise = true
-        var from: Double
+        var on = true
         var last: Double
     }
 
@@ -177,17 +177,17 @@ struct ClickWheel: View {
         .frame(width: Self.size, height: Self.size)
     }
 
-    /// The color pick's lights: the waiting comet until the first touch, then the light under
-    /// the thumb (changes 200 and 202).
+    /// The color pick's lights: the waiting comet until the first color step, and the light
+    /// under the thumb from the first move (changes 200 and 202). Both show for the first 24°.
     @ViewBuilder private var comets: some View {
-        if let cometFrom, light == nil {
+        if let cometFrom {
             WaitingComet(from: cometFrom)
                 .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
         }
         if followsThumb, let light { ThumbComet(light: light) }
     }
 
-    /// The light follows the steps, goes off the pick and goes when it has faded.
+    /// The light follows the steps, fades out 0.6 s after the last move and goes off the pick.
     private func lights(_ content: some View) -> some View {
         content
             .onChange(of: followsThumb) { _, follows in
@@ -195,13 +195,12 @@ struct ClickWheel: View {
             }
             .onChange(of: turns) { old, new in
                 // A trackpad or key step. A drag moves the light itself.
-                if followsThumb && turn == nil { moveLight(by: Double(new - old) * Self.detent, to: nil, anchor: false) }
+                if followsThumb && turn == nil { stepLight(new - old) }
             }
             .task(id: light?.last) {
-                // The light has faded out: it goes, and the next move starts a new one.
                 guard let last = light?.last else { return }
-                try? await Task.sleep(for: .seconds(ColorPick.hold + ColorPick.fadeOut + 0.1))
-                if light?.last == last { light = nil }
+                try? await Task.sleep(for: .seconds(ColorPick.hold))
+                if light?.last == last { light?.on = false }
             }
     }
 
@@ -255,37 +254,36 @@ struct ClickWheel: View {
         if delta > 180 { delta -= 360 }
         if delta < -180 { delta += 360 }
         t.last = angle
-        if followsThumb && delta != 0 {
-            moveLight(by: delta, to: angle, anchor: !t.anchored)
-            t.anchored = true
-        }
+        if followsThumb && delta != 0 { followThumb(angle, clockwise: delta > 0) }
         t.turned += delta
         t.moved += abs(delta)
-        while t.turned >= Self.detent { t.turned -= Self.detent; input(.wheel(1)) }
-        while t.turned <= -Self.detent { t.turned += Self.detent; input(.wheel(-1)) }
+        while t.turned >= Self.detent { t.turned -= Self.detent; input(.wheel(1)); light?.clockwise = true }
+        while t.turned <= -Self.detent { t.turned += Self.detent; input(.wheel(-1)); light?.clockwise = false }
         if t.moved > Self.clickSlop { pressed = nil }
         turn = t
     }
 
-    /// Moves the light by `delta` degrees. A new light starts at `angle`, under the thumb, or
-    /// for a step with no thumb at 12 o'clock. With `anchor`, the first move of a drag, a light
-    /// that still shows goes under the thumb the short way, so it never lags behind it.
-    private func moveLight(by delta: Double, to angle: Double?, anchor: Bool) {
-        guard delta != 0 else { return }
+    /// The light goes under the thumb, the short way. The first move makes it, pointing the way
+    /// of that move; after that, only a color step flips it.
+    private func followThumb(_ angle: Double, clockwise: Bool) {
         let now = Date.timeIntervalSinceReferenceDate
         if var l = light {
-            if anchor, let angle {
-                var gap = (angle - l.angle).truncatingRemainder(dividingBy: 360)
-                if gap > 180 { gap -= 360 } else if gap < -180 { gap += 360 }
-                l.angle += gap
-            } else {
-                l.angle += delta
-            }
-            l.clockwise = delta > 0; l.last = now
+            l.angle = ColorPick.glideAngle(from: l.angle, to: angle)
+            l.on = true; l.last = now
             light = l
         } else {
-            light = ThumbLight(angle: angle ?? -90, clockwise: delta > 0, from: now, last: now)
+            light = ThumbLight(angle: angle, clockwise: clockwise, last: now)
         }
+    }
+
+    /// A trackpad or key step moves the light 24° a step, from 12 o'clock for a new light.
+    private func stepLight(_ steps: Int) {
+        guard steps != 0 else { return }
+        let now = Date.timeIntervalSinceReferenceDate
+        var l = light ?? ThumbLight(angle: -90, last: now)
+        l.angle = ColorPick.stepAngle(from: light?.angle, steps: steps)
+        l.clockwise = steps > 0; l.on = true; l.last = now
+        light = l
     }
 
     private func ended(_ value: DragGesture.Value) {
