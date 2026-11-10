@@ -11,6 +11,10 @@ enum Labels {
         case .menu: ("Press MENU to go back", nil, "", "Press MENU to go back")  // change 139
         case .playPause: ("Press", .playPause, "to pause", "Press play/pause to pause")  // change 176
         case .next: ("Press", .next, "for the next song", "Press next for the next song")  // change 177
+        // Card BA.1, change 199: words only; the buttons are named as MENU is on the wheel.
+        case .tourPlay: ("Press Play to start your music", nil, "", "Press Play to start your music")
+        case .tourNext: ("Press Next for the next song", nil, "", "Press Next for the next song")
+        case .tourMenu: ("Press MENU to go back", nil, "", "Press MENU to go back")
         }
     }
 

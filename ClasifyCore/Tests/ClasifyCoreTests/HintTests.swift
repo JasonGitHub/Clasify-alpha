@@ -112,7 +112,7 @@ import Testing
         send(&s, .position(10, generation: s.playGen), now: 321)
         #expect(s.top.screen == .now && s.hint == .next && s.hintAt == 321)
         send(&s, .next, now: 322)
-        #expect(s.hint == nil && s.hintsDone == Set(Hint.allCases))
+        #expect(s.hint == nil && s.hintsDone == [.menu, .playPause, .next])
     }
 
     /// The play hint shows only while a song plays and the time bar shows. A scrub or the volume

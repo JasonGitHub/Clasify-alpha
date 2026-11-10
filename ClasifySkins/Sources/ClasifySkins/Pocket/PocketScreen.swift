@@ -255,7 +255,7 @@ struct PocketScreen: View {
             if !state.toast.isEmpty {
                 Self.toast(state.toast, bottom: top.screen == .now ? 44 : 16)
             } else if state.hintTip, let hint = state.hint {
-                HintTip(hint: hint, from: state.hintAt + AppState.hintTipAfter)
+                HintTip(hint: hint, from: state.hintTipAt)
             }
         }
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
@@ -381,7 +381,8 @@ struct PocketScreen: View {
 /// screen's bottom. On Now Playing it sits 15 points up, in the time bar's place, and the
 /// play/pause or next mark shows in white as on the wheel. It fades in over 0.4 s from
 /// `from`, and out over the last 0.4 s of its 10 s. When the action is done, it goes at once.
-/// With Reduce Motion, nothing fades.
+/// A tour tip (card BA.1) waits for its press, so it does not fade out. With Reduce Motion,
+/// nothing fades.
 struct HintTip: View {
     let hint: Hint
     let from: Double
@@ -392,7 +393,7 @@ struct HintTip: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
             let words = Labels.hintTip(hint)
-            PocketScreen.toastBox(bottom: hint == .menu ? 16 : 15) {
+            PocketScreen.toastBox(bottom: hint == .menu || hint == .tourPlay ? 16 : 15) {
                 HStack(spacing: 4) {
                     Text(words.lead)
                     if let mark = words.mark {
@@ -402,7 +403,7 @@ struct HintTip: View {
                     }
                 }
             }
-            .opacity(reduceMotion ? 1 : Self.opacity(at: t))
+            .opacity(reduceMotion ? 1 : Self.opacity(at: t, ends: !hint.isTour))
         }
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
@@ -410,8 +411,8 @@ struct HintTip: View {
     }
 
     /// The tip's opacity `t` seconds after it starts.
-    static func opacity(at t: Double) -> Double {
-        max(0, min(1, t / 0.4, (AppState.hintTipTime - t) / 0.4))
+    static func opacity(at t: Double, ends: Bool = true) -> Double {
+        max(0, min(1, t / 0.4, ends ? (AppState.hintTipTime - t) / 0.4 : 1))
     }
 }
 
