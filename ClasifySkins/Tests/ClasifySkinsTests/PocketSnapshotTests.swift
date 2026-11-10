@@ -1190,6 +1190,16 @@ import Testing
         s.spotifyApp = true
         let linked = try render(s, "spotify-app-linked", time: 10)
         #expect(check(linked))
+        // Card AX, screen 135 (CLA-66): the same split screen with three rows, "Check again"
+        // selected. A gray cross ("No Premium") until Premium is found, then the green check.
+        s.stack = [Frame(screen: .premium)]
+        let premium = try render(s, "premium-needed", time: 10)
+        #expect(headline(premium) && premium.isBlue(175, firstRow) && !check(premium), "\(blue(premium))")
+        #expect(!premium.isBlue(175, firstRow + 23))  // Get Premium
+        s.premiumFound = true; s.premiumAt = 9.5  // the light is halfway up the cable
+        let found = try render(s, "premium-found", time: 10)
+        #expect(check(found))
+        s.premiumFound = false; s.premiumAt = 0
         // Card AY: the bar moves under the words while the names fill the small screen. Then
         // "You’re all set" and the green check.
         s.library = [Playlist(id: "spotify:playlist:a", name: "Road Trip", tracks: [])]

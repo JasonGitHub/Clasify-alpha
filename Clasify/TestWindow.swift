@@ -110,6 +110,7 @@ private struct TestPanel: View {
         case .auth: return "Your browser is open. Log in there."
         case .loginFailed: return "That didn’t work. No problem, it happens."
         case .loggedIn: return "You’re in. Nice to meet you."
+        case .premium: return state.premiumFound ? "Premium." : "Premium needed. To play music, we need Spotify Premium."
         case .now: return "Select switches the wheel between volume and scrub."
         case .about: return "Clasify test build"
         case .hello: return "Press Select to begin."
@@ -121,7 +122,7 @@ private struct TestPanel: View {
     private func title(_ screen: Screen) -> String {
         switch screen {
         case .login, .main: "Clasify"
-        case .auth, .loginFailed, .loggedIn: "Log In"
+        case .auth, .loginFailed, .loggedIn, .premium: "Log In"
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
@@ -162,6 +163,9 @@ private struct TestPanel: View {
         case .openBrowser: "Open browser again"
         case .tryAgain: "Try again"
         case .getSpotifyApp: "Get Spotify App"
+        case .checkPremium: "Check again"
+        case .getPremium: "Get Premium"
+        case .premiumLogOut: "Log out"
         case .confirmLogOut: "Log Out"
         case .color(let color): color.rawValue
         }

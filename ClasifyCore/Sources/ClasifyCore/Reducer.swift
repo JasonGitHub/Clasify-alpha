@@ -35,8 +35,14 @@ public enum Action: Equatable, Sendable {
     case readProgress(String, done: Int, total: Int)
     /// Login finished for the attempt whose token is on the `.auth` frame. `ok` is false when it failed.
     case authDone(token: Int, ok: Bool)
-    /// The restore that `.launch` started finished.
+    /// The restore that `.launch` or "Check again" started finished.
     case restored(token: Int, ok: Bool)
+    /// The login worked, but the account is not Spotify Premium, so it ended (CLA-66). From a
+    /// browser login, a restore, "Check again", or a session that found it out later. The
+    /// Premium screen shows (card AX, screen 135). The stored login stays for "Check again".
+    /// `token` is the attempt of the login or restore, as in `.authDone` and `.restored`, so
+    /// a late result of an older attempt is dropped. nil: a session that is in found it out.
+    case notPremium(token: Int?)
     case offline(Bool)
     /// The Mac's battery changed, as the app reads it from IOKit. nil when the Mac has no
     /// battery (an iMac or a Mac mini): the title bar shows no battery.
@@ -96,6 +102,8 @@ public enum Effect: Equatable, Sendable {
     case cancelLogIn
     /// Open the Spotify app's download page in the browser (card BB).
     case getSpotifyApp
+    /// Open Spotify's Premium page in the browser (card AX, screen 135).
+    case getPremium
     /// Log in with the stored login; the result comes back as `.restored` with this token.
     case restoreSession(token: Int)
     /// Forget the stored login.
@@ -308,6 +316,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             fetch(s.top.screen)
         }
     }
+    /// "Log out" or MENU on the Premium screen: forget the stored login and go to the login
+    /// screen with its normal words, with no toast (card AX, screen 135, as change 181).
+    func leavePremium() {
+        s.restoring = false
+        s.authAttempt += 1  // a "Check again" that still runs is stale
+        signOut(); fx.append(.logOut)
+        s.premiumFound = false; s.premiumAt = 0
+    }
     /// Goes straight to the login screen, with no toast (card AX, change 181).
     func signOut() {
         stop()
@@ -443,6 +459,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 return setupNext()
             }
             if s.top.screen == .spotifyApp && s.spotifyApp == true { return leaveSpotifyApp() }  // "Linked": on at once
+            if s.top.screen == .premium && s.premiumFound {  // "Premium": on at once
+                s.beatUntil = 0
+                return setupNext()
+            }
             if s.top.screen == .yourMusic && s.setupDone {  // "You’re all set": on at once
                 s.beatUntil = 0
                 s.stack = [Frame(screen: .main)]
@@ -470,6 +490,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.stack.append(Frame(screen: .auth, token: s.authAttempt))
                 fx.append(.logIn(token: s.authAttempt))
             case .getSpotifyApp: fx.append(.getSpotifyApp)
+            case .checkPremium:
+                // Card AX, screen 135: the cable's light flows once, and Clasify logs in again
+                // with the stored login. Still no Premium: nothing else changes.
+                s.premiumAt = now
+                guard !s.restoring else { return }
+                s.authAttempt += 1; s.restoring = true
+                fx.append(.restoreSession(token: s.authAttempt))
+            case .getPremium: fx.append(.getPremium)
+            case .premiumLogOut: leavePremium()
             case .openBrowser, .tryAgain:
                 // A new login opens the browser again. The bridge stops the older one, and
                 // the new token makes its `.authDone` stale.
@@ -521,6 +550,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
             if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
             if s.top.screen == .spotifyApp { return }  // card BB: MENU does nothing
+            if s.top.screen == .premium { return leavePremium() }  // card AX: back to the login
             if s.top.screen == .color && !s.setupDone {
                 // CLA-62 (Jason, 12:47 JST 11-10): back to Hello, which starts again. A color
                 // that was turned to but not pressed is dropped; the saved one stays.
@@ -563,6 +593,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.beatUntil = 0
                 if s.top.screen == .loggedIn { setupNext() }
                 if s.top.screen == .spotifyApp && s.spotifyApp == true { leaveSpotifyApp() }
+                if s.top.screen == .premium && s.premiumFound { setupNext() }
                 if s.top.screen == .yourMusic && s.setupDone { s.stack = [Frame(screen: .main)] }
             }
             if s.artUntil > 0 && now > s.artUntil {  // the covers follow the row
@@ -744,6 +775,30 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.signedIn = true; fx.append(.prefetch)
             // During setup, Hello and the color pick stay. The login screen goes on.
             if s.top.screen == .login { setupNext() }
+            if s.top.screen == .premium {
+                // "Check again" found Premium: the green check for a beat, then on (screen 135).
+                s.premiumFound = true; s.premiumAt = now
+                s.beatUntil = now + AppState.beatTime
+            }
+
+        case .notPremium(let token):
+            // Only for the login or restore that runs now, or a session that is in. A late one
+            // from an older attempt ("Open browser again"), a logout or a reset is dropped.
+            if let token {
+                let login = s.top.screen == .auth && s.top.token == token
+                guard login || (s.restoring && s.authAttempt == token) else { return }
+            } else {
+                guard s.signedIn else { return }
+            }
+            s.restoring = false
+            s.authAttempt += 1  // a late result of this login is stale
+            if s.top.screen == .premium { return }  // "Check again": still no Premium, no change
+            // A restore at launch during setup: Hello and the color pick stay. The browser
+            // login after them shows the Premium screen.
+            if !s.signedIn && (s.top.screen == .hello || s.top.screen == .color) { return }
+            signOut()  // the session ended, and the library belongs to that account
+            s.stack = [Frame(screen: .premium)]
+            s.premiumFound = false; s.premiumAt = 0
 
         case .authDone(let token, let ok):
             guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
@@ -798,6 +853,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.navSeq += 1
         s.navForward = s.stack.count >= before.0 || (s.signedIn && !wasSignedIn)
         if s.top.screen == .hello { s.navForward = false }  // Hello is only ever gone back to (CLA-62)
+        if s.top.screen == .premium { s.navForward = true }  // screen 135 opens after a login
+        if before.1 == .premium && s.top.screen == .login { s.navForward = false }  // back from screen 135
         // Between a half screen and a full one, the whole screen moves; otherwise only the content.
         // Hello has no title bar, so the whole screen moves to and from it too (CLA-62).
         let whole = s.isHalf(before.1) != s.isHalf(s.top.screen) || before.1 == .hello || s.top.screen == .hello
