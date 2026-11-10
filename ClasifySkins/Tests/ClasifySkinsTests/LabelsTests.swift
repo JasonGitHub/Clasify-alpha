@@ -147,6 +147,7 @@ func sampleState() -> AppState {
         s.deviceColor = .black
         #expect(Labels.row(.deviceColor, on: .settings, in: s) == .init(label: "Color", value: "Black"))
         #expect(Labels.row(.clicker, on: .settings, in: s) == .init(label: "Clicker", value: "On"))
+        #expect(Labels.row(.nowPlayingBar, on: .settings, in: s) == .init(label: "Now Playing Bar", value: "Off"))  // card AK
         #expect(Labels.row(.logOut, on: .settings, in: s) == .init(label: "Log out", opens: true))
     }
 

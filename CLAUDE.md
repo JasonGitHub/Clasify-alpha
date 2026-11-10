@@ -53,7 +53,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 
 ## Pocket skin mockup
 
-`project/Pocket-Full.dc.html` in Jason's design artifact (https://claude.ai/artifact/7TnGYuahnpRDkR2FFkwTHy) is the spec for 1.0 screens, actions and edge cases: login, browse, play, settings, offline, expired session. It replaces the copy in Clasify.zip. `project/Pocket-Compare.dc.html` and `project/Pocket-Compare-2.dc.html` there list the changes from the old copy, as numbered before-and-after cards. Copy its colors, fonts, sizes, spacing and radii from the inline styles into native views; don't port its HTML or JS. Keep Settings to Shuffle, Repeat, Album Art, Clicker, About and Log out: its EQ, Skin and Playback rows are not in 1.0. If its strings say "Mixtape", the old name, use "Clasify".
+`project/Pocket-Full.dc.html` in Jason's design artifact (https://claude.ai/artifact/7TnGYuahnpRDkR2FFkwTHy) is the spec for 1.0 screens, actions and edge cases: login, browse, play, settings, offline, expired session. It replaces the copy in Clasify.zip. `project/Pocket-Compare.dc.html` and `project/Pocket-Compare-2.dc.html` there list the changes from the old copy, as numbered before-and-after cards. Copy its colors, fonts, sizes, spacing and radii from the inline styles into native views; don't port its HTML or JS. Keep Settings to Shuffle, Repeat, Album Art, Color, Clicker, Now Playing Bar, About and Log out: its EQ, Skin and Playback rows are not in 1.0. If its strings say "Mixtape", the old name, use "Clasify".
 
 ## Communication
 

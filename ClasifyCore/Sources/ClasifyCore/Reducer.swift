@@ -538,6 +538,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .albumArt: s.albumArt = s.albumArt.next
             case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
+            case .nowPlayingBar: s.nowPlayingBar.toggle()
             case .color(let color):  // card AW: a press saves the color, then the login
                 s.deviceColor = color
                 if s.signedIn { setupNext() } else { s.stack.append(Frame(screen: .login)) }

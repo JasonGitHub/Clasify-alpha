@@ -28,8 +28,8 @@ import Testing
 
     // Points in the mockup layout: the device border 1, its padding 24.8, the bezel 6.6 (the
     // screen starts at 33 x 32.4), the header 19 with its line (the list starts at 51.4), and 9
-    // rows of 22.9. Song lists have 5 two-line rows: 41.2 with no bar, 36.6 over the bar. Only
-    // song lists show the bar. The screen is 300 x 225, so its bottom is at 257.4.
+    // rows of 22.9. Song lists have 5 two-line rows: 41.2 with no bar, 36.6 over the bar. The
+    // bar shows only with Now Playing Bar on (card AK). The screen is 300 x 225, so its bottom is at 257.4.
     static let screenLeft = 33, screenTop = 32, listTop = 51, screenWidth = 300, screenBottom = 257
 
     static func rowCenter(_ index: Int, bar: Bool = false, songs: Bool = false) -> Int {
@@ -1015,10 +1015,43 @@ import Testing
         #expect(shot.isBlue(left + 7, midY))  // the second bar
     }
 
+    /// Card AK, change 110: with Now Playing Bar on, the main menu shows the bar under its pane.
+    @Test func theMainMenuShowsTheBarUnderItsPane() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
+        let off = try render(s, "main-no-bar")
+        s.nowPlayingBar = true
+        let on = try render(s, "main-bar")
+        // The bar's background, 2 points over the screen's bottom, under the pane's text.
+        let barColor = try reference(0xe8eef3)
+        let y = Self.screenBottom - 2
+        #expect(near(on.rgb(Self.screenLeft + 100, y), barColor))
+        #expect(!near(off.rgb(Self.screenLeft + 100, y), barColor))
+    }
+
+    /// Card AK: a song list while a song plays. Off (the default): no bar, and the 5 two-line
+    /// rows grow to 41.2 points to fill the screen. On: the bar, and rows of 36.6 over it.
+    @Test func aSongListShowsTheBarOnlyWithTheSettingOn() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
+        s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))  // row 0 selected
+        let off = try render(s, "tracks-bar-off")
+        s.nowPlayingBar = true
+        let on = try render(s, "tracks-bar-on")
+        let barColor = try reference(0xe8eef3)
+        let x = Self.screenLeft + 100, bottom = Self.screenBottom - 2
+        #expect(near(on.rgb(x, bottom), barColor) && !near(off.rgb(x, bottom), barColor))
+        // The selected row ends at 51.4 + 41.2 = 92.6 with no bar, at 51.4 + 36.6 = 88 over it.
+        let right = Self.screenLeft + 240  // past the row's text
+        #expect(off.isBlue(right, 90) && !on.isBlue(right, 90))
+        #expect(off.isBlue(right, 86) && on.isBlue(right, 86))
+    }
+
     @Test func theBarShowsANoteThatStaysWhenPaused() throws {
         var s = sampleState()
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:1")
-        s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))  // only song lists show the bar
+        s.stack.append(Frame(screen: .tracks(playlist: "spotify:playlist:a")))
+        s.nowPlayingBar = true  // card AK: the bar shows only with the setting on
         s.isPlaying = true
         let playing = try render(s, "bar-playing")
         s.isPlaying = false
