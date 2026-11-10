@@ -11,6 +11,8 @@ enum PreviewScreen: Equatable {
     /// One big mark and one big word: the green check for success ("Logged in", change 175;
     /// "Linked", change 174), else the gray cross ("Not found", change 174).
     case mark(ok: Bool, word: String)
+    /// The playlist names fill in one by one from time `from`, like an iPod sync (card AY, 141).
+    case names([String], from: Double)
 
     /// The small device's screen and its sync cable on a setup screen. Nil on other screens.
     static func of(_ screen: Screen, in state: AppState) -> (screen: PreviewScreen, cable: SyncCable.Plug?)? {
@@ -22,6 +24,11 @@ enum PreviewScreen: Equatable {
         case .login, .loginFailed: return (screen: PreviewScreen.rows(breathe: false), cable: SyncCable.Plug.off)
         case .auth: return (screen: PreviewScreen.rows(breathe: true), cable: SyncCable.Plug.light)
         case .loggedIn: return (screen: PreviewScreen.mark(ok: true, word: "Logged in"), cable: SyncCable.Plug.light)
+        case .yourMusic where state.top.error: return nil  // the error message fills the screen
+        case .yourMusic where state.top.loading:
+            let names = state.library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name)
+            return (screen: PreviewScreen.names(Array(names), from: state.musicAt), cable: SyncCable.Plug.light)
+        case .yourMusic: return (screen: PreviewScreen.mark(ok: true, word: "Synced"), cable: SyncCable.Plug.on)
         default: return nil
         }
     }
@@ -70,10 +77,12 @@ struct PreviewScreenContent: View {
         // The rows, the cross and the check crossfade in 0.3 s.
         let shown: Int = switch screen {
         case .mark(let ok, _): ok ? 2 : 1
+        case .names: 3
         default: 0
         }
         ZStack {
             rows.opacity(shown == 0 ? 1 : 0)
+            if case .names(let list, let from) = screen { names(list, from: from) }
             mark(ok: false, word: "Not found").opacity(shown == 1 ? 1 : 0)
             mark(ok: true, word: Self.okWord(screen)).opacity(shown == 2 ? 1 : 0)
         }
@@ -95,6 +104,33 @@ struct PreviewScreenContent: View {
             .padding(EdgeInsets(top: 26, leading: 22, bottom: 0, trailing: 22))
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .opacity(screen == .rows(breathe: true) ? Self.breath(at: t) : 1)
+        }
+    }
+
+    /// Row `i`'s opacity at `t` seconds after the read began: each name fades in and rises
+    /// over 0.3 s, 0.6 s after the one before it.
+    static func nameOpacity(_ i: Int, at t: Double) -> Double {
+        min(max((t - 0.5 - 0.6 * Double(i)) / 0.3, 0), 1)
+    }
+
+    /// The playlist names: bold 17 point rows, 27 points tall, from 20 points down.
+    private func names(_ list: [String], from: Double) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil)) { context in
+            let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(list.indices, id: \.self) { i in
+                    let shown = Self.nameOpacity(i, at: t)
+                    Text(list[i])
+                        .font(.helvetica(17, bold: true))
+                        .foregroundStyle(Pocket.ink)
+                        .lineLimit(1)
+                        .frame(height: 27)
+                        .opacity(shown)
+                        .offset(y: 4 * (1 - shown))
+                }
+            }
+            .padding(EdgeInsets(top: 20, leading: 22, bottom: 0, trailing: 22))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
     }
 
@@ -227,5 +263,37 @@ struct SyncCable: View {
             }
             .opacity(light.opacity)
         }
+    }
+}
+
+/// The first library read's bar (card AY, change 141): 6 points, a faint track and a part in
+/// the selection blue that moves to and fro. The library gives no count yet, so it shows no
+/// number and no fill.
+struct SetupProgress: View {
+    @Environment(\.animationTime) private var fixedTime
+
+    /// The moving part's left edge, as a part of the free track, at time `t`: 0 to 1 and back in 2.4 s, eased.
+    static func position(at t: Double) -> Double {
+        let u = max(0, t).truncatingRemainder(dividingBy: 2.4) / 2.4
+        return u < 0.5 ? Hello.ease(u * 2) : 1 - Hello.ease((u - 0.5) * 2)
+    }
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil)) { context in
+            let x = Self.position(at: fixedTime ?? context.date.timeIntervalSinceReferenceDate)
+            GeometryReader { geo in
+                let part = geo.size.width * 0.35
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color(hex: 0x1b1f24, opacity: 0.10))
+                    Capsule().fill(Pocket.selection)
+                        .frame(width: part)
+                        .offset(x: (geo.size.width - part) * x)
+                }
+            }
+            .frame(height: 6)
+        }
+        .padding(.horizontal, 9)
+        .accessibilityElement()
+        .accessibilityLabel("Getting your music")
     }
 }

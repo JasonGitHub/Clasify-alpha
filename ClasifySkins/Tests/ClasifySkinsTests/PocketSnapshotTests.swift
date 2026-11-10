@@ -1154,5 +1154,16 @@ import Testing
         s.spotifyApp = true
         let linked = try render(s, "spotify-app-linked", time: 10)
         #expect(check(linked))
+        // Card AY: the bar moves under the words while the names fill the small screen. Then
+        // "You’re all set" and the green check.
+        s.library = [Playlist(id: "spotify:playlist:a", name: "Road Trip", tracks: [])]
+        s.stack = [Frame(screen: .yourMusic, loading: true, token: 1)]
+        let reading = try render(s, "your-music", time: 10)
+        let bar = Self.listTop + 77 + 3  // its middle; at 10 s its blue part is about 31 to 77 points into the pane
+        #expect(headline(reading) && reading.isBlue(85, bar) && !reading.isBlue(170, bar) && !check(reading))
+        s.stack = [Frame(screen: .yourMusic, token: 1)]
+        s.setupDone = true
+        let allSet = try render(s, "your-music-all-set", time: 10)
+        #expect(headline(allSet) && !allSet.isBlue(85, bar) && check(allSet))
     }
 }

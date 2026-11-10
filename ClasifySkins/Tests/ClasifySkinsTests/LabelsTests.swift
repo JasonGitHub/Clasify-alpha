@@ -46,6 +46,12 @@ func sampleState() -> AppState {
         let bb = Labels.setupWords(for: Frame(screen: .spotifyApp), in: s)
         #expect(bb == .init(headline: "One more thing", line: "We also need the Spotify app on this Mac."))
         #expect(Labels.row(.getSpotifyApp, on: .spotifyApp, in: s) == .init(label: "Get Spotify App"))
+        // Card AY: the read, then "You’re all set" with the count.
+        #expect(Labels.message(for: Frame(screen: .yourMusic, loading: true), in: s) == nil)
+        #expect(Labels.setupWords(for: Frame(screen: .yourMusic, loading: true), in: s)?.headline == "Getting your music")
+        #expect(Labels.setupWords(for: Frame(screen: .yourMusic), in: s)?.headline == "You’re all set")
+        #expect(Labels.ready(0) == "Your music is ready." && Labels.ready(1) == "1 song is ready.")
+        #expect(Labels.ready(1240) == "\(1240.formatted()) songs are ready.")
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
 

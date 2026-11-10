@@ -54,11 +54,26 @@ import Testing
         #expect(send(&s, .select, .select) == [.logIn(token: 2)])
         #expect(send(&s, .authDone(token: 2, ok: true)) == [.prefetch])
         #expect(s.top.screen == .loggedIn && s.navForward)  // "You’re in" (card AX, change 175)
-        #expect(send(&s, .tick, now: 101.5) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID)])
+        // Card AY: Liked Songs, and the playlist names for the small screen (change 141).
+        #expect(send(&s, .tick, now: 101.5) == [.fetchTracks(token: 1, playlist: Playlist.likedSongsID), .refreshPlaylists])
         #expect(s.stack == [Frame(screen: .yourMusic, loading: true, token: 1)] && s.signedIn && s.navForward)
-        #expect(s.toast == "" && !s.setupDone)
-        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
-        #expect(s.stack == [Frame(screen: .main)] && s.setupDone && s.loadedTracks == [Playlist.likedSongsID])
+        #expect(s.toast == "" && !s.setupDone && s.musicAt == 101.5)
+        send(&s, .playlistsRefreshed([focusInfo]), now: 102)
+        #expect(s.top.loading && s.library.map(\.id) == ["focus"])  // the names show; the read goes on
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 110)
+        // "You’re all set" for 2.5 s (change 140), then the main menu.
+        #expect(s.stack == [Frame(screen: .yourMusic, token: 1)] && s.setupDone && s.loadedTracks == [Playlist.likedSongsID])
+        #expect(s.beatUntil == 112.5 && send(&s, .menu, .wheel(1), now: 111).isEmpty && s.top.screen == .yourMusic)
+        send(&s, .tick, now: 112.5)
+        #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0)
+    }
+
+    @Test func aPressOnAllSetGoesOnAtOnce() {
+        var s = onColor()
+        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        #expect(s.top.screen == .yourMusic && send(&s, .select).isEmpty && s.top.screen == .yourMusic)  // no press while it reads
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
+        #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0)
     }
 
     @Test func aFailedFirstReadShowsTheErrorAndRetries() {
@@ -66,7 +81,7 @@ import Testing
         send(&s, .select, .select, .authDone(token: 2, ok: true), .select, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
         #expect(s.top.screen == .yourMusic && s.top.error && !s.setupDone)
         #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: Playlist.likedSongsID)])
-        send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
         #expect(s.stack == [Frame(screen: .main)] && s.setupDone)
     }
 
@@ -180,7 +195,9 @@ import Testing
     store.send(.select)
     store.send(.select)
     #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == nil)
-    while store.state.top.screen == .yourMusic { await Task.yield() }
-    #expect(store.state.top.screen == .main && saved.values["setup.done"] == "true")
+    while !store.state.setupDone { await Task.yield() }
+    #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == "true")  // "You’re all set"
+    store.send(.select)
+    #expect(store.state.top.screen == .main)
     #expect(Settings(from: saved).setupDone)
 }

@@ -277,7 +277,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
+        s.musicAt = now
         fetch(.yourMusic)
+        // Card AY, change 141: the small screen fills with the playlist names meanwhile.
+        if !s.playlistsLoaded && s.refreshing.insert(AppState.readKey(.playlists)).inserted { fx.append(.refreshPlaylists) }
     }
     /// "Linked" on the Spotify App screen ended (card BB, change 174): back to where it was
     /// opened over, or on with setup.
@@ -404,6 +407,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 return setupNext()
             }
             if s.top.screen == .spotifyApp && s.spotifyApp == true { return leaveSpotifyApp() }  // "Linked": on at once
+            if s.top.screen == .yourMusic && s.setupDone {  // "You’re all set": on at once
+                s.beatUntil = 0
+                s.stack = [Frame(screen: .main)]
+                return
+            }
             if s.top.screen == .hello {  // card AT: a press begins setup
                 s.stack = [Frame(screen: .color)]
                 s.top.sel = DeviceColor.allCases.firstIndex(of: s.deviceColor) ?? 0
@@ -507,6 +515,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.beatUntil = 0
                 if s.top.screen == .loggedIn { setupNext() }
                 if s.top.screen == .spotifyApp && s.spotifyApp == true { leaveSpotifyApp() }
+                if s.top.screen == .yourMusic && s.setupDone { s.stack = [Frame(screen: .main)] }
             }
             if s.artUntil > 0 && now > s.artUntil {  // the covers follow the row
                 s.artUntil = 0
@@ -643,8 +652,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             }
             finishLoad(token, ok: tracks != nil)
             if s.top.screen == .yourMusic && !s.top.error {  // the first library read ended setup
+                // Card AY, change 140: "You’re all set" for a beat, then the main menu.
                 s.setupDone = true
-                s.stack = [Frame(screen: .main)]
+                s.beatUntil = now + AppState.allSetTime
             }
 
         case .launch:

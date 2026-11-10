@@ -185,8 +185,10 @@ final class AppModel {
                 if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone { store?.send(.tick) }
                 // When the browser login works (change 170) or the Spotify app is found (174),
                 // Clasify comes to the front.
-                if state.beatUntil > 0 && !beat { DeviceWindow.raise() }
-                beat = state.beatUntil > 0
+                // Not for "You’re all set": the library read may take long, and the person may work elsewhere.
+                let raises = state.beatUntil > 0 && state.top.screen != .yourMusic
+                if raises && !beat { DeviceWindow.raise() }
+                beat = raises
             }
         }
     }
