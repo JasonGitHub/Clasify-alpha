@@ -14,7 +14,6 @@ struct PlainWindowApp: App {
             AppContent(model: model)
                 // Room for the device's shadow, which the window would cut off.
                 .padding(EdgeInsets(top: 10, leading: 30, bottom: 50, trailing: 30))
-                .background(KeyableWindow())  // the keyboard (CLA-79)
                 .containerBackground(.clear, for: .window)
                 .gesture(WindowDragGesture())
         }
