@@ -139,19 +139,13 @@ enum Labels {
         case .premium: SetupWords(headline: "Premium needed", line: "To play music, we need Spotify Premium.")  // 135
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
-        case .yourMusic: SetupWords(headline: "You’re all set", line: ready(state.tracks(in: Playlist.likedSongsID).count))
+        case .yourMusic: SetupWords(headline: "You’re all set", line: ready)
         default: nil
         }
     }
 
-    /// The line under "You’re all set" (card AY, change 140): how many songs are ready.
-    static func ready(_ songs: Int) -> String {
-        switch songs {
-        case 0: "Your music is ready."
-        case 1: "1 song is ready."
-        default: "\(songs.formatted()) songs are ready."
-        }
-    }
+    /// The line under "You’re all set" (card AY, change 189): always the same, with no song count.
+    static let ready = "Enjoy your music."
 
     /// The About screen's fine print (card E). "Not affiliated with Spotify" moves to the macOS
     /// About window later (Jason, 11-07 17:08 JST).
