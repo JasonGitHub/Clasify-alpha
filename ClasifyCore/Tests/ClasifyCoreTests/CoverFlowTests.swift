@@ -193,7 +193,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         var s = withCoverFlow(tenAlbums)
         send(&s, .select, now: 150)
         #expect(s.coverFlowAlbum != nil)
-        send(&s, .menu, .wheel(5), .select, .wheel(6), .select, .wheel(1), .select, now: 151)  // Settings, Log out, Log out
+        send(&s, .menu, .wheel(5), .select, .wheel(7), .select, .wheel(1), .select, now: 151)  // Settings, Log out, Log out
         #expect(s.top.screen == .login && s.coverFlowAlbum == nil && s.letterUntil == 0)
     }
 
