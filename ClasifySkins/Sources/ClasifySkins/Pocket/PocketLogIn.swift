@@ -116,7 +116,7 @@ struct PreviewScreenContent: View {
     }
 
     /// Row `i`'s opacity at `t` seconds after the read began: each name fades in and rises
-    /// over 0.3 s, 0.6 s after the one before it.
+    /// over `nameFade`, `nameGap` after the one before it.
     static func nameOpacity(_ i: Int, at t: Double) -> Double {
         min(max((t - AppState.nameStart - AppState.nameGap * Double(i)) / AppState.nameFade, 0), 1)
     }
