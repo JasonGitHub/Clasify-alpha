@@ -1,12 +1,12 @@
 import ClasifyCore
 import SwiftUI
 
-/// The color pick's times (Round 13, card AW, changes 148 to 150).
+/// The color pick's times (Round 13, card AW, changes 148 to 150 and 179).
 enum ColorPick {
     /// The rim light goes once around the wheel every 3 s until the first turn (change 148).
     static let rimRound = 3.0
-    /// "Turn the wheel to try one" fades in after 3 rounds (change 149).
-    static let turnHintAfter = 9.0
+    /// "Turn the wheel to try one" fades in 2 s after the pick opens (changes 149 and 179).
+    static let turnHintAfter = 2.0
     /// "Then press center button" fades in after 3 pulses of the center glow (change 150).
     static let pressHintAfter = 7.2
 
@@ -18,7 +18,7 @@ enum ColorPick {
     }
 
     /// The hint under the rows and its opacity at time `now`: before the first turn, the turn
-    /// hint after 9 s; after it, the press hint 7.2 s after the turn. Each fades in 0.4 s.
+    /// hint after 2 s; after it, the press hint 7.2 s after the turn. Each fades in 0.4 s.
     static func hint(openedAt: Double, turnedAt: Double, now: Double) -> (text: String, opacity: Double) {
         if turnedAt > 0 {
             return ("Then press center button", min(max((now - turnedAt - pressHintAfter) / 0.4, 0), 1))

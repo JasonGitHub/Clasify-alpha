@@ -47,13 +47,13 @@ import Testing
         #expect(Hello.text(at: 2.0, reduceMotion: true) == 0 && close(Hello.text(at: 2.4, reduceMotion: true), 1))
     }
 
-    /// Card AW: the rim light goes around every 3 s; the turn hint after 9 s; after the first
-    /// turn, the press hint after 3 pulses.
+    /// Card AW: the rim light goes around every 3 s; the turn hint after 2 s (change 179);
+    /// after the first turn, the press hint after 3 pulses.
     @Test func theColorPickTeachesTheTurnThenThePress() {
         #expect(close(ColorPick.rimAngle(at: 0), 0) && close(ColorPick.rimAngle(at: 1.5), 180) && close(ColorPick.rimAngle(at: 3), 0))
-        let before = ColorPick.hint(openedAt: 100, turnedAt: 0, now: 109)
+        let before = ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102)
         #expect(before.text == "Turn the wheel to try one" && close(before.opacity, 0))
-        #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 0, now: 109.4).opacity, 1))
+        #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102.4).opacity, 1))
         let after = ColorPick.hint(openedAt: 100, turnedAt: 104, now: 111.2)
         #expect(after.text == "Then press center button" && close(after.opacity, 0))
         #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 104, now: 111.6).opacity, 1))
