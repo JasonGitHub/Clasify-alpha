@@ -100,6 +100,9 @@ final class LibrespotLibrary: Library {
             // Keep the login for "Check again" on the Premium screen (card AX, screen 135).
             // "Log out" there forgets it. If the Keychain refuses it, "Check again" would use
             // no token or an older account's token, so the login fails as on the Premium path.
+            // A newer login or a logout came during the session start: save nothing, and
+            // leave the session state to it.
+            guard session == mine else { throw BridgeError.cancelled }
             guard RefreshTokenStore.save(refresh) else {
                 session += 1
                 username = nil
