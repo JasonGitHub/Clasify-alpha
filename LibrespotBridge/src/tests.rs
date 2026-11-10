@@ -1488,3 +1488,18 @@ mod connect_tests {
         assert!(transfer.can_retry());
     }
 }
+
+/// Card AX, change 182: the page after the browser login is self-contained. Nothing on it can
+/// run code or load anything from the network.
+#[test]
+fn the_login_page_loads_nothing() {
+    let page = crate::oauth::OAUTH_PAGE;
+    assert!(page.starts_with("<!doctype html>"));
+    assert!(page.contains("<meta charset=\"utf-8\">"));
+    assert!(page.contains("You’re in"));
+    for banned in [
+        "<script", "<link", "<img", "<iframe", "src=", "href=", "url(", "@import",
+    ] {
+        assert!(!page.contains(banned), "{banned}");
+    }
+}
