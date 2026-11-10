@@ -109,6 +109,31 @@ struct ClickWheel: View {
     @State private var hovered: Zone?
 
     var body: some View {
+        lights(face)
+            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
+            .contentShape(Circle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Click wheel")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: input(.wheel(1))
+                case .decrement: input(.wheel(-1))
+                @unknown default: break
+                }
+            }
+            .accessibilityAction(named: "Select") { input(.select) }
+            .accessibilityAction(named: "Menu") { input(.menu) }
+            .accessibilityAction(named: "Play or pause") { input(.play) }
+            .accessibilityAction(named: "Next track") { input(.next) }
+            .accessibilityAction(named: "Previous track") { input(.prev) }
+    }
+
+    /// The wheel, its labels, the lights and the center.
+    private var face: some View {
         ZStack(alignment: .topLeading) {
             // Flat white, as in the photo: no gradient and no ring line. The mockup's shadows
             // are a faint 1 point line around it and a white line under it.
@@ -121,47 +146,38 @@ struct ClickWheel: View {
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
             key(.next) { IconView(.next, width: 19.8, height: 10.2) }
             key(.play) { IconView(.playPause, width: 24.6, height: 9.6) }
-            if let cometFrom, light == nil {
-                WaitingComet(from: cometFrom)
-                    .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
-            }
-            if followsThumb, let light { ThumbComet(light: light) }
+            comets
             center
         }
         .frame(width: Self.size, height: Self.size)
-        .onChange(of: followsThumb) { _, follows in
-            if !follows { light = nil }  // off the color pick, the light goes at once
+    }
+
+    /// The color pick's lights: the waiting comet until the first touch, then the light under
+    /// the thumb (changes 200 and 202).
+    @ViewBuilder private var comets: some View {
+        if let cometFrom, light == nil {
+            WaitingComet(from: cometFrom)
+                .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
         }
-        .onChange(of: turns) { old, new in
-            // A trackpad or key step. A drag moves the light itself.
-            if followsThumb && turn == nil { moveLight(by: Double(new - old) * Self.detent, to: nil, anchor: false) }
-        }
-        .task(id: light?.last) {
-            // The light has faded out: it goes, and the next move starts a new one.
-            guard let last = light?.last else { return }
-            try? await Task.sleep(for: .seconds(ColorPick.hold + ColorPick.fadeOut + 0.1))
-            if light?.last == last { light = nil }
-        }
-        .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
-        .contentShape(Circle())
-        .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
-        .onContinuousHover { phase in
-            if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
-        }
-        .accessibilityElement()
-        .accessibilityLabel("Click wheel")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: input(.wheel(1))
-            case .decrement: input(.wheel(-1))
-            @unknown default: break
+        if followsThumb, let light { ThumbComet(light: light) }
+    }
+
+    /// The light follows the steps, goes off the pick and goes when it has faded.
+    private func lights(_ content: some View) -> some View {
+        content
+            .onChange(of: followsThumb) { _, follows in
+                if !follows { light = nil }  // off the color pick, the light goes at once
             }
-        }
-        .accessibilityAction(named: "Select") { input(.select) }
-        .accessibilityAction(named: "Menu") { input(.menu) }
-        .accessibilityAction(named: "Play or pause") { input(.play) }
-        .accessibilityAction(named: "Next track") { input(.next) }
-        .accessibilityAction(named: "Previous track") { input(.prev) }
+            .onChange(of: turns) { old, new in
+                // A trackpad or key step. A drag moves the light itself.
+                if followsThumb && turn == nil { moveLight(by: Double(new - old) * Self.detent, to: nil, anchor: false) }
+            }
+            .task(id: light?.last) {
+                // The light has faded out: it goes, and the next move starts a new one.
+                guard let last = light?.last else { return }
+                try? await Task.sleep(for: .seconds(ColorPick.hold + ColorPick.fadeOut + 0.1))
+                if light?.last == last { light = nil }
+            }
     }
 
     private var black: Bool { color == .black }
