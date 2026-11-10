@@ -246,9 +246,9 @@ public struct AppState: Equatable, Sendable {
     public var authAttempt = 0
     /// Token of a Liked Songs load that should start Liked Songs when it finishes.
     public var shuffleToken: Int?
-    /// That start plays in order from the first song: Play with nothing to resume and Shuffle
-    /// off (CLA-61). Else it shuffles.
-    public var pendingInOrder = false
+    /// That start comes from Play with nothing to resume (CLA-61): it follows the Shuffle
+    /// setting when the load ends. Else it comes from Shuffle Songs and always shuffles.
+    public var pendingPlay = false
     public var signedIn = false
     /// The first launch setup ended once. Saved with the settings, so later launches skip
     /// Hello, the color pick and the first library read.

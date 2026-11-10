@@ -195,6 +195,12 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .play) == [] && s.stack.count == 2 && s.shuffleToken == 1)
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
         #expect(s.top.screen == .now && s.current?.track == "l0" && !s.shuffle)
+        // The Shuffle setting counts when the load ends: on at the Play, off when the songs come.
+        s = mainMenu()
+        send(&s, .toggleShuffle, .play, .toggleShuffle)
+        let inOrder: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(trackID: "l0", context: "liked", autoplay: true, generation: 1)]
+        #expect(send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == inOrder)
+        #expect(!s.shuffle && s.current?.track == "l0")
         // Play while another list loads: nothing, quietly.
         s = mainMenu()
         send(&s, .wheel(1), .select)  // Playlists loads

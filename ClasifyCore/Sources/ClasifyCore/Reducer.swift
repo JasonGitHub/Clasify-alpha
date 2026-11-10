@@ -183,7 +183,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if s.top.screen == .coverFlow && !s.top.error { placeCoverFlow() }
         if s.shuffleToken == token && !s.top.error {
             s.shuffleToken = nil
-            if s.pendingInOrder { playLikedInOrder() } else { shuffleLiked() }
+            if s.pendingPlay { startLiked() } else { shuffleLiked() }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
@@ -327,6 +327,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         guard let first = s.tracks(in: Playlist.likedSongsID).first else { return }  // no songs: nothing to do
         play(Playlist.likedSongsID, first.id)
     }
+    /// Liked Songs as the Shuffle setting says now: a random start in shuffle, or the first song.
+    func startLiked() {
+        if s.shuffle { shuffleLiked() } else { playLikedInOrder() }
+    }
     /// Play with nothing to resume (CLA-61): Liked Songs, as the Shuffle setting says. Shuffle
     /// on starts at a random song, as Shuffle Songs does. Liked Songs that is not read yet
     /// loads first, as for Shuffle Songs.
@@ -336,12 +340,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if s.top.loading {
             // Liked Songs that loads starts when it is read. A start already pending stays as it is.
             guard s.top.screen == .tracks(playlist: Playlist.likedSongsID), s.shuffleToken != s.top.token else { return }
-            s.shuffleToken = s.top.token; s.pendingInOrder = !s.shuffle
+            s.shuffleToken = s.top.token; s.pendingPlay = true
             return
         }
-        s.pendingInOrder = !s.shuffle
+        s.pendingPlay = true
         if s.loadedTracks.contains(Playlist.likedSongsID) {
-            if s.shuffle { shuffleLiked() } else { playLikedInOrder() }
+            startLiked()
         } else {
             open(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
         }
@@ -482,7 +486,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .likedSongs: open(.tracks(playlist: Playlist.likedSongsID))
             case .shuffleSongs:
                 if s.offline { return toast(offlineStart) }
-                s.pendingInOrder = false
+                s.pendingPlay = false
                 if s.loadedTracks.contains(Playlist.likedSongsID) {
                     shuffleLiked()
                 } else {  // not read yet: load, then shuffle
