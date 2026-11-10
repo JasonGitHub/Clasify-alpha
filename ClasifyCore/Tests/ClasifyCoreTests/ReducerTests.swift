@@ -153,6 +153,77 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.off == 0)  // it opens at the top again
     }
 
+    /// About at time 1000, on the top of the page.
+    func openAbout(at now: Double = 1000) -> AppState {
+        var s = mainMenu()
+        send(&s, .wheel(5), .select, .wheel(6))
+        send(&s, .select, now: now)
+        return s
+    }
+
+    /// Card BF, change 210: the wave starts 0.35 s after About opens and lasts 1 s, with cuts
+    /// in and out. Then the idle clock: think 4 s, stand 6.5 s, boba 10 s, stand 13 s and sleep
+    /// 20 s after the wave, each a crossfade.
+    @Test func aboutWavesOnOpenThenRunsTheIdleClock() {
+        let s = openAbout()
+        let w = s.aboutWaveAt, end = w + 1
+        #expect(abs(w - 1000.35) < 1e-9 && s.aboutIdleAt == 0)
+        func pose(_ t: Double) -> AboutPoseNow { s.aboutPose(at: t) }
+        #expect(pose(1000.2) == AboutPoseNow(pose: .stand, since: 1000, from: .stand, cut: true))
+        #expect(pose(w) == AboutPoseNow(pose: .wave, since: w, from: .stand, cut: true))
+        #expect(s.aboutWaving(at: 1001.3) && !s.aboutWaving(at: end))
+        #expect(pose(end) == AboutPoseNow(pose: .stand, since: end, from: .wave, cut: true))
+        #expect(pose(end + 4) == AboutPoseNow(pose: .think, since: end + 4, from: .stand, cut: false))
+        #expect(pose(end + 6.5).pose == .stand && pose(end + 10).pose == .boba && pose(end + 13).pose == .stand)
+        #expect(pose(1021.3).pose == .stand)
+        #expect(pose(end + 20) == AboutPoseNow(pose: .sleep, since: end + 20, from: .stand, cut: false))
+        #expect(pose(5000).pose == .sleep)  // it stays asleep
+    }
+
+    /// A turn restarts the idle clock but keeps the pose until the clock changes it. A turn while
+    /// it waves does not restart the clock.
+    @Test func anAboutTurnRestartsTheIdleClock() {
+        var s = openAbout()
+        send(&s, .wheel(1), now: 1000.5)  // waving
+        #expect(s.top.off == 1 && s.aboutIdleAt == 0)
+        send(&s, .wheel(1), now: 1006)  // thinking since 1005.35
+        #expect(s.top.off == 2 && s.aboutIdleAt == 1006)
+        #expect(s.aboutPose(at: 1010.4) == AboutPoseNow(pose: .think, since: s.aboutWaveAt + 1 + 4, from: .stand, cut: false))
+        #expect(s.aboutPose(at: 1012.5) == AboutPoseNow(pose: .stand, since: 1012.5, from: .think, cut: false))
+        #expect(s.aboutPose(at: 1016).pose == .boba && s.aboutPose(at: 1026).pose == .sleep)
+        send(&s, .wheel(-1), .wheel(-1), now: 1012)  // at the top, a turn up still restarts it
+        #expect(s.top.off == 0 && s.aboutIdleAt == 1012 && s.aboutPose(at: 1031).pose == .stand)
+    }
+
+    /// Asleep, a turn wakes the capybara with a wave at once and does not scroll or click.
+    @Test func anAboutTurnWakesASleepingCapybara() {
+        var s = openAbout()
+        let old = s
+        send(&s, .wheel(1), now: 1030)
+        #expect(s.top.off == 0 && s.aboutWaveAt == 1030 && !wheelMoved(from: old, to: s))
+        #expect(s.aboutPose(at: 1030.5).pose == .wave && s.aboutPose(at: 1031).pose == .stand)
+        send(&s, .wheel(1), now: 1032)
+        #expect(s.top.off == 1)
+    }
+
+    /// A press waves near the top, wakes a sleeping capybara anywhere, and does nothing while
+    /// it waves or, from step 3, here (Licenses opens in a later PR).
+    @Test func anAboutPressWavesOrWakes() {
+        var s = openAbout()
+        send(&s, .select, now: 1000.2)  // before the open wave: it waves now
+        #expect(s.aboutWaveAt == 1000.2)
+        send(&s, .select, now: 1000.8)  // waving
+        #expect(s.aboutWaveAt == 1000.2)
+        send(&s, .select, now: 1003)
+        #expect(s.aboutWaveAt == 1003)
+        send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1005)
+        #expect(s.top.off == AppState.aboutLicensesStep)
+        send(&s, .select, now: 1006)
+        #expect(s.aboutWaveAt == 1003 && s.top.screen == .about)
+        send(&s, .select, now: 1040)  // asleep since 1025
+        #expect(s.aboutWaveAt == 1040)
+    }
+
     @Test func batteryChangedSetsTheBatteryAndAResetKeepsIt() {
         var s = mainMenu()
         #expect(s.battery == nil)  // not read yet, or a Mac with no battery

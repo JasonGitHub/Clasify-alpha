@@ -471,10 +471,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.colorTurns += d  // change 202: the light follows the steps
             }
             if s.top.screen == .about {
+                // Change 210: a turn wakes a sleeping capybara with a wave, and does not scroll.
+                let pose = s.aboutPose(at: now)
+                if pose.pose == .sleep { s.aboutWaveAt = now; return }
                 // Card BF, change 207: one step a turn, however fast. A step that moves shows
                 // the scroll bar for 1.5 s.
                 let off = clamp(s.top.off + d.signum(), 0, AppState.aboutSteps)
                 if off != s.top.off { s.top.off = off; s.scrollUntil = now + scrollBarTime }
+                if pose.pose != .wave { s.aboutIdleAt = now; s.aboutIdleHold = pose }  // any turn restarts the idle clock
                 return
             }
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
@@ -487,6 +491,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.scrollUntil = now + scrollBarTime
 
         case .select:
+            if s.top.screen == .about {
+                // Change 210: a press wakes the capybara, or near the top makes it wave. From
+                // step 3 it opens Licenses (change 213, a later PR).
+                let pose = s.aboutPose(at: now).pose
+                if pose == .sleep || (pose != .wave && s.top.off < AppState.aboutLicensesStep) { s.aboutWaveAt = now }
+                return
+            }
             if s.top.screen == .now {
                 s.nowMode = s.nowMode.next  // volume, scrub, shuffle, repeat, then volume again
                 s.overlayUntil = now + (s.nowMode == .volume ? 1.5 : sliderTimeout)
@@ -585,6 +596,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 // Card BF: it opens at the top. The scroll bar shows from 0.3 s for 1.5 s.
                 s.stack.append(Frame(screen: .about))
                 s.aboutAt = now; s.scrollUntil = now + 0.3 + scrollBarTime
+                s.aboutWaveAt = now + AppState.aboutWaveDelay; s.aboutIdleAt = 0  // change 210: it waves hello
             case .logOut: s.stack.append(Frame(screen: .confirm))
             case .cancel:
                 if s.top.screen == .auth { fx.append(.cancelLogIn) }

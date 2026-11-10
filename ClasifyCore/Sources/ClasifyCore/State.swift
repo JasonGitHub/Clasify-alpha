@@ -377,6 +377,12 @@ public struct AppState: Equatable, Sendable {
     /// About is one page that scrolls 5 wheel steps (card BF, change 207). Its step is the
     /// frame's `off`. From step 3 the Licenses row is selected (change 211).
     public static let aboutSteps = 5, aboutLicensesStep = 3
+    /// When the capybara's last wave started: 0.35 s after About opens, and on a press or a
+    /// wake (change 210). The tagline's glint starts with it (change 209).
+    public var aboutWaveAt: Double = 0
+    /// The last About input that restarted the idle clock, and the pose at that moment.
+    public var aboutIdleAt: Double = 0
+    public var aboutIdleHold = AboutPoseNow(pose: .stand, since: 0, from: .stand, cut: true)
     /// nil when the Mac has no battery, or before the app reads it.
     public var battery: Battery?
     public var nowMode = NowMode.volume
