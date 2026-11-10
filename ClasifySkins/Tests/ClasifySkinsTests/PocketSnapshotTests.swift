@@ -854,15 +854,18 @@ import Testing
         let loading = try render(s, "loading")
         #expect(!loading.isBlue(150, Self.rowCenter(0)))  // no list while loading
         // Round 15 card BD: a box that fits its text, centered, 16 points above the screen's
-        // bottom (change 185, 186). The main menu has 6 rows, so glass is under it.
+        // bottom (change 185, 186). The main menu has 6 rows, so glass is under it. The box is
+        // #1b1f24 at 60% (change 193): clearly darker than the glass.
         s.stack = [Frame(screen: .main)]
         s.albumArt = .off
         s.toast = "Paused while you’re offline"
         let shot = try render(s, "toast")
         let bottom = Self.screenBottom - 16  // the box's bottom edge
-        #expect(shot.isDark(Self.screenLeft + 150, bottom - 6))  // the box, by its middle
-        #expect(!shot.isDark(Self.screenLeft + 150, bottom + 6))  // the gap under it
-        #expect(!shot.isDark(Self.screenLeft + 20, bottom - 6))  // it does not fill the width
+        func light(_ x: Int, _ y: Int) -> Int { let c = shot.rgb(x, y); return max(c.r, c.g, c.b) }
+        let box = light(Self.screenLeft + 150, bottom - 6)  // the box, by its middle
+        let gap = light(Self.screenLeft + 150, bottom + 6)  // the gap under it
+        let side = light(Self.screenLeft + 20, bottom - 6)  // it does not fill the width
+        #expect(box + 60 < gap && box + 60 < side, "box \(box), gap \(gap), side \(side)")
     }
 
     @Test func theCenterLooksPressedInAndDarkensWhenPressed() throws {

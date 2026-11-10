@@ -352,12 +352,14 @@ struct PocketScreen: View {
             .padding(.vertical, 6)
             .padding(.horizontal, 13)
             .background {
-                // #1b1f24 at 76% over a blur of the screen behind it (the mockup's 8 point blur).
+                // #1b1f24 at 60% over a blur of the screen behind it, with 6 point corners (card
+                // BD, changes 193 and 194). The mockup's blur is 10 points. SwiftUI has no material
+                // with a set blur radius, so this keeps `.ultraThinMaterial`.
                 ZStack {
                     Rectangle().fill(.ultraThinMaterial)
-                    Color(hex: 0x1b1f24, opacity: 0.76)
+                    Color(hex: 0x1b1f24, opacity: 0.6)
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 11))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
                 .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
             }
             .frame(maxWidth: 272)  // the box fits its text inside this
