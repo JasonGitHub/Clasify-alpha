@@ -350,6 +350,11 @@ struct SetupProgress: View {
         ]
     }
 
+    /// The widest number that the counts reach at the end: the largest final count, formatted.
+    nonisolated static func widest(playlists: Int?, albums: Int, total: Int) -> String {
+        max(playlists ?? 0, albums, total).formatted()
+    }
+
     /// The moving part's left edge, as a part of the free track, at time `t`: 0 to 1 and back in 2.4 s, eased.
     static func position(at t: Double) -> Double {
         let u = max(0, t).truncatingRemainder(dividingBy: 2.4) / 2.4
@@ -383,10 +388,17 @@ struct SetupProgress: View {
             }
             // The numbers right-aligned in one column, the words after them. A line not known
             // yet keeps its place, so the lines never jump. 11 pt with a 1.35 line height.
+            // The column is as wide as the widest final number from the start, so the words do
+            // not move right when a count grows past 999 (CLA-84).
+            let widest = Self.widest(playlists: playlists, albums: albums, total: total)
             Grid(alignment: .leading, horizontalSpacing: 3, verticalSpacing: 11 * 0.35) {
                 ForEach(counts.indices, id: \.self) { i in
                     GridRow {
-                        Text(counts[i]?.number ?? "0").gridColumnAlignment(.trailing)
+                        ZStack(alignment: .trailing) {
+                            Text(widest).hidden()
+                            Text(counts[i]?.number ?? "0")
+                        }
+                        .gridColumnAlignment(.trailing)
                         Text(counts[i]?.words ?? "")
                     }
                     .opacity(counts[i] == nil ? 0 : 1)
