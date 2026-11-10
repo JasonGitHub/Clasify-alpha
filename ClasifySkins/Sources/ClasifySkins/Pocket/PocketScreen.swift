@@ -336,6 +336,8 @@ struct PocketScreen: View {
             PocketNowPlaying(state: state, input: input)
         } else if top.screen == .about {
             PocketAbout(state: state)
+        } else if case .license(let i) = top.screen {
+            PocketLicense(state: state, index: i)
         } else if top.screen == .hello {
             // A click on the screen begins setup too (change 167).
             PocketHello(helloAt: state.helloAt).contentShape(Rectangle()).onTapGesture { input(.select) }

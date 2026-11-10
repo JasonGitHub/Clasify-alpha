@@ -481,6 +481,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if pose.pose != .wave { s.aboutIdleAt = now; s.aboutIdleHold = pose }  // any turn restarts the idle clock
                 return
             }
+            if case .license(let i) = s.top.screen {
+                // Change 213: the text moves as a list does, quick steps more lines.
+                let off = clamp(s.top.off + d * s.wheelSpeed.rows(at: now), 0, AppState.licenseSteps(i))
+                if off != s.top.off { s.top.off = off; s.scrollUntil = now + scrollBarTime }
+                return
+            }
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
@@ -494,8 +500,16 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .about {
                 // Change 210: a press wakes the capybara, or near the top makes it wave. From
                 // step 3 it opens Licenses (change 213, a later PR).
-                let pose = s.aboutPose(at: now).pose
-                if pose == .sleep || (pose != .wave && s.top.off < AppState.aboutLicensesStep) { s.aboutWaveAt = now }
+                let pose = s.aboutPose(at: now)
+                if pose.pose == .sleep {
+                    s.aboutWaveAt = now
+                } else if s.top.off >= AppState.aboutLicensesStep {
+                    // Change 213: the Licenses list. The pose waits as it is until About shows again.
+                    s.aboutIdleHold = pose
+                    s.stack.append(Frame(screen: .licenses))
+                } else if pose.pose != .wave {
+                    s.aboutWaveAt = now
+                }
                 return
             }
             if s.top.screen == .now {
@@ -597,6 +611,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.stack.append(Frame(screen: .about))
                 s.aboutAt = now; s.scrollUntil = now + 0.3 + scrollBarTime
                 s.aboutWaveAt = now + AppState.aboutWaveDelay; s.aboutIdleAt = 0  // change 210: it waves hello
+            case .license(let i): s.stack.append(Frame(screen: .license(i)))  // change 213: its text
             case .logOut: s.stack.append(Frame(screen: .confirm))
             case .cancel:
                 if s.top.screen == .auth { fx.append(.cancelLogIn) }
@@ -619,6 +634,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.stack.count < 2 { return }
             if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
+            // Change 213: back from Licenses, the idle clock starts again from the pose it left.
+            if s.top.screen == .about { s.aboutIdleAt = now }
             // Card BA, change 151: the first MENU press back toward the main menu ends the MENU
             // hint for good, also before it shows.
             if s.setupDone && s.stack.first?.screen == .main { s.hintsDone.insert(.menu) }

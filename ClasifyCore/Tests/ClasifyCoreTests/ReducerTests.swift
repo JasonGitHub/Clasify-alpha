@@ -218,10 +218,52 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.aboutWaveAt == 1003)
         send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1005)
         #expect(s.top.off == AppState.aboutLicensesStep)
-        send(&s, .select, now: 1006)
-        #expect(s.aboutWaveAt == 1003 && s.top.screen == .about)
-        send(&s, .select, now: 1040)  // asleep since 1025
-        #expect(s.aboutWaveAt == 1040)
+        send(&s, .menu, .select, .select, now: 1006)  // About opens again at the top, and it waves
+        #expect(s.top.screen == .about && s.aboutWaveAt == 1006)
+        send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1010)
+        send(&s, .select, now: 1040)  // asleep since 1030
+        #expect(s.aboutWaveAt == 1040 && s.top.screen == .about)
+    }
+
+    /// Change 213: from step 3 a press opens the Licenses list, one row a license. Back on About,
+    /// the idle clock starts again from the pose it left, and About keeps its step.
+    @Test func anAboutPressFromStep3OpensLicenses() {
+        var s = openAbout()
+        send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1006)  // thinking since 1005.35
+        send(&s, .select, now: 1007)
+        #expect(s.top.screen == .licenses && s.top.sel == 0)
+        #expect(s.rows(for: s.top) == License.all.indices.map { .license($0) })
+        #expect(License.all.map(\.name) == [
+            "MIT License", "Apache License 2.0", "Unicode License", "Zlib License", "BSD License", "Mozilla Public License 2.0",
+        ])
+        send(&s, .menu, now: 1100)
+        #expect(s.top.screen == .about && s.top.off == AppState.aboutLicensesStep && s.aboutIdleAt == 1100)
+        #expect(s.aboutPose(at: 1101).pose == .think)  // the pose it left, until the clock moves it
+        #expect(s.aboutPose(at: 1106.5).pose == .stand && s.aboutPose(at: 1120).pose == .sleep)
+    }
+
+    /// Change 213: a license row opens its text. The wheel moves it a line a step, quick steps
+    /// more, up to the step where its last line is on the screen's last line.
+    @Test func aLicenseTextScrollsToItsLastLine() {
+        var s = openAbout()
+        send(&s, .wheel(1), .wheel(1), .wheel(1), .select, now: 1010)
+        send(&s, .wheel(1), .select, now: 1011)
+        #expect(s.top.screen == .license(1))
+        let last = AppState.licenseSteps(1)
+        #expect(last == License.all[1].lines.count + 2 - 14 && last > 0)
+        var old = s
+        send(&s, .wheel(1), now: 1020)
+        #expect(s.top.off == 1 && s.scrollUntil == 1021.5 && wheelMoved(from: old, to: s))
+        for i in 0..<400 { send(&s, .wheel(1), now: 2000 + Double(i) * 0.01) }
+        #expect(s.top.off == last)
+        old = s
+        send(&s, .wheel(1), now: 3000)
+        #expect(s.top.off == last && !wheelMoved(from: old, to: s))
+        send(&s, .wheel(-1), now: 3010)
+        #expect(s.top.off == last - 1)
+        send(&s, .menu)
+        #expect(s.top.screen == .licenses && s.top.sel == 1)
+        #expect(License.all.allSatisfy { !$0.lines.isEmpty } && License.all[0].lines.contains { $0.contains("librespot-core") })
     }
 
     @Test func batteryChangedSetsTheBatteryAndAResetKeepsIt() {

@@ -31,6 +31,7 @@ enum Labels {
         case .settings: "Settings"
         case .confirm: "Log out?"
         case .about: "About"
+        case .licenses, .license: "Licenses"  // card BF, change 213: the text screen shows its name under the bar
         case .now: "Now Playing"
         // Setup (Round 13). Hello shows no title bar text.
         case .hello: ""
@@ -85,6 +86,7 @@ enum Labels {
         case .cancel: return RowText(label: "Cancel")
         case .confirmLogOut: return RowText(label: "Log out")
         case .color(let color): return RowText(label: color.rawValue)
+        case .license(let i): return RowText(label: License.all.indices.contains(i) ? License.all[i].name : "", opens: true)
         case .openBrowser: return RowText(label: "Open browser again")
         case .tryAgain: return RowText(label: "Try again")
         case .getSpotifyApp: return RowText(label: "Get Spotify App")  // card BB: no chevron
