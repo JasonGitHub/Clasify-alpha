@@ -988,15 +988,16 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         }
         guard s.signedIn, s.setupDone, s.stack.first?.screen == .main else { return end(finished: false) }
         switch started ? nil : action {
-        // Offline, the press does nothing but its toast. The step stays, and its hint goes away
-        // so the toast shows. The hint comes back after the toast.
-        case .play? where step == .tourPlay: if s.offline { endHint(done: false) } else { s.tour = .tourNext }
+        // Offline, the press does nothing but its toast, and the step stays. With no liked
+        // songs there is nothing to play, so the tour ends.
+        case .play? where step == .tourPlay:
+            if s.top.screen != .main { s.tour = .tourNext } else if !s.offline { return end(finished: false) }
         case .next? where step == .tourNext, .prev? where step == .tourNext:
             // Step 3 shows with the new song. Previous after 3 s starts the same song again,
             // so then it shows at once.
             var restarted = false
             if case .prev = action { restarted = trackBefore.1 > 3 }
-            if s.offline && !restarted { endHint(done: false); break }
+            if s.offline && !restarted { break }
             s.tour = .tourMenu
             s.tourFrom = restarted ? nil : trackBefore.0
         case .menu? where step == .tourMenu: return end(finished: true)
@@ -1004,6 +1005,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             return end(finished: false)
         default: break
         }
+        // A tour tip has no time-out, so a toast that waits for it (offline, Spotify closed)
+        // would never show. The tip gives way, and it comes back after the toast.
+        if !s.heldToast.isEmpty && s.hint?.isTour == true { endHint(done: false) }
         // The step that shows. Step 2 keeps its tip until the new song shows, so the time bar
         // does not come back between the steps (Jason 17:37 JST). Once step 2 has shown
         // (`.tourNext` in `hintsDone`), it shows again after a toast, also when offline paused.

@@ -5,13 +5,13 @@ import Testing
 /// MENU, each with a glow and a tip.
 @Suite struct TourTests {
     /// "You’re all set" at the end of a first setup, with Liked Songs read, at 110 s.
-    func allSet() -> AppState {
+    func allSet(_ songs: [Track] = liked.tracks) -> AppState {
         var s = AppState()
         send(&s, .launch, .restored(token: 1, ok: false), .select)  // the color pick
         send(&s, .select, .select, .authDone(token: 2, ok: true))
         send(&s, .tick, now: 101.5)
         send(&s, .playlistsRefreshed([focusInfo]), now: 106)
-        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 110)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: songs), now: 110)
         return s
     }
 
@@ -88,6 +88,15 @@ import Testing
         #expect(s.top.screen == .now && s.isPlaying && s.current?.playlist == Playlist.likedSongsID && s.tour == .tourNext)
     }
 
+    /// With no liked songs, Play has nothing to start, so the tour ends.
+    @Test func noLikedSongsEndsTheTour() {
+        var s = allSet([])
+        send(&s, .select, now: 111)
+        #expect(s.tour == .tourPlay)
+        send(&s, .play, now: 112)
+        #expect(s.top.screen == .main && s.tour == nil && s.hint == nil)
+    }
+
     /// Offline, a press shows its toast. The step stays, and its hint comes back after the toast.
     /// A sign-out ends the tour.
     @Test func offlineTheStepStaysAndASignOutEndsTheTour() {
@@ -106,6 +115,12 @@ import Testing
         #expect(s.tour == .tourNext && s.hint == .tourNext)
         send(&s, .offline(false), .next, now: 131)
         #expect(s.tour == .tourMenu)
+
+        // Spotify closed: the tip gives way to the toast and comes back after it.
+        send(&s, .playbackFailed("Spotify closed", generation: s.playGen), now: 132)
+        #expect(s.tour == .tourMenu && s.hint == nil && s.toast == "Spotify closed")
+        send(&s, .tick, now: 140)
+        #expect(s.hint == .tourNext)
 
         s = allSet()
         send(&s, .select, now: 111)
