@@ -64,6 +64,8 @@ public final class Store {
     /// Called after each `.wheel` step that moved something (see `wheelMoved`). The app clicks
     /// and ticks the trackpad here.
     @ObservationIgnored public var onWheelStep: (@MainActor () -> Void)?
+    /// Opens the Spotify app's download page in the browser (card BB). The app sets it.
+    @ObservationIgnored public var onGetSpotifyApp: (@MainActor () -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
 
@@ -152,6 +154,7 @@ public final class Store {
                     let ok = await library.logIn()
                     self?.send(.authDone(token: token, ok: ok))
                 }
+            case .getSpotifyApp: onGetSpotifyApp?()
             case .cancelLogIn:
                 let library = self.library
                 Task { await library.cancelLogIn() }

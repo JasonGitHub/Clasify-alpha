@@ -42,7 +42,10 @@ func sampleState() -> AppState {
         #expect(Labels.title(.spotifyApp, in: s) == "Spotify App" && Labels.title(.hello, in: s) == "")
         #expect(Labels.row(.color(.black), on: .color, in: s) == Labels.RowText(label: "Black"))
         #expect(Labels.message(for: Frame(screen: .hello), in: s) == nil)  // PocketHello draws it
-        #expect(Labels.message(for: Frame(screen: .spotifyApp), in: s)?.title == "One more thing")
+        #expect(Labels.message(for: Frame(screen: .spotifyApp), in: s) == nil)  // card BB: its row shows
+        let bb = Labels.setupWords(for: Frame(screen: .spotifyApp), in: s)
+        #expect(bb == .init(headline: "One more thing", line: "We also need the Spotify app on this Mac."))
+        #expect(Labels.row(.getSpotifyApp, on: .spotifyApp, in: s) == .init(label: "Get Spotify App"))
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
 

@@ -626,6 +626,7 @@ final class SpotifyConnectPlayer: Player {
 
     private func launchSpotify() async throws {
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Self.bundleID) else {
+            send(.spotifyAppFound(false))  // the Spotify App screen opens (card BB, change 131)
             throw PlayerError(message: "Install the Spotify app to play music")
         }
         let start = ContinuousClock.now

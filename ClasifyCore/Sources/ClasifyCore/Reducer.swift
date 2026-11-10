@@ -91,6 +91,8 @@ public enum Effect: Equatable, Sendable {
     /// Log in through the browser; the result comes back as `.authDone` with this token.
     case logIn(token: Int)
     case cancelLogIn
+    /// Open the Spotify app's download page in the browser (card BB).
+    case getSpotifyApp
     /// Log in with the stored login; the result comes back as `.restored` with this token.
     case restoreSession(token: Int)
     /// Forget the stored login.
@@ -277,6 +279,24 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
         fetch(.yourMusic)
     }
+    /// "Linked" on the Spotify App screen ended (card BB, change 174): back to where it was
+    /// opened over, or on with setup.
+    func leaveSpotifyApp() {
+        s.beatUntil = 0
+        guard s.stack.count > 1 else { return setupNext() }
+        s.stack.removeLast()
+        // A load that failed under this screen left an empty Now Playing: back to its list.
+        if s.top.screen == .now && s.current == nil && s.stack.count > 1 {
+            s.stack.removeLast(); s.nowMode = .volume; s.overlayUntil = 0
+        }
+        // A read that ended under this screen was dropped, because its frame was not on top.
+        if s.top.loading {
+            s.tok += 1
+            if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }
+            s.top.token = s.tok
+            fetch(s.top.screen)
+        }
+    }
     func signOut(_ msg: String) {
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false  // the library belongs to that account
@@ -383,6 +403,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.beatUntil = 0
                 return setupNext()
             }
+            if s.top.screen == .spotifyApp && s.spotifyApp == true { return leaveSpotifyApp() }  // "Linked": on at once
             if s.top.screen == .hello {  // card AT: a press begins setup
                 s.stack = [Frame(screen: .color)]
                 s.top.sel = DeviceColor.allCases.firstIndex(of: s.deviceColor) ?? 0
@@ -404,6 +425,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.authAttempt += 1
                 s.stack.append(Frame(screen: .auth, token: s.authAttempt))
                 fx.append(.logIn(token: s.authAttempt))
+            case .getSpotifyApp: fx.append(.getSpotifyApp)
             case .openBrowser, .tryAgain:
                 // A new login opens the browser again. The bridge stops the older one, and
                 // the new token makes its `.authDone` stale.
@@ -453,6 +475,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .now && s.nowMode != .volume { s.nowMode = .volume; s.overlayUntil = 0; return }
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
             if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
+            if s.top.screen == .spotifyApp { return }  // card BB: MENU does nothing
             if s.stack.count < 2 { return }
             if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
@@ -483,6 +506,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.beatUntil > 0 && now >= s.beatUntil {  // "You’re in" moves on
                 s.beatUntil = 0
                 if s.top.screen == .loggedIn { setupNext() }
+                if s.top.screen == .spotifyApp && s.spotifyApp == true { leaveSpotifyApp() }
             }
             if s.artUntil > 0 && now > s.artUntil {  // the covers follow the row
                 s.artUntil = 0
@@ -531,7 +555,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .playbackFailed(let msg, let gen):
             guard s.current != nil, gen == s.playGen else { return }
             s.isPlaying = false; s.beforeLoad = nil; s.loadPending = false  // the load, if any, has ended
-            toast(msg)
+            if s.top.screen != .spotifyApp { toast(msg) }  // card BB says it there
 
         case .loadFailed(let msg, let gen):
             guard s.current != nil, gen == s.playGen else { return }
@@ -546,7 +570,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if s.top.screen == .now && s.stack.count > 1 { s.stack.removeLast(); s.nowMode = .volume; s.overlayUntil = 0 }
             }
             s.beforeLoad = nil; s.loadPending = false
-            toast(msg)
+            if s.top.screen != .spotifyApp { toast(msg) }
 
         case .playlistsLoaded(let token, let playlists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
@@ -630,8 +654,22 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             fx.append(.restoreSession(token: s.authAttempt))
 
         case .spotifyAppFound(let found):
+            let was = s.spotifyApp
             s.spotifyApp = found
-            if found && s.top.screen == .spotifyApp { setupNext() }
+            if s.top.screen == .spotifyApp {
+                // Card BB, change 174: "Linked" shows for a beat, then Clasify goes on.
+                if found && was != true { s.beatUntil = now + AppState.beatTime }
+                if !found { s.beatUntil = 0 }
+            } else if !found && s.signedIn && s.setupDone {
+                // Change 131: the app went away while Clasify was open (a play found it gone).
+                // The screen opens over this one, and closes back to it when the app is found.
+                if s.top.screen == .loggedIn {  // over "You’re in", it takes its place: then on to the main menu
+                    s.beatUntil = 0
+                    s.stack = [Frame(screen: .spotifyApp)]
+                } else {
+                    s.stack.append(Frame(screen: .spotifyApp))
+                }
+            }
 
         case .restored(let token, let ok):
             guard s.restoring, s.authAttempt == token else { return }  // from before a reset

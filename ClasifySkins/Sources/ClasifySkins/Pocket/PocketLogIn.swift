@@ -8,16 +8,20 @@ enum PreviewScreen: Equatable {
     /// Six faint empty rows: your music will appear here (card AX, change 134). While the
     /// browser is open they breathe slowly (change 170).
     case rows(breathe: Bool)
-    /// The big green check and "Logged in" (change 175).
-    case loggedIn
+    /// One big mark and one big word: the green check for success ("Logged in", change 175;
+    /// "Linked", change 174), else the gray cross ("Not found", change 174).
+    case mark(ok: Bool, word: String)
 
     /// The small device's screen and its sync cable on a setup screen. Nil on other screens.
-    static func of(_ screen: Screen) -> (screen: PreviewScreen, cable: SyncCable.Plug?)? {
+    static func of(_ screen: Screen, in state: AppState) -> (screen: PreviewScreen, cable: SyncCable.Plug?)? {
         switch screen {
+        case .spotifyApp where state.spotifyApp == true:
+            return (screen: PreviewScreen.mark(ok: true, word: "Linked"), cable: SyncCable.Plug.light)
+        case .spotifyApp: return (screen: PreviewScreen.mark(ok: false, word: "Not found"), cable: SyncCable.Plug.off)
         case .color: return (screen: PreviewScreen.hello, cable: nil)
         case .login, .loginFailed: return (screen: PreviewScreen.rows(breathe: false), cable: SyncCable.Plug.off)
         case .auth: return (screen: PreviewScreen.rows(breathe: true), cable: SyncCable.Plug.light)
-        case .loggedIn: return (screen: PreviewScreen.loggedIn, cable: SyncCable.Plug.light)
+        case .loggedIn: return (screen: PreviewScreen.mark(ok: true, word: "Logged in"), cable: SyncCable.Plug.light)
         default: return nil
         }
     }
@@ -63,12 +67,17 @@ struct PreviewScreenContent: View {
     }
 
     var body: some View {
-        let check = screen == .loggedIn
-        ZStack {
-            rows.opacity(check ? 0 : 1)
-            mark.opacity(check ? 1 : 0)
+        // The rows, the cross and the check crossfade in 0.3 s.
+        let shown: Int = switch screen {
+        case .mark(let ok, _): ok ? 2 : 1
+        default: 0
         }
-        .animation(.easeInOut(duration: 0.3), value: check)  // the rows crossfade to the check
+        ZStack {
+            rows.opacity(shown == 0 ? 1 : 0)
+            mark(ok: false, word: "Not found").opacity(shown == 1 ? 1 : 0)
+            mark(ok: true, word: Self.okWord(screen)).opacity(shown == 2 ? 1 : 0)
+        }
+        .animation(.easeInOut(duration: 0.3), value: shown)
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
         .background(Pocket.glass)
     }
@@ -89,22 +98,38 @@ struct PreviewScreenContent: View {
         }
     }
 
-    /// The big green check (#34c759) and "Logged in" (#248a3d): a green check always means success.
-    private var mark: some View {
+    /// The word of the green check: "Logged in" or "Linked".
+    static func okWord(_ screen: PreviewScreen) -> String {
+        if case .mark(true, let word) = screen { return word }
+        return "Logged in"
+    }
+
+    /// The green check (#34c759) with its word in #248a3d: a green check always means success.
+    /// Else a gray cross (#9aa4ae) with its word in #5d6772: gray, no red (change 174).
+    private func mark(ok: Bool, word: String) -> some View {
         VStack(spacing: 6) {
             Path { p in
-                p.move(to: CGPoint(x: 28, y: 52))
-                p.addLine(to: CGPoint(x: 48, y: 72))
-                p.addLine(to: CGPoint(x: 82, y: 30))
+                if ok {
+                    p.move(to: CGPoint(x: 28, y: 52))
+                    p.addLine(to: CGPoint(x: 48, y: 72))
+                    p.addLine(to: CGPoint(x: 82, y: 30))
+                } else {
+                    p.move(to: CGPoint(x: 32, y: 32))
+                    p.addLine(to: CGPoint(x: 78, y: 78))
+                    p.move(to: CGPoint(x: 78, y: 32))
+                    p.addLine(to: CGPoint(x: 32, y: 78))
+                }
             }
-            .stroke(Color(hex: 0x34c759), style: StrokeStyle(lineWidth: 13, lineCap: .round, lineJoin: .round))
+            .stroke(
+                Color(hex: ok ? 0x34c759 : 0x9aa4ae),
+                style: StrokeStyle(lineWidth: ok ? 13 : 12, lineCap: .round, lineJoin: .round))
             .frame(width: 110, height: 110)
             .scaleEffect(84.0 / 110)
             .frame(width: 84, height: 84)
-            Text("Logged in")
+            Text(word)
                 .font(.helvetica(38, bold: true))
                 .kerning(-0.5)
-                .foregroundStyle(Color(hex: 0x248a3d))
+                .foregroundStyle(Color(hex: ok ? 0x248a3d : 0x5d6772))
         }
     }
 }

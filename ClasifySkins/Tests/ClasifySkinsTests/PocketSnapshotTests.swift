@@ -1145,5 +1145,14 @@ import Testing
         s.stack = [Frame(screen: .loggedIn)]
         let done = try render(s, "logged-in", time: 10)
         #expect(headline(done) && !done.isBlue(175, firstRow) && check(done))  // no rows
+        // Card BB: the same split screen, with one row. A gray cross until the app is found,
+        // then the green check.
+        s.stack = [Frame(screen: .spotifyApp)]
+        s.spotifyApp = false
+        let missing = try render(s, "spotify-app", time: 10)
+        #expect(headline(missing) && missing.isBlue(175, firstRow) && !check(missing), "\(blue(missing))")
+        s.spotifyApp = true
+        let linked = try render(s, "spotify-app-linked", time: 10)
+        #expect(check(linked))
     }
 }

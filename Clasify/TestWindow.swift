@@ -113,7 +113,7 @@ private struct TestPanel: View {
         case .now: return "Select switches the wheel between volume and scrub."
         case .about: return "Clasify test build"
         case .hello: return "Press Select to begin."
-        case .spotifyApp: return "Install the Spotify app."
+        case .spotifyApp: return state.spotifyApp == true ? "Linked." : "We also need the Spotify app on this Mac."
         default: return nil
         }
     }
@@ -161,6 +161,7 @@ private struct TestPanel: View {
         case .cancel: "Cancel"
         case .openBrowser: "Open browser again"
         case .tryAgain: "Try again"
+        case .getSpotifyApp: "Get Spotify App"
         case .confirmLogOut: "Log Out"
         case .color(let color): color.rawValue
         }

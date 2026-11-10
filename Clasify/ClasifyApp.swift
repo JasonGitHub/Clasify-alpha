@@ -135,6 +135,10 @@ final class AppModel {
         self.store = store
         let haptics = Haptics(store: store)
         store.onWheelStep = { [weak haptics] in haptics?.step() }
+        // Card BB: "Get Spotify App" opens Spotify's download page in the browser.
+        store.onGetSpotifyApp = {
+            if let url = URL(string: "https://www.spotify.com/download/mac/") { NSWorkspace.shared.open(url) }
+        }
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] in await keeper?.reconnect() ?? false }
@@ -157,7 +161,7 @@ final class AppModel {
         ticker = Task { [weak store, weak player, artwork] in
             var signedIn = false
             var spotifyCheck = 0.0  // when the Spotify App screen last looked for the app
-            var loggedIn = false
+            var beat = false
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let state = store?.state else { return }
@@ -179,9 +183,10 @@ final class AppModel {
                 // "You’re in" (card AX, change 175) goes on after its beat.
                 let beatDone = state.beatUntil > 0 && now >= state.beatUntil
                 if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone { store?.send(.tick) }
-                // When the browser login works, Clasify comes to the front (change 170).
-                if state.top.screen == .loggedIn && !loggedIn { DeviceWindow.raise() }
-                loggedIn = state.top.screen == .loggedIn
+                // When the browser login works (change 170) or the Spotify app is found (174),
+                // Clasify comes to the front.
+                if state.beatUntil > 0 && !beat { DeviceWindow.raise() }
+                beat = state.beatUntil > 0
             }
         }
     }

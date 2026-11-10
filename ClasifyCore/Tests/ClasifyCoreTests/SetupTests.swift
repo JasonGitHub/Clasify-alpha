@@ -88,12 +88,68 @@ import Testing
         var s = onColor()
         send(&s, .spotifyAppFound(false), .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.stack == [Frame(screen: .spotifyApp)] && s.spotifyApp == false)
-        send(&s, .menu, .select, .wheel(1), .spotifyAppFound(false))  // MENU does nothing, and the check goes on
+        #expect(s.rows(for: s.top) == [.getSpotifyApp])
+        #expect(send(&s, .menu, .wheel(1), .spotifyAppFound(false)).isEmpty)  // MENU does nothing, and the check goes on
+        #expect(send(&s, .select) == [.getSpotifyApp])  // opens the download page
         #expect(s.stack == [Frame(screen: .spotifyApp)])
-        send(&s, .spotifyAppFound(true))
-        #expect(s.top.screen == .yourMusic && s.spotifyApp == true)
+        send(&s, .spotifyAppFound(true), now: 200)  // "Linked" shows for 1.5 s (change 174)
+        #expect(s.top.screen == .spotifyApp && s.spotifyApp == true && s.beatUntil == 201.5)
+        send(&s, .spotifyAppFound(true), now: 201)  // the next check does not restart it
+        #expect(s.beatUntil == 201.5)
+        send(&s, .tick, now: 201.5)
+        #expect(s.top.screen == .yourMusic && s.beatUntil == 0)
         send(&s, .reset)  // the Mac still has the app
         #expect(s.spotifyApp == true)
+    }
+
+    /// Change 131: when a play finds the Spotify app gone, the Spotify App screen opens over
+    /// the screen that shows. When the app is back, it closes to that screen, with no toast.
+    @Test func theSpotifyAppScreenOpensWhenTheAppGoesAway() {
+        var s = playing()
+        let before = s.stack
+        send(&s, .spotifyAppFound(false), .playbackFailed("Install the Spotify app to play music", generation: s.playGen))
+        #expect(s.stack == before + [Frame(screen: .spotifyApp)] && s.toast.isEmpty && !s.isPlaying)
+        send(&s, .menu, .spotifyAppFound(false))
+        #expect(s.stack == before + [Frame(screen: .spotifyApp)])
+        send(&s, .spotifyAppFound(true), .tick, now: 200)
+        #expect(s.top.screen == .spotifyApp)  // "Linked" first
+        send(&s, .tick, now: 201.5)
+        #expect(s.stack == before)
+        s = AppState()
+        send(&s, .spotifyAppFound(false))  // the check at launch, before the login: nothing opens
+        #expect(s.stack == [Frame(screen: .login)])
+    }
+
+    /// A login after a logout, when the player then finds the Spotify app gone: the screen takes
+    /// the place of "You’re in", and the app found goes on to the main menu.
+    @Test func theSpotifyAppScreenReplacesYoureIn() {
+        var s = afterSetup()
+        send(&s, .select, .authDone(token: 1, ok: true), .spotifyAppFound(false), now: 10)
+        #expect(s.stack == [Frame(screen: .spotifyApp)] && s.beatUntil == 0)
+        send(&s, .spotifyAppFound(true), now: 20)
+        send(&s, .tick, now: 21.5)
+        #expect(s.stack == [Frame(screen: .main)])
+    }
+
+    /// A first play that fails under the Spotify App screen leaves no empty Now Playing, and a
+    /// read that ended under it starts again when it closes.
+    @Test func closingTheSpotifyAppScreenCleansUpUnderIt() {
+        var s = mainMenu()
+        send(&s, openFocus(1))
+        send(&s, .select)  // the first track: Now Playing opens, and the load starts
+        let list = s.stack.dropLast().map(\.screen)  // the main menu's selection moves with its Now Playing row
+        send(&s, .spotifyAppFound(false), .loadFailed("Install the Spotify app to play music", generation: s.playGen))
+        #expect(s.current == nil && s.toast.isEmpty)
+        send(&s, .spotifyAppFound(true), .select)
+        #expect(s.stack.map(\.screen) == list && s.top.screen == .tracks(playlist: "focus"))  // the list, not an empty Now Playing
+        s = mainMenu()
+        send(&s, .wheel(1), .select)  // Playlists starts to read
+        #expect(s.top.loading && s.top.token == 1)
+        send(&s, .spotifyAppFound(false), .playlistsLoaded(token: 1, playlists: [focusInfo]))  // dropped under the screen
+        #expect(send(&s, .spotifyAppFound(true), .select) == [.fetchPlaylists(token: 2)])  // so it reads again
+        #expect(s.top == Frame(screen: .playlists, loading: true, token: 2))
+        send(&s, .playlistsLoaded(token: 2, playlists: [focusInfo]))
+        #expect(!s.top.loading && s.rows(for: s.top) == [.playlist("focus")])
     }
 
     @Test func aLaterLaunchSkipsSetupAndChecksTheSpotifyApp() {
@@ -105,8 +161,8 @@ import Testing
         s = afterSetup()
         send(&s, .spotifyAppFound(false), .launch, .restored(token: 1, ok: true))
         #expect(s.stack == [Frame(screen: .spotifyApp)])
-        send(&s, .spotifyAppFound(true))  // no library read: it goes straight to the main menu
-        #expect(s.stack == [Frame(screen: .main)])
+        send(&s, .spotifyAppFound(true), .select)  // a press on "Linked" goes on at once
+        #expect(s.stack == [Frame(screen: .main)])  // no library read: straight to the main menu
         // A login after a logout skips setup too.
         send(&s, .wheel(5), .select, .wheel(6), .select, .wheel(1), .select, .select)
         #expect(s.top == Frame(screen: .auth, token: 2) && s.toast == "Logged out")
