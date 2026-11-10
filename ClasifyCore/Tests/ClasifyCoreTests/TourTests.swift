@@ -88,6 +88,23 @@ import Testing
         #expect(s.top.screen == .now && s.isPlaying && s.current?.playlist == Playlist.likedSongsID && s.tour == .tourNext)
     }
 
+    /// A first song that does not load goes back to the Play step. Next at the end of the list
+    /// stops the music on the same song, and step 3 shows.
+    @Test func aFailedLoadAndTheListEndKeepTheTourGoing() {
+        var s = allSet()
+        send(&s, .select, now: 111)
+        send(&s, .play, now: 112)
+        send(&s, .loadFailed("Can’t play this song", generation: s.playGen), now: 113)
+        #expect(s.current == nil && s.tour == .tourPlay)
+        send(&s, .tick, now: 120)
+        #expect(s.top.screen == .main && s.hint == .tourPlay)
+        send(&s, .play, now: 121)
+        send(&s, .position(5, generation: s.playGen), now: 122)
+        send(&s, .next, now: 123)
+        send(&s, .trackEnded(generation: s.playGen), now: 124)
+        #expect(s.tour == .tourMenu && s.hint == .tourMenu)
+    }
+
     /// With no liked songs, Play has nothing to start, so the tour ends.
     @Test func noLikedSongsEndsTheTour() {
         var s = allSet([])
@@ -120,7 +137,7 @@ import Testing
         send(&s, .playbackFailed("Spotify closed", generation: s.playGen), now: 132)
         #expect(s.tour == .tourMenu && s.hint == nil && s.toast == "Spotify closed")
         send(&s, .tick, now: 140)
-        #expect(s.hint == .tourNext)
+        #expect(s.hint == .tourMenu)  // the music stopped, so step 3
 
         s = allSet()
         send(&s, .select, now: 111)

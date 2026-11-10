@@ -1005,6 +1005,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             return end(finished: false)
         default: break
         }
+        // The first song did not load: back to the Play step on the main menu.
+        if s.tour == .tourNext && s.current == nil { s.tour = .tourPlay }
         // A tour tip has no time-out, so a toast that waits for it (offline, Spotify closed)
         // would never show. The tip gives way, and it comes back after the toast.
         if !s.heldToast.isEmpty && s.hint?.isTour == true { endHint(done: false) }
@@ -1017,7 +1019,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.top.screen == .now && s.current != nil
                 && (s.hintsDone.contains(.tourNext) || (s.isPlaying && s.t >= AppState.tourMusic)) ? .tourNext : nil
         case .tourMenu?:
-            s.top.screen != .now ? nil : (s.tourFrom == nil || s.current != s.tourFrom) ? .tourMenu : .tourNext
+            // Next at the end of the list stops the music on the same song: that counts too.
+            s.top.screen != .now ? nil : (s.tourFrom == nil || s.current != s.tourFrom || !s.isPlaying) ? .tourMenu : .tourNext
         default: nil
         }
         guard shown != s.hint else { return }
