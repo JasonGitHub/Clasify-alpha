@@ -7,7 +7,8 @@ import SwiftUI
 /// "Clasify", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version and
 /// Licenses rows, then the legal text. The points are from the top of the 321.5 pt page.
 /// The capybara waves, thinks, drinks boba and sleeps as `AppState.aboutPose(at:)` says, and
-/// the tagline's glint runs with each wave (changes 209, 210).
+/// the tagline's glint runs with each wave (changes 209, 210). Card BF.1 (J1.3, changes 214-216)
+/// set the front page: two text styles, and "Made with ♥ by CappyAI" before the tagline.
 struct PocketAbout: View {
     let state: AppState
     /// The scroll bar waits 0.3 s after About opens.
@@ -55,8 +56,8 @@ struct PocketAbout: View {
 
     private func page(licenses: Bool) -> some View {
         ZStack(alignment: .top) {
-            capybara.offset(y: 20)
-            plate.offset(y: 127)  // under the 96 pt capybara and its 11 pt gap
+            capybara.offset(y: 18)
+            plate.offset(y: 116)
             PocketRow(text: .init(label: "Version", value: Labels.version), selected: false, scrolls: false)
                 .offset(y: 214)
             PocketRow(text: .init(label: "Licenses", opens: true), selected: licenses, scrolls: false)
@@ -74,8 +75,8 @@ struct PocketAbout: View {
             let now = state.aboutPose(at: t), into = t - now.since
             ZStack {
                 EllipticalGradient(colors: [Color(hex: 0x1b1f24, opacity: 0.2), Color(hex: 0x1b1f24, opacity: 0)])
-                    .frame(width: 52, height: 7)
-                    .offset(y: 47.5)
+                    .frame(width: 48, height: 7)
+                    .offset(y: 43.5)  // its bottom 3 pt under the 88 pt box
                 ForEach(AboutPose.allCases, id: \.self) { pose in
                     if let image = Self.poses[pose] {
                         // The old pose stays whole under the new one for 0.32 s, then fades out in 0.3 s.
@@ -90,7 +91,7 @@ struct PocketAbout: View {
                     }
                 }
             }
-            .frame(width: 96, height: 96)
+            .frame(width: 88, height: 88)
             .accessibilityElement()
             .accessibilityLabel("Capybara with headphones" + Self.doing[now.pose, default: ""])
         }
@@ -133,22 +134,14 @@ struct PocketAbout: View {
         return curve((low + high) / 2, y1, y2)
     }
 
-    /// "Clasify" 20 bold, the tagline 14, and 60 pt under the top "Made with ♥ by CappyAI" 11.
-    /// The steel has a white line under it and a faint dark line over it.
+    /// Change 214-216: "Clasify" 20 bold in its 23 pt line, then 37 pt down "Made with ♥ by
+    /// CappyAI" and 56 pt down the tagline, both 14 regular in 16 pt lines. The steel has a white
+    /// line under it and a faint dark line over it.
     private var plate: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .top) {
             Self.engraved(Text("Clasify").font(.helvetica(20, bold: true)), height: 23, Self.nameSteel)
-            tagline.padding(.top, 2)
-        }
-        .overlay(alignment: .top) {
-            HStack(spacing: 3.5) {
-                Self.engraved(Text("Made with").font(.helvetica(11)), height: 13, Self.lineSteel)
-                Heart().fill(Color(hex: 0xe0565b)).frame(width: 10, height: 9)
-                Self.engraved(Text("by").font(.helvetica(11)), height: 13, Self.lineSteel)
-                Self.engraved(Text("CappyAI").font(.helvetica(11, weight: .medium)), height: 13, Self.lineSteel)
-            }
-            .fixedSize()
-            .offset(y: 60)
+            signature.offset(y: 37)
+            tagline.offset(y: 56)
         }
         .shadow(color: .white.opacity(0.9), radius: 0, y: 1)
         .shadow(color: .black.opacity(0.18), radius: 0, y: -0.5)
@@ -156,15 +149,32 @@ struct PocketAbout: View {
         .accessibilityLabel("Clasify. AI-native craftsmanship. Made with love by CappyAI.")
     }
 
-    /// "AI-native craftsmanship" in steel, with a bright band that sweeps left to right in 1.8 s
-    /// (ease-in-out) from the start of each wave. Only the tagline has the glint (Jason 23:09 JST
-    /// 11-10).
+    /// "Made with ♥ by CappyAI" in steel. The glint sweeps the whole line as one, from the start
+    /// of each wave; the red heart has none (change 218, Jason 00:14 JST 11-11).
+    private var signature: some View {
+        func words(heart: Bool) -> some View {
+            HStack(spacing: 4) {
+                Text("Made with").font(.helvetica(14)).opacity(heart ? 0 : 1)
+                Heart().fill(Color(hex: 0xe0565b)).frame(width: 12, height: 11).opacity(heart ? 1 : 0)
+                Text("by CappyAI").font(.helvetica(14)).opacity(heart ? 0 : 1)
+            }
+            .lineLimit(1).fixedSize().frame(height: 16)
+        }
+        return glinting(words(heart: false), after: 0).overlay { words(heart: true) }
+    }
+
+    /// "AI-native craftsmanship" in steel. Its glint starts 0.15 s after the signature's.
     private var tagline: some View {
+        glinting(Text("AI-native craftsmanship").font(.helvetica(14)).lineLimit(1).fixedSize().frame(height: 16), after: 0.15)
+    }
+
+    /// `line` in the line steel, with a bright band that sweeps left to right in 1.8 s
+    /// (ease-in-out) from `after` seconds after the start of each wave.
+    private func glinting(_ line: some View, after delay: Double) -> some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
             let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
-            let line = Text("AI-native craftsmanship").font(.helvetica(14)).lineLimit(1).fixedSize().frame(height: 16)
             line.hidden().overlay {
-                ZStack { Self.lineSteel; Self.glint(Self.bezier(0.42, 0, 0.58, 1, (t - state.aboutWaveAt) / 1.8)) }
+                ZStack { Self.lineSteel; Self.glint(Self.bezier(0.42, 0, 0.58, 1, (t - state.aboutWaveAt - delay) / 1.8)) }
                     .mask { line }
             }
         }

@@ -957,12 +957,12 @@ import Testing
         let top = Self.listTop, left = Self.screenLeft, x = left + 150
         let glass = try reference(0xf4f8fb)
         let first = try render(s, "about-0")
-        // The capybara: not plain glass in its 96 pt box, 20 pt down.
-        let art = (top + 30..<top + 110).filter { !near(first.rgb(x, $0), glass) }
+        // The capybara: not plain glass in its 88 pt box, 18 pt down.
+        let art = (top + 26..<top + 102).filter { !near(first.rgb(x, $0), glass) }
         #expect(art.count > 40)
-        // The heart: red pixels in the "Made with ♥ by CappyAI" line, 187 to 200 pt down.
+        // The heart: red pixels in the "Made with ♥ by CappyAI" line, 153 to 169 pt down.
         let red = (left + 60..<left + 240).filter { x in
-            (top + 187...top + 200).contains { y in let c = first.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
+            (top + 153...top + 169).contains { y in let c = first.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
         }
         #expect(!red.isEmpty)
         // Step 2: the Licenses row shows at 191.1 pt but is not selected.
@@ -978,9 +978,9 @@ import Testing
         #expect(legal.count > 10)
     }
 
-    /// Change 210: the capybara waves in the first second, then stands, then sleeps. Change 209:
-    /// the glint is in the middle of the tagline 0.9 s into the wave, and gone after.
-    @Test func aboutCapybaraChangesPoseAndTheTaglineGlints() throws {
+    /// Change 210: the capybara waves in the first second, then stands, then sleeps. Changes 209
+    /// and 218: the glint crosses the signature, then the tagline, and is gone after.
+    @Test func aboutCapybaraChangesPoseAndBothLinesGlint() throws {
         var s = sampleState()
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
         let top = Self.listTop, left = Self.screenLeft
@@ -990,17 +990,20 @@ import Testing
         let sleep = try render(s, "about-sleep", time: 30)
         func differ(_ a: Snapshot, _ b: Snapshot) -> Int {
             (left + 102..<left + 198).reduce(0) { n, x in
-                n + stride(from: top + 20, to: top + 116, by: 4).filter { !near(a.rgb(x, $0), b.rgb(x, $0)) }.count
+                n + stride(from: top + 18, to: top + 106, by: 4).filter { !near(a.rgb(x, $0), b.rgb(x, $0)) }.count
             }
         }
         #expect(differ(wave, stand) > 40)
         #expect(differ(sleep, stand) > 40)
-        // The tagline, 152 to 168 pt down: brighter in its middle while the band passes.
+        // Change 218: the band is in the middle of "Made with ♥ by CappyAI" (153 to 169 pt down)
+        // 0.9 s into the wave, and of the tagline (172 to 188 pt down) 0.15 s later.
         func light(_ c: (r: Int, g: Int, b: Int)) -> Int { c.r + c.g + c.b }
-        let brighter = (left + 120..<left + 180).filter { x in
-            (top + 152...top + 168).contains { light(glint.rgb(x, $0)) > light(stand.rgb(x, $0)) + 60 }
+        func brighter(_ a: Snapshot, _ ys: ClosedRange<Int>) -> Int {
+            (left + 120..<left + 180).filter { x in ys.contains { light(a.rgb(x, $0)) > light(stand.rgb(x, $0)) + 60 } }.count
         }
-        #expect(brighter.count > 5)
+        let later = try render(s, "about-glint-tagline", time: 1.05)
+        #expect(brighter(glint, top + 153...top + 169) > 5)
+        #expect(brighter(later, top + 172...top + 188) > 5)
     }
 
     /// Change 213: the Licenses list has one row a license, the first selected. A license's text
