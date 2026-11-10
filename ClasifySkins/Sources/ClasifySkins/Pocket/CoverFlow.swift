@@ -10,6 +10,8 @@ import SwiftUI
 struct PocketCoverFlow: View {
     let state: AppState
     var input: @MainActor (Action) -> Void = { _ in }
+    /// False from a screen move until the cover flight's 0.4 s end (`PocketScreen.landedSeq`).
+    var landed = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The song panel that showed last, so it can turn back into the cover after MENU.
     @State private var lastPanel: AlbumPanel.Shown?
@@ -21,20 +23,23 @@ struct PocketCoverFlow: View {
         // Card AH: on a song, the covers and the panel go at once and the cover flies to Now
         // Playing. On MENU they come back when it lands on the panel's place, 0.4 s later.
         let flying = state.nowOverPanel
-        // Only the opacity waits for the landing; the flight keeps the move's own curve.
-        let comeBack: Animation? = flying || reduceMotion ? nil : .linear(duration: 0).delay(Self.flyTime)
+        // On MENU the cover flies back, and the covers and the panel show when it lands. A timer
+        // ends the flight, not a delayed animation: a zero-length animation can skip its delay
+        // and show them at once (CLA-64). The flight keeps the move's own curve.
+        let flyingBack = state.navMove == .fly && !state.navForward && !landed && !reduceMotion
+        let inFlight = flying || flyingBack
         ZStack(alignment: .topLeading) {
             CoverFlowTurn(turn: panel == nil ? 0 : 1, panel: panel ?? lastPanel, state: state) {
                 CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0)
                     // Fast steps retarget the glide, so the covers stream and then ease to a stop.
                     .animation(reduceMotion ? nil : CoverFlowStrip.glide, value: frame.sel)
             }
-            .animation(comeBack) { $0.opacity(flying ? 0 : 1) }
+            .animation(nil) { $0.opacity(inFlight ? 0 : 1) }
             .accessibilityHidden(flying)
             if let shown = panel ?? lastPanel {
                 CoverFly(fly: flying ? 1 : 0, panel: shown, state: state)
                     // Only while it flies: before, the panel shows; after, Now Playing's own cover.
-                    .animation(comeBack) { $0.opacity(flying ? 1 : 0) }
+                    .animation(nil) { $0.opacity(inFlight ? 1 : 0) }
                     .accessibilityHidden(true)
             }
             if flying {

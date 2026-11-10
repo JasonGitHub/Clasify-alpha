@@ -327,7 +327,7 @@ struct PocketScreen: View {
             MessageView(message: message)
         } else if state.coverFlowFrame != nil || state.nowOverPanel {
             // Cover Flow, its song panel over it, and Now Playing when the cover flew there.
-            PocketCoverFlow(state: state, input: input)
+            PocketCoverFlow(state: state, input: input, landed: landedSeq == state.navSeq)
         } else if top.screen == .now {
             PocketNowPlaying(state: state, input: input)
         } else if top.screen == .about {
