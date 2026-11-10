@@ -90,6 +90,8 @@ struct ClickWheel: View {
         var last: Double
         var turned = 0.0
         var moved = 0.0
+        /// The light is under this drag's thumb (change 202).
+        var anchored = false
     }
 
     /// The light under the thumb (change 202): its angle, clockwise from 3 o'clock and not
@@ -123,13 +125,16 @@ struct ClickWheel: View {
                 WaitingComet(from: cometFrom)
                     .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
             }
-            if let light { ThumbComet(light: light) }
+            if followsThumb, let light { ThumbComet(light: light) }
             center
         }
         .frame(width: Self.size, height: Self.size)
+        .onChange(of: followsThumb) { _, follows in
+            if !follows { light = nil }  // off the color pick, the light goes at once
+        }
         .onChange(of: turns) { old, new in
             // A trackpad or key step. A drag moves the light itself.
-            if followsThumb && turn == nil { moveLight(by: Double(new - old) * Self.detent, to: nil) }
+            if followsThumb && turn == nil { moveLight(by: Double(new - old) * Self.detent, to: nil, anchor: false) }
         }
         .task(id: light?.last) {
             // The light has faded out: it goes, and the next move starts a new one.
@@ -209,7 +214,10 @@ struct ClickWheel: View {
         if delta > 180 { delta -= 360 }
         if delta < -180 { delta += 360 }
         t.last = angle
-        if followsThumb && delta != 0 { moveLight(by: delta, to: angle) }
+        if followsThumb && delta != 0 {
+            moveLight(by: delta, to: angle, anchor: !t.anchored)
+            t.anchored = true
+        }
         t.turned += delta
         t.moved += abs(delta)
         while t.turned >= Self.detent { t.turned -= Self.detent; input(.wheel(1)) }
@@ -219,12 +227,20 @@ struct ClickWheel: View {
     }
 
     /// Moves the light by `delta` degrees. A new light starts at `angle`, under the thumb, or
-    /// for a step with no thumb at 12 o'clock.
-    private func moveLight(by delta: Double, to angle: Double?) {
+    /// for a step with no thumb at 12 o'clock. With `anchor`, the first move of a drag, a light
+    /// that still shows goes under the thumb the short way, so it never lags behind it.
+    private func moveLight(by delta: Double, to angle: Double?, anchor: Bool) {
         guard delta != 0 else { return }
         let now = Date.timeIntervalSinceReferenceDate
         if var l = light {
-            l.angle += delta; l.clockwise = delta > 0; l.last = now
+            if anchor, let angle {
+                var gap = (angle - l.angle).truncatingRemainder(dividingBy: 360)
+                if gap > 180 { gap -= 360 } else if gap < -180 { gap += 360 }
+                l.angle += gap
+            } else {
+                l.angle += delta
+            }
+            l.clockwise = delta > 0; l.last = now
             light = l
         } else {
             light = ThumbLight(angle: angle ?? -90, clockwise: delta > 0, from: now, last: now)
