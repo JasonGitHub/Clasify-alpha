@@ -478,17 +478,18 @@ import Testing
 
     @Test func theDoorsFollowTheMockupTimes() {
         func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
-        // `side` runs linearly over 0.3 s on the way in and 0.35 s on the way back.
+        // `side` runs linearly over 0.5 s on the way in and 0.35 s on the way back.
         let opening = { (t: Double) in DoorsStage(side: -t / DoorsStage.openTime, forward: true) }
         let behind = { (t: Double) in DoorsStage(side: 1 - t / DoorsStage.openTime, forward: true) }
         #expect(close(opening(0).open, 0))  // closed at the press
         #expect(opening(0.125).open > 0 && opening(0.125).open < 0.5)  // speeding up
         #expect(close(opening(0.25).open, 1) && close(opening(0.3).open, 1))  // open after 0.25 s
         #expect(behind(0).headerY == -20 && behind(0).names == 0)  // Cover Flow: no title bar, no names
-        // The title bar slides down with the doors, quick at first (CLA-70).
-        #expect(behind(0.01).headerY > -20 && behind(0.125).headerY > -10 && close(behind(0.25).headerY, 0))
         #expect(behind(0.19).names == 0 && close(behind(0.25).names, 0.5) && close(behind(0.3).names, 1))
-        #expect(close(behind(0.3).headerY, 0) && close(behind(0.3).open, 0))
+        // The title bar waits until the doors are open, then slides down, quick at first (CLA-73).
+        #expect(close(behind(0.25).headerY, -20) && behind(0.26).headerY > -20)
+        #expect(behind(0.375).headerY > -10 && behind(0.45).headerY < 0)
+        #expect(close(behind(0.5).headerY, 0) && close(behind(0.5).open, 0))
         // MENU: the names go at once, the title bar goes up in 0.1 s, then the doors close.
         let leaving = { (t: Double) in DoorsStage(side: -t / DoorsStage.closeTime, forward: false) }
         let closing = { (t: Double) in DoorsStage(side: 1 - t / DoorsStage.closeTime, forward: false) }
