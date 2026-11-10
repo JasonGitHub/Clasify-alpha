@@ -32,7 +32,8 @@ struct PlainWindowApp: App {
         .windowStyle(.plain)
         .windowResizability(.contentSize)
         .windowBackgroundDragBehavior(.enabled)
-        .commands { DebugCommands(model: model) }
+        .commands { DebugCommands(model: model); HelpCommands() }
+        HowToUseWindow()
     }
 }
 
@@ -48,7 +49,31 @@ struct FramedWindowApp: App {
                 .background(Color(red: 0xc9 / 255, green: 0xd3 / 255, blue: 0xdc / 255))  // the mockup's page
         }
         .windowResizability(.contentSize)
-        .commands { DebugCommands(model: model) }
+        .commands { DebugCommands(model: model); HelpCommands() }
+        HowToUseWindow()
+    }
+}
+
+/// Help › How to Use Clasify (card BC, change 152): a small window with the wheel's actions
+/// and their keys. One window: a second click brings it to the front.
+struct HowToUseWindow: Scene {
+    static let id = "how-to-use"
+
+    var body: some Scene {
+        Window(HowToUse.title, id: Self.id) { HowToUse() }
+            .windowResizability(.contentSize)
+    }
+}
+
+/// The Help menu: How to Use Clasify in place of the default item. macOS keeps its Search
+/// field at the top.
+struct HelpCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .help) {
+            Button(HowToUse.title) { openWindow(id: HowToUseWindow.id) }
+        }
     }
 }
 
