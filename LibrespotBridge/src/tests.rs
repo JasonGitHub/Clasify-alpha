@@ -27,6 +27,7 @@ fn header_matches_rust() {
         ("LSB_ERR_READ", LSB_ERR_READ as u32),
         ("LSB_ERR_CONNECT", LSB_ERR_CONNECT as u32),
         ("LSB_ERR_REFUSED", LSB_ERR_REFUSED as u32),
+        ("LSB_ERR_NOT_PREMIUM", LSB_ERR_NOT_PREMIUM as u32),
         ("LSB_COMMAND_PAUSE", LSB_COMMAND_PAUSE),
         ("LSB_COMMAND_RESUME", LSB_COMMAND_RESUME),
         ("LSB_COMMAND_NEXT", LSB_COMMAND_NEXT),
@@ -36,6 +37,7 @@ fn header_matches_rust() {
         ("LSB_OPTION_REPEAT_TRACK", LSB_OPTION_REPEAT_TRACK),
         ("LSB_EVENT_LOGGED_IN", LSB_EVENT_LOGGED_IN),
         ("LSB_EVENT_ERROR", LSB_EVENT_ERROR),
+        ("LSB_EVENT_NOT_PREMIUM", LSB_EVENT_NOT_PREMIUM),
     ];
     for (name, value) in constants {
         let line = format!("#define {name} {value}\n");
@@ -109,6 +111,63 @@ fn session_status_reports_a_dropped_session() {
         assert_eq!(lsb_session_status(bridge), LSB_ERR_NOT_LOGGED_IN);
         lsb_free(bridge);
     }
+}
+
+/// A free account no longer ends the process (the vendored librespot-core patch, CLA-66).
+/// The bridge reads the account type that librespot stores, and ends the session.
+#[test]
+fn session_status_reports_an_account_that_is_not_premium() {
+    let recorder = Recorder::default();
+    let context = &recorder as *const Recorder as *mut c_void;
+    unsafe {
+        let bridge = lsb_new(Some(record_event), context);
+        let session = {
+            let _guard = (*bridge).runtime.enter();
+            Session::new(SessionConfig::default(), None)
+        };
+        *(*bridge).connected.lock().unwrap() = Some(Connected {
+            session: session.clone(),
+        });
+        // No type yet: the login goes on.
+        assert_eq!(account_status(&session), LSB_OK);
+        assert_eq!(lsb_session_status(bridge), LSB_OK);
+        session.set_user_attribute("type", "premium");
+        assert_eq!(lsb_session_status(bridge), LSB_OK);
+        // What dispatch stores for a free account; librespot 0.8.0 called exit(1) here.
+        session.set_user_attribute("type", "free");
+        assert_eq!(account_status(&session), LSB_ERR_NOT_PREMIUM);
+        assert_eq!(lsb_session_status(bridge), LSB_ERR_NOT_PREMIUM);
+        assert!(session.is_invalid(), "the bridge ends the session");
+        // The reads say the same, not "log in again".
+        assert_eq!(lsb_session_status(bridge), LSB_ERR_NOT_PREMIUM);
+        lsb_free(bridge);
+    }
+    assert!(recorder.events.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_login_waits_for_the_account_type_but_not_forever() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let _guard = runtime.enter();
+    let session = Session::new(SessionConfig::default(), None);
+    // The type never comes: the wait ends at its limit.
+    let start = std::time::Instant::now();
+    runtime.block_on(wait_for_account_type(
+        &session,
+        std::time::Duration::from_millis(200),
+    ));
+    assert!(start.elapsed() >= std::time::Duration::from_millis(200));
+    // The type is there: no wait.
+    session.set_user_attribute("type", "free");
+    let start = std::time::Instant::now();
+    runtime.block_on(wait_for_account_type(&session, PRODUCT_INFO_WAIT));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+    // A session that dropped stops the wait too.
+    let other = Session::new(SessionConfig::default(), None);
+    other.shutdown();
+    let start = std::time::Instant::now();
+    runtime.block_on(wait_for_account_type(&other, PRODUCT_INFO_WAIT));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
 }
 
 #[test]

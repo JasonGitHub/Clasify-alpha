@@ -24,15 +24,20 @@
 #define LSB_ERR_CONNECT 5
 // Spotify rejected the refresh token: log in again through the browser.
 #define LSB_ERR_REFUSED 6
+// The account is not Spotify Premium. Spotify Connect and the library reads need it.
+#define LSB_ERR_NOT_PREMIUM 7
 
 #define LSB_EVENT_LOGGED_IN 0
 #define LSB_EVENT_ERROR 1
+// The login worked, but the account is not Premium. The bridge ended the session.
+#define LSB_EVENT_NOT_PREMIUM 2
 
 typedef struct LsbBridge LsbBridge;
 
 typedef struct LsbEvent {
     uint32_t kind;             // One of LSB_EVENT_*.
     const char *message;       // LOGGED_IN: the canonical username. ERROR: the error.
+                               // NOT_PREMIUM: the account type, for example "free".
     // The message is valid only during the callback.
     uint64_t login_id;         // The login_id that the lsb_login call for this result got.
 } LsbEvent;
@@ -43,7 +48,8 @@ typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);
 LsbBridge *lsb_new(LsbEventCallback on_event, void *context);
 void lsb_free(LsbBridge *bridge);
 
-// Sends LSB_EVENT_LOGGED_IN or LSB_EVENT_ERROR with this login_id. Stores no credentials on disk.
+// Sends LSB_EVENT_LOGGED_IN, LSB_EVENT_ERROR or LSB_EVENT_NOT_PREMIUM with this login_id.
+// Stores no credentials on disk. It waits up to 5 s for the account type after it connects.
 // Calling it again replaces the session when the new login succeeds.
 // A superseded login sends no result, except in a narrow race: if lsb_login or lsb_logout is
 // called just as an earlier login succeeds, that login can still send LOGGED_IN.
@@ -59,6 +65,8 @@ int32_t lsb_logout(LsbBridge *bridge);
 // LSB_OK while the session works. LSB_ERR_NOT_LOGGED_IN when there is no session or it
 // dropped (for example after sleep or a network change). librespot does not reconnect:
 // refresh the token and call lsb_login again. A cheap check, safe to call often.
+// LSB_ERR_NOT_PREMIUM when the account type came after the login and is not Premium:
+// the bridge ends the session, and the reads and Connect calls return the same.
 int32_t lsb_session_status(LsbBridge *bridge);
 
 // OAuth with PKCE through librespot-oauth, with librespot's own client ID and
