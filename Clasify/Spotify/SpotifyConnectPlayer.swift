@@ -64,8 +64,11 @@ final class SpotifyConnectPlayer: Player {
     private var movedAway = false
     /// When Play took playback back. For up to 3 s, states can still show the other device.
     private var takenBackAt: ContinuousClock.Instant?
-    /// Counts fire-and-forget commands, so that a retry is dropped after a newer command.
-    private var sent = 0
+    /// What a fire-and-forget command changes. A newer command drops the retry of an older
+    /// one only when both change the same thing.
+    private enum Lane { case playState, place, volume }
+    /// Counts fire-and-forget commands for each lane.
+    private var sent: [Lane: Int] = [:]
     /// The newest state from the bridge. At launch it can come before the pre-warm found our
     /// device, so the pre-warm handles it again.
     private var latest: SpotifyPlayerState?
@@ -299,13 +302,13 @@ final class SpotifyConnectPlayer: Player {
         position = seconds  // so a quit before the next state keeps the new place
         resumePoint?.position = seconds  // a scrub after a quit moves the place too
         if loading { pendingSeek = seconds }
-        resend { [client] in client.fireSeek(device: $0, seconds: seconds, onStale: $1) }
+        resend(.place) { [client] in client.fireSeek(device: $0, seconds: seconds, onStale: $1) }
     }
 
     func setVolume(_ percent: Int) {
         volume = percent
         // The retry reads `volume` again, so it sends the newest value.
-        resend { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }
+        resend(.volume) { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }
     }
 
     func setShuffle(_ on: Bool) {
@@ -384,7 +387,9 @@ final class SpotifyConnectPlayer: Player {
         // Next and prev are not sent again after a timeout: if the first one did arrive, the
         // second one skips twice. The same rule as the bridge's own retry.
         let skip = command == LSB_COMMAND_NEXT || command == LSB_COMMAND_PREV
-        resend(evenAfterStop: evenAfterStop, afterTimeout: !skip) { [client] in client.fire(command, to: $0, onStale: $1) }
+        resend(skip ? .place : .playState, evenAfterStop: evenAfterStop, afterTimeout: !skip) { [client] in
+            client.fire(command, to: $0, onStale: $1)
+        }
     }
 
     /// Sends one fire-and-forget command to our device. When the session dropped, it logs in
@@ -393,17 +398,18 @@ final class SpotifyConnectPlayer: Player {
     /// and the timeout handler, and returns the status. The retry is dropped after a new load.
     /// `evenAfterStop` keeps it after a stop.
     private func resend(
-        evenAfterStop: Bool = false, afterTimeout: Bool = true,
+        _ lane: Lane, evenAfterStop: Bool = false, afterTimeout: Bool = true,
         _ call: @escaping @MainActor (String, StaleHandler?) -> Int32
     ) {
         guard ours, let device else { return }
         let id = loadID
-        // A newer command goes out after this one fails. Then this one is not sent again: an
-        // old Pause must not undo a newer Play, and an old seek must not move the next track.
-        sent += 1
-        let mine = sent
+        // A newer command in the same lane goes out after this one fails. Then this one is not
+        // sent again: an old Pause must not undo a newer Play, and an old seek must not move
+        // the next track. A volume change keeps a pending Pause.
+        sent[lane, default: 0] += 1
+        let mine = sent[lane]
         let again: @MainActor (Bool) async -> Void = { [weak self] force in
-            guard let self, await self.reconnect(force), id == self.loadID, mine == self.sent,
+            guard let self, await self.reconnect(force), id == self.loadID, mine == self.sent[lane],
                   self.ours || evenAfterStop, let device = self.device else { return }
             _ = call(device, nil)
         }
@@ -438,7 +444,7 @@ final class SpotifyConnectPlayer: Player {
             lastTrack = ""  // so the store gets the track and its play state
             // Shuffle or repeat can have changed in Spotify while the session was down.
             Task { await applyOptions() }
-            resend { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }  // and the volume
+            resend(.volume) { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }  // and the volume
             return
         }
         // Never change what the user already hears: no volume, shuffle or repeat goes out.
