@@ -1,6 +1,7 @@
 name: App DMG
-# Builds an ad-hoc signed test DMG of the app from main, for Jason's Mac.
-# Not part of PR CI: it runs on a push to main or by hand.
+# Builds the test DMG of the app from main, signed with Developer ID and notarized (CLA-69).
+# Not part of PR CI: it runs on a push to main, or by hand on main. It never runs on a PR, so
+# the signing secrets (environment "release") never reach PR code.
 on:
   workflow_dispatch:
   push: { branches: [main] }
@@ -9,18 +10,17 @@ concurrency:
   cancel-in-progress: true
 jobs:
   dmg:
+    if: github.ref == 'refs/heads/main'
     runs-on: macos-15
+    environment: release
+    permissions:
+      contents: read
+    env:
+      IDENTITY: "Developer ID Application: CAPPYAI LIMITED (6GDHV9227A)"  # not a secret
+      DMG: Clasify-build-${{ github.run_number }}.dmg  # the build number Jason sees
     steps:
       - uses: actions/checkout@v5
       - run: xcodebuild -version
-      - name: Cache the Rust build of the bridge
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            LibrespotBridge/target
-          key: bridge-${{ runner.os }}-${{ hashFiles('LibrespotBridge/Cargo.lock') }}
       - name: Build the universal bridge library
         run: scripts/build-bridge.sh
       - name: Build the app (Release, universal)
@@ -30,16 +30,54 @@ jobs:
             -destination 'generic/platform=macOS' -derivedDataPath DerivedData 2>&1 | tee build.log
           # Warnings from librespot objects are OK. Warnings in our own code are not.
           if grep -E '/Clasify/[^ ]*\.swift:[0-9]+:[0-9]+: warning: ' build.log; then echo "Our code has warnings."; exit 1; fi
-      - name: Ad-hoc sign and make the DMG
+      - name: Import the Developer ID certificate into a keychain for this run
         env:
-          DMG: Clasify-build-${{ github.run_number }}.dmg  # the build number Jason sees
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kcpw=$(openssl rand -base64 24)
+          echo "::add-mask::$kcpw"
+          printf '%s' "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 3600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" > /dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+      - name: Sign the app with hardened runtime and make the DMG
         run: |
           app=DerivedData/Build/Products/Release/Clasify.app
           lipo -info "$app/Contents/MacOS/Clasify"
-          codesign --force --deep --sign - "$app"
-          codesign --verify --verbose "$app"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app"
+          codesign --verify --strict --verbose=2 "$app"
           mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
           hdiutil create -volname Clasify -srcfolder dmg -ov -format UDZO "$DMG"
+          codesign --force --timestamp --sign "$IDENTITY" "$DMG"
+      - name: Notarize and staple the DMG
+        env:
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          key="$RUNNER_TEMP/notary-key.p8"
+          printf '%s' "$NOTARY_KEY" > "$key"
+          status=0
+          xcrun notarytool submit "$DMG" --key "$key" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" \
+            --wait --timeout 30m --output-format json > notary.json || status=$?
+          rm -f "$key"
+          cat notary.json
+          if [ "$status" -ne 0 ] || ! grep -q '"status" *: *"Accepted"' notary.json; then
+            echo "Notarization was not accepted."
+            exit 1
+          fi
+          xcrun stapler staple "$DMG"
+          xcrun stapler validate "$DMG"
+          spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+      - name: Delete the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
       - uses: actions/upload-artifact@v4
         with:
           name: Clasify-build-${{ github.run_number }}.dmg
