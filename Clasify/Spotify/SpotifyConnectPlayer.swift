@@ -226,6 +226,8 @@ final class SpotifyConnectPlayer: Player {
         case .takeBack(let other):
             if let device { takeBack(from: other, to: device) }
         case .load(let track, let playlist, let place):
+            // Keep it as the continuation, so Play after a failed load retries this song.
+            resumePoint = (track, playlist, place)
             start(track, context: playlist, autoplay: true, at: place)
         case .resumePoint:
             if let point = resumePoint { start(point.track, context: point.playlist, autoplay: true, at: point.position) }
