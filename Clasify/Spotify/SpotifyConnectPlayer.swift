@@ -207,20 +207,31 @@ final class SpotifyConnectPlayer: Player {
             wantsRunning = true
             return
         }
-        // After Spotify quit or stopped, load the same track again where it stopped.
-        if !ours, let point = resumePoint {
-            return start(point.track, context: point.playlist, autoplay: true, at: point.position)
-        }
-        // After a move to another device, Play takes playback back to this Mac.
-        if !ours, movedAway, let device, let other = latest?.activeDeviceID, !other.isEmpty, other != device {
-            return takeBack(from: other, to: device)
-        }
-        // Nothing to go on from here. Ask for a new pick.
-        guard ours else {
-            log.notice("play: no control and no place to go on from")
-            return send(.playbackFailed("Pick a song to play it here", generation: generation))
-        }
+        guard ours else { return resumeWithoutControl() }
         fire(LSB_COMMAND_RESUME)
+    }
+
+    /// Play with no control (CLA-93): take playback back from another device, or load the song
+    /// that played last there, or the Mac's last song, or ask for a new pick.
+    private func resumeWithoutControl() {
+        let seen = latest.map {
+            ResumePlan.Seen(
+                activeDevice: $0.activeDeviceID, track: $0.trackURI, context: $0.contextURI,
+                position: $0.position, duration: $0.duration, running: $0.isRunning, hasTrack: $0.hasTrack,
+                age: Double((ContinuousClock.now - latestAt) / .milliseconds(1)) / 1000)
+        }
+        let plan = ResumePlan.pick(device: device, movedAway: movedAway, seen: seen, hasResumePoint: resumePoint != nil)
+        log.notice("play with no control: \(plan.kind, privacy: .public)")
+        switch plan {
+        case .takeBack(let other):
+            if let device { takeBack(from: other, to: device) }
+        case .load(let track, let playlist, let place):
+            start(track, context: playlist, autoplay: true, at: place)
+        case .resumePoint:
+            if let point = resumePoint { start(point.track, context: point.playlist, autoplay: true, at: point.position) }
+        case .pickASong:
+            send(.playbackFailed("Pick a song to play it here", generation: generation))
+        }
     }
 
     /// Moves playback from another device (for example a phone) back to this Mac with a Connect
@@ -559,9 +570,7 @@ final class SpotifyConnectPlayer: Player {
 
     /// A context that the bridge can load again, so Clasify keeps it as its own play:
     /// Liked Songs, a playlist, or an album (which a song from Albums plays in).
-    nonisolated static func canLoad(_ context: String) -> Bool {
-        context.hasSuffix(":collection") || context.hasPrefix("spotify:playlist:") || Album.isID(context)
-    }
+    nonisolated static func canLoad(_ context: String) -> Bool { ResumePlan.canLoad(context) }
 
     /// `Playlist.likedSongsID` plays the user's Liked Songs. Other IDs are Spotify playlist or album URIs.
     private func contextURI(for playlist: String?) -> String? {
@@ -740,11 +749,12 @@ final class SpotifyConnectPlayer: Player {
         takenBackAt = nil
         guard state.activeDeviceID == device else {
             // The user moved playback to another device, or Spotify quit. Do not fight it.
-            // With no active device, nothing plays elsewhere, so Play may continue here.
+            // With no active device, nothing plays elsewhere, so Play may continue here. After a
+            // move away, the place is kept too: when that device stops, Play goes on here (CLA-93).
             let stopped = state.activeDeviceID.isEmpty
             let reason = stopped ? "no active device" : "other device"
             movedAway = !stopped
-            return lose(stopped ? "The music stopped in Spotify" : "Now playing on another device", resumable: stopped, reason: reason)
+            return lose(stopped ? "The music stopped in Spotify" : "Now playing on another device", resumable: true, reason: reason)
         }
         // Our Spotify app moved to another context: autoplay after the playlist ended, or a
         // list picked in Spotify itself. Follow it and keep control. Liked Songs can come back
