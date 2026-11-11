@@ -1,0 +1,19 @@
+name: Build the app
+description: Builds the universal bridge library and the Release app into DerivedData. Fails on warnings in our code.
+runs:
+  using: composite
+  steps:
+    - run: xcodebuild -version
+      shell: bash
+    - name: Build the universal bridge library
+      run: scripts/build-bridge.sh
+      shell: bash
+    - name: Build the app (Release, universal)
+      shell: bash
+      run: |
+        set -o pipefail
+        xcodebuild build -project Clasify.xcodeproj -scheme Clasify -configuration Release \
+          -destination 'generic/platform=macOS' -derivedDataPath DerivedData 2>&1 | tee build.log
+        # Warnings from librespot objects are OK. Warnings in our own code are not.
+        if grep -E '/Clasify/[^ ]*\.swift:[0-9]+:[0-9]+: warning: ' build.log; then echo "Our code has warnings."; exit 1; fi
+        lipo -info DerivedData/Build/Products/Release/Clasify.app/Contents/MacOS/Clasify
