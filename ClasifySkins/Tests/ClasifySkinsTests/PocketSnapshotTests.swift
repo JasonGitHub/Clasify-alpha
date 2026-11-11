@@ -923,7 +923,7 @@ import Testing
         let x = Int(PocketSkin.size.width) / 2  // the wheel's center
         let up = try render(AppState(), "wheel")
         let down = try render(AppState(), "wheel-pressed", pressed: .center)
-        let ring = up.rgb(x, wheelTop + 60), white = try reference(0xfefefe)
+        let ring = up.rgb(x, wheelTop + 60), white = try reference(0xfafafa)
         #expect(near(ring, white), "ring \(ring)")  // the flat white wheel
         // Dark at the top, as if pressed in. Pressed, the whole button gets darker.
         #expect(up.rgb(x, nearTop).b < up.rgb(x, nearBottom).b)
@@ -938,13 +938,27 @@ import Testing
         let shot = try render(s, "black")
         let wheelTop: Int = 321, x = Int(PocketSkin.size.width) / 2
         let middle: Int = wheelTop + 112
-        let ring = shot.rgb(x, wheelTop + 60), wheel = try reference(0x2f2f2f)
+        let ring = shot.rgb(x, wheelTop + 60), wheel = try reference(0x222223)
         #expect(near(ring, wheel), "ring \(ring)")
         let bezel = shot.rgb(29, Self.screenTop + 60), want = try reference(0x050505)  // left of the screen
         #expect(near(bezel, want), "bezel \(bezel)")
         #expect(shot.isDark(10, 300))  // the body, beside the screen
         #expect(shot.rgb(x, middle - 30).b < shot.rgb(x, middle + 30).b)  // the center: dark at the top
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
+    }
+
+    /// Card BH (CLA-95): the Classic body's base color shows between the screen and the wheel,
+    /// and the sides are darker than the middle.
+    @Test func classicBodyFollowsCardBH() throws {
+        var s = AppState()
+        let silver = try render(s, "body-silver")
+        s.deviceColor = .black
+        let black = try render(s, "body-black")
+        let y = 290, x = Int(PocketSkin.size.width) / 2  // 47% down: the base only
+        let silverBase = try reference(0xdbdbdb), blackBase = try reference(0x5f5e61)
+        #expect(near(silver.rgb(x, y), silverBase), "silver \(silver.rgb(x, y))")
+        #expect(near(black.rgb(x, y), blackBase), "black \(black.rgb(x, y))")
+        for shot in [silver, black] { #expect(shot.rgb(4, y).g < shot.rgb(x, y).g - 8) }  // the left side
     }
 
     /// About, card BF: one page that scrolls 5 steps of 22.9 pt. At the top the capybara, then

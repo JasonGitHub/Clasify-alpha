@@ -88,44 +88,53 @@ public struct PocketSkin: View {
         return state.colorAt
     }
 
-    /// The device body: silver, or black (round 8, card Z), with a light line inside the top
-    /// edge and fainter ones at the sides.
+    /// The device body, card BH (CLA-95): a base gradient, then the top lip and bottom roll, then
+    /// darker sides, as the mockup's three `bodyBg` layers. A dark edge line and the drop shadow.
     private func device(_ color: DeviceColor) -> some View {
         let black = color == .black
         let shape = RoundedRectangle(cornerRadius: 34)
         return shape
             .fill(LinearGradient(stops: black ? Self.blackBody : Self.silverBody, startPoint: .top, endPoint: .bottom))
-            .overlay {
-                if black {  // slightly darker sides
-                    shape.fill(LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.16), location: 0), .init(color: .white.opacity(0.05), location: 0.2),
-                            .init(color: .white.opacity(0.07), location: 0.5), .init(color: .white.opacity(0.05), location: 0.8),
-                            .init(color: .black.opacity(0.16), location: 1),
-                        ],
-                        startPoint: .leading, endPoint: .trailing))
-                }
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(black ? 0.12 : 0.5), lineWidth: 1).padding(1)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(black ? 0.35 : 1), lineWidth: 1).padding(1)
-                    .mask(LinearGradient.vertical(.white, .clear, .clear))
-            }
-            .overlay { shape.strokeBorder(Color(hex: black ? 0x1c1c1c : 0x9c9c9c), lineWidth: 1) }
+            .overlay { shape.fill(LinearGradient(stops: Self.lip(black), startPoint: .top, endPoint: .bottom)) }
+            .overlay { shape.fill(LinearGradient(stops: Self.sides(black), startPoint: .leading, endPoint: .trailing)) }
+            .overlay { shape.strokeBorder(Color.black.opacity(black ? 0.6 : 0.3), lineWidth: 1) }
             .shadow(color: preview ? .clear : black ? .black.opacity(0.45) : Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
     }
 
     static var silverBody: [Gradient.Stop] { [
-        .init(color: Color(hex: 0xf4f4f4), location: 0), .init(color: Color(hex: 0xe4e4e4), location: 0.55),
-        .init(color: Color(hex: 0xc8c8c8), location: 1),
+        .init(color: Color(hex: 0xdcdcdc), location: 0), .init(color: Color(hex: 0xdbdbdb), location: 0.5),
+        .init(color: Color(hex: 0xc6c6c6), location: 0.72), .init(color: Color(hex: 0xb4b4b4), location: 0.92),
     ] }
     static var blackBody: [Gradient.Stop] { [
-        .init(color: Color(hex: 0x6c6b6e), location: 0), .init(color: Color(hex: 0x626164), location: 0.22),
-        .init(color: Color(hex: 0x555457), location: 0.5), .init(color: Color(hex: 0x3f3f3f), location: 0.7),
-        .init(color: Color(hex: 0x2c2c2c), location: 0.86), .init(color: Color(hex: 0x212121), location: 1),
+        .init(color: Color(hex: 0x636265), location: 0), .init(color: Color(hex: 0x5f5e61), location: 0.5),
+        .init(color: Color(hex: 0x3a3a3b), location: 0.72), .init(color: Color(hex: 0x2f2f30), location: 0.92),
     ] }
+
+    /// The top lip (a dark hairline, then a white shine that fades by 4.5%) and the bottom roll.
+    static func lip(_ black: Bool) -> [Gradient.Stop] {
+        let top: [Gradient.Stop] = [
+            .init(color: .black.opacity(0.3), location: 0), .init(color: .white.opacity(black ? 0.3 : 0.55), location: 0.008),
+            .init(color: .white.opacity(black ? 0.18 : 0.35), location: 0.025), .init(color: .white.opacity(0), location: 0.045),
+            .init(color: .white.opacity(0), location: 0.89),
+        ]
+        let bottom: [Gradient.Stop] = black
+            ? [.init(color: .black.opacity(0.15), location: 0.94), .init(color: .black.opacity(0.35), location: 1)]
+            : [
+                .init(color: .black.opacity(0.1), location: 0.93), .init(color: .black.opacity(0.3), location: 0.975),
+                .init(color: .black.opacity(0.5), location: 1),
+            ]
+        return top + bottom
+    }
+
+    /// The darker sides, fading out by 9% of the width.
+    static func sides(_ black: Bool) -> [Gradient.Stop] {
+        let (left, nearLeft, nearRight, right) = black ? (0.45, 0.12, 0.15, 0.45) : (0.17, 0.05, 0.07, 0.2)
+        return [
+            .init(color: .black.opacity(left), location: 0), .init(color: .black.opacity(nearLeft), location: 0.04),
+            .init(color: .black.opacity(0), location: 0.09), .init(color: .black.opacity(0), location: 0.9),
+            .init(color: .black.opacity(nearRight), location: 0.95), .init(color: .black.opacity(right), location: 1),
+        ]
+    }
 
     /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back,
     /// Space plays, S and R change shuffle and repeat.
