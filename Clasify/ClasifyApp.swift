@@ -12,8 +12,7 @@ struct PlainWindowApp: App {
     var body: some Scene {
         WindowGroup("Clasify", id: DeviceWindow.id) {
             AppContent(model: model)
-                // Room for the device's shadow, which the window would cut off.
-                .padding(EdgeInsets(top: 10, leading: 30, bottom: 50, trailing: 30))
+                .padding(DeviceWindow.margin)
                 .containerBackground(.clear, for: .window)
                 .gesture(WindowDragGesture())
         }
@@ -66,6 +65,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 enum DeviceWindow {
     static let id = "device"
+    /// Clear room around the device for its shadow: radius 20, 20 down (CLA-92). A smaller
+    /// margin cuts the shadow off at the window's edge.
+    static let margin = EdgeInsets(top: 30, leading: 60, bottom: 90, trailing: 60)
     /// Opens a new device window. AppContent sets it, because only a view gets `openWindow`.
     static var open: (() -> Void)?
 
