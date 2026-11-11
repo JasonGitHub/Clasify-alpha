@@ -66,8 +66,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 enum DeviceWindow {
     static let id = "device"
     /// Clear room around the device for its shadow: radius 20, 20 down (CLA-92). A smaller
-    /// margin cuts the shadow off at the window's edge.
-    static let margin = EdgeInsets(top: 30, leading: 60, bottom: 90, trailing: 60)
+    /// margin cuts the shadow off at the window's edge. The shadow falls down, so the top needs
+    /// little room; a small top lets the device reach the menu bar when dragged (CLA-94).
+    static let margin = EdgeInsets(top: 5, leading: 60, bottom: 90, trailing: 60)
     /// Opens a new device window. AppContent sets it, because only a view gets `openWindow`.
     static var open: (() -> Void)?
 
