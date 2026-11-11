@@ -1480,7 +1480,9 @@ private struct Other: Error {}
     var watch = PathWatch()
     // The first path at launch needs no login.
     watch.update("en0 192.168.1.1", at: 0)
-    #expect(watch.due == nil && !watch.take(at: 10))
+    #expect(watch.due == nil)
+    let t0 = watch.take(at: 10)
+    #expect(!t0)
     // The same path again: nothing changed.
     watch.update("en0 192.168.1.1", at: 1)
     #expect(watch.due == nil)
@@ -1488,23 +1490,30 @@ private struct Other: Error {}
     watch.update(nil, at: 20)
     #expect(watch.due == nil)
     watch.update("en0 10.0.0.1", at: 21)
-    #expect(!watch.take(at: 22))
+    let t1 = watch.take(at: 22)
+    #expect(!t1)
     // Another update during the wait moves the login later, so one switch makes one login.
     watch.update("en0 10.0.0.1", at: 22.5)
-    #expect(!watch.take(at: 23.5))
-    #expect(watch.take(at: 24.5))
-    #expect(!watch.take(at: 30))  // once only
+    let t2 = watch.take(at: 23.5)
+    #expect(!t2)
+    let t3 = watch.take(at: 24.5)
+    #expect(t3)
+    let t4 = watch.take(at: 30)
+    #expect(!t4)  // once only
     // A path that comes back unchanged after a loss also logs in again.
     watch.update(nil, at: 40)
     watch.update("en0 10.0.0.1", at: 41)
-    #expect(watch.take(at: 43))
+    let t5 = watch.take(at: 43)
+    #expect(t5)
     // A new interface with no loss, for example Ethernet plugged in.
     watch.update("en1 10.0.0.1", at: 50)
-    #expect(watch.take(at: 52))
+    let t6 = watch.take(at: 52)
+    #expect(t6)
     // No usable path: no login while it is lost.
     watch.update("en0 10.0.0.1", at: 60)
     watch.update(nil, at: 61)
-    #expect(!watch.take(at: 70))
+    let t7 = watch.take(at: 70)
+    #expect(!t7)
 }
 
 @Test func noPathAtLaunchThenAPathNeedsNoLogin() {
@@ -1512,5 +1521,6 @@ private struct Other: Error {}
     var watch = PathWatch()
     watch.update(nil, at: 0)
     watch.update("en0 192.168.1.1", at: 1)
-    #expect(!watch.take(at: 10))
+    let t8 = watch.take(at: 10)
+    #expect(!t8)
 }
