@@ -146,6 +146,34 @@ fn session_status_reports_an_account_that_is_not_premium() {
     assert!(recorder.events.lock().unwrap().is_empty());
 }
 
+/// CLA-88: a library request that never answers ends at its limit, so the read fails and
+/// the screen shows its error row. A request that answers keeps its result or its error.
+#[test]
+fn a_library_request_that_never_answers_ends_at_its_limit() {
+    use crate::library::{read_within, READ_LIMIT};
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let limit = std::time::Duration::from_millis(200);
+    let start = std::time::Instant::now();
+    let stuck = runtime.block_on(read_within(
+        limit,
+        "cannot read a page",
+        std::future::pending::<Result<(), String>>(),
+    ));
+    assert_eq!(
+        stuck.unwrap_err(),
+        "cannot read a page: no answer within 0 s"
+    );
+    let took = start.elapsed();
+    assert!(took >= limit && took < std::time::Duration::from_secs(2));
+    let read = runtime.block_on(read_within(limit, "x", async { Ok::<_, String>(3) }));
+    assert_eq!(read, Ok(3));
+    let failed = runtime.block_on(read_within(limit, "x", async {
+        Err::<(), _>("gone".to_owned())
+    }));
+    assert_eq!(failed.unwrap_err(), "gone");
+    assert_eq!(READ_LIMIT, std::time::Duration::from_secs(20));
+}
+
 #[test]
 fn a_login_waits_for_the_account_type_but_not_forever() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
