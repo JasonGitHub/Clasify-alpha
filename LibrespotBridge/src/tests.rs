@@ -28,6 +28,7 @@ fn header_matches_rust() {
         ("LSB_ERR_CONNECT", LSB_ERR_CONNECT as u32),
         ("LSB_ERR_REFUSED", LSB_ERR_REFUSED as u32),
         ("LSB_ERR_NOT_PREMIUM", LSB_ERR_NOT_PREMIUM as u32),
+        ("LSB_ERR_STALE_SESSION", LSB_ERR_STALE_SESSION as u32),
         ("LSB_COMMAND_PAUSE", LSB_COMMAND_PAUSE),
         ("LSB_COMMAND_RESUME", LSB_COMMAND_RESUME),
         ("LSB_COMMAND_NEXT", LSB_COMMAND_NEXT),
@@ -1078,6 +1079,41 @@ mod connect_tests {
     const PLAYLIST: &str = "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M";
     const TRACK: &str = "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
 
+    /// CLA-88: a call that never answers ends at its limit as an error, and the next call
+    /// in the same queue still runs.
+    #[test]
+    fn a_connect_call_that_never_answers_does_not_block_the_next_one() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let limit = std::time::Duration::from_millis(200);
+        let start = std::time::Instant::now();
+        let (stuck, next) = runtime.block_on(async {
+            let stuck = within(
+                limit,
+                "Spotify Connect command failed",
+                std::future::pending::<Result<(), String>>(),
+            )
+            .await;
+            let next = within(limit, "Spotify Connect command failed", async { Ok(7) }).await;
+            (stuck, next)
+        });
+        let stuck = stuck.unwrap_err();
+        assert_eq!(
+            stuck.message,
+            "Spotify Connect command failed: no answer within 0 s"
+        );
+        // Only a new login helps after a timeout, so the app gets its own status.
+        assert!(stuck.stale);
+        assert_eq!(next, Ok(7));
+        let took = start.elapsed();
+        assert!(took >= limit && took < std::time::Duration::from_secs(2));
+        // A call that fails at once keeps its own error.
+        let failed = runtime.block_on(within(limit, "x", async {
+            Err::<(), _>("denied".to_owned())
+        }));
+        assert_eq!(failed.unwrap_err(), CallError::from("denied".to_owned()));
+        assert_eq!(CALL_LIMIT, std::time::Duration::from_secs(10));
+    }
+
     fn body(command: Command) -> (String, String, String) {
         let (method, path, body) = request(&command, "me", "app", "c1");
         (method.to_string(), path, body)
@@ -1294,11 +1330,16 @@ mod connect_tests {
             is_active: true,
         };
         deliver_devices(record_devices, context, Ok(vec![device]));
-        deliver_devices(record_devices, context, Err("offline".to_owned()));
+        deliver_devices(record_devices, context, Err("offline".to_owned().into()));
         deliver_status(record_status, context, Ok(()));
-        deliver_status(record_status, context, Err("refused".to_owned()));
+        deliver_status(record_status, context, Err("refused".to_owned().into()));
+        // A stale session has its own status, so the app logs in again (CLA-88).
+        let stale = CallError::stale("no answer".to_owned());
+        deliver_devices(record_devices, context, Err(stale.clone()));
+        deliver_status(record_status, context, Err(stale));
         let row = ["mac", "Mac Book", "COMPUTER", "osx", "true"].map(str::to_owned);
         let failed = |m: &str| (LSB_ERR_CONNECT, Some(m.to_owned()), vec![]);
+        let stale = (LSB_ERR_STALE_SESSION, Some("no answer".to_owned()), vec![]);
         assert_eq!(
             *got.0.lock().unwrap(),
             vec![
@@ -1306,6 +1347,8 @@ mod connect_tests {
                 failed("offline"),
                 (LSB_OK, None, vec![]),
                 failed("refused"),
+                stale.clone(),
+                stale,
             ]
         );
     }

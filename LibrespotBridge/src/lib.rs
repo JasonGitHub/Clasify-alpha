@@ -37,6 +37,9 @@ pub const LSB_ERR_CONNECT: i32 = 5;
 pub const LSB_ERR_REFUSED: i32 = 6;
 /// The account is not Spotify Premium. Spotify Connect and the library reads need it.
 pub const LSB_ERR_NOT_PREMIUM: i32 = 7;
+/// A Connect call timed out, or the session's Connect link broke (CLA-88). This session can
+/// make no more Connect calls: log in again with the stored token, then try once more.
+pub const LSB_ERR_STALE_SESSION: i32 = 8;
 
 pub const LSB_EVENT_LOGGED_IN: u32 = 0;
 pub const LSB_EVENT_ERROR: u32 = 1;
