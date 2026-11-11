@@ -21,7 +21,8 @@ final class SpotifyConnectPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in }
     /// Logs in again after the session dropped. Returns true when the session works again.
-    var reconnect: @MainActor () async -> Bool = { false }
+    /// `force` logs in also while the session looks alive: a Connect call timed out (CLA-88).
+    var reconnect: @MainActor (_ force: Bool) async -> Bool = { _ in false }
 
     private let client: LibrespotClient
     private let library: LibrespotLibrary
@@ -63,6 +64,11 @@ final class SpotifyConnectPlayer: Player {
     private var movedAway = false
     /// When Play took playback back. For up to 3 s, states can still show the other device.
     private var takenBackAt: ContinuousClock.Instant?
+    /// What a fire-and-forget command changes. A newer command drops the retry of an older
+    /// one only when both change the same thing.
+    private enum Lane { case playState, place, volume }
+    /// Counts fire-and-forget commands for each lane.
+    private var sent: [Lane: Int] = [:]
     /// The newest state from the bridge. At launch it can come before the pre-warm found our
     /// device, so the pre-warm handles it again.
     private var latest: SpotifyPlayerState?
@@ -296,13 +302,13 @@ final class SpotifyConnectPlayer: Player {
         position = seconds  // so a quit before the next state keeps the new place
         resumePoint?.position = seconds  // a scrub after a quit moves the place too
         if loading { pendingSeek = seconds }
-        resend { [client] in client.fireSeek(device: $0, seconds: seconds) }
+        resend(.place) { [client] in client.fireSeek(device: $0, seconds: seconds, onStale: $1) }
     }
 
     func setVolume(_ percent: Int) {
         volume = percent
         // The retry reads `volume` again, so it sends the newest value.
-        resend { [client] in client.fireVolume(device: $0, percent: self.volume) }
+        resend(.volume) { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }
     }
 
     func setShuffle(_ on: Bool) {
@@ -378,20 +384,42 @@ final class SpotifyConnectPlayer: Player {
     }
 
     private func fire(_ command: Int32, evenAfterStop: Bool = false) {
-        resend(evenAfterStop: evenAfterStop) { [client] in client.fire(command, to: $0) }
+        // Next and prev are not sent again after a timeout: if the first one did arrive, the
+        // second one skips twice. The same rule as the bridge's own retry.
+        let skip = command == LSB_COMMAND_NEXT || command == LSB_COMMAND_PREV
+        resend(skip ? .place : .playState, evenAfterStop: evenAfterStop, afterTimeout: !skip, relative: skip) { [client] in
+            client.fire(command, to: $0, onStale: $1)
+        }
     }
 
     /// Sends one fire-and-forget command to our device. When the session dropped, it logs in
-    /// again and sends the command once more. `call` gets the device ID and returns the status.
-    /// The retry is dropped after a new load. `evenAfterStop` keeps it after a stop.
-    private func resend(evenAfterStop: Bool = false, _ call: @escaping @MainActor (String) -> Int32) {
+    /// again and sends the command once more. When the command timed out, it logs in again by
+    /// force, and with `afterTimeout` sends it once more (CLA-88). `call` gets the device ID
+    /// and the timeout handler, and returns the status. The retry is dropped after a new load.
+    /// `evenAfterStop` keeps it after a stop.
+    private func resend(
+        _ lane: Lane, evenAfterStop: Bool = false, afterTimeout: Bool = true, relative: Bool = false,
+        _ call: @escaping @MainActor (String, StaleHandler?) -> Int32
+    ) {
         guard ours, let device else { return }
-        guard call(device) == LSB_ERR_NOT_LOGGED_IN else { return }
         let id = loadID
-        Task {
-            guard await reconnect(), id == loadID, ours || evenAfterStop, let device = self.device else { return }
-            _ = call(device)
+        // A newer command in the same lane goes out after this one fails. Then this one is not
+        // sent again: an old Pause must not undo a newer Play, and an old seek must not move
+        // the next track. A volume change keeps a pending Pause. A `relative` command (next,
+        // prev) is never superseded: two Nexts that were not queued are two skips.
+        sent[lane, default: 0] += 1
+        let mine = sent[lane]
+        let again: @MainActor (Bool) async -> Void = { [weak self] force in
+            guard let self, await self.reconnect(force), id == self.loadID, relative || mine == self.sent[lane],
+                  self.ours || evenAfterStop, let device = self.device else { return }
+            _ = call(device, nil)
         }
+        let onStale: StaleHandler = { [weak self] in
+            log.notice("Connect call timed out; logging in again")
+            if afterTimeout { Task { await again(true) } } else { Task { _ = await self?.reconnect(true) } }
+        }
+        guard call(device, onStale) == LSB_ERR_NOT_LOGGED_IN else { return }
+        Task { await again(false) }
     }
 
     /// The session was logged in again. Register it, so the cluster watch delivers states again.
@@ -417,7 +445,7 @@ final class SpotifyConnectPlayer: Player {
             lastTrack = ""  // so the store gets the track and its play state
             // Shuffle or repeat can have changed in Spotify while the session was down.
             Task { await applyOptions() }
-            resend { [client] in client.fireVolume(device: $0, percent: self.volume) }  // and the volume
+            resend(.volume) { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }  // and the volume
             return
         }
         // Never change what the user already hears: no volume, shuffle or repeat goes out.
@@ -436,8 +464,15 @@ final class SpotifyConnectPlayer: Player {
     }
 
     /// Runs one session call, and after a dropped session logs in again and runs it once more.
+    /// A call that timed out (LSB_ERR_STALE_SESSION) logs in again by force (CLA-88).
     private func again<T>(_ call: @MainActor () async throws -> T) async throws -> T {
-        try await retryOnce(after: reconnect, when: { ($0 as? BridgeError)?.status == LSB_ERR_NOT_LOGGED_IN }, call)
+        var stale = false
+        return try await retryOnce(after: { await self.reconnect(stale) }, when: { error in
+            let status = (error as? BridgeError)?.status
+            stale = status == LSB_ERR_STALE_SESSION
+            if stale { log.notice("Connect call timed out; logging in again") }
+            return stale || status == LSB_ERR_NOT_LOGGED_IN
+        }, call)
     }
 
     // MARK: Playing
@@ -578,6 +613,7 @@ final class SpotifyConnectPlayer: Player {
         let kind = switch status {
         case LSB_ERR_NOT_LOGGED_IN: "not logged in"
         case LSB_ERR_CONNECT: "Connect call failed"
+        case LSB_ERR_STALE_SESSION: "Connect call timed out"
         case LSB_ERR_INVALID_ARGUMENT: "invalid argument"
         case LSB_ERR_READ: "read failed"
         case LSB_ERR_OAUTH: "OAuth"
