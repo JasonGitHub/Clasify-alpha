@@ -387,7 +387,7 @@ final class SpotifyConnectPlayer: Player {
         // Next and prev are not sent again after a timeout: if the first one did arrive, the
         // second one skips twice. The same rule as the bridge's own retry.
         let skip = command == LSB_COMMAND_NEXT || command == LSB_COMMAND_PREV
-        resend(skip ? .place : .playState, evenAfterStop: evenAfterStop, afterTimeout: !skip) { [client] in
+        resend(skip ? .place : .playState, evenAfterStop: evenAfterStop, afterTimeout: !skip, relative: skip) { [client] in
             client.fire(command, to: $0, onStale: $1)
         }
     }
@@ -398,18 +398,19 @@ final class SpotifyConnectPlayer: Player {
     /// and the timeout handler, and returns the status. The retry is dropped after a new load.
     /// `evenAfterStop` keeps it after a stop.
     private func resend(
-        _ lane: Lane, evenAfterStop: Bool = false, afterTimeout: Bool = true,
+        _ lane: Lane, evenAfterStop: Bool = false, afterTimeout: Bool = true, relative: Bool = false,
         _ call: @escaping @MainActor (String, StaleHandler?) -> Int32
     ) {
         guard ours, let device else { return }
         let id = loadID
         // A newer command in the same lane goes out after this one fails. Then this one is not
         // sent again: an old Pause must not undo a newer Play, and an old seek must not move
-        // the next track. A volume change keeps a pending Pause.
+        // the next track. A volume change keeps a pending Pause. A `relative` command (next,
+        // prev) is never superseded: two Nexts that were not queued are two skips.
         sent[lane, default: 0] += 1
         let mine = sent[lane]
         let again: @MainActor (Bool) async -> Void = { [weak self] force in
-            guard let self, await self.reconnect(force), id == self.loadID, mine == self.sent[lane],
+            guard let self, await self.reconnect(force), id == self.loadID, relative || mine == self.sent[lane],
                   self.ours || evenAfterStop, let device = self.device else { return }
             _ = call(device, nil)
         }
