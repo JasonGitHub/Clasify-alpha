@@ -90,15 +90,34 @@ pub(crate) fn decode_rootlist(bytes: &[u8]) -> Result<RootlistPage, String> {
     })
 }
 
+/// The longest wait for one library request (CLA-88). librespot's HTTP client has no time
+/// limit, and after a network change a request can wait for minutes. Then the screen shows
+/// its error row with a retry, not an endless load. The limit is per request, not per read.
+pub(crate) const READ_LIMIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Runs one library request for at most `limit`. After the limit, the request is dropped.
+pub(crate) async fn read_within<T>(
+    limit: std::time::Duration,
+    what: &str,
+    request: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    tokio::time::timeout(limit, request)
+        .await
+        .unwrap_or_else(|_| Err(format!("{what}: no answer within {} s", limit.as_secs())))
+}
+
 pub(crate) async fn read_playlists(session: &Session) -> Result<Vec<Playlist>, String> {
     let mut playlists = Vec::new();
     let mut from = 0;
     loop {
-        let bytes = session
-            .spclient()
-            .get_rootlist(from, Some(ROOTLIST_PAGE))
-            .await
-            .map_err(|e| format!("cannot read the playlist list: {e}"))?;
+        let request = async {
+            session
+                .spclient()
+                .get_rootlist(from, Some(ROOTLIST_PAGE))
+                .await
+                .map_err(|e| format!("cannot read the playlist list: {e}"))
+        };
+        let bytes = read_within(READ_LIMIT, "cannot read the playlist list", request).await?;
         let page = decode_rootlist(&bytes)?;
         playlists.extend(page.playlists);
         from += page.items;
@@ -118,15 +137,23 @@ struct SessionPages<'a>(&'a Session);
 
 impl PageSource for SessionPages<'_> {
     async fn context(&self, uri: &str) -> Result<Vec<ContextPage>, String> {
-        let context = self.0.spclient().get_context(uri).await;
-        Ok(context
-            .map_err(|e| format!("cannot read {uri}: {e}"))?
-            .pages)
+        let request = async {
+            let context = self.0.spclient().get_context(uri).await;
+            context.map_err(|e| format!("cannot read {uri}: {e}"))
+        };
+        Ok(
+            read_within(READ_LIMIT, &format!("cannot read {uri}"), request)
+                .await?
+                .pages,
+        )
     }
 
     async fn page(&self, url: &str) -> Result<ContextPage, String> {
-        let bytes = self.0.spclient().get_next_page(url).await;
-        let bytes = bytes.map_err(|e| format!("cannot read a page: {e}"))?;
+        let request = async {
+            let bytes = self.0.spclient().get_next_page(url).await;
+            bytes.map_err(|e| format!("cannot read a page: {e}"))
+        };
+        let bytes = read_within(READ_LIMIT, "cannot read a page", request).await?;
         let json = String::from_utf8_lossy(&bytes);
         protobuf_json_mapping::parse_from_str_with_options(&json, &IGNORE_UNKNOWN)
             .map_err(|e| format!("cannot decode a page: {e}"))
@@ -347,11 +374,14 @@ async fn read_metadata(
         progress(start, uris.len(), 0);
     }
     for (chunk, done) in uris.chunks(METADATA_BATCH).zip(steps) {
-        let response = session
-            .spclient()
-            .get_extended_metadata(metadata_request(chunk))
-            .await
-            .map_err(|e| format!("cannot read track details: {e}"))?;
+        let request = async {
+            session
+                .spclient()
+                .get_extended_metadata(metadata_request(chunk))
+                .await
+                .map_err(|e| format!("cannot read track details: {e}"))
+        };
+        let response = read_within(READ_LIMIT, "cannot read track details", request).await?;
         let batch = decode_metadata(&response, chunk);
         let album_count = count_albums(&mut albums, &batch);
         tracks.extend(batch);
