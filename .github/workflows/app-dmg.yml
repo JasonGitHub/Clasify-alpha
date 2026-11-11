@@ -72,7 +72,13 @@ jobs:
             echo "Notarization was not accepted."
             exit 1
           fi
-          xcrun stapler staple "$DMG"
+          # The ticket can take a moment to appear, and Apple's server can drop the connection.
+          for try in 1 2 3 4 5; do
+            if xcrun stapler staple "$DMG"; then break; fi
+            if [ "$try" -eq 5 ]; then echo "Stapling failed 5 times."; exit 1; fi
+            echo "Stapling failed (try $try of 5). Trying again in 20 s."
+            sleep 20
+          done
           xcrun stapler validate "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
       - name: Delete the signing keychain
