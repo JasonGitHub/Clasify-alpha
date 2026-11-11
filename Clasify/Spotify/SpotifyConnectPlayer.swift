@@ -21,7 +21,8 @@ final class SpotifyConnectPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in }
     /// Logs in again after the session dropped. Returns true when the session works again.
-    var reconnect: @MainActor () async -> Bool = { false }
+    /// `force` logs in also while the session looks alive: a Connect call timed out (CLA-88).
+    var reconnect: @MainActor (_ force: Bool) async -> Bool = { _ in false }
 
     private let client: LibrespotClient
     private let library: LibrespotLibrary
@@ -389,7 +390,7 @@ final class SpotifyConnectPlayer: Player {
         guard call(device) == LSB_ERR_NOT_LOGGED_IN else { return }
         let id = loadID
         Task {
-            guard await reconnect(), id == loadID, ours || evenAfterStop, let device = self.device else { return }
+            guard await reconnect(false), id == loadID, ours || evenAfterStop, let device = self.device else { return }
             _ = call(device)
         }
     }
@@ -436,8 +437,15 @@ final class SpotifyConnectPlayer: Player {
     }
 
     /// Runs one session call, and after a dropped session logs in again and runs it once more.
+    /// A call that timed out (LSB_ERR_STALE_SESSION) logs in again by force (CLA-88).
     private func again<T>(_ call: @MainActor () async throws -> T) async throws -> T {
-        try await retryOnce(after: reconnect, when: { ($0 as? BridgeError)?.status == LSB_ERR_NOT_LOGGED_IN }, call)
+        var stale = false
+        return try await retryOnce(after: { await self.reconnect(stale) }, when: { error in
+            let status = (error as? BridgeError)?.status
+            stale = status == LSB_ERR_STALE_SESSION
+            if stale { log.notice("Connect call timed out; logging in again") }
+            return stale || status == LSB_ERR_NOT_LOGGED_IN
+        }, call)
     }
 
     // MARK: Playing
@@ -578,6 +586,7 @@ final class SpotifyConnectPlayer: Player {
         let kind = switch status {
         case LSB_ERR_NOT_LOGGED_IN: "not logged in"
         case LSB_ERR_CONNECT: "Connect call failed"
+        case LSB_ERR_STALE_SESSION: "Connect call timed out"
         case LSB_ERR_INVALID_ARGUMENT: "invalid argument"
         case LSB_ERR_READ: "read failed"
         case LSB_ERR_OAUTH: "OAuth"

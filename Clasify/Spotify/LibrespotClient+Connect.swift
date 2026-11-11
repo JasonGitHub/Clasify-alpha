@@ -39,6 +39,10 @@ final class StateBox: Sendable {
 }
 
 extension LibrespotClient {
+    /// Runs when a command that nobody waits on gets LSB_ERR_STALE_SESSION (CLA-88): the
+    /// session can send no more Connect calls, so the app logs in again.
+    @MainActor static var staleSession: (@MainActor () -> Void)?
+
     /// Registers Clasify as a Connect device, then lists the account's other devices.
     func devices() async throws -> [ConnectDevice] {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[ConnectDevice], any Error>) in
@@ -128,6 +132,9 @@ private let connectLog = Logger(subsystem: "app.clasify.Clasify", category: "con
 /// For calls that nobody waits on. Only the status goes to the log, never the message.
 private func loggedCallback(_ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?) {
     if status != LSB_OK { connectLog.error("Connect command failed: status \(status, privacy: .public)") }
+    if status == LSB_ERR_STALE_SESSION {
+        Task { @MainActor in LibrespotClient.staleSession?() }
+    }
 }
 
 private func commandCallback(_ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?) {

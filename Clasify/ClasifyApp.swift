@@ -166,7 +166,7 @@ final class AppModel {
         }
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
-        player.reconnect = { [weak keeper] in await keeper?.reconnect() ?? false }
+        player.reconnect = { [weak keeper] force in await keeper?.reconnect(force: force) ?? false }
         self.keeper = keeper
         battery = BatteryWatcher(store: store)
         // A change made in the Spotify app shows when the user comes back to Clasify.

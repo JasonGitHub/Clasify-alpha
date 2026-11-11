@@ -1475,3 +1475,42 @@ private struct Other: Error {}
     #expect(await run(reconnectWorks: true, failures: 1, error: Other()) == "Other")
     #expect(tries == 1 && reconnects == 3)
 }
+
+@Test func aNetworkChangeLogsInAgainOnceAfterItSettles() {
+    var watch = PathWatch()
+    // The first path at launch needs no login.
+    watch.update("en0 192.168.1.1", at: 0)
+    #expect(watch.due == nil && !watch.take(at: 10))
+    // The same path again: nothing changed.
+    watch.update("en0 192.168.1.1", at: 1)
+    #expect(watch.due == nil)
+    // A Wi-Fi switch: no path for a moment, then a new one. The login waits for it to settle.
+    watch.update(nil, at: 20)
+    #expect(watch.due == nil)
+    watch.update("en0 10.0.0.1", at: 21)
+    #expect(!watch.take(at: 22))
+    // Another update during the wait moves the login later, so one switch makes one login.
+    watch.update("en0 10.0.0.1", at: 22.5)
+    #expect(!watch.take(at: 23.5))
+    #expect(watch.take(at: 24.5))
+    #expect(!watch.take(at: 30))  // once only
+    // A path that comes back unchanged after a loss also logs in again.
+    watch.update(nil, at: 40)
+    watch.update("en0 10.0.0.1", at: 41)
+    #expect(watch.take(at: 43))
+    // A new interface with no loss, for example Ethernet plugged in.
+    watch.update("en1 10.0.0.1", at: 50)
+    #expect(watch.take(at: 52))
+    // No usable path: no login while it is lost.
+    watch.update("en0 10.0.0.1", at: 60)
+    watch.update(nil, at: 61)
+    #expect(!watch.take(at: 70))
+}
+
+@Test func noPathAtLaunchThenAPathNeedsNoLogin() {
+    // The keeper's poll logs in when the session is not alive. This is only for a session that looks alive.
+    var watch = PathWatch()
+    watch.update(nil, at: 0)
+    watch.update("en0 192.168.1.1", at: 1)
+    #expect(!watch.take(at: 10))
+}
