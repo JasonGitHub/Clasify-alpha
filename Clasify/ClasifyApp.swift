@@ -12,7 +12,6 @@ struct PlainWindowApp: App {
     var body: some Scene {
         WindowGroup("Clasify", id: DeviceWindow.id) {
             AppContent(model: model)
-                .background(MarginMove())
                 .padding(DeviceWindow.margin)
                 .containerBackground(.clear, for: .window)
                 .gesture(WindowDragGesture())
