@@ -29,6 +29,9 @@ final class SessionKeeper {
     /// When the newest login worked. A call that the old session started can still time out
     /// after it, and a forced login just after one is not needed.
     private var loggedInAt: ContinuousClock.Instant?
+    /// A forced login failed: the poll tries it again after the backoff, also while the old
+    /// session still looks alive. Any working login ends it.
+    private var forceDue = false
 
     init(client: LibrespotClient, library: LibrespotLibrary, player: SpotifyConnectPlayer, store: Store) {
         self.client = client
@@ -38,6 +41,7 @@ final class SessionKeeper {
         // A library read can log in again on its own. Each path registers the player again.
         library.restored = { [weak self, weak player] in
             self?.backoff.reset()
+            self?.forceDue = false
             self?.notBefore = .now  // a player command can succeed during a wait: end that wait
             player?.sessionRestored()
             self?.store?.send(.libraryStale)  // changes made during the drop show
@@ -102,12 +106,14 @@ final class SessionKeeper {
         Task { _ = await reconnect(force: true) }
     }
 
-    /// Starts a reconnect when the user is signed in and the session dropped.
+    /// Starts a reconnect when the user is signed in and the session dropped, or a forced
+    /// login failed before.
     private func check() {
         guard running == nil, ContinuousClock.now >= notBefore, store?.state.signedIn == true,
-            library.isLoggedIn, !client.sessionAlive
+            library.isLoggedIn, forceDue || !client.sessionAlive
         else { return }
-        Task { _ = await reconnect() }
+        let force = forceDue
+        Task { _ = await reconnect(force: force) }
     }
 
     /// Logs in again. Returns true when the session works again. `force` logs in also when
@@ -132,6 +138,7 @@ final class SessionKeeper {
         case .done:
             log.notice("logged in again: \(ms, privacy: .public) ms")
             loggedInAt = .now
+            forceDue = false
             return true  // `library.restored` registered the player again
         case .refused:
             log.error("login refused after \(ms, privacy: .public) ms; signing out")
@@ -144,6 +151,7 @@ final class SessionKeeper {
             store?.send(.notPremium(token: nil))
             return false
         case .failed:
+            if force { forceDue = true }  // the old session can still look alive: keep trying
             let wait = backoff.failed()
             notBefore = .now + .seconds(wait)
             log.error("login failed after \(ms, privacy: .public) ms; next try in \(wait, privacy: .public) s")

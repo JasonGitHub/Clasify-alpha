@@ -64,6 +64,8 @@ final class SpotifyConnectPlayer: Player {
     private var movedAway = false
     /// When Play took playback back. For up to 3 s, states can still show the other device.
     private var takenBackAt: ContinuousClock.Instant?
+    /// Counts fire-and-forget commands, so that a retry is dropped after a newer command.
+    private var sent = 0
     /// The newest state from the bridge. At launch it can come before the pre-warm found our
     /// device, so the pre-warm handles it again.
     private var latest: SpotifyPlayerState?
@@ -396,9 +398,13 @@ final class SpotifyConnectPlayer: Player {
     ) {
         guard ours, let device else { return }
         let id = loadID
+        // A newer command goes out after this one fails. Then this one is not sent again: an
+        // old Pause must not undo a newer Play, and an old seek must not move the next track.
+        sent += 1
+        let mine = sent
         let again: @MainActor (Bool) async -> Void = { [weak self] force in
-            guard let self, await self.reconnect(force), id == self.loadID, self.ours || evenAfterStop,
-                  let device = self.device else { return }
+            guard let self, await self.reconnect(force), id == self.loadID, mine == self.sent,
+                  self.ours || evenAfterStop, let device = self.device else { return }
             _ = call(device, nil)
         }
         let onStale: StaleHandler = { [weak self] in
