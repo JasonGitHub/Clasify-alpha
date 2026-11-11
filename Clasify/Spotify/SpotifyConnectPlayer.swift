@@ -297,13 +297,13 @@ final class SpotifyConnectPlayer: Player {
         position = seconds  // so a quit before the next state keeps the new place
         resumePoint?.position = seconds  // a scrub after a quit moves the place too
         if loading { pendingSeek = seconds }
-        resend { [client] in client.fireSeek(device: $0, seconds: seconds) }
+        resend { [client] in client.fireSeek(device: $0, seconds: seconds, onStale: $1) }
     }
 
     func setVolume(_ percent: Int) {
         volume = percent
         // The retry reads `volume` again, so it sends the newest value.
-        resend { [client] in client.fireVolume(device: $0, percent: self.volume) }
+        resend { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }
     }
 
     func setShuffle(_ on: Bool) {
@@ -379,20 +379,34 @@ final class SpotifyConnectPlayer: Player {
     }
 
     private func fire(_ command: Int32, evenAfterStop: Bool = false) {
-        resend(evenAfterStop: evenAfterStop) { [client] in client.fire(command, to: $0) }
+        // Next and prev are not sent again after a timeout: if the first one did arrive, the
+        // second one skips twice. The same rule as the bridge's own retry.
+        let skip = command == LSB_COMMAND_NEXT || command == LSB_COMMAND_PREV
+        resend(evenAfterStop: evenAfterStop, afterTimeout: !skip) { [client] in client.fire(command, to: $0, onStale: $1) }
     }
 
     /// Sends one fire-and-forget command to our device. When the session dropped, it logs in
-    /// again and sends the command once more. `call` gets the device ID and returns the status.
-    /// The retry is dropped after a new load. `evenAfterStop` keeps it after a stop.
-    private func resend(evenAfterStop: Bool = false, _ call: @escaping @MainActor (String) -> Int32) {
+    /// again and sends the command once more. When the command timed out, it logs in again by
+    /// force, and with `afterTimeout` sends it once more (CLA-88). `call` gets the device ID
+    /// and the timeout handler, and returns the status. The retry is dropped after a new load.
+    /// `evenAfterStop` keeps it after a stop.
+    private func resend(
+        evenAfterStop: Bool = false, afterTimeout: Bool = true,
+        _ call: @escaping @MainActor (String, StaleHandler?) -> Int32
+    ) {
         guard ours, let device else { return }
-        guard call(device) == LSB_ERR_NOT_LOGGED_IN else { return }
         let id = loadID
-        Task {
-            guard await reconnect(false), id == loadID, ours || evenAfterStop, let device = self.device else { return }
-            _ = call(device)
+        let again: @MainActor (Bool) async -> Void = { [weak self] force in
+            guard let self, await self.reconnect(force), id == self.loadID, self.ours || evenAfterStop,
+                  let device = self.device else { return }
+            _ = call(device, nil)
         }
+        let onStale: StaleHandler = { [weak self] in
+            log.notice("Connect call timed out; logging in again")
+            if afterTimeout { Task { await again(true) } } else { Task { _ = await self?.reconnect(true) } }
+        }
+        guard call(device, onStale) == LSB_ERR_NOT_LOGGED_IN else { return }
+        Task { await again(false) }
     }
 
     /// The session was logged in again. Register it, so the cluster watch delivers states again.
@@ -418,7 +432,7 @@ final class SpotifyConnectPlayer: Player {
             lastTrack = ""  // so the store gets the track and its play state
             // Shuffle or repeat can have changed in Spotify while the session was down.
             Task { await applyOptions() }
-            resend { [client] in client.fireVolume(device: $0, percent: self.volume) }  // and the volume
+            resend { [client] in client.fireVolume(device: $0, percent: self.volume, onStale: $1) }  // and the volume
             return
         }
         // Never change what the user already hears: no volume, shuffle or repeat goes out.
