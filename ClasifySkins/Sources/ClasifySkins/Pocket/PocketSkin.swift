@@ -114,8 +114,17 @@ public struct PocketSkin: View {
                     .mask(LinearGradient.vertical(.white, .clear, .clear))
             }
             .overlay { shape.strokeBorder(Color(hex: black ? 0x1c1c1c : 0x9c9c9c), lineWidth: 1) }
-            .shadow(color: preview ? .clear : black ? .black.opacity(0.45) : Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
+            .background {
+                // The shadow comes from a hidden copy of the body that starts lower, so it does not
+                // reach above the device into the window's small top margin (CLA-94).
+                shape.fill(Color.black).padding(.top, Self.shadowDrop)
+                    .shadow(color: preview ? .clear : black ? .black.opacity(0.45) : Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
+            }
+            .compositingGroup()  // so the hidden copy does not show through during a color crossfade
     }
+
+    /// How much lower than the device the shadow's shape starts.
+    static let shadowDrop: CGFloat = 12
 
     static var silverBody: [Gradient.Stop] { [
         .init(color: Color(hex: 0xf4f4f4), location: 0), .init(color: Color(hex: 0xe4e4e4), location: 0.55),

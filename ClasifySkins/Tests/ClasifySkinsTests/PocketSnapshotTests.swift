@@ -518,7 +518,8 @@ import Testing
                 .clipped()
             let renderer = ImageRenderer(content: view)
             renderer.scale = CGFloat(Snapshot.scale)
-            let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+            let image = try #require(renderer.cgImage)
+            let bitmap = NSBitmapImageRep(cgImage: image)
             if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
                let png = bitmap.representation(using: .png, properties: [:]) {
                 try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-\(name).png"))
@@ -945,6 +946,30 @@ import Testing
         #expect(shot.isDark(10, 300))  // the body, beside the screen
         #expect(shot.rgb(x, middle - 30).b < shot.rgb(x, middle + 30).b)  // the center: dark at the top
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
+    }
+
+    /// CLA-94: in the window's margins, no shadow reaches the top 5 pt, but the shadow still
+    /// shows under the device.
+    @Test func theShadowDoesNotReachTheTopMargin() throws {
+        for color in [DeviceColor.silver, .black] {
+            var s = AppState()
+            s.deviceColor = color
+            let framed = PocketSkin(state: s, interactive: false)
+                .padding(EdgeInsets(top: 5, leading: 60, bottom: 90, trailing: 60))
+            let renderer = ImageRenderer(content: framed)
+            renderer.scale = CGFloat(Snapshot.scale)
+            let image = try #require(renderer.cgImage)
+            let bitmap = NSBitmapImageRep(cgImage: image)
+            if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
+               let png = bitmap.representation(using: .png, properties: [:]) {
+                try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-window-\(color).png"))
+            }
+            func alpha(_ x: Int, _ y: Int) -> CGFloat { bitmap.colorAt(x: x, y: y)?.alphaComponent ?? 0 }
+            let top = (0..<5 * Snapshot.scale).flatMap { y in (0..<bitmap.pixelsWide).map { alpha($0, y) } }.max() ?? 0
+            #expect(top < 2 / 255, "\(color): top margin alpha \(top)")
+            let below = alpha(bitmap.pixelsWide / 2, bitmap.pixelsHigh - 70 * Snapshot.scale)  // 20 pt under the device
+            #expect(below > 0.05, "\(color): shadow under the device \(below)")
+        }
     }
 
     /// About, card BF: one page that scrolls 5 steps of 22.9 pt. At the top the capybara, then
