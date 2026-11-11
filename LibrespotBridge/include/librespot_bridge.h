@@ -26,6 +26,9 @@
 #define LSB_ERR_REFUSED 6
 // The account is not Spotify Premium. Spotify Connect and the library reads need it.
 #define LSB_ERR_NOT_PREMIUM 7
+// A Connect call timed out, or the session's Connect link broke. This session can make no
+// more Connect calls: log in again with the stored token, then try once more.
+#define LSB_ERR_STALE_SESSION 8
 
 #define LSB_EVENT_LOGGED_IN 0
 #define LSB_EVENT_ERROR 1
