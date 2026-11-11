@@ -124,7 +124,7 @@ public struct PocketSkin: View {
     }
 
     /// How much lower than the device the shadow's shape starts.
-    static let shadowDrop: CGFloat = 12
+    static let shadowDrop: CGFloat = 20
 
     static var silverBody: [Gradient.Stop] { [
         .init(color: Color(hex: 0xf4f4f4), location: 0), .init(color: Color(hex: 0xe4e4e4), location: 0.55),
