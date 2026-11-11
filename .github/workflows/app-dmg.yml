@@ -1,11 +1,14 @@
 name: App DMG
 # Builds the test DMG of the app from main (CLA-69). Not part of PR CI.
-# - A push to main makes an ad-hoc signed DMG. That job uses no secret.
+# - A push to main that changes the app makes an ad-hoc signed DMG. That job uses no secret.
 # - A run started by hand on main makes a DMG signed with Developer ID and notarized. Only that
 #   job uses environment "release" and its secrets. Neither job ever runs on a PR.
 on:
   workflow_dispatch:
-  push: { branches: [main] }
+  push:
+    branches: [main]
+    # Only a merge that can change the app makes a new test DMG. Workflow and doc changes do not.
+    paths: ["ClasifyCore/**", "ClasifySkins/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/actions/build-app/**"]
 concurrency:
   # A push does not cancel a signed run started by hand.
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
