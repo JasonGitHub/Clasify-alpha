@@ -143,12 +143,12 @@ struct ClickWheel: View {
     /// The wheel, its labels, the lights and the center.
     private var face: some View {
         ZStack(alignment: .topLeading) {
-            // Flat, as in the photo (card BH, `wheelBg` and `wheelShadow`): a faint 1 point ring
-            // around it, and on black a faint white line under it.
+            // Flat, as in the photo (card BH, `wheelBg` and `wheelShadow`). Black has a faint 1
+            // point ring around it and a faint white line under it. Silver has no ring (change 240).
             Circle()
                 .fill(Color(hex: black ? 0x222223 : 0xf6fafb))
                 .background { if black { Circle().fill(Color.white.opacity(0.08)).offset(y: 1).blur(radius: 0.5) } }
-                .background { Circle().fill(Color.black.opacity(black ? 0.3 : 0.13)).padding(-1) }
+                .background { if black { Circle().fill(Color.black.opacity(0.3)).padding(-1) } }
                 .frame(width: Self.size, height: Self.size)
             key(.menu) { Text("MENU").font(.helvetica(14, weight: .medium)).tracking(0.7) }
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
@@ -213,7 +213,8 @@ struct ClickWheel: View {
                 Circle().stroke(Color.black.opacity(black ? 0.35 : 0.12), lineWidth: 2).blur(radius: 1).offset(y: 1)
                     .clipShape(Circle())
             }
-            .overlay { Circle().strokeBorder(Color.black.opacity(black ? 0.4 : 0.16), lineWidth: black ? 0.5 : 1) }
+            // `ctrShadow`: Black has a 0.5 point rim. Silver has none (change 240).
+            .overlay { if black { Circle().strokeBorder(Color.black.opacity(0.4), lineWidth: 0.5) } }
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
             .background { if let glowFrom { CenterGlow(from: glowFrom, radius: Self.centerRadius) } }
             .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)
