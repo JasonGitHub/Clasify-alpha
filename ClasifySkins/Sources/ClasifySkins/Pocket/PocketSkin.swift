@@ -142,19 +142,20 @@ public struct PocketSkin: View {
         .init(color: Color(hex: 0x69686b), location: 0), .init(color: Color(hex: 0x656467), location: 0.5),
         .init(color: Color(hex: 0x3a3a3b), location: 0.72), .init(color: Color(hex: 0x2f2f30), location: 0.92),
     ] }
-    /// The soft top rim, its bright zone from 2.8% to 4%, and the bottom roll.
+    /// The soft top rim, its bright zone from 2.8% to 4%, and the bottom roll. The roll starts
+    /// from clear black, so it never mixes through a light gray.
     static var silverRim: [Gradient.Stop] { [
         .init(color: .black.opacity(0.16), location: 0), .init(color: .black.opacity(0.06), location: 0.006),
         .init(color: .white.opacity(0.25), location: 0.016), .init(color: .white.opacity(0.72), location: 0.028),
         .init(color: .white.opacity(0.72), location: 0.04), .init(color: .white.opacity(0), location: 0.06),
-        .init(color: .white.opacity(0), location: 0.92), .init(color: .black.opacity(0.12), location: 0.95),
+        .init(color: .black.opacity(0), location: 0.92), .init(color: .black.opacity(0.12), location: 0.95),
         .init(color: .black.opacity(0.38), location: 0.978), .init(color: .black.opacity(0.62), location: 1),
     ] }
     static var blackRim: [Gradient.Stop] { [
         .init(color: .black.opacity(0.2), location: 0), .init(color: .black.opacity(0.08), location: 0.006),
         .init(color: .white.opacity(0.08), location: 0.016), .init(color: .white.opacity(0.3), location: 0.028),
         .init(color: .white.opacity(0.3), location: 0.04), .init(color: .white.opacity(0), location: 0.06),
-        .init(color: .white.opacity(0), location: 0.89), .init(color: .black.opacity(0.15), location: 0.94),
+        .init(color: .black.opacity(0), location: 0.89), .init(color: .black.opacity(0.15), location: 0.94),
         .init(color: .black.opacity(0.35), location: 1),
     ] }
 
