@@ -234,7 +234,10 @@ struct ClickWheel: View {
             .init(color: Color(hex: 0x2a2a2b), location: 0), .init(color: Color(hex: 0x3d3d3f), location: 0.45),
             .init(color: Color(hex: 0x636265), location: 1),
         ]
-        case (true, true): [.init(color: Color(hex: 0x2e2e30), location: 0), .init(color: Color(hex: 0x636164), location: 1)]
+        case (true, true): [  // the idle stops, about 15% darker, so a press always darkens it
+            .init(color: Color(hex: 0x232324), location: 0), .init(color: Color(hex: 0x343436), location: 0.45),
+            .init(color: Color(hex: 0x545356), location: 1),
+        ]
         }
         return Circle()
             .fill(LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom))

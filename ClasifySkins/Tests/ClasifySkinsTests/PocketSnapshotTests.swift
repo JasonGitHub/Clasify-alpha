@@ -929,6 +929,11 @@ import Testing
         // Dark at the top, as if pressed in. Pressed, the whole button gets darker.
         #expect(up.rgb(x, nearTop).b < up.rgb(x, nearBottom).b)
         #expect(down.rgb(x, middle).b < up.rgb(x, middle).b)
+        // Black too: pressed, the whole button gets darker.
+        var s = AppState()
+        s.deviceColor = .black
+        let blackUp = try render(s, "wheel-black"), blackDown = try render(s, "wheel-black-pressed", pressed: .center)
+        for y in [nearTop, middle, nearBottom] { #expect(blackDown.rgb(x, y).b < blackUp.rgb(x, y).b, "black y \(y)") }
     }
 
     /// Round 8 card Z: the black device has a dark body, a near black bezel and a dark gray
