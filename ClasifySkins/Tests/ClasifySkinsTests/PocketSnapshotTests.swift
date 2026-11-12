@@ -1026,6 +1026,43 @@ import Testing
         }
     }
 
+    /// CLA-100: the device stays opaque through the color fade, and it keeps one drop shadow. In
+    /// the middle of the fade no desktop shows through, and Black's shadow is as strong as before.
+    @Test func theColorFadeStaysOpaqueWithOneShadow() throws {
+        let margin = EdgeInsets(top: 5, leading: 60, bottom: 90, trailing: 60)
+        func framed(_ view: some View) throws -> NSBitmapImageRep {
+            let renderer = ImageRenderer(content: view.padding(margin))
+            renderer.scale = CGFloat(Snapshot.scale)
+            return NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+        }
+        func alpha(_ bitmap: NSBitmapImageRep, _ x: Int, _ y: Int) -> CGFloat {
+            bitmap.colorAt(x: (60 + x) * Snapshot.scale, y: (5 + y) * Snapshot.scale)?.alphaComponent ?? 0
+        }
+        // Points on the body, in device points: both sides, between the screen and the wheel,
+        // and near the bottom.
+        let body = [(8, 300), (358, 300), (183, 290), (183, 600), (40, 580)]
+        for fade in [0, 0.25, 0.5, 0.75, 1] {
+            let shot = try framed(PocketSkin(state: AppState(), interactive: false, fade: fade))
+            for (x, y) in body {
+                #expect(alpha(shot, x, y) >= 254.5 / 255, "fade \(fade) at (\(x), \(y)): alpha \(alpha(shot, x, y))")
+            }
+        }
+        // At each end, one shadow, as strong as the shadow of the old single body.
+        for (color, shadow) in [(DeviceColor.silver, Color(hex: 0x1e1e1e, opacity: 0.3)), (.black, .black.opacity(0.45))] {
+            var s = AppState()
+            s.deviceColor = color
+            let shot = try framed(PocketSkin(state: s, interactive: false))
+            let old = try framed(
+                RoundedRectangle(cornerRadius: 34).fill(Color.black).padding(.top, PocketSkin.shadowDrop)
+                    .shadow(color: shadow, radius: 20, y: 20)
+                    .frame(width: PocketSkin.size.width, height: PocketSkin.size.height))
+            for (x, y) in [(183, 633), (183, 653), (20, 640), (370, 400)] {
+                let now = alpha(shot, x, y), before = alpha(old, x, y)
+                #expect(abs(now - before) <= 3 / 255, "\(color) shadow at (\(x), \(y)): \(now), before \(before)")
+            }
+        }
+    }
+
     /// About, card BF: one page that scrolls 5 steps of 22.9 pt. At the top the capybara, then
     /// the steel name and lines with the red heart. From step 3 the Licenses row is selected, and
     /// at step 5 the legal text shows.
