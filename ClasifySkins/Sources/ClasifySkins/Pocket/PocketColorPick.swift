@@ -1,18 +1,14 @@
 import ClasifyCore
 import SwiftUI
 
-/// The color pick's times (Round 13, card AW, changes 149, 150, 179 and 200 to 203).
+/// The color pick's times (Round 13, card AW, changes 149, 150, 179, 200, 201 and 203). No light
+/// follows the turn (card AW.1, change 236 removed change 202).
 enum ColorPick {
     /// Change 200: until the first turn, the comet goes 180° clockwise from 9 o'clock over the
     /// top to 3 o'clock in 2.9 s, then rests 1 s.
     static let sweep = 2.9, loop = 3.9
-    /// Change 202: the light under the thumb fades in in 0.3 s (ease-out). 0.6 s after the last
-    /// move it fades out in 0.6 s (ease-in-out). Its long tail fades in once in 0.35 s. The
-    /// waiting light fades out in 0.4 s at the first color step.
-    static let fadeIn = 0.3, hold = 0.6, fadeOut = 0.6, tailIn = 0.35, waitingOut = 0.4
-    /// The light glides to each new angle, and flips its direction, in 0.16 s,
-    /// cubic-bezier(.25, .6, .35, 1).
-    static let glide = Animation.timingCurve(0.25, 0.6, 0.35, 1, duration: 0.16)
+    /// The waiting light fades out in 0.4 s at the first color step.
+    static let waitingOut = 0.4
     /// Change 203: the device color crossfades in 0.45 s, on the device and the small preview.
     static let colorFade = 0.45
     /// "Turn the wheel to try one" fades in 2 s after the pick opens (changes 149 and 179).
@@ -36,20 +32,6 @@ enum ColorPick {
     static func smoothstep(_ f: Double) -> Double {
         let f = min(max(f, 0), 1)
         return f * f * (3 - 2 * f)
-    }
-
-    /// The light's angle after a thumb move: the thumb's angle, reached the short way from the
-    /// light's angle, which is not wrapped (change 202, point 13).
-    static func glideAngle(from angle: Double, to thumb: Double) -> Double {
-        var gap = (thumb - angle).truncatingRemainder(dividingBy: 360)
-        if gap > 180 { gap -= 360 } else if gap <= -180 { gap += 360 }
-        return angle + gap
-    }
-
-    /// The light's angle after `steps` trackpad or key steps: 24° a step from the light, or for
-    /// a new light from 12 o'clock (point 16).
-    static func stepAngle(from angle: Double?, steps: Int) -> Double {
-        (angle ?? -90) + Double(steps) * ClickWheel.detent
     }
 
     /// The hint under the rows and its opacity at time `now`: before the first turn, the turn
@@ -223,32 +205,5 @@ struct WaitingComet: View {
                 .rotationEffect(.degrees(light?.angle ?? 0))
                 .opacity(light?.opacity ?? 0)
         }
-    }
-}
-
-/// The light under the thumb (change 202). There is one for the whole pick: it glides to each
-/// new angle and flips on each color step, and it fades in and out from where it is.
-struct ThumbComet: View {
-    let light: ClickWheel.ThumbLight
-    @State private var opacity = 0.0
-    @State private var tail = 0.0
-
-    var body: some View {
-        Comet(longTail: tail)
-            .scaleEffect(x: 1, y: light.clockwise ? 1 : -1)  // the tail behind the head
-            .animation(ColorPick.glide, value: light.clockwise)
-            .rotationEffect(.degrees(light.angle))
-            .animation(ColorPick.glide, value: light.angle)
-            .opacity(opacity)
-            .onAppear {
-                withAnimation(.easeOut(duration: ColorPick.tailIn)) { tail = 1 }  // once
-                fade(light.on)
-            }
-            .onChange(of: light.on) { _, on in fade(on) }
-    }
-
-    private func fade(_ on: Bool) {
-        let curve = on ? Animation.easeOut(duration: ColorPick.fadeIn) : .easeInOut(duration: ColorPick.fadeOut)
-        withAnimation(curve) { opacity = on ? 1 : 0 }
     }
 }
