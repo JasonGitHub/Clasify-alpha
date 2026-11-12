@@ -10,10 +10,12 @@ let package = Package(
     dependencies: [.package(path: "../ClasifyCore")],
     targets: [
         // Resources: the About screen's capybara, CappyAI's own art, bundled (card BF). Skins load
-        // nothing from the network or disk.
+        // nothing from the network or disk. SPIKE (CLA-101): the K.3D.1 textures, copied as they
+        // are, because the front's alpha is a material id.
         .target(
             name: "ClasifySkins", dependencies: [.product(name: "ClasifyCore", package: "ClasifyCore")],
-            resources: ["stand", "wave", "think", "boba", "sleep"].map { Resource.copy("Resources/about-hp-\($0).png") }),
+            resources: ["stand", "wave", "think", "boba", "sleep"].map { Resource.copy("Resources/about-hp-\($0).png") }
+                + ["front3d", "back-L3", "steel"].map { Resource.copy("Resources/k3d-\($0).png") }),
         .testTarget(name: "ClasifySkinsTests", dependencies: ["ClasifySkins"]),
     ]
 )
