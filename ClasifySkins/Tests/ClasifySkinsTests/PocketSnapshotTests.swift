@@ -981,6 +981,26 @@ import Testing
         }
     }
 
+    /// Card BH, change 240: the Silver wheel has no ring line around it, and its center button
+    /// has no rim, idle or pressed. Black keeps its ring.
+    @Test func silverHasNoWheelRingOrCenterRim() throws {
+        let wheelTop: Int = 321, x = Int(PocketSkin.size.width) / 2
+        let rimRow: Int = wheelTop + 112 + 40  // the center button's bottom edge (radius 40.8)
+        func mean(_ shot: Snapshot, _ y: Int) -> Int { (-4...4).map { shot.rgb(x + $0, y).g }.reduce(0, +) / 9 }
+        let up = try render(AppState(), "wheel-no-ring")
+        let down = try render(AppState(), "wheel-no-ring-pressed", pressed: .center)
+        // The point row above the wheel, where the ring was, is as light as the body above it.
+        #expect(mean(up, wheelTop - 1) > mean(up, wheelTop - 5) - 10, "silver ring \(mean(up, wheelTop - 1))")
+        for (name, shot) in [("idle", up), ("pressed", down)] {
+            let edge = mean(shot, rimRow), inside = mean(shot, rimRow - 3)
+            #expect(edge > inside - 12, "silver \(name) rim: edge \(edge), inside \(inside)")
+        }
+        var s = AppState()
+        s.deviceColor = .black
+        let black = try render(s, "wheel-black-ring")
+        #expect(mean(black, wheelTop - 1) < mean(black, wheelTop - 5) - 10, "black ring \(mean(black, wheelTop - 1))")
+    }
+
     /// CLA-94: in the window's margins, no shadow reaches the top 5 pt, but the shadow still
     /// shows under the device.
     @Test func theShadowDoesNotReachTheTopMargin() throws {
