@@ -160,12 +160,12 @@ struct ClickWheel: View {
     /// The wheel, its labels, the lights and the center.
     private var face: some View {
         ZStack(alignment: .topLeading) {
-            // Flat white, as in the photo: no gradient and no ring line. The mockup's shadows
-            // are a faint 1 point line around it and a white line under it.
+            // Flat, as in the photo (card BH, `wheelBg` and `wheelShadow`): a faint 1 point ring
+            // around it, and on black a faint white line under it.
             Circle()
-                .fill(Color(hex: black ? 0x2f2f2f : 0xfefefe))
-                .background { Circle().fill(Color.white.opacity(black ? 0.12 : 0.8)).offset(y: 1).blur(radius: 0.5) }
-                .background { Circle().fill(Color.black.opacity(black ? 0.25 : 0.06)).padding(-1) }
+                .fill(Color(hex: black ? 0x222223 : 0xf6fafb))
+                .background { if black { Circle().fill(Color.white.opacity(0.08)).offset(y: 1).blur(radius: 0.5) } }
+                .background { Circle().fill(Color.black.opacity(black ? 0.3 : 0.13)).padding(-1) }
                 .frame(width: Self.size, height: Self.size)
             key(.menu) { Text("MENU").font(.helvetica(14, weight: .medium)).tracking(0.7) }
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
@@ -213,7 +213,7 @@ struct ClickWheel: View {
                 GlowingLabel(from: glow.from, label: label())
             } else {
                 label()
-                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (black ? 0xf2f2f2 : 0x9f9f9f)))
+                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (black ? 0xf4f4f5 : 0x8c939b)))
             }
         }
         .frame(width: rect.width, height: rect.height)
@@ -221,21 +221,28 @@ struct ClickWheel: View {
     }
 
     private var center: some View {
-        // Pressed in, as in the photo: dark at the top, with a faint inner shadow and no ring
-        // line. Pressed, it gets a little darker.
+        // Pressed in, as in the photo (card BH, `ctrBg` and `ctrShadow`): dark at the top, with
+        // a thin rim and a faint inner shadow. Pressed, it gets a little darker.
         let down = pressed == .center
-        let (top, bottom): (UInt32, UInt32) = switch (black, down) {
-        case (false, false): (0xc8c8c8, 0xe9e9e9)
-        case (false, true): (0xbcbcbc, 0xdcdcdc)
-        case (true, false): (0x38383a, 0x706e71)
-        case (true, true): (0x2e2e30, 0x636164)
+        let stops: [Gradient.Stop] = switch (black, down) {
+        case (false, false): [
+            .init(color: Color(hex: 0xb5b5b5), location: 0), .init(color: Color(hex: 0xcfcfcf), location: 0.5),
+            .init(color: Color(hex: 0xe4e4e4), location: 1),
+        ]
+        case (false, true): [.init(color: Color(hex: 0xbcbcbc), location: 0), .init(color: Color(hex: 0xdcdcdc), location: 1)]
+        case (true, false): [
+            .init(color: Color(hex: 0x2a2a2b), location: 0), .init(color: Color(hex: 0x3d3d3f), location: 0.45),
+            .init(color: Color(hex: 0x636265), location: 1),
+        ]
+        case (true, true): [.init(color: Color(hex: 0x2e2e30), location: 0), .init(color: Color(hex: 0x636164), location: 1)]
         }
         return Circle()
-            .fill(LinearGradient.vertical(Color(hex: top), Color(hex: bottom)))
+            .fill(LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom))
             .overlay {
                 Circle().stroke(Color.black.opacity(black ? 0.35 : 0.12), lineWidth: 2).blur(radius: 1).offset(y: 1)
                     .clipShape(Circle())
             }
+            .overlay { Circle().strokeBorder(Color.black.opacity(black ? 0.4 : 0.16), lineWidth: black ? 0.5 : 1) }
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
             .background { if let glowFrom { CenterGlow(from: glowFrom, radius: Self.centerRadius) } }
             .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)

@@ -77,8 +77,8 @@ import Testing
         let headerTop = shot.rgb(50, 34), want = try reference(0xffffff)
         #expect(near(headerTop, want), "header top \(headerTop)")  // no glass shadow over the header
         #expect(shot.isLight(150, 42))  // the header, right of the title
-        let bezel = shot.rgb(Self.screenLeft - 3, 120), dark = try reference(0x4a4e53)
-        #expect(near(bezel, dark), "bezel \(bezel)")  // the dark gray bezel left of the screen
+        let bezel = shot.rgb(Self.screenLeft - 3, 120), dark = try reference(0x2a2c2e)
+        #expect(near(bezel, dark), "bezel \(bezel)")  // the dark bezel left of the screen (card BH, change 239)
     }
 
     @Test func mainMenuShowsCoversOnTheRight() throws {
@@ -924,8 +924,8 @@ import Testing
         let x = Int(PocketSkin.size.width) / 2  // the wheel's center
         let up = try render(AppState(), "wheel")
         let down = try render(AppState(), "wheel-pressed", pressed: .center)
-        let ring = up.rgb(x, wheelTop + 60), white = try reference(0xfefefe)
-        #expect(near(ring, white), "ring \(ring)")  // the flat white wheel
+        let ring = up.rgb(x, wheelTop + 60), white = try reference(0xf6fafb)
+        #expect(near(ring, white), "ring \(ring)")  // the flat light wheel (card BH)
         // Dark at the top, as if pressed in. Pressed, the whole button gets darker.
         #expect(up.rgb(x, nearTop).b < up.rgb(x, nearBottom).b)
         #expect(down.rgb(x, middle).b < up.rgb(x, middle).b)
@@ -939,13 +939,41 @@ import Testing
         let shot = try render(s, "black")
         let wheelTop: Int = 321, x = Int(PocketSkin.size.width) / 2
         let middle: Int = wheelTop + 112
-        let ring = shot.rgb(x, wheelTop + 60), wheel = try reference(0x2f2f2f)
+        let ring = shot.rgb(x, wheelTop + 60), wheel = try reference(0x222223)
         #expect(near(ring, wheel), "ring \(ring)")
         let bezel = shot.rgb(29, Self.screenTop + 60), want = try reference(0x050505)  // left of the screen
         #expect(near(bezel, want), "bezel \(bezel)")
         #expect(shot.isDark(10, 300))  // the body, beside the screen
         #expect(shot.rgb(x, middle - 30).b < shot.rgb(x, middle + 30).b)  // the center: dark at the top
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
+    }
+
+    /// Card BH (CLA-95): the Classic Silver and Black aluminium. The base color shows between the
+    /// screen and the wheel, the side shades darken the edges, and the bottom roll gets darker to
+    /// the edge with no light hairline.
+    @Test func classicBodyFollowsCardBH() throws {
+        var s = AppState()
+        let silver = try render(s, "body-silver")
+        s.deviceColor = .black
+        let black = try render(s, "body-black")
+        let y = 290, x = Int(PocketSkin.size.width) / 2  // 47% down, between the screen and the wheel
+        func mean(_ shot: Snapshot, _ x: Int, _ y: Int) -> (r: Int, g: Int, b: Int) {
+            var sum = (r: 0, g: 0, b: 0)
+            for dy in -4...4 { for dx in -4...4 { let c = shot.rgb(x + dx, y + dy); sum.r += c.r; sum.g += c.g; sum.b += c.b } }
+            return (sum.r / 81, sum.g / 81, sum.b / 81)
+        }
+        let silverBase = try reference(0xdbdbdb), blackBase = try reference(0x656467)
+        #expect(near(mean(silver, x, y), silverBase), "silver \(mean(silver, x, y))")
+        #expect(near(mean(black, x, y), blackBase), "black \(mean(black, x, y))")
+        let bottom = Int(PocketSkin.size.height) - 1
+        for (name, shot) in [("silver", silver), ("black", black)] {
+            let middle = mean(shot, x, y).g
+            #expect(shot.rgb(4, y).g < middle - 8, "\(name) left side")
+            #expect(shot.rgb(Int(PocketSkin.size.width) - 5, y).g < middle - 8, "\(name) right side")
+            for row in (bottom - 18)...bottom {
+                #expect(shot.rgb(x, row).g < middle - 20, "\(name) row \(row): no light line at the bottom")
+            }
+        }
     }
 
     /// CLA-94: in the window's margins, no shadow reaches the top 5 pt, but the shadow still
