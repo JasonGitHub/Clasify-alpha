@@ -88,32 +88,39 @@ public struct PocketSkin: View {
         return state.colorAt
     }
 
-    /// The device body: silver, or black (round 8, card Z), with a light line inside the top
-    /// edge and fainter ones at the sides.
+    /// The device body, card BH (CLA-95): the mockup's two `bodyBg` gradients, the side shades
+    /// of `bodyShadow`, the matte grain and the `bodyEdge` line. The face fills the whole shape,
+    /// under the edge line too, so no light hairline shows at the edge (the mockup's
+    /// background-origin border-box).
     private func device(_ color: DeviceColor) -> some View {
         let black = color == .black
         let shape = RoundedRectangle(cornerRadius: 34)
+        let inner = RoundedRectangle(cornerRadius: 33)  // inside the 1 point edge
         return shape
             .fill(LinearGradient(stops: black ? Self.blackBody : Self.silverBody, startPoint: .top, endPoint: .bottom))
+            .overlay { shape.fill(LinearGradient(stops: black ? Self.blackRim : Self.silverRim, startPoint: .top, endPoint: .bottom)) }
             .overlay {
-                if black {  // slightly darker sides
-                    shape.fill(LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.16), location: 0), .init(color: .white.opacity(0.05), location: 0.2),
-                            .init(color: .white.opacity(0.07), location: 0.5), .init(color: .white.opacity(0.05), location: 0.8),
-                            .init(color: .black.opacity(0.16), location: 1),
-                        ],
-                        startPoint: .leading, endPoint: .trailing))
+                // The side shades: inner shadows that follow the rounded corners.
+                ZStack {
+                    if black {
+                        SideShade(x: 28, blur: 36, color: .black.opacity(0.8))
+                        SideShade(x: -30, blur: 40, color: .black.opacity(0.65))
+                    } else {
+                        SideShade(x: 24, blur: 30, color: .black.opacity(0.36))
+                        SideShade(x: -24, blur: 30, color: .black.opacity(0.44))
+                    }
                 }
+                .padding(1)
             }
+            .overlay { shape.strokeBorder(Color.black.opacity(black ? 0.38 : 0.3), lineWidth: 1) }
             .overlay {
-                RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(black ? 0.12 : 0.5), lineWidth: 1).padding(1)
+                // The grain, over the face and under the screen and the wheel.
+                Grain.image.resizable(resizingMode: .tile)
+                    .clipShape(inner)
+                    .padding(1)
+                    .opacity(black ? 0.28 : 0.35)
+                    .blendMode(.overlay)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: 33).strokeBorder(Color.white.opacity(black ? 0.35 : 1), lineWidth: 1).padding(1)
-                    .mask(LinearGradient.vertical(.white, .clear, .clear))
-            }
-            .overlay { shape.strokeBorder(Color(hex: black ? 0x1c1c1c : 0x9c9c9c), lineWidth: 1) }
             .background {
                 // The shadow comes from a hidden copy of the body that starts lower, so it does not
                 // reach above the device into the window's small top margin (CLA-94).
@@ -127,13 +134,29 @@ public struct PocketSkin: View {
     static let shadowDrop: CGFloat = 20
 
     static var silverBody: [Gradient.Stop] { [
-        .init(color: Color(hex: 0xf4f4f4), location: 0), .init(color: Color(hex: 0xe4e4e4), location: 0.55),
-        .init(color: Color(hex: 0xc8c8c8), location: 1),
+        .init(color: Color(hex: 0xdcdcdc), location: 0), .init(color: Color(hex: 0xdbdbdb), location: 0.5),
+        .init(color: Color(hex: 0xc6c6c6), location: 0.72), .init(color: Color(hex: 0xb1b1b1), location: 0.92),
+        .init(color: Color(hex: 0xb0b0b0), location: 1),
     ] }
     static var blackBody: [Gradient.Stop] { [
-        .init(color: Color(hex: 0x6c6b6e), location: 0), .init(color: Color(hex: 0x626164), location: 0.22),
-        .init(color: Color(hex: 0x555457), location: 0.5), .init(color: Color(hex: 0x3f3f3f), location: 0.7),
-        .init(color: Color(hex: 0x2c2c2c), location: 0.86), .init(color: Color(hex: 0x212121), location: 1),
+        .init(color: Color(hex: 0x69686b), location: 0), .init(color: Color(hex: 0x656467), location: 0.5),
+        .init(color: Color(hex: 0x3a3a3b), location: 0.72), .init(color: Color(hex: 0x2f2f30), location: 0.92),
+    ] }
+    /// The soft top rim, its bright zone from 2.8% to 4%, and the bottom roll. The roll starts
+    /// from clear black, so it never mixes through a light gray.
+    static var silverRim: [Gradient.Stop] { [
+        .init(color: .black.opacity(0.16), location: 0), .init(color: .black.opacity(0.06), location: 0.006),
+        .init(color: .white.opacity(0.25), location: 0.016), .init(color: .white.opacity(0.72), location: 0.028),
+        .init(color: .white.opacity(0.72), location: 0.04), .init(color: .white.opacity(0), location: 0.06),
+        .init(color: .black.opacity(0), location: 0.92), .init(color: .black.opacity(0.12), location: 0.95),
+        .init(color: .black.opacity(0.38), location: 0.978), .init(color: .black.opacity(0.62), location: 1),
+    ] }
+    static var blackRim: [Gradient.Stop] { [
+        .init(color: .black.opacity(0.2), location: 0), .init(color: .black.opacity(0.08), location: 0.006),
+        .init(color: .white.opacity(0.08), location: 0.016), .init(color: .white.opacity(0.3), location: 0.028),
+        .init(color: .white.opacity(0.3), location: 0.04), .init(color: .white.opacity(0), location: 0.06),
+        .init(color: .black.opacity(0), location: 0.89), .init(color: .black.opacity(0.15), location: 0.94),
+        .init(color: .black.opacity(0.35), location: 1),
     ] }
 
     /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back,
@@ -171,5 +194,34 @@ public struct PocketSkin: View {
     private func input(_ action: Action) {
         if state.clicker, !Self.repeats(action) { Clicker.shared.click() }
         send(action)
+    }
+}
+
+/// A CSS inset shadow with a spread of -18 at one side of the body (card BH): the shadow of
+/// the area outside a hole, which is the body moved by `x` and grown by 18, blurred, and kept
+/// inside the body.
+private struct SideShade: View {
+    let x: CGFloat, blur: CGFloat
+    let color: Color
+    /// Room around the body, so the blur has the whole shadow to work on.
+    private static let room: CGFloat = 80
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 33).fill(.clear)
+            .overlay {
+                GeometryReader { g in
+                    let r = Self.room, spread: CGFloat = 18
+                    let box = CGRect(x: r, y: r, width: g.size.width - 2 * r, height: g.size.height - 2 * r)
+                    let hole = box.offsetBy(dx: x, dy: 0).insetBy(dx: -spread, dy: -spread)
+                    Path { p in
+                        p.addRect(CGRect(origin: .zero, size: g.size))
+                        p.addRoundedRect(in: hole, cornerSize: CGSize(width: 33 + spread, height: 33 + spread))
+                    }
+                    .fill(color, style: FillStyle(eoFill: true))
+                    .blur(radius: blur / 2)  // a CSS blur of 30 is a SwiftUI radius of 15, as for the drop shadow
+                }
+                .padding(-Self.room)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 33))
     }
 }

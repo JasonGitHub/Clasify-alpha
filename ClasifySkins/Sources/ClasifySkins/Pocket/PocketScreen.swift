@@ -21,8 +21,8 @@ enum Pocket {
         let xHeight = NSFont(name: "HelveticaNeue-Bold", size: 10.5)?.xHeight ?? 5.5
         return (1 + 15.79) / 2 / 16 * 11 + xHeight / 2
     }()
-    /// The dark gray bezel around the screen.
-    static let bezel = Color(hex: 0x4a4e53)
+    /// The dark bezel around the screen of the Silver body (card BH, change 239).
+    static let bezel = Color(hex: 0x2a2c2e)
     /// The title bar's play and pause marks: glossy blue with a thin dark blue edge.
     static var markGloss: LinearGradient { .vertical(Color(hex: 0x9fd0f5), Color(hex: 0x3f8fd8)) }
     static let markEdge = Color(hex: 0x3a7ab8)
