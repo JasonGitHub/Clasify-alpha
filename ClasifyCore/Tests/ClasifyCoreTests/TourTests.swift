@@ -135,6 +135,18 @@ import Testing
         #expect(s.hint == .tourMenu)
     }
 
+    /// A scrub bar keeps the Next hint away until it goes back to the time bar, 6 s later.
+    @Test func aScrubKeepsTheNextHintAway() {
+        var s = started()
+        send(&s, .play, now: 112)
+        send(&s, .select, now: 113)  // the scrub bar, until 119
+        #expect(s.nowMode == .scrub && s.hint == nil && s.hintDue == 0)
+        send(&s, .tick, now: 116)
+        #expect(s.hint == nil)
+        send(&s, .tick, now: 119.1)  // back to the time bar: the hint shows
+        #expect(s.nowMode == .volume && s.hint == .tourNext && s.hintTip)
+    }
+
     /// Only after the first setup: not when the tour ran before, and not on a later launch.
     @Test func theQueueStartsOnce() {
         var s = allSet()

@@ -463,14 +463,18 @@ public struct AppState: Equatable, Sendable {
     public var tour: Hint? {
         tourOn ? [Hint.tourPlay, .tourNext, .tourMenu].first(where: { !hintsDone.contains($0) }) : nil
     }
-    /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing.
+    /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
+    /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
     public var tourPlace: Bool {
         guard let tour, setupDone, signedIn, stack.first?.screen == .main else { return false }
-        return tour == .tourPlay ? top.screen == .main : top.screen == .now && current != nil
+        return tour == .tourPlay ? top.screen == .main : top.screen == .now && current != nil && nowMode == .volume
     }
     /// When the waiting tour hint shows. Play glows first and its words come `tourTipAfter`
-    /// later, so they show after `tourRest` like the words of Next and MENU.
-    public var tourShowAt: Double { tourRestAt + (tour == .tourPlay ? Self.tourRest - Self.tourTipAfter : Self.tourRest) }
+    /// later, so they show after `tourRest` like the words of Next and MENU. Next and MENU
+    /// also wait for the volume bar to hide.
+    public var tourShowAt: Double {
+        tour == .tourPlay ? tourRestAt + Self.tourRest - Self.tourTipAfter : max(tourRestAt + Self.tourRest, overlayUntil)
+    }
     public static let tourTipAfter = 2.4, tourRest = 3.0, tourHideMax = 3
     public var offline = false
 
