@@ -1321,13 +1321,16 @@ import Testing
         let body = (x: 20, y: 590)  // the big device's body, near its bottom
         let silver = try render(s, "color-pick", time: 10)
         #expect(silver.isBlue(100, Self.rowCenter(0)))  // Silver is selected
-        #expect(hint(silver) && silver.isLight(preview.x, preview.y) && silver.isLight(body.x, body.y))
+        #expect(hint(silver))
         #expect(!silver.isBlue(183, 392))  // no center glow before the turn
         s.top.sel = 1
         s.colorTurnAt = 5
         let black = try render(s, "color-pick-black", time: 7.8)
         #expect(black.isBlue(100, Self.rowCenter(1)))
         #expect(black.isDark(preview.x, preview.y) && black.isDark(body.x, body.y))  // both devices are black
+        // Silver was light at the same points. Near the bottom the card BH roll darkens it, so
+        // compare it with Black.
+        for p in [preview, body] { #expect(silver.rgb(p.x, p.y).g > black.rgb(p.x, p.y).g + 60, "\(p)") }
         #expect(black.isBlue(183, 392) && !hint(black))  // the glow first; the press hint comes at 12.2 s
     }
 
