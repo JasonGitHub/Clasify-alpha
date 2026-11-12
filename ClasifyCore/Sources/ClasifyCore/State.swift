@@ -441,7 +441,7 @@ public struct AppState: Equatable, Sendable {
     /// hint, or a tour tip that shows (it waits for its press). Like every deadline that `.tick`
     /// ends, the app's ticker must check it, or `.tick` never comes.
     public var hintDue: Double {
-        guard let hint else { return 0 }
+        guard let hint else { return tourPlace && toast.isEmpty ? tourShowAt : 0 }  // a tour hint waits to show
         if hint.isTour { return hintTip ? 0 : hintAt + Self.tourTipAfter }
         return hintAt + Self.hintTipAfter + (hintTip ? Self.hintTipTime : 0)
     }
@@ -450,14 +450,32 @@ public struct AppState: Equatable, Sendable {
         guard let hint, hint.isTour else { return hintAt + Self.hintTipAfter }
         return hint == .tourPlay ? hintAt + Self.tourTipAfter : hintAt
     }
-    /// The first-run tour (card BA.1, change 199): the step that runs, also while it waits to
-    /// show. `hint` is that step while it shows. nil when no tour runs.
-    public var tour: Hint?
-    /// The song that showed when step 2 was pressed. Step 3 shows when another song shows.
-    /// nil when it shows at once (Previous started the same song again).
-    public var tourFrom: TrackRef?
-    /// Change 199: the Play tip comes after 1 pulse. Step 2 waits for 3 s of music.
-    public static let tourTipAfter = 2.4, tourMusic = 3.0
+    /// The first-run hints (card BA.2, change 238): a queue of Play, Next and MENU. It starts
+    /// at "You’re all set" after the first setup and runs until all three are done. Saved.
+    public var tourOn = false
+    /// How many times other input hid each tour hint while its words showed. At
+    /// `tourHideMax` that hint is done. Saved.
+    public var tourHides: [Hint: Int] = [:]
+    /// The last input. A tour hint shows after `tourRest` with no input, on its screen.
+    public var tourRestAt: Double = 0
+    /// The tour step that runs, also while it waits to show: the first one not done. `hint` is
+    /// that step while it shows. nil when no tour runs.
+    public var tour: Hint? {
+        tourOn ? [Hint.tourPlay, .tourNext, .tourMenu].first(where: { !hintsDone.contains($0) }) : nil
+    }
+    /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
+    /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
+    public var tourPlace: Bool {
+        guard let tour, setupDone, signedIn, stack.first?.screen == .main else { return false }
+        return tour == .tourPlay ? top.screen == .main : top.screen == .now && current != nil && nowMode == .volume
+    }
+    /// When the waiting tour hint shows. Play glows first and its words come `tourTipAfter`
+    /// later, so they show after `tourRest` like the words of Next and MENU. Next and MENU
+    /// also wait for the volume bar to hide.
+    public var tourShowAt: Double {
+        tour == .tourPlay ? tourRestAt + Self.tourRest - Self.tourTipAfter : max(tourRestAt + Self.tourRest, overlayUntil)
+    }
+    public static let tourTipAfter = 2.4, tourRest = 3.0, tourHideMax = 3
     public var offline = false
 
     public init() {}
@@ -736,9 +754,9 @@ public enum Hint: String, CaseIterable, Sendable {
     case playPause
     /// Change 177: after the play/pause hint, on a later visit to Now Playing, until the first next press.
     case next
-    /// The first-run tour (card BA.1, change 199), right after setup. Each step waits for its
-    /// press: Play on the main menu, then Previous or Next on Now Playing, then MENU. Any other
-    /// input ends the tour. `tourPlay` in `hintsDone` means the tour ran.
+    /// The first-run hints (card BA.2, change 238), a queue after the first setup: Play on the
+    /// main menu, then Previous or Next on Now Playing, then MENU. In `hintsDone`: that step is
+    /// done. Other input only hides the hint (see `AppState.tour`).
     case tourPlay = "tour.play", tourNext = "tour.next", tourMenu = "tour.menu"
 
     public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu }
