@@ -10,9 +10,9 @@ public enum K3DSpike {
     /// The hidden switch: `defaults write app.clasify.Clasify spike.k3d -bool true`.
     public static let key = "spike.k3d"
 
-    /// The device as it shows now, at 2x, for the 3D front's screen.
-    @MainActor public static func snapshot(_ state: AppState) -> CGImage? {
-        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false))
+    /// The device as it shows now, at 2x, with its covers, for the 3D front's screen.
+    @MainActor public static func snapshot(_ state: AppState, artwork: Artwork = .none) -> CGImage? {
+        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false).environment(\.artwork, artwork))
         renderer.scale = 2
         return renderer.cgImage
     }
@@ -26,6 +26,8 @@ public struct K3DFlipView<Content: View>: View {
     let margin: EdgeInsets
     let onTap: () -> Void
     let content: Content
+    /// Counts the turns that ended, so the body runs again and pauses the timeline.
+    @State private var settled = 0
 
     public init(flip: K3DFlip, margin: EdgeInsets, onTap: @escaping () -> Void, @ViewBuilder content: () -> Content) {
         self.flip = flip
@@ -35,14 +37,26 @@ public struct K3DFlipView<Content: View>: View {
     }
 
     public var body: some View {
-        TimelineView(.animation(paused: flip.restsOnFront(at: .now))) { context in
-            let front = flip.restsOnFront(at: context.date)
-            let pose = flip.pose(at: context.date)
+        // The timeline runs only while the device turns. At rest on either side it pauses, and
+        // the pose is the side it rests on. A new turn changes `flip`, which starts it again.
+        // Reading `settled` makes the body run again when a turn ends.
+        let resting = settled >= 0 && flip.isResting(at: .now)
+        TimelineView(.animation(paused: resting)) { context in
+            let date = resting ? Date.distantFuture : context.date
+            let front = flip.restsOnFront(at: date)
+            let pose = flip.pose(at: date)
             content
                 .opacity(front ? 1 : 0)
                 .overlay {
                     if !front { body3D(angle: pose.angle, lift: pose.lift) }
                 }
+        }
+        .task(id: flip.start) {
+            // When the turn ends, run the body again so the timeline pauses.
+            let left = K3DFlip.duration - Date.now.timeIntervalSince(flip.start)
+            guard left > 0 else { return }
+            try? await Task.sleep(for: .seconds(left + 0.05))
+            settled += 1
         }
     }
 

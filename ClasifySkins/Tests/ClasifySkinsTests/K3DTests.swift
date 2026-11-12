@@ -59,12 +59,12 @@ import Testing
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         #expect(flip.restsOnFront(at: t0))
         flip.toggle(at: t0, screen: nil)
-        #expect(flip.toBack && !flip.restsOnFront(at: t0))
+        #expect(flip.toBack && !flip.restsOnFront(at: t0) && !flip.isResting(at: t0))
         let mid = flip.pose(at: t0.addingTimeInterval(0.41))
         #expect(abs(mid.angle - 92.25) < 0.01 && abs(mid.lift - 70) < 0.01)
         #expect(flip.pose(at: t0.addingTimeInterval(0.82)).angle > 180)  // the overshoot
         let end = flip.pose(at: t0.addingTimeInterval(1))
-        #expect(end.angle == 180 && end.lift == 0)
+        #expect(end.angle == 180 && end.lift == 0 && flip.isResting(at: t0.addingTimeInterval(1)))  // the back rests
         flip.toggle(at: t0.addingTimeInterval(2), screen: nil)
         #expect(!flip.toBack && !flip.restsOnFront(at: t0.addingTimeInterval(2.5)))
         #expect(flip.restsOnFront(at: t0.addingTimeInterval(3)))

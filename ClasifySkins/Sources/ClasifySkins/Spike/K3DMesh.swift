@@ -139,6 +139,9 @@ public struct K3DFlip {
         if toBack { self.screen = screen }
     }
 
+    /// No turn runs: the device rests on one side.
+    func isResting(at now: Date) -> Bool { now.timeIntervalSince(start) >= Self.duration }
+
     /// The front shows flat, with no turn running: the 2D skin can show.
     public func restsOnFront(at now: Date) -> Bool { !toBack && now.timeIntervalSince(start) >= Self.duration }
 
