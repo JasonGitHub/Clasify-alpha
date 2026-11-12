@@ -229,12 +229,15 @@ struct ClickWheel: View {
             .init(color: Color(hex: 0xb5b5b5), location: 0), .init(color: Color(hex: 0xcfcfcf), location: 0.5),
             .init(color: Color(hex: 0xe4e4e4), location: 1),
         ]
-        case (false, true): [.init(color: Color(hex: 0xbcbcbc), location: 0), .init(color: Color(hex: 0xdcdcdc), location: 1)]
+        case (false, true): [  // `ctrDown`: darker than the idle stops everywhere
+            .init(color: Color(hex: 0xa7a7a7), location: 0), .init(color: Color(hex: 0xbebebe), location: 0.5),
+            .init(color: Color(hex: 0xd2d2d2), location: 1),
+        ]
         case (true, false): [
             .init(color: Color(hex: 0x2a2a2b), location: 0), .init(color: Color(hex: 0x3d3d3f), location: 0.45),
             .init(color: Color(hex: 0x636265), location: 1),
         ]
-        case (true, true): [  // the idle stops, about 15% darker, so a press always darkens it
+        case (true, true): [  // `ctrDown`: the idle stops, about 15% darker
             .init(color: Color(hex: 0x232324), location: 0), .init(color: Color(hex: 0x343436), location: 0.45),
             .init(color: Color(hex: 0x545356), location: 1),
         ]

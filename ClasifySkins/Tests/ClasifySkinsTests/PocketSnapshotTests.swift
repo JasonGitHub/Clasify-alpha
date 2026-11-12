@@ -928,7 +928,7 @@ import Testing
         #expect(near(ring, white), "ring \(ring)")  // the flat light wheel (card BH)
         // Dark at the top, as if pressed in. Pressed, the whole button gets darker.
         #expect(up.rgb(x, nearTop).b < up.rgb(x, nearBottom).b)
-        #expect(down.rgb(x, middle).b < up.rgb(x, middle).b)
+        for y in [nearTop, middle, nearBottom] { #expect(down.rgb(x, y).b < up.rgb(x, y).b, "silver y \(y)") }
         // Black too: pressed, the whole button gets darker.
         var s = AppState()
         s.deviceColor = .black
