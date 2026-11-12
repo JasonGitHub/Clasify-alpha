@@ -1334,6 +1334,22 @@ import Testing
         #expect(black.isBlue(183, 392) && !hint(black))  // the glow first; the press hint comes at 12.2 s
     }
 
+    /// Card AW.1, change 236: after a turn, Pick Your Color shows no light on the wheel's rim.
+    /// Only the center glows.
+    @Test func theColorPickShowsNoRimLightAfterATurn() throws {
+        var s = AppState()
+        s.stack = [Frame(screen: .color)]
+        s.colorAt = 0; s.colorTurnAt = 5
+        let shot = try render(s, "color-pick-turned", time: 7.8)
+        let center = (x: Double(PocketSkin.size.width) / 2, y: 321 + 112.5)
+        for degrees in stride(from: 0, to: 360, by: 10) {
+            let a = Double(degrees) * .pi / 180
+            let x = Int(center.x + 105 * cos(a)), y = Int(center.y + 105 * sin(a))
+            #expect(!shot.isBlue(x, y), "light at \(degrees)°")
+        }
+        #expect(shot.isBlue(183, 392))  // the center glows
+    }
+
     /// Card AX: the login screens are split like the color pick. A headline and a line sit over
     /// the rows, which start 77 points under the title bar. "You’re in" shows the green check.
     @Test func theLoginScreensShowTheWordsTheRowsAndTheSmallDevice() throws {

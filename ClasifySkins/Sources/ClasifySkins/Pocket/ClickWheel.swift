@@ -16,10 +16,6 @@ struct ClickWheel: View {
     var glowFrom: Double?
     /// When the waiting comet starts, on the color pick until the first turn (card AW, change 200).
     var cometFrom: Double?
-    /// On the color pick a light follows the thumb (change 202). `turns` is
-    /// `AppState.colorTurns`: a step from the trackpad or a key moves the light 24°.
-    var followsThumb = false
-    var turns = 0
     /// The labels that glow for a first-time hint (card BA, change 151), and when they started.
     /// The tour's step 2 lights Previous and Next together (card BA.1, change 199).
     var label: LabelGlow?
@@ -56,8 +52,8 @@ struct ClickWheel: View {
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        movesBar: Bool = false, glowFrom: Double? = nil, cometFrom: Double? = nil, followsThumb: Bool = false,
-        turns: Int = 0, label: LabelGlow? = nil, pressed: Zone? = nil
+        movesBar: Bool = false, glowFrom: Double? = nil, cometFrom: Double? = nil, label: LabelGlow? = nil,
+        pressed: Zone? = nil
     ) {
         self.input = input
         self.color = color
@@ -65,8 +61,6 @@ struct ClickWheel: View {
         self.movesBar = movesBar
         self.glowFrom = glowFrom
         self.cometFrom = cometFrom
-        self.followsThumb = followsThumb
-        self.turns = turns
         self.label = label
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
@@ -118,23 +112,12 @@ struct ClickWheel: View {
         var moved = 0.0
     }
 
-    /// The light under the thumb (change 202): its angle, clockwise from 3 o'clock and not
-    /// wrapped, so a glide never goes the long way; its direction; whether it shows; and when
-    /// it last moved. There is one for the whole pick; it only fades.
-    struct ThumbLight: Equatable {
-        var angle: Double
-        var clockwise = true
-        var on = true
-        var last: Double
-    }
-
     @State private var turn: Turn?
-    @State private var light: ThumbLight?
     @State private var pressed: Zone?
     @State private var hovered: Zone?
 
     var body: some View {
-        lights(face)
+        face
             .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
             .contentShape(Circle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
@@ -177,31 +160,13 @@ struct ClickWheel: View {
         .frame(width: Self.size, height: Self.size)
     }
 
-    /// The color pick's lights: the waiting comet until the first color step, and the light
-    /// under the thumb from the first move (changes 200 and 202). Both show for the first 24°.
+    /// The color pick's waiting comet until the first color step (change 200). No light follows
+    /// the turn (card AW.1, change 236).
     @ViewBuilder private var comets: some View {
         if let cometFrom {
             WaitingComet(from: cometFrom)
                 .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
         }
-        if followsThumb, let light { ThumbComet(light: light) }
-    }
-
-    /// The light follows the steps, fades out 0.6 s after the last move and goes off the pick.
-    private func lights(_ content: some View) -> some View {
-        content
-            .onChange(of: followsThumb) { _, follows in
-                if !follows { light = nil }  // off the color pick, the light goes at once
-            }
-            .onChange(of: turns) { old, new in
-                // A trackpad or key step. A drag moves the light itself.
-                if followsThumb && turn == nil { stepLight(new - old) }
-            }
-            .task(id: light?.last) {
-                guard let last = light?.last else { return }
-                try? await Task.sleep(for: .seconds(ColorPick.hold))
-                if light?.last == last { light?.on = false }
-            }
     }
 
     private var black: Bool { color == .black }
@@ -267,36 +232,12 @@ struct ClickWheel: View {
         if delta > 180 { delta -= 360 }
         if delta < -180 { delta += 360 }
         t.last = angle
-        if followsThumb && delta != 0 { followThumb(angle, clockwise: delta > 0) }
         t.turned += delta
         t.moved += abs(delta)
-        while t.turned >= Self.detent { t.turned -= Self.detent; input(.wheel(1)); light?.clockwise = true }
-        while t.turned <= -Self.detent { t.turned += Self.detent; input(.wheel(-1)); light?.clockwise = false }
+        while t.turned >= Self.detent { t.turned -= Self.detent; input(.wheel(1)) }
+        while t.turned <= -Self.detent { t.turned += Self.detent; input(.wheel(-1)) }
         if t.moved > Self.clickSlop { pressed = nil }
         turn = t
-    }
-
-    /// The light goes under the thumb, the short way. The first move makes it, pointing the way
-    /// of that move; after that, only a color step flips it.
-    private func followThumb(_ angle: Double, clockwise: Bool) {
-        let now = Date.timeIntervalSinceReferenceDate
-        if var l = light {
-            l.angle = ColorPick.glideAngle(from: l.angle, to: angle)
-            l.on = true; l.last = now
-            light = l
-        } else {
-            light = ThumbLight(angle: angle, clockwise: clockwise, last: now)
-        }
-    }
-
-    /// A trackpad or key step moves the light 24° a step, from 12 o'clock for a new light.
-    private func stepLight(_ steps: Int) {
-        guard steps != 0 else { return }
-        let now = Date.timeIntervalSinceReferenceDate
-        var l = light ?? ThumbLight(angle: -90, last: now)
-        l.angle = ColorPick.stepAngle(from: light?.angle, steps: steps)
-        l.clockwise = steps > 0; l.on = true; l.last = now
-        light = l
     }
 
     private func ended(_ value: DragGesture.Value) {

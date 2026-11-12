@@ -36,8 +36,7 @@ public struct PocketSkin: View {
             PocketScreen(state: state, input: input)
             ClickWheel(
                 input: input, color: state.shownColor, catchesScroll: interactive, movesBar: state.wheelMovesBar,
-                glowFrom: glowFrom, cometFrom: cometFrom, followsThumb: !preview && state.top.screen == .color,
-                turns: state.colorTurns, label: labelGlow, pressed: pressed)
+                glowFrom: glowFrom, cometFrom: cometFrom, label: labelGlow, pressed: pressed)
                 .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.

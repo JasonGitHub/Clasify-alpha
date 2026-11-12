@@ -273,10 +273,6 @@ public struct AppState: Equatable, Sendable {
     /// When the color pick (card AW) opened, and when the wheel first turned on it (0 before
     /// that). A skin times the waiting comet, the hint and the center glow from them.
     public var colorAt: Double = 0, colorTurnAt: Double = 0
-    /// The wheel steps on the color pick, turned clockwise less counterclockwise. A skin moves the
-    /// wheel light 24° for each step that comes with no thumb on the wheel: a trackpad or a key
-    /// (card AW, change 202). Only its changes count, so it never resets.
-    public var colorTurns = 0
     /// When "You’re in" (card AX, change 175) or "Linked" on the Spotify App screen (card BB,
     /// change 174) moves on by itself. 0 when neither shows.
     public var beatUntil: Double = 0
