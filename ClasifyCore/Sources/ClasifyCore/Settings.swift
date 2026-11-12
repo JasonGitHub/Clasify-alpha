@@ -12,6 +12,8 @@ public struct Settings: Equatable, Sendable {
     public var nowPlayingBar = false
     public var setupDone = false
     public var hintsDone: Set<Hint> = []
+    public var tourOn = false
+    public var tourHides: [Hint: Int] = [:]
 
     public init() {}
 
@@ -25,6 +27,8 @@ public struct Settings: Equatable, Sendable {
         static let nowPlayingBar = "settings.nowPlayingBar"
         static let setupDone = "setup.done"
         static let hintsDone = "hints.done"
+        static let tourOn = "hints.tour"
+        static let tourHides = "hints.hides"
     }
 
     /// The saved settings. A missing or unknown value gives the default.
@@ -40,6 +44,13 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.hintsDone) {  // the raw values, with commas; unknown ones are dropped
             hintsDone = Set(v.split(separator: ",").compactMap { Hint(rawValue: String($0)) })
         }
+        if let v = store.string(forKey: Key.tourOn).flatMap({ Bool($0) }) { tourOn = v }
+        if let v = store.string(forKey: Key.tourHides) {  // "tour.play:2,tour.next:1"; unknown ones are dropped
+            for pair in v.split(separator: ",") {
+                let kv = pair.split(separator: ":")
+                if kv.count == 2, let hint = Hint(rawValue: String(kv[0])), let n = Int(kv[1]) { tourHides[hint] = n }
+            }
+        }
     }
 
     public func save(to store: some SettingsStore) {
@@ -51,6 +62,8 @@ public struct Settings: Equatable, Sendable {
         store.set(String(nowPlayingBar), forKey: Key.nowPlayingBar)
         store.set(String(setupDone), forKey: Key.setupDone)
         store.set(hintsDone.map(\.rawValue).sorted().joined(separator: ","), forKey: Key.hintsDone)
+        store.set(String(tourOn), forKey: Key.tourOn)
+        store.set(tourHides.map { "\($0.key.rawValue):\($0.value)" }.sorted().joined(separator: ","), forKey: Key.tourHides)
     }
 }
 
@@ -72,6 +85,7 @@ extension AppState {
             v.nowPlayingBar = nowPlayingBar
             v.setupDone = setupDone
             v.hintsDone = hintsDone
+            (v.tourOn, v.tourHides) = (tourOn, tourHides)
             return v
         }
         set {
@@ -80,6 +94,7 @@ extension AppState {
             nowPlayingBar = newValue.nowPlayingBar
             setupDone = newValue.setupDone
             hintsDone = newValue.hintsDone
+            (tourOn, tourHides) = (newValue.tourOn, newValue.tourHides)
         }
     }
 }
