@@ -13,6 +13,8 @@ public struct PocketSkin: View {
     var interactive = true
     /// A wheel button drawn pressed, for snapshot tests.
     var pressed: ClickWheel.Zone?
+    /// For tests: the color fade drawn at this fraction, from 0 (Silver) to 1 (Black).
+    var fade: Double?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The small device on a setup screen: no glow, no comet, no keys and no drop shadow.
@@ -23,11 +25,12 @@ public struct PocketSkin: View {
         self.send = send
     }
 
-    init(state: AppState, interactive: Bool, pressed: ClickWheel.Zone? = nil) {
+    init(state: AppState, interactive: Bool, pressed: ClickWheel.Zone? = nil, fade: Double? = nil) {
         self.state = state
         self.send = { _ in }
         self.interactive = interactive
         self.pressed = pressed
+        self.fade = fade
     }
 
     public var body: some View {
@@ -44,11 +47,8 @@ public struct PocketSkin: View {
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
             // A new color crossfades in 0.45 s (card AW, changes 150 and 203).
-            ZStack {
-                device(.silver).opacity(state.shownColor == .silver ? 1 : 0)
-                device(.black).opacity(state.shownColor == .black ? 1 : 0)
-            }
-            .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
+            Bodies(black: fade ?? (state.shownColor == .black ? 1 : 0), preview: preview)
+                .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
         }
         // Keys come through a window-level monitor, not SwiftUI focus (CLA-79).
         .background { if interactive && !preview { KeyCatcher { key($0, repeated: $1) } } }
@@ -91,7 +91,7 @@ public struct PocketSkin: View {
     /// of `bodyShadow`, the matte grain and the `bodyEdge` line. The face fills the whole shape,
     /// under the edge line too, so no light hairline shows at the edge (the mockup's
     /// background-origin border-box).
-    private func device(_ color: DeviceColor) -> some View {
+    static func device(_ color: DeviceColor) -> some View {
         let black = color == .black
         let shape = RoundedRectangle(cornerRadius: 34)
         let inner = RoundedRectangle(cornerRadius: 33)  // inside the 1 point edge
@@ -120,17 +120,18 @@ public struct PocketSkin: View {
                     .opacity(black ? 0.28 : 0.35)
                     .blendMode(.overlay)
             }
-            .background {
-                // The shadow comes from a hidden copy of the body that starts lower, so it does not
-                // reach above the device into the window's small top margin (CLA-94).
-                shape.fill(Color.black).padding(.top, Self.shadowDrop)
-                    .shadow(color: preview ? .clear : black ? .black.opacity(0.45) : Color(hex: 0x1e1e1e, opacity: 0.3), radius: 20, y: 20)
-            }
-            .compositingGroup()  // so the hidden copy does not show through during a color crossfade
+            .compositingGroup()  // so its opacity in the color fade applies to the body as a whole
     }
 
     /// How much lower than the device the shadow's shape starts.
     static let shadowDrop: CGFloat = 20
+
+    /// The drop shadow's color at a point of the color fade: #1e1e1e at 30% for Silver, black at
+    /// 45% for Black.
+    static func shadowColor(_ black: Double) -> Color {
+        let gray = Double(0x1e) / 255 * (1 - black)
+        return Color(.sRGB, red: gray, green: gray, blue: gray, opacity: 0.3 + 0.15 * black)
+    }
 
     static var silverBody: [Gradient.Stop] { [
         .init(color: Color(hex: 0xdcdcdc), location: 0), .init(color: Color(hex: 0xdbdbdb), location: 0.5),
@@ -193,6 +194,37 @@ public struct PocketSkin: View {
     private func input(_ action: Action) {
         if state.clicker, !Self.repeats(action) { Clicker.shared.click() }
         send(action)
+    }
+}
+
+/// The two device bodies and their one drop shadow, at a point of the color fade (CLA-100).
+/// The Silver body stays opaque, and the Black body fades in over it, so the desktop never
+/// shows through. One shadow sits under both and changes its color, so Black has no double shadow.
+private struct Bodies: View, Animatable {
+    /// 0 is Silver, 1 is Black.
+    var black: Double
+    let preview: Bool
+
+    // `Animatable` is nonisolated while `View` is on the main actor. `black` is a plain Double
+    // in a value type, so reading and writing it from any isolation is safe.
+    nonisolated var animatableData: Double {
+        get { black }
+        set { black = newValue }
+    }
+
+    var body: some View {
+        ZStack {
+            if !preview {
+                // The shadow comes from a hidden copy of the body that starts lower, so it does not
+                // reach above the device into the window's small top margin (CLA-94). The opaque
+                // body above always covers it.
+                RoundedRectangle(cornerRadius: 34).fill(Color.black).padding(.top, PocketSkin.shadowDrop)
+                    .shadow(color: PocketSkin.shadowColor(black), radius: 20, y: 20)
+            }
+            // Hidden once the fade ends, so no Silver shows at Black's soft outer edge.
+            PocketSkin.device(.silver).opacity(black < 1 ? 1 : 0)
+            PocketSkin.device(.black).opacity(black)
+        }
     }
 }
 
