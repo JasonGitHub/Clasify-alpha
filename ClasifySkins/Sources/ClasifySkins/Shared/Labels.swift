@@ -27,7 +27,7 @@ enum Labels {
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
         case .tracks(let id) where Album.isID(id): state.album(id)?.name ?? ""
-        case .tracks(let id): state.library.first { $0.id == id }?.name ?? (id == Playlist.likedSongsID ? "Liked Songs" : "")
+        case .tracks(let id): state.library.first { $0.id == id }?.name ?? (id == Playlist.likedSongsID ? state.likedSongsName : "")
         case .settings: "Settings"
         case .confirm: "Log out?"
         case .about: "About"
@@ -60,7 +60,7 @@ enum Labels {
         case .playlists: return RowText(label: "Playlists", opens: true)
         case .albums: return RowText(label: "Albums", opens: true)
         case .coverFlow: return RowText(label: "Cover Flow", opens: true)
-        case .likedSongs: return RowText(label: "Liked Songs", opens: true)
+        case .likedSongs: return RowText(label: state.likedSongsName, opens: true)
         case .shuffleSongs: return RowText(label: "Shuffle Songs")
         case .settings: return RowText(label: "Settings", opens: true)
         case .playlist(let id):

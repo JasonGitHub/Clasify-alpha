@@ -804,7 +804,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if let i = s.library.firstIndex(where: { $0.id == id }) {
                 s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
             } else if id == Playlist.likedSongsID {  // first, as an open's read puts it; not a Playlists row
-                s.library.insert(Playlist(id: id, name: "Liked Songs", tracks: tracks), at: 0)
+                s.library.insert(Playlist(id: id, name: s.likedSongsName, tracks: tracks), at: 0)
             } else {
                 return  // the playlist is gone
             }
@@ -817,7 +817,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if let i = s.library.firstIndex(where: { $0.id == id }) {
                     s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
                 } else if id == Playlist.likedSongsID {
-                    s.library.insert(Playlist(id: id, name: "Liked Songs", tracks: tracks), at: 0)
+                    s.library.insert(Playlist(id: id, name: s.likedSongsName, tracks: tracks), at: 0)
                 } else {
                     s.library.append(Playlist(id: id, name: "", tracks: tracks))
                 }

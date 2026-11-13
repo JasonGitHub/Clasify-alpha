@@ -8,6 +8,8 @@ import ClasifyCore
 enum AppleMusicID {
     static let songPrefix = "applemusic:song:"
     static let playlistPrefix = "applemusic:playlist:"
+    /// Albums have no MusicKit ID here: `AppleMusicLibrary` makes one from the title and artist.
+    static let albumPrefix = "applemusic:album:"
 
     static func song(_ id: MusicItemID) -> String { songPrefix + id.rawValue }
     static func playlist(_ id: MusicItemID) -> String { playlistPrefix + id.rawValue }

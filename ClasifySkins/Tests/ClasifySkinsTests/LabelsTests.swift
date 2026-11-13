@@ -36,6 +36,15 @@ func sampleState() -> AppState {
         #expect(Labels.title(.now, in: s) == "Now Playing")
     }
 
+    /// CLA-103: the liked list's row and title use the name that the `Library` gives.
+    @Test func likedListUsesTheLibraryName() {
+        var s = sampleState()
+        s.likedSongsName = "Favorite Songs"
+        s.library.removeFirst()  // not read yet: the title falls back to the name
+        #expect(Labels.row(.likedSongs, on: .main, in: s).label == "Favorite Songs")
+        #expect(Labels.title(.tracks(playlist: Playlist.likedSongsID), in: s) == "Favorite Songs")
+    }
+
     /// Round 13 setup: the titles, the color rows, and the words that show until each screen is drawn.
     @Test func setupScreensUseTheBoardWords() {
         let s = sampleState()

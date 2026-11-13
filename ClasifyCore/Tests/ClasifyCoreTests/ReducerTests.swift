@@ -1047,6 +1047,18 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.library.map(\.id) == [Playlist.likedSongsID, "focus"])  // Liked Songs goes first
     }
 
+    /// CLA-103: the liked list takes its name from the `Library`, such as "Favorite Songs".
+    @MainActor @Test func likedListTakesItsNameFromTheLibrary() {
+        let library = FakeLibrary()
+        library.likedSongsName = "Favorite Songs"
+        var s = Store(player: FakePlayer(), library: library, state: mainMenu()).state
+        #expect(s.likedSongsName == "Favorite Songs")
+        send(&s, .play, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
+        #expect(s.library.first?.name == "Favorite Songs")
+        #expect(Store(player: FakePlayer(), library: FakeLibrary()).state.likedSongsName == "Liked Songs")
+        #expect(Album.isID("applemusic:album:x") && Album.isID("spotify:album:x") && !Album.isID("applemusic:song:x"))
+    }
+
     @Test func listsReadOnceOpenAtOnce() {
         var s = mainMenu()
         send(&s, openFocus(1))
@@ -1297,6 +1309,7 @@ func playing(_ i: Int = 0) -> AppState {
 @MainActor final class FakeLibrary: Library {
     var fetches: [String] = []
     var loginResult: LoginResult = .ok
+    var likedSongsName = "Liked Songs"
     var calls: [String] = []
     func playlists() async -> [Playlist]? { fetches.append("playlists"); return [focusInfo] }
     func tracks(of playlist: String) async -> [Track]? {
