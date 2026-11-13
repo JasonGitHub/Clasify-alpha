@@ -3,7 +3,7 @@ import MetalKit
 import SwiftUI
 import simd
 
-/// SPIKE (CLA-101): the About screen's K.3D.1 flip in true 3D, behind the hidden UserDefaults
+/// SPIKE (CLA-101): the About screen's K.3D.7 flip in true 3D, behind the hidden UserDefaults
 /// switch `spike.k3d` (default off). Only the app reads the switch. Remove the Spike folder,
 /// the three k3d PNGs and the app's K3DSpikeSkin to take the spike out.
 public enum K3DSpike {
@@ -20,17 +20,22 @@ public enum K3DSpike {
 
 /// Shows `content`, the 2D device, while the front rests flat. While the device turns or shows
 /// its back, the 3D body shows in its place, over the window's margins too, with the mock's
-/// soft ground shadow. A click on the 3D body calls `onTap`.
+/// soft ground shadow. The two crossfade in 0.1 s where a turn leaves or reaches the resting
+/// front. A click on the 3D body calls `onTap`.
 public struct K3DFlipView<Content: View>: View {
     let flip: K3DFlip
+    let black: Bool
     let margin: EdgeInsets
     let onTap: () -> Void
     let content: Content
     /// Counts the turns that ended, so the body runs again and pauses the timeline.
     @State private var settled = 0
 
-    public init(flip: K3DFlip, margin: EdgeInsets, onTap: @escaping () -> Void, @ViewBuilder content: () -> Content) {
+    public init(
+        flip: K3DFlip, black: Bool, margin: EdgeInsets, onTap: @escaping () -> Void, @ViewBuilder content: () -> Content
+    ) {
         self.flip = flip
+        self.black = black
         self.margin = margin
         self.onTap = onTap
         self.content = content()
@@ -43,12 +48,13 @@ public struct K3DFlipView<Content: View>: View {
         let resting = settled >= 0 && flip.isResting(at: .now)
         TimelineView(.animation(paused: resting)) { context in
             let date = resting ? Date.distantFuture : context.date
-            let front = flip.restsOnFront(at: date)
+            let flat = flip.flatOpacity(at: date)
             let pose = flip.pose(at: date)
             content
-                .opacity(front ? 1 : 0)
-                .overlay {
-                    if !front { body3D(angle: pose.angle, lift: pose.lift) }
+                .opacity(flat)
+                .allowsHitTesting(flat >= 1)
+                .background {
+                    if flat < 1 { body3D(angle: pose.angle, lift: pose.lift) }
                 }
         }
         .task(id: flip.start) {
@@ -72,7 +78,7 @@ public struct K3DFlipView<Content: View>: View {
                 .scaleEffect(x: 17 * wide, y: 1)
                 .position(x: size.width / 2, y: size.height + 13.5)
             K3DMetalView(
-                angle: angle, lift: lift, screen: flip.screen,
+                angle: angle, lift: lift, black: black, screen: flip.screen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2))
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
         }
@@ -85,6 +91,7 @@ public struct K3DFlipView<Content: View>: View {
 /// The Metal view, drawn on demand: SwiftUI's timeline asks for each frame.
 struct K3DMetalView: NSViewRepresentable {
     let angle: Double, lift: Double
+    let black: Bool
     let screen: CGImage?
     /// The device's center in the view, in points from the top left.
     let center: CGPoint
@@ -92,16 +99,21 @@ struct K3DMetalView: NSViewRepresentable {
     func makeNSView(context: Context) -> K3DLayerView { K3DLayerView() }
 
     func updateNSView(_ view: K3DLayerView, context: Context) {
-        view.angle = angle
-        view.lift = lift
+        view.pose = K3DPose(angle: angle, lift: lift, black: black)
         view.screen = screen
         view.deviceCenter = center
         view.needsDisplay = true
     }
 }
 
-final class K3DLayerView: MTKView {
+/// What the renderer draws: the turn, the push back, and the color.
+struct K3DPose {
     var angle = 0.0, lift = 0.0
+    var black = false
+}
+
+final class K3DLayerView: MTKView {
+    var pose = K3DPose()
     var screen: CGImage?
     var deviceCenter = CGPoint.zero
 
@@ -154,7 +166,7 @@ final class K3DLayerView: MTKView {
     struct Uniforms {
         var mv: simd_float4x4
         var pr: simd_float4x4
-        var vr: Float
+        var blk: Float
     }
 
     init?() {
@@ -164,9 +176,9 @@ final class K3DLayerView: MTKView {
         let mesh = K3DMesh()
         guard let vertices = device.makeBuffer(bytes: mesh.vertices, length: mesh.vertices.count * 4, options: []),
               let indices = device.makeBuffer(bytes: mesh.indices, length: mesh.indices.count * 4, options: []),
-              let front = Self.texture(device, K3DTextures.rgba(.front)),
-              let back = Self.texture(device, K3DTextures.rgba(.back)),
-              let steel = Self.texture(device, K3DTextures.rgba(.steel)),
+              let front = Self.texture(device, queue, K3DTextures.rgba(.front)),
+              let back = Self.texture(device, queue, K3DTextures.back(version: K3DTextures.version)),
+              let steel = Self.texture(device, queue, K3DTextures.rgba(.steel)),
               let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest)
         else { return nil }
         self.device = device
@@ -202,43 +214,67 @@ final class K3DLayerView: MTKView {
         return device.makeDepthStencilState(descriptor: descriptor)
     }
 
-    /// An RGBA texture with the bytes as they are: unorm, not sRGB, no mipmaps.
-    private static func texture(_ device: any MTLDevice, _ bytes: [UInt8]?) -> (any MTLTexture)? {
+    /// An RGBA texture with the bytes as they are (unorm, not sRGB), with mipmaps for the color,
+    /// as the mock's power-of-two copies have.
+    private static func texture(_ device: any MTLDevice, _ queue: any MTLCommandQueue, _ bytes: [UInt8]?) -> (any MTLTexture)? {
         guard let bytes else { return nil }
         let w = K3DTextures.width, h = K3DTextures.height
         guard bytes.count == w * h * 4 else { return nil }
-        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
-        descriptor.usage = .shaderRead
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: true)
+        descriptor.usage = [.shaderRead, .renderTarget]  // render target: so the blit can make the mipmaps
         guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
-        texture.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: bytes, bytesPerRow: w * 4)
+        fill(texture, bytes, queue)
         return texture
+    }
+
+    /// Puts the bytes in level 0 and makes the smaller levels from them.
+    private static func fill(_ texture: any MTLTexture, _ bytes: [UInt8], _ queue: any MTLCommandQueue) {
+        let w = K3DTextures.width, h = K3DTextures.height
+        texture.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: bytes, bytesPerRow: w * 4)
+        guard let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder() else { return }
+        blit.generateMipmaps(for: texture)
+        blit.endEncoding()
+        buffer.commit()
     }
 
     private static func sampler(_ device: any MTLDevice, _ filter: MTLSamplerMinMagFilter) -> (any MTLSamplerState)? {
         let descriptor = MTLSamplerDescriptor()
         descriptor.minFilter = filter
         descriptor.magFilter = filter
-        descriptor.mipFilter = .notMipmapped
+        // The id sampler reads level 0 only; the color sampler blends levels, like the mock's tm.
+        descriptor.mipFilter = filter == .linear ? .linear : .notMipmapped
         descriptor.sAddressMode = .clampToEdge
         descriptor.tAddressMode = .clampToEdge
         return device.makeSamplerState(descriptor: descriptor)
     }
 
+    /// Puts a new screen picture in the front's LCD.
+    private func show(screen: CGImage?) {
+        guard screen !== frontScreen, let bytes = K3DTextures.front(screen: screen) else { return }
+        Self.fill(front, bytes, queue)
+        frontScreen = screen
+    }
+
     func draw(in view: K3DLayerView) {
-        if view.screen !== frontScreen, let bytes = K3DTextures.front(screen: view.screen) {
-            let w = K3DTextures.width, h = K3DTextures.height
-            front.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: bytes, bytesPerRow: w * 4)
-            frontScreen = view.screen
-        }
+        show(screen: view.screen)
         guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let buffer = queue.makeCommandBuffer(), let encoder = buffer.makeRenderCommandEncoder(descriptor: pass)
         else { return }
+        encode(encoder, pose: view.pose, size: view.bounds.size, center: view.deviceCenter)
+        buffer.present(drawable)
+        buffer.commit()
+    }
+
+    private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
         var uniforms = Uniforms(
-            mv: Self.modelView(angle: view.angle, lift: view.lift),
-            pr: Self.projection(size: view.bounds.size, center: view.deviceCenter), vr: 1)
+            mv: Self.modelView(angle: pose.angle, lift: pose.lift),
+            pr: Self.projection(size: size, center: center), blk: pose.black ? 1 : 0)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
-        encoder.setCullMode(.none)
+        // As the mock: only front faces draw. Metal's clip space has y up, as WebGL's, so the
+        // mock's counterclockwise front faces are counterclockwise here too.
+        encoder.setFrontFacing(.counterClockwise)
+        encoder.setCullMode(.back)
         encoder.setVertexBuffer(vertices, offset: 0, index: 0)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
@@ -249,8 +285,46 @@ final class K3DLayerView: MTKView {
         encoder.setFragmentSamplerState(nearest, index: 1)
         encoder.drawIndexedPrimitives(type: .triangle, indexCount: indexCount, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
         encoder.endEncoding()
-        buffer.present(drawable)
+    }
+
+    /// One frame drawn off screen, `size` points at `scale` pixels per point, the device
+    /// centered: for tests. Its pixels are premultiplied BGRA rows from the top.
+    func image(_ pose: K3DPose, screen: CGImage?, size: CGSize, scale: Int) -> [UInt8]? {
+        show(screen: screen)
+        let w = Int(size.width) * scale, h = Int(size.height) * scale
+        func target(_ format: MTLPixelFormat, samples: Int, storage: MTLStorageMode) -> (any MTLTexture)? {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: w, height: h, mipmapped: false)
+            descriptor.textureType = samples > 1 ? .type2DMultisample : .type2D
+            descriptor.sampleCount = samples
+            descriptor.usage = .renderTarget
+            descriptor.storageMode = storage
+            return device.makeTexture(descriptor: descriptor)
+        }
+        guard let color = target(.bgra8Unorm, samples: Self.samples, storage: .private),
+              let resolved = target(.bgra8Unorm, samples: 1, storage: .managed),
+              let depth = target(.depth32Float, samples: Self.samples, storage: .private),
+              let buffer = queue.makeCommandBuffer()
+        else { return nil }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = color
+        pass.colorAttachments[0].resolveTexture = resolved
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+        pass.colorAttachments[0].storeAction = .multisampleResolve
+        pass.depthAttachment.texture = depth
+        pass.depthAttachment.loadAction = .clear
+        pass.depthAttachment.clearDepth = 1
+        pass.depthAttachment.storeAction = .dontCare
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
+        encode(encoder, pose: pose, size: size, center: CGPoint(x: size.width / 2, y: size.height / 2))
+        guard let blit = buffer.makeBlitCommandEncoder() else { return nil }
+        blit.synchronize(resource: resolved)
+        blit.endEncoding()
         buffer.commit()
+        buffer.waitUntilCompleted()
+        var out = [UInt8](repeating: 0, count: w * h * 4)
+        resolved.getBytes(&out, bytesPerRow: w * 4, from: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0)
+        return out
     }
 
     /// The mock's M = Translate(0, 0, -2600 - lift) * RotY(angle), with no tilt.
@@ -260,7 +334,7 @@ final class K3DLayerView: MTKView {
             SIMD4(ca, 0, -sa, 0), SIMD4(0, 1, 0, 0), SIMD4(sa, 0, ca, 0), SIMD4(0, 0, -distance - Float(lift), 1)))
     }
 
-    /// A perspective with the mock's camera, scaled so the flat front (31 pt nearer than the
+    /// A perspective with the mock's camera, scaled so the flat front (34 pt nearer than the
     /// center) shows at 1 pt per pt, the size of the 2D device. The lens shifts so the device's
     /// center falls on `center`, which is not the view's center. Metal's depth runs 0 to 1.
     static func projection(size: CGSize, center: CGPoint) -> simd_float4x4 {
