@@ -110,10 +110,12 @@ final class AppleMusicPlayer: Player {
         guard hasQueue, !stopped, !loading else { return }  // a load in flight applies it
         let id = loadID
         Task {
+            guard id == loadID, wantsPlay else { return }  // a pause or stop came first
             do { try await player.play() } catch {
                 fail("Apple Music can’t play now", id: id, load: false)
             }
             if id != loadID && stopped { player.stop() }  // stop() ran during play()
+            else if !wantsPlay { player.pause() }  // a pause came during play()
         }
     }
 
