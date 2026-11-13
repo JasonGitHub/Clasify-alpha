@@ -1,5 +1,6 @@
 import AppKit
 import ClasifyCore
+import Metal
 import SwiftUI
 import Testing
 
@@ -15,9 +16,11 @@ import Testing
 /// 7 are for Metal against WebGL: the mock's camera draws the face 1.3% larger, and the
 /// mipmaps filter a little differently.
 ///
-/// The test is skipped where the machine has no Metal device.
+/// The tests show as skipped where the machine has no Metal device. Where it has one, a
+/// renderer that fails to load fails the test.
 @Suite @MainActor struct K3DRestTests {
     static let limit = 10
+    nonisolated static var hasMetal: Bool { MTLCreateSystemDefaultDevice() != nil }
 
     struct Pixels {
         let width: Int
@@ -83,8 +86,9 @@ import Testing
         abs(a.r - b.r) <= Self.limit && abs(a.g - b.g) <= Self.limit && abs(a.b - b.b) <= Self.limit
     }
 
-    @Test(arguments: [DeviceColor.silver, .black]) func theRestFrameMatchesBL(_ color: DeviceColor) throws {
-        guard let renderer = K3DRenderer.shared else { return }
+    @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
+    func theRestFrameMatchesBL(_ color: DeviceColor) throws {
+        let renderer = try #require(K3DRenderer.shared)
         var state = AppState()
         state.deviceColor = color
         let name = color == .black ? "black" : "silver"
@@ -101,8 +105,8 @@ import Testing
     }
 
     /// The 3D texture's MENU label is where the app draws it: its top within 1 pt.
-    @Test func menuIsWhereTheAppDrawsIt() throws {
-        guard let renderer = K3DRenderer.shared else { return }
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func menuIsWhereTheAppDrawsIt() throws {
+        let renderer = try #require(K3DRenderer.shared)
         let state = AppState()
         let flat = try flat(state, "bl-silver-2d")
         let rest = try rest(renderer, state, "k3d7-rest-silver")
