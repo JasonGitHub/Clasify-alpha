@@ -50,6 +50,9 @@ struct ClickWheel: View {
         }
     }
 
+    /// SPIKE (CLA-101): BL only with the hidden switch.
+    @Environment(\.pocketLook) private var look
+
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
         movesBar: Bool = false, glowFrom: Double? = nil, cometFrom: Double? = nil, label: LabelGlow? = nil,
@@ -148,6 +151,7 @@ struct ClickWheel: View {
             if look == .bl {
                 Circle()
                     .fill(BL.wheel(black: black))
+                    .overlay { Circle().strokeBorder(Color.black.opacity(BL.wheelInnerRing(black: black)), lineWidth: 1) }
                     .background { Circle().fill(Color.black.opacity(BL.wheelRing(black: black))).padding(-0.5) }
                     .frame(width: Self.size, height: Self.size)
             } else {
@@ -285,8 +289,6 @@ private struct GlowingLabel<Label: View>: View {
     let label: Label
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
-    /// SPIKE (CLA-101): BL only with the hidden switch.
-    @Environment(\.pocketLook) private var look
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in

@@ -18,9 +18,11 @@ extension EnvironmentValues {
     }
 }
 
-/// Card BL's values, from Designer 1's frozen `design-review/round17/bl/k7-spike1.json`. All BL
-/// numbers live in this file. The labels and the
-/// bezel (#2a2c2e) are the same as BH, and so is the drop shadow.
+/// Card BL's values, BL v2 (Designer 1, 22:48 JST 11-13, the current candidate), from
+/// `design-review/round17/bl/k7.json`. All BL numbers live in this file. From v1
+/// (`k7-spike1.json`), only the Silver tone's last stops and the Silver wheel ring changed. The
+/// labels and the drop shadow are the same as BH. The bezel is #2a2c2e for both colors: BH's
+/// Silver bezel, but not BH's near black Black bezel.
 enum BL {
     /// The body: three layers, from the bottom. The main top-to-bottom tone, a left-to-right
     /// shade, and a thin dark line at the top.
@@ -49,8 +51,8 @@ enum BL {
     ] }
     static var silverTone: [Gradient.Stop] {
         stops([(0xffffff, 0), (0xfdfdfd, 0.04), (0xf9f9f9, 0.10), (0xf4f4f4, 0.16), (0xe8e8e8, 0.33), (0xe0e0e0, 0.49),
-               (0xd8d8d8, 0.60), (0xd4d4d4, 0.65), (0xcccccc, 0.82), (0xc3c3c3, 0.91), (0xbfbfbf, 0.95), (0xb4b4b4, 0.97),
-               (0xa9a9a9, 0.983), (0x9a9a9a, 0.992), (0x7c7c7c, 0.997), (0x666666, 1)])
+               (0xd8d8d8, 0.60), (0xd4d4d4, 0.65), (0xcccccc, 0.82), (0xc4c4c4, 0.91), (0xc2c2c2, 0.95), (0xbbbbbb, 0.97),
+               (0xb2b2b2, 0.983), (0xa3a3a3, 0.992), (0x888888, 0.997), (0x6a6a6a, 1)])
     }
     static var blackTone: [Gradient.Stop] {
         stops([(0x575757, 0), (0x555555, 0.06), (0x535353, 0.16), (0x4f4f4f, 0.33), (0x4c4c4c, 0.49), (0x484848, 0.65),
@@ -68,8 +70,13 @@ enum BL {
             startPoint: UnitPoint(x: 0.2808, y: -0.1024), endPoint: UnitPoint(x: 0.7192, y: 1.1024)))
     }
 
-    /// `wsh`: Silver has a 0.5 point ring, black 20%, outside the wheel. Black has none.
-    static func wheelRing(black: Bool) -> Double { black ? 0 : 0.2 }
+    /// `wsh`: Silver has a 1 point ring inside the edge, black 10%, and a 0.5 point ring outside
+    /// it, black 15%. Black has none.
+    static func wheelInnerRing(black: Bool) -> Double { black ? 0 : 0.1 }
+    static func wheelRing(black: Bool) -> Double { black ? 0 : 0.15 }
+
+    /// `bezel`: the screen's bezel, both colors.
+    static let bezel: UInt32 = 0x2a2c2e
 
     /// `ctr`: Silver #c9c9ca, #cdcdce at 50%, #d0d0d1. Black flat #454545. BL gives no pressed
     /// value, so a press darkens the button by 6%, about as much as BH's `ctrDown`.

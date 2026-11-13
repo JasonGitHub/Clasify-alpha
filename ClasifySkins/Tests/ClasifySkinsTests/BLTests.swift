@@ -6,7 +6,7 @@ import Testing
 @testable import ClasifySkins
 
 /// SPIKE (CLA-101, K.3D spike 2): card BL's 2D look, drawn only with the hidden switch. The
-/// expected colors come from `design-review/round17/bl/k7-spike1.json`. Points are in device
+/// expected colors come from `design-review/round17/bl/k7.json`, BL v2. Points are in device
 /// points, read at 2x.
 @Suite @MainActor struct BLTests {
     struct Shot {
@@ -65,15 +65,18 @@ import Testing
         // side shade #db.
         let middle = shot.mean(Self.x, 290)
         #expect(near(middle, try reference(0xdbdbdb)), "body \(middle)")
-        // 91% down: #c3c3c3 to #bfbfbf is #c3, with the shade #be.
+        // 91% down: #c4c4c4 to #c2c2c2 (v2) is #c4, with the shade #bf.
         let low = shot.mean(Self.x, 560)
-        #expect(near(low, try reference(0xbebebe)), "low body \(low)")
+        #expect(near(low, try reference(0xbfbfbf)), "low body \(low)")
         // The wheel at 27% down its 160° gradient: #f9fbfc.
         let wheel = shot.pixel(Self.x * 2, (Self.wheelTop + 60) * 2)
         #expect(near(wheel, try reference(0xf9fbfc)), "wheel \(wheel)")
-        // The 0.5 point ring just above the wheel (y 320.5 to 321) is darker than the body above it.
+        // The 0.5 point ring just above the wheel (y 320.5 to 321, black 15%) is darker than the
+        // body above it, and the 1 point inner ring (black 10%) darker than the wheel below it.
         let ring = shot.pixel(Self.x * 2, Self.wheelTop * 2 - 1), above = shot.pixel(Self.x * 2, Self.wheelTop * 2 - 6)
         #expect(ring.g < above.g - 20, "ring \(ring), above \(above)")
+        let inner = shot.pixel(Self.x * 2, Self.wheelTop * 2 + 1), below = shot.pixel(Self.x * 2, Self.wheelTop * 2 + 8)
+        #expect(inner.g < below.g - 12, "inner ring \(inner), below \(below)")
         let center = shot.pixel(Self.x * 2, Self.centerY * 2)
         #expect(near(center, try reference(0xcdcdce)), "center \(center)")
     }
@@ -88,6 +91,9 @@ import Testing
         #expect(near(wheel, try reference(0x1e1e1e)), "wheel \(wheel)")
         let center = shot.pixel(Self.x * 2, Self.centerY * 2)
         #expect(near(center, try reference(0x454545)), "center \(center)")
+        // BL's bezel is #2a2c2e on Black too, not BH's near black #050505.
+        let bezel = shot.pixel(30 * 2, 120 * 2)
+        #expect(near(bezel, try reference(0x2a2c2e)), "bezel \(bezel)")
     }
 
     /// With no switch the look stays BH: the black body is still #656467 there.
