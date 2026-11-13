@@ -1392,18 +1392,31 @@ import Testing
     }
 
     /// Card BM, changes 257 and 264: Pick Your Music has the two services on the left and the
-    /// big logo tile of the selected one on the right, in place of the small device. Until the
-    /// logos are bundled (Jason's legal check), both tiles are dark with the name in white.
+    /// big logo tile of the selected one on the right, in place of the small device. Spotify's
+    /// tile has its green marks; Apple Music's tile is dark with a white note and no green.
     @Test func pickYourMusicShowsTheLogoOfTheSelectedService() throws {
+        #expect(ServiceLogo.logos.count == 2)  // both logos are bundled
         var s = AppState()
         s.stack = [Frame(screen: .pickMusic)]
-        let logo = (x: Self.screenLeft + 225, y: 165)  // in the tile, under its middle
+        // The green points on the right side, where the tile and its reflection are.
+        func green(_ shot: Snapshot) -> Int {
+            var n = 0
+            for x in Self.screenLeft + 150..<Self.screenLeft + 300 {
+                for y in Self.listTop..<Self.screenBottom {
+                    let c = shot.rgb(x, y)
+                    if c.g > c.r + 100 && c.g > c.b + 80 { n += 1 }
+                }
+            }
+            return n
+        }
         let spotify = try render(s, "pick-music", time: 10)
         #expect(spotify.isBlue(100, Self.rowCenter(0)) && !spotify.isBlue(100, Self.rowCenter(1)))
-        #expect(spotify.isDark(logo.x, logo.y), "\(spotify.rgb(logo.x, logo.y))")  // the dark tile
+        #expect(green(spotify) > 300, "\(green(spotify))")
         s.top.sel = 1
         let apple = try render(s, "pick-music-apple", time: 10)
         #expect(apple.isBlue(100, Self.rowCenter(1)))
+        #expect(green(apple) == 0)  // the Spotify tile has faded out
+        let logo = (x: Self.screenLeft + 225, y: 165)  // in the tile, under its middle
         #expect(apple.isDark(logo.x, logo.y), "\(apple.rgb(logo.x, logo.y))")
     }
 
