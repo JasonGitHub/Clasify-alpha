@@ -55,9 +55,7 @@ final class AppleMusicPlayer: Player {
                 return fail("That song can’t play here", id: id, load: true)
             }
             var tracks: [Song]?
-            if let context, let playlist = try? await AppleMusicReads.playlist(context) {
-                tracks = await AppleMusicReads.songs(of: playlist)
-            }
+            if let context { tracks = await AppleMusicReads.songs(for: context) }
             guard id == loadID else { return }
             if let tracks, let start = tracks.first(where: { $0.id == song.id }) {
                 player.queue = ApplicationMusicPlayer.Queue(for: tracks, startingAt: start)

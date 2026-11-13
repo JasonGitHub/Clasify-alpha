@@ -49,4 +49,32 @@ enum AppleMusicReads {
             if case .song(let song) = track { song } else { nil }
         }
     }
+
+    /// The songs that a store context plays: a playlist, "Favorite Songs", or an album
+    /// (`applemusic:album:`). An album plays its songs from "Favorite Songs" in the order that
+    /// the Albums screen shows them (`Album.songs`). nil when the context can't be read.
+    static func songs(for context: String) async -> [Song]? {
+        let albumContext = context.hasPrefix(AppleMusicID.albumPrefix)
+        let id = albumContext ? ClasifyCore.Playlist.likedSongsID : context
+        guard let playlist = try? await Self.playlist(id), let songs = await Self.songs(of: playlist) else { return nil }
+        guard albumContext else { return songs }
+        let byID = Dictionary(songs.map { (AppleMusicID.song($0.id), $0) }, uniquingKeysWith: { first, _ in first })
+        return ClasifyCore.Album.songs(context, in: songs.map(Self.track)).compactMap { byID[$0.id] }
+    }
+
+    /// A store `Track` from a MusicKit song. The cover is the Artwork URL (PR 3 lets
+    /// `ArtworkLoader` read it). The album ID is made from its title and artist, because a
+    /// song has no album ID without one more read per song.
+    static func track(_ song: Song) -> ClasifyCore.Track {
+        let album = song.albumTitle.map {
+            ClasifyCore.Album(id: AppleMusicID.albumPrefix + $0 + "\u{1F}" + song.artistName, name: $0, artist: song.artistName)
+        }
+        return ClasifyCore.Track(
+            id: AppleMusicID.song(song.id), title: song.title, artist: song.artistName,
+            duration: song.duration ?? 0,
+            coverID: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+            album: album, disc: song.discNumber, number: song.trackNumber,
+            largeCoverID: song.artwork?.url(width: 640, height: 640)?.absoluteString
+        )
+    }
 }
