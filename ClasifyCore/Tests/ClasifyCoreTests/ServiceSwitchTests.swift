@@ -106,6 +106,24 @@ import Testing
         #expect(s.service == .spotify && s.top.screen == .login && s.restoring)
     }
 
+    /// Back from System Settings, Access is off checks again: still no access, it stays; with
+    /// access, it goes on to the main menu.
+    @Test func accessOffChecksAgainWhenClasifyComesBack() {
+        var s = mainMenu()
+        openSettings(&s)
+        send(&s, .select, .menu)
+        send(&s, .accessDenied(token: s.authAttempt))
+        let token = s.authAttempt + 1
+        #expect(send(&s, .activated) == [.restoreSession(token: token)])
+        #expect(s.restoring && send(&s, .activated) == [])  // one check at a time
+        send(&s, .accessDenied(token: token))
+        #expect(s.stack == [Frame(screen: .accessOff)])
+        #expect(!s.restoring)
+        send(&s, .activated)
+        send(&s, .restored(token: s.authAttempt, ok: true))
+        #expect(s.stack == [Frame(screen: .main)] && s.signedIn)
+    }
+
     /// A switch to Apple Music with no access ends on Access is off too, never on a dead end.
     @Test func aSwitchWithNoAccessShowsAccessOff() {
         var s = mainMenu()

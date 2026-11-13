@@ -1392,19 +1392,19 @@ import Testing
     }
 
     /// Card BM, changes 257 and 264: Pick Your Music has the two services on the left and the
-    /// big logo of the selected one on the right, in place of the small device.
+    /// big logo tile of the selected one on the right, in place of the small device. Until the
+    /// logos are bundled (Jason's legal check), both tiles are dark with the name in white.
     @Test func pickYourMusicShowsTheLogoOfTheSelectedService() throws {
         var s = AppState()
         s.stack = [Frame(screen: .pickMusic)]
         let logo = (x: Self.screenLeft + 225, y: 165)  // in the tile, under its middle
         let spotify = try render(s, "pick-music", time: 10)
         #expect(spotify.isBlue(100, Self.rowCenter(0)) && !spotify.isBlue(100, Self.rowCenter(1)))
-        let green = spotify.rgb(logo.x, logo.y)
-        #expect(green.g > green.r + 100, "\(green)")  // Spotify's green circle
+        #expect(spotify.isDark(logo.x, logo.y), "\(spotify.rgb(logo.x, logo.y))")  // the dark tile
         s.top.sel = 1
         let apple = try render(s, "pick-music-apple", time: 10)
         #expect(apple.isBlue(100, Self.rowCenter(1)))
-        #expect(apple.isDark(logo.x, logo.y), "\(apple.rgb(logo.x, logo.y))")  // Apple Music's black tile
+        #expect(apple.isDark(logo.x, logo.y), "\(apple.rgb(logo.x, logo.y))")
     }
 
     /// Card AW.1, change 236: after a turn, Pick Your Color shows no light on the wheel's rim.

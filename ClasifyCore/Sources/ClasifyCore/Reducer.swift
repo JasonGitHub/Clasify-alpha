@@ -822,7 +822,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .yourMusic && s.top.loading { s.namesAt = now }  // the names fill in from now
             if waiting && !holdForNames() { endHeldRead() }  // no playlists: setup goes on
 
-        case .activated: refreshShown()
+        case .activated:
+            // Card BM, change 258: back from System Settings, Access is off checks again. With
+            // access, setup goes on as after Allow; still none, the screen stays as it is.
+            if s.top.screen == .accessOff && !s.restoring {
+                s.authAttempt += 1; s.restoring = true
+                fx.append(.restoreSession(token: s.authAttempt))
+                return
+            }
+            refreshShown()
 
         case .libraryStale:
             s.readAt = [:]
@@ -932,8 +940,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.restoring = false
             guard ok else { return }
             s.signedIn = true; fx.append(.prefetch)
-            // During setup, Hello and the color pick stay. The login screen goes on.
-            if s.top.screen == .login { setupNext() }
+            // During setup, Hello and the color pick stay. The login screen goes on, and so does
+            // Access is off after access was turned on (card BM, 258).
+            if s.top.screen == .login || s.top.screen == .accessOff { setupNext() }
             if s.top.screen == .premium {
                 // "Check again" found Premium: the green check for a beat, then on (screen 135).
                 s.premiumFound = true; s.premiumAt = now

@@ -12,7 +12,9 @@ struct ServiceLogo: View {
     static let size: CGFloat = 90, radius: CGFloat = 22
     static let fade = 0.25
 
-    /// The bundled logos, each 684 px square.
+    /// The bundled logos, each 684 px square. TEMPORARY: they are not bundled yet. The logos
+    /// wait for Jason's legal check (card BM, 264) and come in their own PR, with only the
+    /// files and their Package.swift lines. Until then each tile shows the service's name.
     @MainActor static let logos: [MusicService: NSImage] = Dictionary(uniqueKeysWithValues: MusicService.allCases.compactMap { service in
         let name = service == .spotify ? "logo-spotify" : "logo-apple-music"
         return PocketAbout.art(name).map { (service, $0) }
@@ -48,7 +50,15 @@ struct ServiceLogo: View {
             if let image = Self.logos[item] {
                 Image(nsImage: image).resizable().interpolation(.high)
             } else {
-                Color(hex: 0x1b1f24)
+                // TEMPORARY, until the logos are bundled: the name in white on a dark tile.
+                ZStack {
+                    Color(hex: 0x1b1f24)
+                    Text(item.rawValue)
+                        .font(.helvetica(13, bold: true))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(6)
+                }
             }
         }
         .frame(width: Self.size, height: Self.size)

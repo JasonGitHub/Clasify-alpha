@@ -15,9 +15,7 @@ let package = Package(
         .target(
             name: "ClasifySkins", dependencies: [.product(name: "ClasifyCore", package: "ClasifyCore")],
             resources: ["stand", "wave", "think", "boba", "sleep"].map { Resource.copy("Resources/about-hp-\($0).png") }
-                + ["front", "back", "steel"].map { Resource.copy("Resources/k3d-\($0).png") }
-                // Card BM, change 264: the service logos of Pick Your Music.
-                + ["spotify", "apple-music"].map { Resource.copy("Resources/logo-\($0).png") }),
+                + ["front", "back", "steel"].map { Resource.copy("Resources/k3d-\($0).png") }),
         .testTarget(name: "ClasifySkinsTests", dependencies: ["ClasifySkins"]),
     ]
 )
