@@ -10,6 +10,8 @@ struct AppleMusicSpikeWindow: Scene {
     var body: some Scene {
         Window("Apple Music Test", id: Self.id) { AppleMusicSpikeView() }
             .defaultLaunchBehavior(.suppressed)
+            // No Window-menu item: only the gated View menu button opens it.
+            .commandsRemoved()
     }
 }
 
