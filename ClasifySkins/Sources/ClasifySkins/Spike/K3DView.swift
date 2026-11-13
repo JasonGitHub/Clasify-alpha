@@ -50,12 +50,7 @@ public struct K3DFlipView<Content: View>: View {
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
             let pose = flip.pose(at: date)
-            content
-                .opacity(flat)
-                .allowsHitTesting(flat >= 1)
-                .background {
-                    if flat < 1 { body3D(angle: pose.angle, lift: pose.lift) }
-                }
+            K3DHandover(flat: flat, content: content) { body3D(angle: pose.angle, lift: pose.lift) }
         }
         .task(id: flip.start) {
             // When the turn ends, run the body again so the timeline pauses.
@@ -85,6 +80,26 @@ public struct K3DFlipView<Content: View>: View {
         .frame(width: size.width, height: size.height)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+    }
+}
+
+/// The flat 2D device over the 3D body, `flat` its opacity. The 2D device fades as one flat
+/// picture: without the compositing group, SwiftUI fades each of its layers on its own, so
+/// the body and bezel show through the screen and labels and the whole device dims to grey
+/// mid-fade (build 166). The 3D body is drawn only while the 2D device is not opaque.
+struct K3DHandover<Flat: View, Body3D: View>: View {
+    let flat: Double
+    let content: Flat
+    @ViewBuilder let body3D: () -> Body3D
+
+    var body: some View {
+        content
+            .compositingGroup()
+            .opacity(flat)
+            .allowsHitTesting(flat >= 1)
+            .background {
+                if flat < 1 { body3D() }
+            }
     }
 }
 
