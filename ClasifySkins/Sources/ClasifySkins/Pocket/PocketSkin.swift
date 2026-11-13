@@ -19,6 +19,8 @@ public struct PocketSkin: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The small device on a setup screen: no glow, no comet, no keys and no drop shadow.
     @Environment(\.pocketPreview) private var preview
+    /// SPIKE (CLA-101): BL only with the hidden switch.
+    @Environment(\.pocketLook) private var look
 
     public init(state: AppState, send: @escaping @MainActor (Action) -> Void) {
         self.state = state
@@ -47,7 +49,7 @@ public struct PocketSkin: View {
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
             // A new color crossfades in 0.45 s (card AW, changes 150 and 203).
-            Bodies(black: fade ?? (state.shownColor == .black ? 1 : 0), preview: preview)
+            Bodies(black: fade ?? (state.shownColor == .black ? 1 : 0), preview: preview, look: look)
                 .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
         }
         // Keys come through a window-level monitor, not SwiftUI focus (CLA-79).
@@ -91,7 +93,30 @@ public struct PocketSkin: View {
     /// of `bodyShadow`, the matte grain and the `bodyEdge` line. The face fills the whole shape,
     /// under the edge line too, so no light hairline shows at the edge (the mockup's
     /// background-origin border-box).
-    static func device(_ color: DeviceColor) -> some View {
+    @ViewBuilder static func device(_ color: DeviceColor, look: PocketLook = .bh) -> some View {
+        switch look {
+        case .bh: bhDevice(color)
+        case .bl: blDevice(color)
+        }
+    }
+
+    /// SPIKE (CLA-101): card BL's body, with BL's edge and grain. No side shades or rims.
+    private static func blDevice(_ color: DeviceColor) -> some View {
+        let black = color == .black
+        let shape = RoundedRectangle(cornerRadius: 34)
+        return BL.body(black: black)
+            .overlay { shape.strokeBorder(Color.black.opacity(BL.edge(black: black)), lineWidth: 1) }
+            .overlay {
+                Grain.image.resizable(resizingMode: .tile)
+                    .clipShape(RoundedRectangle(cornerRadius: 33))
+                    .padding(1)
+                    .opacity(BL.grain(black: black))
+                    .blendMode(.overlay)
+            }
+            .compositingGroup()
+    }
+
+    private static func bhDevice(_ color: DeviceColor) -> some View {
         let black = color == .black
         let shape = RoundedRectangle(cornerRadius: 34)
         let inner = RoundedRectangle(cornerRadius: 33)  // inside the 1 point edge
@@ -204,6 +229,7 @@ private struct Bodies: View, Animatable {
     /// 0 is Silver, 1 is Black.
     var black: Double
     let preview: Bool
+    var look = PocketLook.bh
 
     // `Animatable` is nonisolated while `View` is on the main actor. `black` is a plain Double
     // in a value type, so reading and writing it from any isolation is safe.
@@ -222,8 +248,8 @@ private struct Bodies: View, Animatable {
                     .shadow(color: PocketSkin.shadowColor(black), radius: 20, y: 20)
             }
             // Hidden once the fade ends, so no Silver shows at Black's soft outer edge.
-            PocketSkin.device(.silver).opacity(black < 1 ? 1 : 0)
-            PocketSkin.device(.black).opacity(black)
+            PocketSkin.device(.silver, look: look).opacity(black < 1 ? 1 : 0)
+            PocketSkin.device(.black, look: look).opacity(black)
         }
     }
 }

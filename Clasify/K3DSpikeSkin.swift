@@ -4,8 +4,9 @@ import SwiftUI
 
 /// SPIKE (CLA-101): the skin with the K.3D.1 flip. Shows only when the hidden switch
 /// `spike.k3d` is on (`defaults write app.clasify.Clasify spike.k3d -bool true`, then
-/// relaunch). In About, Play/Pause turns the device over to its steel back and back again. While
-/// the 3D body shows, Space or a click on it turns it back. Leaving About shows the front.
+/// relaunch). The 2D device draws card BL's look. In About, Play/Pause turns the device over
+/// to its steel back and back again. While the 3D body shows, Space or a click on it turns it
+/// back. Leaving About shows the front.
 struct K3DSpikeSkin: View {
     let store: Store
     let artwork: Artwork
@@ -25,6 +26,8 @@ struct K3DSpikeSkin: View {
             }
             .environment(\.artwork, artwork)
         }
+        // K.3D spike 2: with the switch on, the 2D device draws card BL's look.
+        .environment(\.pocketLook, .bl)
         .onChange(of: store.state.top.screen) { _, screen in
             if screen != .about { flip = K3DFlip() }
         }
