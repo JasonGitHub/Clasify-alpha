@@ -167,6 +167,8 @@ final class AppModel {
             libraries?.service = service
             // The hidden Spotify app does not run while Apple Music is active (CLA-103).
             if service == .appleMusic { player?.quitApp() }
+            // Apple Music does not need the Spotify app. "Found" keeps the Spotify App screen
+            // (card BB) from opening while Apple Music is active.
             store?.send(.spotifyAppFound(service == .appleMusic || Self.spotifyAppInstalled))
         }
         player.send = { [weak store] action in store?.send(action) }
@@ -195,8 +197,7 @@ final class AppModel {
             MainActor.assumeIsolated { store?.send(.activated) }
         }
         // Setup shows the Spotify App screen (card BB) only when the app is missing. Apple Music
-        // does not need it, and the hidden Spotify app does not run then.
-        if service == .appleMusic { player.quitApp() }
+        // does not need it: "found" keeps that screen away while Apple Music is active.
         store.send(.spotifyAppFound(service == .appleMusic || Self.spotifyAppInstalled))
         store.send(.launch)  // restores the stored login
         // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,

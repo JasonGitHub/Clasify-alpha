@@ -113,5 +113,6 @@ import Testing
     #expect(libraries.service == .appleMusic && store.state.service == .appleMusic)
     #expect(store.state.words == .appleMusic && store.state.likedSongsName == "Favorite Songs")
     while apple.calls.isEmpty { await Task.yield() }
-    #expect(apple.calls == ["restoreSession"] && spotify.calls.isEmpty)
+    // The words came in a nested send; the login after them still ran once, on Apple Music.
+    #expect(apple.calls.filter { $0 == "restoreSession" }.count == 1 && spotify.calls.isEmpty)
 }

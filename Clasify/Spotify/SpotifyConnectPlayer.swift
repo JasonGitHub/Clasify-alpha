@@ -106,6 +106,9 @@ final class SpotifyConnectPlayer: Player {
     private var warmID = 0
     /// Bumped by `reset`, so an option result from before a sign-out changes nothing.
     private var session = 0
+    /// The Spotify app that Clasify launched in this session, by its process ID. Only this
+    /// one quits when Apple Music becomes active: the user's own Spotify stays.
+    private var launchedApp: pid_t?
 
     init(client: LibrespotClient, library: LibrespotLibrary) {
         self.client = client
@@ -376,14 +379,14 @@ final class SpotifyConnectPlayer: Player {
         latest = nil  // it belongs to the account that signed out
     }
 
-    /// Apple Music is now active: the hidden Spotify app must not run (CLA-103). Quits the
-    /// app only while it is hidden, as Clasify launched it. A Spotify window that the user
-    /// opened stays. The device and the session's state belong to Spotify, so they go too.
+    /// Apple Music is now active: the hidden Spotify app must not run (CLA-103). Quits it only
+    /// when Clasify launched it in this session; a Spotify that the user opened, or one left
+    /// from an earlier session, stays. The device and the session's state go too.
     func quitApp() {
         reset()
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID) where app.isHidden {
-            app.terminate()
-        }
+        guard let pid = launchedApp else { return }
+        launchedApp = nil
+        NSRunningApplication(processIdentifier: pid)?.terminate()
     }
 
     /// Spotify quit. Its device must be found again after the next launch. While it played
@@ -690,6 +693,7 @@ final class SpotifyConnectPlayer: Player {
         let start = ContinuousClock.now
         try await Self.open(url)
         Self.logTime("Spotify launched", since: start)
+        launchedApp = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first?.processIdentifier
         // Safety net: Spotify must never come to the front.
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first,
            app.isActive || !app.isHidden {
