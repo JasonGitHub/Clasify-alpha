@@ -27,6 +27,10 @@ final class AppleMusicPlayer: Player {
     /// The newest play or pause the user asked for. A load applies it when it is ready, so a
     /// pause pressed during a load is kept.
     private var wantsPlay = false
+    /// Next (true) and Prev (false) pressed during a load, in order, run once the queue is ready.
+    private var pendingSkips: [Bool] = []
+    /// The newest seek pressed during a load, run after the skips.
+    private var pendingSeek: Double?
     private var poller: Timer?
     /// What the last poll saw, so that only changes are reported.
     private var lastTrack: String?
@@ -43,10 +47,12 @@ final class AppleMusicPlayer: Player {
         stopped = false
         loading = true
         wantsPlay = autoplay
+        pendingSkips = []
+        pendingSeek = nil
         let id = loadID
         Task {
             guard let song = await Self.song(trackID) else {
-                return fail("That song can’t play here", id: id, generation: generation, load: true)
+                return fail("That song can’t play here", id: id, load: true)
             }
             var tracks: [Song]?
             if let context { tracks = await Self.playlistTracks(context) }
@@ -63,7 +69,7 @@ final class AppleMusicPlayer: Player {
                 guard id == loadID else { return }
                 if wantsPlay { try await player.play() }
             } catch {
-                return fail("That song can’t play here", id: id, generation: generation, load: true)
+                return fail("That song can’t play here", id: id, load: true)
             }
             guard id == loadID else {
                 // stop() ran during play(), for example on a service switch: play must not go on.
@@ -72,10 +78,22 @@ final class AppleMusicPlayer: Player {
                 return
             }
             if !wantsPlay && player.state.playbackStatus == .playing { player.pause() }  // paused during play()
+            let skips = pendingSkips, seek = pendingSeek
+            pendingSkips = []
+            pendingSeek = nil
+            for forward in skips {
+                if forward { _ = try? await player.skipToNextEntry() } else { _ = try? await player.skipToPreviousEntry() }
+            }
+            guard id == loadID else { return }
+            if let seek { player.playbackTime = seek }
             loading = false
-            lastTrack = trackID
             lastPlaying = wantsPlay
-            send(.trackChanged(trackID, playing: wantsPlay, generation: generation))
+            if skips.isEmpty {
+                lastTrack = trackID
+                send(.trackChanged(trackID, playing: wantsPlay, generation: self.generation))
+            } else {
+                lastTrack = nil  // the first poll reports the track that the skips reached
+            }
             startPolling()
         }
     }
@@ -93,7 +111,7 @@ final class AppleMusicPlayer: Player {
         let id = loadID
         Task {
             do { try await player.play() } catch {
-                fail("Apple Music can’t play now", id: id, generation: generation, load: false)
+                fail("Apple Music can’t play now", id: id, load: false)
             }
             if id != loadID && stopped { player.stop() }  // stop() ran during play()
         }
@@ -114,12 +132,14 @@ final class AppleMusicPlayer: Player {
 
     func next(generation: Int) {
         self.generation = generation
+        if loading { pendingSkips.append(true); pendingSeek = nil; return }  // the load runs it
         guard hasQueue else { return }
         Task { _ = try? await player.skipToNextEntry() }  // the next poll reports the new track
     }
 
     func prev(generation: Int) {
         self.generation = generation
+        if loading { pendingSkips.append(false); pendingSeek = nil; return }  // the load runs it
         guard hasQueue else { return }
         Task { _ = try? await player.skipToPreviousEntry() }
     }
@@ -136,6 +156,7 @@ final class AppleMusicPlayer: Player {
 
     func seek(to seconds: Double, generation: Int) {
         self.generation = generation
+        if loading { pendingSeek = seconds; return }  // the load runs it
         guard hasQueue else { return }
         player.playbackTime = seconds
     }
@@ -154,7 +175,8 @@ final class AppleMusicPlayer: Player {
         }
     }
 
-    private func fail(_ message: String, id: Int, generation: Int, load: Bool) {
+    /// Reports with the newest generation: a Next or Prev during the load moved it on.
+    private func fail(_ message: String, id: Int, load: Bool) {
         guard id == loadID else { return }
         if load {  // the old queue, if any, plays on and reports again
             loading = false
