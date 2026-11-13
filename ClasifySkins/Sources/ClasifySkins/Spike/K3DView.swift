@@ -101,6 +101,8 @@ public struct K3DFlipView<Content: View>: View {
         .frame(width: size.width, height: size.height)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+        // At rest behind the 2D device, a click must not reach the 3D body's tap.
+        .allowsHitTesting(shows)
     }
 }
 
@@ -194,13 +196,11 @@ final class K3DLayerView: MTKView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let drawable = K3DRenderer.shared?.draw(in: self) else { return }
-        drewOnce = true
-        guard firstFrame != nil else { return }
-        drawable.addPresentedHandler { [weak self] _ in Task { @MainActor in self?.firstFrameShown() } }
+        if K3DRenderer.shared?.draw(in: self) == true { drewOnce = true }
     }
 
-    private func firstFrameShown() {
+    /// The renderer calls this when a frame drawn while `firstFrame` was set is on screen.
+    func firstFrameShown() {
         let call = firstFrame
         firstFrame = nil
         call?()
@@ -321,16 +321,20 @@ final class K3DLayerView: MTKView {
         frontScreen = screen
     }
 
-    /// Draws one frame in the view. Returns the drawable it presents, nil when it drew nothing.
-    @discardableResult func draw(in view: K3DLayerView) -> (any MTLDrawable)? {
+    /// Draws one frame in the view. Returns false when it drew nothing.
+    @discardableResult func draw(in view: K3DLayerView) -> Bool {
         show(screen: view.screen)
         guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let buffer = queue.makeCommandBuffer(), let encoder = buffer.makeRenderCommandEncoder(descriptor: pass)
-        else { return nil }
+        else { return false }
         encode(encoder, pose: view.pose, size: view.bounds.size, center: view.deviceCenter)
+        if view.firstFrame != nil {
+            // Before the commit, so the handler cannot miss the presentation.
+            drawable.addPresentedHandler { [weak view] _ in Task { @MainActor in view?.firstFrameShown() } }
+        }
         buffer.present(drawable)
         buffer.commit()
-        return drawable
+        return true
     }
 
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
