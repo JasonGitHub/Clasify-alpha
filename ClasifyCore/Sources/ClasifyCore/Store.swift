@@ -111,6 +111,9 @@ public final class Store {
     @ObservationIgnored private let library: any Library
     @ObservationIgnored private let env: Dependencies
     @ObservationIgnored private var fetches: [Int: Task<Void, Never>] = [:]  // in flight, by token
+    /// Counts service switches. A background read with no token that ends after a switch is
+    /// dropped, so the old service's lists never show on the new one (CLA-103).
+    @ObservationIgnored private var serviceGen = 0
     /// Called after each `.wheel` step that moved something (see `wheelMoved`). The app clicks
     /// and ticks the trackpad here.
     @ObservationIgnored public var onWheelStep: (@MainActor () -> Void)?
@@ -183,16 +186,18 @@ public final class Store {
                     self?.send(.tracksLoaded(token: token, playlist: id, tracks: result))
                 }
             case .refreshPlaylists:
-                let library = self.library
+                let (library, gen) = (self.library, serviceGen)
                 Task(priority: .utility) { [weak self] in
                     let result = await library.rereadPlaylists()
-                    self?.send(.playlistsRefreshed(result))
+                    guard let self, self.serviceGen == gen else { return }
+                    self.send(.playlistsRefreshed(result))
                 }
             case .refreshTracks(let id):
-                let library = self.library
+                let (library, gen) = (self.library, serviceGen)
                 Task(priority: .utility) { [weak self] in
                     let result = await library.reread(id)
-                    self?.send(.tracksRefreshed(playlist: id, tracks: result))
+                    guard let self, self.serviceGen == gen else { return }
+                    self.send(.tracksRefreshed(playlist: id, tracks: result))
                 }
             case .readArtTracks(let token, let id):
                 let library = self.library
@@ -201,10 +206,11 @@ public final class Store {
                     self?.send(.artTracksRead(token: token, playlist: id, tracks: result))
                 }
             case .readTrack(let id):
-                let library = self.library
+                let (library, gen) = (self.library, serviceGen)
                 Task { [weak self] in
                     let track = await library.track(id)
-                    self?.send(.trackRead(id, track))
+                    guard let self, self.serviceGen == gen else { return }
+                    self.send(.trackRead(id, track))
                 }
             case .prefetch:
                 let library = self.library
@@ -237,6 +243,7 @@ public final class Store {
                 }
             case .logOut: library.logOut()
             case .setService(let service):
+                serviceGen += 1
                 onSetService?(service)
                 send(.libraryWords(library.words))
             }
