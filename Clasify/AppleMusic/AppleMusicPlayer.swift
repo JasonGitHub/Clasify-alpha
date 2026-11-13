@@ -51,11 +51,13 @@ final class AppleMusicPlayer: Player {
         pendingSeek = nil
         let id = loadID
         Task {
-            guard let song = await Self.song(trackID) else {
+            guard let song = await AppleMusicReads.song(trackID) else {
                 return fail("That song can’t play here", id: id, load: true)
             }
             var tracks: [Song]?
-            if let context { tracks = await Self.playlistTracks(context) }
+            if let context, let playlist = try? await AppleMusicReads.playlist(context) {
+                tracks = await AppleMusicReads.songs(of: playlist)
+            }
             guard id == loadID else { return }
             if let tracks, let start = tracks.first(where: { $0.id == song.id }) {
                 player.queue = ApplicationMusicPlayer.Queue(for: tracks, startingAt: start)
@@ -209,27 +211,5 @@ final class AppleMusicPlayer: Player {
             send(.trackChanged(track, playing: playing, generation: generation))
         }
         if playing { send(.position(player.playbackTime, generation: generation)) }
-    }
-
-    /// A song from the user's library, or else from the catalog.
-    private static func song(_ id: String) async -> Song? {
-        guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.songPrefix) else { return nil }
-        var library = MusicLibraryRequest<Song>()
-        library.filter(matching: \.id, equalTo: itemID)
-        if let song = try? await library.response().items.first { return song }
-        let catalog = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: itemID)
-        return try? await catalog.response().items.first
-    }
-
-    /// The tracks of a library playlist, in order. nil for an unknown or unreadable playlist.
-    private static func playlistTracks(_ id: String) async -> [Song]? {
-        guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.playlistPrefix) else { return nil }
-        var request = MusicLibraryRequest<MusicKit.Playlist>()
-        request.filter(matching: \.id, equalTo: itemID)
-        guard let playlist = try? await request.response().items.first,
-              let tracks = try? await playlist.with([.tracks]).tracks else { return nil }
-        return tracks.compactMap { track -> Song? in
-            if case .song(let song) = track { song } else { nil }
-        }
     }
 }

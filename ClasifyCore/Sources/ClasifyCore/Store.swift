@@ -61,6 +61,12 @@ public protocol Library: AnyObject {
     /// Called on the main actor while a track read runs: how many of the list's items have
     /// their details, and how many there are. The store sets it.
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? { get set }
+    /// The name of the user's liked list on this service, such as "Liked Songs" on Spotify.
+    var likedSongsName: String { get }
+}
+
+extension Library {
+    public var likedSongsName: String { "Liked Songs" }
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.
@@ -87,6 +93,7 @@ public final class Store {
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
+        self.state.likedSongsName = library.likedSongsName
         library.onProgress = { [weak self] playlist, done, total, albums in
             self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
         }

@@ -41,7 +41,7 @@ public struct Album: Equatable, Hashable, Sendable {
 
     /// True for an album URI. A song list of an album (`Screen.tracks` with this ID) shows the
     /// album's songs from Liked Songs.
-    public static func isID(_ id: String) -> Bool { id.hasPrefix("spotify:album:") }
+    public static func isID(_ id: String) -> Bool { id.hasPrefix("spotify:album:") || id.hasPrefix("applemusic:album:") }
 
     /// The songs of album `id` among `tracks`, in disc and track order. Songs with no number
     /// keep their order, after the numbered ones of their disc.
@@ -318,6 +318,8 @@ public struct AppState: Equatable, Sendable {
     public var restoring = false
     /// Liked Songs (once read) first, then the playlists. Each part loads when its screen opens.
     public var library: [Playlist] = []
+    /// The liked list's name on the active service ("Liked Songs" on Spotify), from the `Library`.
+    public var likedSongsName = "Liked Songs"
     /// The covers that take turns on the main menu's right side. `refreshArt` sets them.
     public var mainArt: [Track] = []
     /// The main menu row whose covers show. It follows the selection `artDelay` after the last
