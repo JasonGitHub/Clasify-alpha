@@ -19,8 +19,9 @@ struct PlainWindowApp: App {
         .windowStyle(.plain)
         .windowResizability(.contentSize)
         .windowBackgroundDragBehavior(.enabled)
-        .commands { DebugCommands(model: model); HelpCommands() }
+        .commands { DebugCommands(model: model); HelpCommands(); AppleMusicSpikeCommands() }
         HowToUseWindow()
+        AppleMusicSpikeWindow()  // SPIKE (Apple Music test), hidden switch
     }
 }
 
