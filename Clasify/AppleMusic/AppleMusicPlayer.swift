@@ -21,6 +21,12 @@ final class AppleMusicPlayer: Player {
     private var loadID = 0
     /// Set by `stop()` and cleared by the next load: nothing may play until then.
     private var stopped = true
+    /// A load has not reported yet. The poller then reports nothing, because the old queue's
+    /// state with the new generation would end the reducer's pending load too early.
+    private var loading = false
+    /// The newest play or pause the user asked for. A load applies it when it is ready, so a
+    /// pause pressed during a load is kept.
+    private var wantsPlay = false
     private var poller: Timer?
     /// What the last poll saw, so that only changes are reported.
     private var lastTrack: String?
@@ -35,6 +41,8 @@ final class AppleMusicPlayer: Player {
         self.generation = generation
         loadID += 1
         stopped = false
+        loading = true
+        wantsPlay = autoplay
         let id = loadID
         Task {
             guard let song = await Self.song(trackID) else {
@@ -53,7 +61,7 @@ final class AppleMusicPlayer: Player {
             do {
                 try await player.prepareToPlay()
                 guard id == loadID else { return }
-                if autoplay { try await player.play() }
+                if wantsPlay { try await player.play() }
             } catch {
                 return fail("That song can’t play here", id: id, generation: generation, load: true)
             }
@@ -63,21 +71,25 @@ final class AppleMusicPlayer: Player {
                 if stopped { player.stop() }
                 return
             }
+            if !wantsPlay && player.state.playbackStatus == .playing { player.pause() }  // paused during play()
+            loading = false
             lastTrack = trackID
-            lastPlaying = autoplay
-            send(.trackChanged(trackID, playing: autoplay, generation: generation))
+            lastPlaying = wantsPlay
+            send(.trackChanged(trackID, playing: wantsPlay, generation: generation))
             startPolling()
         }
     }
 
     func pause() {
-        guard hasQueue else { return }
+        wantsPlay = false
+        guard hasQueue, !loading else { return }  // a load in flight applies it
         player.pause()
         lastPlaying = false
     }
 
     func resume() {
-        guard hasQueue, !stopped else { return }
+        wantsPlay = true
+        guard hasQueue, !stopped, !loading else { return }  // a load in flight applies it
         let id = loadID
         Task {
             do { try await player.play() } catch {
@@ -90,6 +102,8 @@ final class AppleMusicPlayer: Player {
     func stop() {
         loadID += 1  // a load or resume in flight must not report or play after this
         stopped = true
+        loading = false
+        wantsPlay = false
         guard hasQueue else { return }
         player.stop()
         poller?.invalidate()
@@ -142,6 +156,10 @@ final class AppleMusicPlayer: Player {
 
     private func fail(_ message: String, id: Int, generation: Int, load: Bool) {
         guard id == loadID else { return }
+        if load {  // the old queue, if any, plays on and reports again
+            loading = false
+            if hasQueue && !wantsPlay { player.pause() }  // the user paused during the load
+        }
         send(load ? .loadFailed(message, generation: generation) : .playbackFailed(message, generation: generation))
     }
 
@@ -153,7 +171,7 @@ final class AppleMusicPlayer: Player {
     }
 
     private func poll() {
-        guard !stopped else { return }  // stop() also ends the timer; this is a second guard
+        guard !stopped, !loading else { return }  // stop() also ends the timer; this is a second guard
         let status = player.state.playbackStatus
         let playing = status == .playing
         if lastPlaying && status == .stopped {  // the queue ran out; Repeat All and One never end
