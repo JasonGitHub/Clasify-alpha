@@ -15,19 +15,20 @@ Design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjo
 
 ## Build and test
 
-Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Minimum macOS is 14. It may move to 15 for the plain window style after Jason tests the app.
+Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Minimum macOS is 15 (Jason decided 2026-11-10 17:32 JST): the plain window style.
 
 - `ClasifyCore/` (store and reducer) is plain Swift with no Apple UI frameworks. It builds and tests on Linux: `cd ClasifyCore && swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors`. CI runs the same on Linux (`.github/workflows/core.yml`).
 - `LibrespotBridge/` is the librespot static library with its C header: `cd LibrespotBridge && cargo fmt --check && cargo clippy --locked --all-targets -- -D warnings && cargo test --locked`. CI: `.github/workflows/bridge.yml`.
 - `ClasifySkins/` holds the SwiftUI skins. They depend on ClasifyCore only, never on the player or the library. It builds and tests on macOS only: `cd ClasifySkins && swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors`. Set `SNAPSHOT_DIR` to save the snapshot PNGs. CI: `.github/workflows/app.yml`, which uploads them as the `skin-snapshots` artifact.
 - `Clasify.xcodeproj` builds the app from the `Clasify/` folder. New Swift files there need no project edits. CI: `.github/workflows/app.yml` on macOS runners.
+- The test DMG comes from `.github/workflows/app-dmg.yml`. Each push to main that changes the app (not only workflows or docs) makes an ad-hoc signed DMG, with no secrets. A run started by hand on main makes `Clasify-build-<n>-signed.dmg`, signed with Developer ID (hardened runtime) and notarized; only that job uses the GitHub environment "release" and its secrets (Jason decided 2026-11-11 23:43 JST). Neither runs on a PR. Pin its actions to full commit SHAs. Never print a secret or add `set -x` there (CLA-69).
 - The app builds only on macOS. Cloud sessions run on Linux and cannot run `xcodebuild`, so say in the PR when an app change was not built or tested locally.
 
 ## Hard constraints
 
 - IMPORTANT: no dependencies beyond Apple frameworks and librespot. Don't add a Swift package, CocoaPod or Rust crate without asking first.
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
-- Network calls go only to Spotify and to the GitHub Releases API for the update check. No analytics. No crash reporting in 1.0.
+- Login tokens live only in the Keychain. Crash reports and usage analytics are allowed.
 - Album covers come only from Spotify's image CDN, `https://i.scdn.co/image/<coverID>`. `ArtworkLoader` keeps them in memory only: an NSCache and a URLSession with no URL cache. Never write a cover to disk. Skins get covers through the `artwork` environment value and never load them.
 - Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk. Run librespot with no credentials cache and no audio cache. Write no log files.
 - The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
@@ -41,8 +42,8 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 
 - One store holds all app state. Only the reducer changes it. The reducer is plain Swift with no UI or engine imports.
 - Skins send input actions (wheel, select, menu, play, next, prev) and render state. No logic in skins.
-- All playback goes through the `Player` protocol. Code above it must not know which engine is playing. librespot is pinned to one version.
-- EQ and spectrum are out of 1.0, because the audio does not pass through Clasify. Don't show the EQ setting. Media keys: MPRemoteCommandCenter. Update check: URLSession, not Sparkle.
+- All playback goes through the `Player` protocol. Code above it must not know which engine is playing. librespot is pinned to one version. librespot-core is vendored in `LibrespotBridge/vendor/librespot-core` with one patch (CLA-66: no `exit(1)` for a non-Premium account); re-apply it on update.
+- EQ and spectrum are out of 1.0, because the audio does not pass through Clasify. Don't show the EQ setting. Media keys: none in Clasify; the hidden Spotify app handles them (Jason tested 2026-11-08, CLA-42 canceled). Update check: URLSession, not Sparkle.
 
 ## Testing
 
@@ -53,7 +54,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 
 ## Pocket skin mockup
 
-`project/Pocket-Full.dc.html` in Jason's design artifact (https://claude.ai/artifact/7TnGYuahnpRDkR2FFkwTHy) is the spec for 1.0 screens, actions and edge cases: login, browse, play, settings, offline, expired session. It replaces the copy in Clasify.zip. `project/Pocket-Compare.dc.html` and `project/Pocket-Compare-2.dc.html` there list the changes from the old copy, as numbered before-and-after cards. Copy its colors, fonts, sizes, spacing and radii from the inline styles into native views; don't port its HTML or JS. Keep Settings to Shuffle, Repeat, Album Art, Clicker, About and Log out: its EQ, Skin and Playback rows are not in 1.0. If its strings say "Mixtape", the old name, use "Clasify".
+`project/Pocket-Full.dc.html` in Jason's design artifact (https://claude.ai/artifact/7TnGYuahnpRDkR2FFkwTHy) is the spec for 1.0 screens, actions and edge cases: login, browse, play, settings, offline, expired session. It replaces the copy in Clasify.zip. `project/Pocket-Compare.dc.html` and `project/Pocket-Compare-2.dc.html` there list the changes from the old copy, as numbered before-and-after cards. Copy its colors, fonts, sizes, spacing and radii from the inline styles into native views; don't port its HTML or JS. Keep Settings to Shuffle, Repeat, Album Art, Color, Clicker, Now Playing Bar, About and Log out: its EQ, Skin and Playback rows are not in 1.0. If its strings say "Mixtape", the old name, use "Clasify".
 
 ## Communication
 

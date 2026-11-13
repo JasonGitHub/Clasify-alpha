@@ -24,3 +24,9 @@ protobuf-json-mapping = "=3.7.2"
 # read the dealer's connection ID stream.
 http = "=1.5.0"
 futures-util = { version = "=0.3.34", default-features = false }
+
+# librespot-core 0.8.0, vendored with one patch (CLA-66): a non-Premium login no
+# longer calls exit(1). The bridge checks the account type itself. Re-apply the
+# patch when librespot is updated. No other edits to the vendored code.
+[patch.crates-io]
+librespot-core = { path = "vendor/librespot-core" }

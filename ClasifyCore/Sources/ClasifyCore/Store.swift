@@ -24,6 +24,13 @@ public protocol Player: AnyObject {
     func setVolume(_ percent: Int)
 }
 
+/// How a login ended.
+public enum LoginResult: Equatable, Sendable {
+    case ok, failed
+    /// The login worked, but the account is not Spotify Premium, so it ended (CLA-66).
+    case notPremium
+}
+
 /// Spotify login and library source (playlists and Liked Songs).
 /// It reads each part only when asked, and keeps what it read in memory for the session.
 @MainActor
@@ -43,14 +50,17 @@ public protocol Library: AnyObject {
     /// Reads Liked Songs and the playlist list in the background, at most two reads at a time,
     /// so that a later `playlists()` or `tracks(of:)` can answer at once.
     func prefetch() async
-    /// Logs in through the browser. Returns false when the user cancels or the login fails.
-    func logIn() async -> Bool
+    /// Logs in through the browser: `.failed` when the user cancels or the login fails.
+    func logIn() async -> LoginResult
     /// Stops a login that waits for the browser.
     func cancelLogIn() async
-    /// Logs in again with the stored login. Returns false when there is none or it fails.
-    func restoreSession() async -> Bool
+    /// Logs in again with the stored login: `.failed` when there is none or it fails.
+    func restoreSession() async -> LoginResult
     /// Forgets the stored login and ends the session.
     func logOut()
+    /// Called on the main actor while a track read runs: how many of the list's items have
+    /// their details, and how many there are. The store sets it.
+    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? { get set }
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.
@@ -64,9 +74,28 @@ public final class Store {
     /// Called after each `.wheel` step that moved something (see `wheelMoved`). The app clicks
     /// and ticks the trackpad here.
     @ObservationIgnored public var onWheelStep: (@MainActor () -> Void)?
+    /// Opens the Spotify app's download page in the browser (card BB). The app sets it.
+    @ObservationIgnored public var onGetSpotifyApp: (@MainActor () -> Void)?
+    /// Opens Spotify's Premium page in the browser (card AX, screen 135). The app sets it.
+    @ObservationIgnored public var onGetPremium: (@MainActor () -> Void)?
+    /// Where the settings are saved. When set, `init` loads them into the state.
+    @ObservationIgnored private let settingsStore: (any SettingsStore)?
 
-    public init(player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live) {
+    public init(
+        player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live,
+        settings: (any SettingsStore)? = nil
+    ) {
         self.player = player; self.library = library; self.state = state; self.env = env
+        settingsStore = settings
+        library.onProgress = { [weak self] playlist, done, total, albums in
+            self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
+        }
+        if let settings {
+            self.state.settings = Settings(from: settings)
+            // The player keeps its own shuffle and repeat for when it takes over playback later.
+            player.setShuffle(self.state.shuffle)
+            player.setRepeat(self.state.repeatMode)
+        }
     }
 
     /// Waits for in-flight library fetches to deliver their results. For tests.
@@ -77,6 +106,7 @@ public final class Store {
     public func send(_ action: Action) {
         let before = state
         let effects = reduce(&state, action, env)
+        if let settingsStore, state.settings != before.settings { state.settings.save(to: settingsStore) }
         if case .wheel = action, wheelMoved(from: before, to: state) { onWheelStep?() }
         for effect in effects {
             switch effect {
@@ -118,11 +148,11 @@ public final class Store {
                     let result = await library.reread(id)
                     self?.send(.tracksRefreshed(playlist: id, tracks: result))
                 }
-            case .readArtTracks(let id):
+            case .readArtTracks(let token, let id):
                 let library = self.library
                 Task(priority: .utility) { [weak self] in
                     let result = await library.tracks(of: id)
-                    self?.send(.artTracksRead(playlist: id, tracks: result))
+                    self?.send(.artTracksRead(token: token, playlist: id, tracks: result))
                 }
             case .readTrack(let id):
                 let library = self.library
@@ -136,17 +166,19 @@ public final class Store {
             case .logIn(let token):
                 let library = self.library
                 Task { [weak self] in
-                    let ok = await library.logIn()
-                    self?.send(.authDone(token: token, ok: ok))
+                    let result = await library.logIn()
+                    self?.send(result == .notPremium ? .notPremium(token: token) : .authDone(token: token, ok: result == .ok))
                 }
+            case .getSpotifyApp: onGetSpotifyApp?()
+            case .getPremium: onGetPremium?()
             case .cancelLogIn:
                 let library = self.library
                 Task { await library.cancelLogIn() }
             case .restoreSession(let token):
                 let library = self.library
                 Task { [weak self] in
-                    let ok = await library.restoreSession()
-                    self?.send(.restored(token: token, ok: ok))
+                    let result = await library.restoreSession()
+                    self?.send(result == .notPremium ? .notPremium(token: token) : .restored(token: token, ok: result == .ok))
                 }
             case .logOut: library.logOut()
             }

@@ -13,15 +13,15 @@ mod connect;
 mod library;
 mod oauth;
 pub use connect::{
-    lsb_connect_command, lsb_connect_devices, lsb_connect_play, lsb_connect_seek,
-    lsb_connect_set_option, lsb_connect_transfer, lsb_connect_volume, lsb_connect_watch,
-    LsbCommandCallback, LsbDevice, LsbDevicesCallback, LsbPlayerState, LsbStateCallback,
-    LSB_COMMAND_NEXT, LSB_COMMAND_PAUSE, LSB_COMMAND_PREV, LSB_COMMAND_RESUME,
+    lsb_connect_command, lsb_connect_devices, lsb_connect_play, lsb_connect_play_tracks,
+    lsb_connect_seek, lsb_connect_set_option, lsb_connect_transfer, lsb_connect_volume,
+    lsb_connect_watch, LsbCommandCallback, LsbDevice, LsbDevicesCallback, LsbPlayerState,
+    LsbStateCallback, LSB_COMMAND_NEXT, LSB_COMMAND_PAUSE, LSB_COMMAND_PREV, LSB_COMMAND_RESUME,
     LSB_OPTION_REPEAT_CONTEXT, LSB_OPTION_REPEAT_TRACK, LSB_OPTION_SHUFFLE,
 };
 pub use library::{
-    lsb_read_playlists, lsb_read_track, lsb_read_tracks, LsbPlaylist, LsbPlaylistsCallback,
-    LsbTrack, LsbTracksCallback,
+    lsb_read_playlists, lsb_read_track, lsb_read_tracks, lsb_read_tracks_progress, LsbPlaylist,
+    LsbPlaylistsCallback, LsbProgressCallback, LsbTrack, LsbTracksCallback,
 };
 pub use oauth::{
     lsb_oauth_cancel, lsb_oauth_login, lsb_oauth_refresh, LsbToken, LsbTokenCallback,
@@ -35,9 +35,39 @@ pub const LSB_ERR_OAUTH: i32 = 3;
 pub const LSB_ERR_READ: i32 = 4;
 pub const LSB_ERR_CONNECT: i32 = 5;
 pub const LSB_ERR_REFUSED: i32 = 6;
+/// The account is not Spotify Premium. Spotify Connect and the library reads need it.
+pub const LSB_ERR_NOT_PREMIUM: i32 = 7;
+/// A Connect call timed out, or the session's Connect link broke (CLA-88). This session can
+/// make no more Connect calls: log in again with the stored token, then try once more.
+pub const LSB_ERR_STALE_SESSION: i32 = 8;
 
 pub const LSB_EVENT_LOGGED_IN: u32 = 0;
 pub const LSB_EVENT_ERROR: u32 = 1;
+pub const LSB_EVENT_NOT_PREMIUM: u32 = 2;
+
+/// How long a login waits for the account type (the product info packet) after it connects.
+const PRODUCT_INFO_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// LSB_ERR_NOT_PREMIUM when Spotify said the account type and it is not "premium", the
+/// rule librespot uses. LSB_OK when it is Premium, or the type has not come yet.
+fn account_status(session: &Session) -> i32 {
+    match session.get_user_attribute("type") {
+        Some(kind) if kind != "premium" => LSB_ERR_NOT_PREMIUM,
+        _ => LSB_OK,
+    }
+}
+
+/// Waits up to `limit` for the account type. A session that drops stops the wait.
+async fn wait_for_account_type(session: &Session, limit: std::time::Duration) {
+    let step = std::time::Duration::from_millis(50);
+    let deadline = tokio::time::Instant::now() + limit;
+    while session.get_user_attribute("type").is_none()
+        && !session.is_invalid()
+        && tokio::time::Instant::now() < deadline
+    {
+        tokio::time::sleep(step).await;
+    }
+}
 
 /// Matches `LsbEvent` in the header. The message is valid only during the callback.
 #[repr(C)]
@@ -177,6 +207,21 @@ pub unsafe extern "C" fn lsb_login(
             }
             return;
         }
+        // librespot 0.8.0 ends the process for a free account (CLA-66). The vendored copy
+        // only logs it, and the bridge ends the session here. If the type does not come in
+        // time, the login goes on, and lsb_session_status reports it when it comes.
+        wait_for_account_type(&session, PRODUCT_INFO_WAIT).await;
+        if account_status(&session) == LSB_ERR_NOT_PREMIUM {
+            session.shutdown();
+            if is_latest() {
+                callbacks.emit(&Event {
+                    kind: LSB_EVENT_NOT_PREMIUM,
+                    message: session.get_user_attribute("type"),
+                    login_id: caller_id,
+                });
+            }
+            return;
+        }
         let replaced = {
             let mut slot = connected.lock().unwrap();
             if !is_latest() {
@@ -226,6 +271,7 @@ pub unsafe extern "C" fn lsb_logout(bridge: *mut LsbBridge) -> i32 {
 
 /// LSB_OK while the session works. LSB_ERR_NOT_LOGGED_IN when there is none or it
 /// dropped, for example after sleep or a network change. librespot does not reconnect.
+/// LSB_ERR_NOT_PREMIUM when the account is not Premium.
 ///
 /// # Safety
 /// `bridge` must be valid or NULL.

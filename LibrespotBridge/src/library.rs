@@ -1,10 +1,10 @@
 //! Read-only library reads through librespot's own session (spclient), not the Web API:
 //! the playlist list (rootlist), and the tracks of a playlist or of Liked Songs.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{c_char, c_void, CString};
 
-use librespot_core::{FileId, Session};
+use librespot_core::{FileId, Session, SpotifyId};
 use librespot_protocol::context_page::ContextPage;
 use librespot_protocol::extended_metadata::{
     BatchedEntityRequest, BatchedExtensionResponse, EntityRequest, ExtensionQuery,
@@ -15,7 +15,8 @@ use librespot_protocol::playlist4_external::SelectedListContent;
 use protobuf::{EnumOrUnknown, Message};
 
 use crate::{
-    read_str, with_session, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_NOT_LOGGED_IN, LSB_ERR_READ, LSB_OK,
+    read_str, with_session, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_NOT_LOGGED_IN, LSB_ERR_NOT_PREMIUM,
+    LSB_ERR_READ, LSB_OK,
 };
 
 /// Rootlist items to ask for in one request.
@@ -32,14 +33,24 @@ pub(crate) struct Playlist {
     pub track_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Track {
     pub uri: String,
     pub title: String,
     pub artist: String,
     /// The album cover's image file ID in lowercase hex, or empty when there is none.
     pub cover_id: String,
+    /// The large album cover (about 640 px) in lowercase hex, or empty when there is none.
+    pub large_cover_id: String,
+    /// Like `spotify:album:<id>`, or empty when the track has no album.
+    pub album_uri: String,
+    pub album_name: String,
+    /// The album's artists, joined with ", ". Empty when Spotify gives none.
+    pub album_artist: String,
     pub duration_ms: u32,
+    /// The disc and the track's place on it, from 1. 0 when Spotify does not give it.
+    pub disc_number: u32,
+    pub track_number: u32,
 }
 
 /// One decoded rootlist page.
@@ -79,15 +90,34 @@ pub(crate) fn decode_rootlist(bytes: &[u8]) -> Result<RootlistPage, String> {
     })
 }
 
+/// The longest wait for one library request (CLA-88). librespot's HTTP client has no time
+/// limit, and after a network change a request can wait for minutes. Then the screen shows
+/// its error row with a retry, not an endless load. The limit is per request, not per read.
+pub(crate) const READ_LIMIT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Runs one library request for at most `limit`. After the limit, the request is dropped.
+pub(crate) async fn read_within<T>(
+    limit: std::time::Duration,
+    what: &str,
+    request: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    tokio::time::timeout(limit, request)
+        .await
+        .unwrap_or_else(|_| Err(format!("{what}: no answer within {} s", limit.as_secs())))
+}
+
 pub(crate) async fn read_playlists(session: &Session) -> Result<Vec<Playlist>, String> {
     let mut playlists = Vec::new();
     let mut from = 0;
     loop {
-        let bytes = session
-            .spclient()
-            .get_rootlist(from, Some(ROOTLIST_PAGE))
-            .await
-            .map_err(|e| format!("cannot read the playlist list: {e}"))?;
+        let request = async {
+            session
+                .spclient()
+                .get_rootlist(from, Some(ROOTLIST_PAGE))
+                .await
+                .map_err(|e| format!("cannot read the playlist list: {e}"))
+        };
+        let bytes = read_within(READ_LIMIT, "cannot read the playlist list", request).await?;
         let page = decode_rootlist(&bytes)?;
         playlists.extend(page.playlists);
         from += page.items;
@@ -107,15 +137,23 @@ struct SessionPages<'a>(&'a Session);
 
 impl PageSource for SessionPages<'_> {
     async fn context(&self, uri: &str) -> Result<Vec<ContextPage>, String> {
-        let context = self.0.spclient().get_context(uri).await;
-        Ok(context
-            .map_err(|e| format!("cannot read {uri}: {e}"))?
-            .pages)
+        let request = async {
+            let context = self.0.spclient().get_context(uri).await;
+            context.map_err(|e| format!("cannot read {uri}: {e}"))
+        };
+        Ok(
+            read_within(READ_LIMIT, &format!("cannot read {uri}"), request)
+                .await?
+                .pages,
+        )
     }
 
     async fn page(&self, url: &str) -> Result<ContextPage, String> {
-        let bytes = self.0.spclient().get_next_page(url).await;
-        let bytes = bytes.map_err(|e| format!("cannot read a page: {e}"))?;
+        let request = async {
+            let bytes = self.0.spclient().get_next_page(url).await;
+            bytes.map_err(|e| format!("cannot read a page: {e}"))
+        };
+        let bytes = read_within(READ_LIMIT, "cannot read a page", request).await?;
         let json = String::from_utf8_lossy(&bytes);
         protobuf_json_mapping::parse_from_str_with_options(&json, &IGNORE_UNKNOWN)
             .map_err(|e| format!("cannot decode a page: {e}"))
@@ -225,6 +263,36 @@ pub(crate) fn cover_id(track: &TrackMessage) -> String {
         .unwrap_or_default()
 }
 
+/// The album's URI, like `spotify:album:<id>`, or empty when the track has no album ID.
+pub(crate) fn album_uri(track: &TrackMessage) -> String {
+    track
+        .album
+        .as_ref()
+        .and_then(|album| SpotifyId::from_raw(album.gid()).ok())
+        .and_then(|id| id.to_base62().ok())
+        .map(|id| format!("spotify:album:{id}"))
+        .unwrap_or_default()
+}
+
+/// The hex file ID of the large album cover, for the main menu's 338 pt covers: the LARGE
+/// size (about 640 px), else the widest image, else empty.
+pub(crate) fn large_cover_id(track: &TrackMessage) -> String {
+    let Some(album) = track.album.as_ref() else {
+        return String::new();
+    };
+    let images = if album.cover_group.image.is_empty() {
+        &album.cover
+    } else {
+        &album.cover_group.image
+    };
+    let usable = || images.iter().filter(|i| !i.file_id().is_empty());
+    let large = usable().find(|i| i.has_size() && i.size() == Size::LARGE);
+    large
+        .or_else(|| usable().max_by_key(|i| i.width()))
+        .map(|i: &Image| FileId::from(i).to_base16().unwrap_or_default())
+        .unwrap_or_default()
+}
+
 /// The tracks for `uris`, in the same order. A track without metadata is left out.
 pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[String]) -> Vec<Track> {
     let mut found: HashMap<&str, Track> = HashMap::new();
@@ -241,12 +309,22 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
             continue;
         };
         let artists: Vec<&str> = track.artist.iter().map(|a| a.name()).collect();
+        let album = track.album.as_ref();
+        let album_artists: Vec<&str> = album
+            .map(|a| a.artist.iter().map(|a| a.name()).collect())
+            .unwrap_or_default();
         let track = Track {
             uri: data.entity_uri.clone(),
             title: track.name().to_owned(),
             artist: artists.join(", "),
             cover_id: cover_id(&track),
+            large_cover_id: large_cover_id(&track),
+            album_uri: album_uri(&track),
+            album_name: album.map_or("", |a| a.name()).to_owned(),
+            album_artist: album_artists.join(", "),
             duration_ms: track.duration().max(0) as u32,
+            disc_number: track.disc_number().max(0) as u32,
+            track_number: track.number().max(0) as u32,
         };
         found.insert(data.entity_uri.as_str(), track);
     }
@@ -255,21 +333,59 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
         .collect()
 }
 
-pub(crate) async fn read_tracks(session: &Session, uri: &str) -> Result<Vec<Track>, String> {
+/// `progress` gets how many of the list's items have their details, how many there are, and
+/// how many albums the tracks so far are on: first 0, then after each batch of `METADATA_BATCH`.
+pub(crate) async fn read_tracks(
+    session: &Session,
+    uri: &str,
+    progress: impl FnMut(usize, usize, usize),
+) -> Result<Vec<Track>, String> {
     let uris = context_track_uris(&SessionPages(session), uri).await?;
-    read_metadata(session, &uris).await
+    read_metadata(session, &uris, progress).await
+}
+
+/// The ends of the batches of `METADATA_BATCH` over `total` items, after a 0 for the start.
+pub(crate) fn progress_steps(total: usize) -> impl Iterator<Item = usize> {
+    std::iter::once(0)
+        .chain((1..=total.div_ceil(METADATA_BATCH)).map(move |i| (i * METADATA_BATCH).min(total)))
+}
+
+/// Adds the albums of `tracks` to `seen` (each album once, none for a track with no album),
+/// and returns how many albums `seen` has now (card AY, change 188).
+pub(crate) fn count_albums(seen: &mut HashSet<String>, tracks: &[Track]) -> usize {
+    for track in tracks.iter().filter(|t| !t.album_uri.is_empty()) {
+        if !seen.contains(&track.album_uri) {
+            seen.insert(track.album_uri.clone());
+        }
+    }
+    seen.len()
 }
 
 /// The details of `uris`, in the same order, in batches of `METADATA_BATCH`.
-async fn read_metadata(session: &Session, uris: &[String]) -> Result<Vec<Track>, String> {
+async fn read_metadata(
+    session: &Session,
+    uris: &[String],
+    mut progress: impl FnMut(usize, usize, usize),
+) -> Result<Vec<Track>, String> {
     let mut tracks = Vec::with_capacity(uris.len());
-    for chunk in uris.chunks(METADATA_BATCH) {
-        let response = session
-            .spclient()
-            .get_extended_metadata(metadata_request(chunk))
-            .await
-            .map_err(|e| format!("cannot read track details: {e}"))?;
-        tracks.extend(decode_metadata(&response, chunk));
+    let mut albums = HashSet::new();
+    let mut steps = progress_steps(uris.len());
+    if let Some(start) = steps.next() {
+        progress(start, uris.len(), 0);
+    }
+    for (chunk, done) in uris.chunks(METADATA_BATCH).zip(steps) {
+        let request = async {
+            session
+                .spclient()
+                .get_extended_metadata(metadata_request(chunk))
+                .await
+                .map_err(|e| format!("cannot read track details: {e}"))
+        };
+        let response = read_within(READ_LIMIT, "cannot read track details", request).await?;
+        let batch = decode_metadata(&response, chunk);
+        let album_count = count_albums(&mut albums, &batch);
+        tracks.extend(batch);
+        progress(done, uris.len(), album_count);
     }
     Ok(tracks)
 }
@@ -300,7 +416,13 @@ pub struct LsbTrack {
     pub title: *const c_char,
     pub artist: *const c_char,
     pub cover_id: *const c_char,
+    pub album_uri: *const c_char,
+    pub album_name: *const c_char,
+    pub album_artist: *const c_char,
+    pub large_cover_id: *const c_char,
     pub duration_ms: u32,
+    pub disc_number: u32,
+    pub track_number: u32,
 }
 
 pub type LsbPlaylistsCallback = extern "C" fn(
@@ -318,7 +440,20 @@ pub type LsbTracksCallback = extern "C" fn(
     count: usize,
 );
 
+/// How far a read is: `done` of `total` items have their details, and those tracks are on
+/// `albums` albums.
+pub type LsbProgressCallback =
+    extern "C" fn(context: *mut c_void, done: usize, total: usize, albums: usize);
+
 pub(crate) struct Context(pub *mut c_void);
+
+impl Context {
+    /// The pointer, through the whole value, so a closure captures `Context` (which is Send)
+    /// and not the bare pointer.
+    pub(crate) fn ptr(&self) -> *mut c_void {
+        self.0
+    }
+}
 
 // SAFETY: the header requires that `context` and the callback are safe to call
 // from any thread. The bridge never reads through `context` itself.
@@ -380,20 +515,42 @@ pub(crate) fn deliver_tracks(
             let texts: Vec<_> = tracks
                 .iter()
                 .map(|t| {
-                    let text = [&t.uri, &t.title, &t.artist, &t.cover_id];
+                    let text = [
+                        &t.uri,
+                        &t.title,
+                        &t.artist,
+                        &t.cover_id,
+                        &t.album_uri,
+                        &t.album_name,
+                        &t.album_artist,
+                        &t.large_cover_id,
+                    ];
                     text.map(|t| c_text(t))
                 })
                 .collect();
             let raw: Vec<_> = tracks
                 .iter()
                 .zip(&texts)
-                .map(|(t, [uri, title, artist, cover_id])| LsbTrack {
-                    uri: uri.as_ptr(),
-                    title: title.as_ptr(),
-                    artist: artist.as_ptr(),
-                    cover_id: cover_id.as_ptr(),
-                    duration_ms: t.duration_ms,
-                })
+                .map(
+                    |(
+                        t,
+                        [uri, title, artist, cover, album_uri, album_name, album_artist, large],
+                    )| {
+                        LsbTrack {
+                            uri: uri.as_ptr(),
+                            title: title.as_ptr(),
+                            artist: artist.as_ptr(),
+                            cover_id: cover.as_ptr(),
+                            album_uri: album_uri.as_ptr(),
+                            album_name: album_name.as_ptr(),
+                            album_artist: album_artist.as_ptr(),
+                            large_cover_id: large.as_ptr(),
+                            duration_ms: t.duration_ms,
+                            disc_number: t.disc_number,
+                            track_number: t.track_number,
+                        }
+                    },
+                )
                 .collect();
             callback(context, LSB_OK, std::ptr::null(), raw.as_ptr(), raw.len());
         }
@@ -405,11 +562,19 @@ pub(crate) fn deliver_tracks(
     }
 }
 
-/// The current session. A session that dropped counts as no login.
+/// The current session. A session that dropped counts as no login. A session whose
+/// account type came late and is not Premium ends, and reports LSB_ERR_NOT_PREMIUM.
 pub(crate) unsafe fn session(bridge: *mut crate::LsbBridge) -> Result<Session, i32> {
     let mut session = None;
     let status = with_session(bridge, |s| session = Some(s.clone()));
     match session {
+        Some(session) if crate::account_status(&session) == LSB_ERR_NOT_PREMIUM => {
+            if !session.is_invalid() {
+                let _guard = (*bridge).runtime.enter();
+                session.shutdown();
+            }
+            Err(LSB_ERR_NOT_PREMIUM)
+        }
         Some(session) if session.is_invalid() => Err(LSB_ERR_NOT_LOGGED_IN),
         Some(session) => Ok(session),
         None => Err(status),
@@ -443,7 +608,7 @@ pub unsafe extern "C" fn lsb_read_playlists(
     LSB_OK
 }
 
-/// Reads all tracks of a playlist, or of Liked Songs when `playlist_uri` is NULL.
+/// Reads all tracks of a playlist or an album, or of Liked Songs when `playlist_uri` is NULL.
 /// The result comes once through `on_result`, on a bridge thread. Needs a login.
 ///
 /// # Safety
@@ -456,11 +621,30 @@ pub unsafe extern "C" fn lsb_read_tracks(
     on_result: Option<LsbTracksCallback>,
     context: *mut c_void,
 ) -> i32 {
+    lsb_read_tracks_progress(bridge, playlist_uri, None, on_result, context)
+}
+
+/// Like `lsb_read_tracks`, and `on_progress` (when not NULL) gets how far the read is, on
+/// the same bridge thread, always before `on_result`: first 0 of the total, then after each
+/// batch of track details.
+///
+/// # Safety
+/// As for `lsb_read_tracks`. `on_progress` must be safe to call from any thread.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_read_tracks_progress(
+    bridge: *mut crate::LsbBridge,
+    playlist_uri: *const c_char,
+    on_progress: Option<LsbProgressCallback>,
+    on_result: Option<LsbTracksCallback>,
+    context: *mut c_void,
+) -> i32 {
     let Some(callback) = on_result else {
         return LSB_ERR_INVALID_ARGUMENT;
     };
     let uri = match read_str(playlist_uri) {
-        Some(uri) if uri.starts_with("spotify:playlist:") => Some(uri.to_owned()),
+        Some(uri) if uri.starts_with("spotify:playlist:") || uri.starts_with("spotify:album:") => {
+            Some(uri.to_owned())
+        }
         Some(_) => return LSB_ERR_INVALID_ARGUMENT,
         None if !playlist_uri.is_null() => return LSB_ERR_INVALID_ARGUMENT,
         None => None,
@@ -473,7 +657,13 @@ pub unsafe extern "C" fn lsb_read_tracks(
     (*bridge).runtime.spawn(async move {
         let context = context;
         let uri = uri.unwrap_or_else(|| liked_songs_uri(&session.username()));
-        let result = read_tracks(&session, &uri).await;
+        let progress_context = Context(context.0);
+        let report = move |done, total, albums| {
+            if let Some(on_progress) = on_progress {
+                on_progress(progress_context.ptr(), done, total, albums);
+            }
+        };
+        let result = read_tracks(&session, &uri, report).await;
         deliver_tracks(callback, context.0, result, session.is_invalid());
     });
     LSB_OK
@@ -507,7 +697,7 @@ pub unsafe extern "C" fn lsb_read_track(
     let context = Context(context);
     (*bridge).runtime.spawn(async move {
         let context = context;
-        let result = read_metadata(&session, &[uri]).await;
+        let result = read_metadata(&session, &[uri], |_, _, _| {}).await;
         deliver_tracks(callback, context.0, result, session.is_invalid());
     });
     LSB_OK

@@ -23,7 +23,7 @@ use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::watch;
 
 use crate::library::{c_text, session, Context};
-use crate::{read_str, LSB_ERR_CONNECT, LSB_ERR_INVALID_ARGUMENT, LSB_OK};
+use crate::{read_str, LSB_ERR_CONNECT, LSB_ERR_INVALID_ARGUMENT, LSB_ERR_STALE_SESSION, LSB_OK};
 
 pub const LSB_COMMAND_PAUSE: u32 = 0;
 pub const LSB_COMMAND_RESUME: u32 = 1;
@@ -36,11 +36,73 @@ pub const LSB_OPTION_REPEAT_TRACK: u32 = 2;
 
 const DEVICE_NAME: &str = "Clasify";
 
+/// The longest wait for one Connect network call (CLA-88). librespot's HTTP client has no
+/// time limit. After a network change, a request on a dead connection can wait for minutes,
+/// and every later command waits behind it in the worker.
+pub(crate) const CALL_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
+/// A Connect call's error. `stale` means that this session can make no more Connect calls:
+/// the app must log in again to get a new session, with a new HTTP client and dealer.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CallError {
+    pub message: String,
+    pub stale: bool,
+}
+
+impl From<String> for CallError {
+    fn from(message: String) -> Self {
+        CallError {
+            message,
+            stale: false,
+        }
+    }
+}
+
+impl CallError {
+    pub(crate) fn stale(message: String) -> Self {
+        CallError {
+            message,
+            stale: true,
+        }
+    }
+
+    fn status(&self) -> i32 {
+        if self.stale {
+            LSB_ERR_STALE_SESSION
+        } else {
+            LSB_ERR_CONNECT
+        }
+    }
+}
+
+/// Runs one network call for at most `limit`. After the limit, the call is dropped, and the
+/// error says that the session is stale. A new login gives a new HTTP client, so the next
+/// call does not wait on the same dead connection.
+pub(crate) async fn within<T>(
+    limit: std::time::Duration,
+    what: &str,
+    call: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, CallError> {
+    match tokio::time::timeout(limit, call).await {
+        Ok(result) => result.map_err(CallError::from),
+        Err(_) => Err(CallError::stale(format!(
+            "{what}: no answer within {} s",
+            limit.as_secs()
+        ))),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Command {
     Play {
         context: String,
         track: Option<String>,
+    },
+    /// Plays a plain list of tracks with no context URI, from `track`: the liked songs of
+    /// an album, so that only they play.
+    PlayTracks {
+        tracks: Vec<String>,
+        track: String,
     },
     Pause,
     Resume,
@@ -88,9 +150,15 @@ fn is_base62(id: &str) -> bool {
     !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric())
 }
 
-/// A playlist, or Liked Songs ("spotify:user:<name>:collection").
+/// The most tracks in one `PlayTracks` command.
+pub(crate) const MAX_PLAY_TRACKS: usize = 500;
+
+/// A playlist, an album, or Liked Songs ("spotify:user:<name>:collection").
 pub(crate) fn valid_context(uri: &str) -> bool {
-    if let Some(id) = uri.strip_prefix("spotify:playlist:") {
+    if let Some(id) = uri
+        .strip_prefix("spotify:playlist:")
+        .or_else(|| uri.strip_prefix("spotify:album:"))
+    {
         return is_base62(id);
     }
     let user = uri
@@ -135,7 +203,29 @@ pub(crate) fn request(
     let option = |endpoint: &str, on: bool| {
         format!(r#"{{"command":{{"value":{on},{logging},"endpoint":"{endpoint}"}}}}"#)
     };
+    let play_command = |context: String, skip_to: String| {
+        format!(
+            concat!(
+                r#"{{"command":{{"context":{},"#,
+                r#""play_origin":{{"feature_identifier":"harmony","feature_version":"4.11.0"}},"#,
+                r#""options":{{"license":"on-demand","skip_to":{},"player_options_override":{{}}}},"#,
+                r#"{},"endpoint":"play"}}}}"#
+            ),
+            context, skip_to, logging
+        )
+    };
     let body = match command {
+        Command::PlayTracks { tracks, track } => {
+            let list: Vec<String> = tracks
+                .iter()
+                .map(|t| format!(r#"{{"uri":{}}}"#, json(t)))
+                .collect();
+            let context = format!(
+                r#"{{"uri":"","url":"","metadata":{{}},"pages":[{{"tracks":[{}]}}]}}"#,
+                list.join(",")
+            );
+            play_command(context, format!(r#"{{"track_uri":{}}}"#, json(track)))
+        }
         Command::Play { context, track } => {
             let skip_to = match track {
                 Some(track) => format!(r#"{{"track_uri":{}}}"#, json(track)),
@@ -143,15 +233,8 @@ pub(crate) fn request(
             };
             let uri = json(context);
             let url = json(&format!("context://{context}"));
-            format!(
-                concat!(
-                    r#"{{"command":{{"context":{{"uri":{},"url":{},"metadata":{{}}}},"#,
-                    r#""play_origin":{{"feature_identifier":"harmony","feature_version":"4.11.0"}},"#,
-                    r#""options":{{"license":"on-demand","skip_to":{},"player_options_override":{{}}}},"#,
-                    r#"{},"endpoint":"play"}}}}"#
-                ),
-                uri, url, skip_to, logging
-            )
+            let context = format!(r#"{{"uri":{uri},"url":{url},"metadata":{{}}}}"#);
+            play_command(context, skip_to)
         }
         Command::Pause => simple("pause"),
         Command::Resume => simple("resume"),
@@ -338,14 +421,16 @@ pub(crate) struct Dealer {
 /// Starts the session's dealer. A task keeps reading the dealer's connection IDs: the
 /// dealer reconnects after sleep or a network change and then sends a new ID. The task
 /// holds no `Session`, and it ends when the dealer closes or the worker drops `Dealer`.
-async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, String> {
+/// Each error is stale: librespot can start a session's dealer only once, also when that
+/// start failed or timed out, so only a new session can start a dealer again.
+async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, CallError> {
     let mut updates = session
         .dealer()
         .listen_for(
             "hm://connect-state/v1/cluster",
             DealerMessage::from_raw::<ClusterUpdate>,
         )
-        .map_err(|e| format!("cannot listen to Spotify Connect: {e}"))?;
+        .map_err(|e| CallError::stale(format!("cannot listen to Spotify Connect: {e}")))?;
     let mut ids = session
         .dealer()
         .listen_for("hm://pusher/v1/connections/", |message| {
@@ -355,12 +440,17 @@ async fn start_dealer(session: &Session, sink: &SharedSink) -> Result<Dealer, St
                 .cloned()
                 .unwrap_or_default())
         })
-        .map_err(|e| format!("cannot listen to Spotify Connect: {e}"))?;
-    session
-        .dealer()
-        .start()
+        .map_err(|e| CallError::stale(format!("cannot listen to Spotify Connect: {e}")))?;
+    let start = async {
+        session
+            .dealer()
+            .start()
+            .await
+            .map_err(|e| format!("cannot start Spotify Connect: {e}"))
+    };
+    within(CALL_LIMIT, "cannot start Spotify Connect", start)
         .await
-        .map_err(|e| format!("cannot start Spotify Connect: {e}"))?;
+        .map_err(|e| CallError::stale(e.message))?;
     let sink = sink.clone();
     let time_delta = Arc::new(AtomicI64::new(session.time_delta()));
     let delta = time_delta.clone();
@@ -409,7 +499,7 @@ async fn register(
     session: &Session,
     dealer: &mut Option<Dealer>,
     sink: &SharedSink,
-) -> Result<Cluster, String> {
+) -> Result<Cluster, CallError> {
     if dealer.as_ref().map(|d| d.device_id.as_str()) != Some(session.device_id()) {
         *dealer = Some(start_dealer(session, sink).await?);
     }
@@ -420,7 +510,7 @@ async fn register(
     let id = tokio::time::timeout(std::time::Duration::from_secs(10), wait)
         .await
         .map_err(|_| "no Spotify Connect connection ID within 10 s".to_owned())?
-        .map_err(|_| "Spotify Connect closed".to_owned())?
+        .map_err(|_| CallError::stale("Spotify Connect closed".to_owned()))?
         .clone();
     session.set_connection_id(&id);
     // `can_play: true` with `can_be_player: false` is the registration that spike
@@ -453,11 +543,14 @@ async fn register(
         }),
         ..Default::default()
     };
-    let bytes = session
-        .spclient()
-        .put_connect_state_request(&request)
-        .await
-        .map_err(|e| format!("cannot register with Spotify Connect: {e}"))?;
+    let put = async {
+        session
+            .spclient()
+            .put_connect_state_request(&request)
+            .await
+            .map_err(|e| format!("cannot register with Spotify Connect: {e}"))
+    };
+    let bytes = within(CALL_LIMIT, "cannot register with Spotify Connect", put).await?;
     let cluster = Cluster::parse_from_bytes(&bytes)
         .map_err(|e| format!("cannot decode the device list: {e}"))?;
     let mut state = spotify_state(&cluster, spotify_now_ms(session.time_delta()));
@@ -477,25 +570,32 @@ pub(crate) fn transfer_request() -> TransferRequest {
     }
 }
 
-async fn send(session: &Session, command: &Command, to: &str) -> Result<(), String> {
+async fn send(session: &Session, command: &Command, to: &str) -> Result<(), CallError> {
     if let Command::Transfer { from } = command {
         // librespot's own transfer call, the one that Spirc uses.
         let body = transfer_request();
-        let result = session.spclient().transfer(from, to, Some(&body)).await;
-        return result
-            .map(|_| ())
-            .map_err(|e| format!("Spotify Connect transfer failed: {e}"));
+        let transfer = async {
+            let result = session.spclient().transfer(from, to, Some(&body)).await;
+            result
+                .map(|_| ())
+                .map_err(|e| format!("Spotify Connect transfer failed: {e}"))
+        };
+        return within(CALL_LIMIT, "Spotify Connect transfer failed", transfer).await;
     }
     let (method, path, body) = request(command, session.device_id(), to, &command_id());
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let result = session
-        .spclient()
-        .request(&method, &path, Some(headers), Some(body.as_bytes()));
-    result
-        .await
-        .map(|_| ())
-        .map_err(|e| format!("Spotify Connect command failed: {e}"))
+    let call = async {
+        let result =
+            session
+                .spclient()
+                .request(&method, &path, Some(headers), Some(body.as_bytes()));
+        result
+            .await
+            .map(|_| ())
+            .map_err(|e| format!("Spotify Connect command failed: {e}"))
+    };
+    within(CALL_LIMIT, "Spotify Connect command failed", call).await
 }
 
 /// Matches `LsbDevice` in the header.
@@ -521,7 +621,7 @@ pub type LsbCommandCallback =
 pub(crate) fn deliver_devices(
     callback: LsbDevicesCallback,
     context: *mut c_void,
-    result: Result<Vec<ConnectDevice>, String>,
+    result: Result<Vec<ConnectDevice>, CallError>,
 ) {
     match result {
         Ok(devices) => {
@@ -542,11 +642,11 @@ pub(crate) fn deliver_devices(
                 .collect();
             callback(context, LSB_OK, std::ptr::null(), raw.as_ptr(), raw.len());
         }
-        Err(message) => {
-            let message = c_text(&message);
+        Err(error) => {
+            let message = c_text(&error.message);
             callback(
                 context,
-                LSB_ERR_CONNECT,
+                error.status(),
                 message.as_ptr(),
                 std::ptr::null(),
                 0,
@@ -558,13 +658,13 @@ pub(crate) fn deliver_devices(
 pub(crate) fn deliver_status(
     callback: LsbCommandCallback,
     context: *mut c_void,
-    result: Result<(), String>,
+    result: Result<(), CallError>,
 ) {
     match result {
         Ok(()) => callback(context, LSB_OK, std::ptr::null()),
-        Err(message) => {
-            let message = c_text(&message);
-            callback(context, LSB_ERR_CONNECT, message.as_ptr());
+        Err(error) => {
+            let message = c_text(&error.message);
+            callback(context, error.status(), message.as_ptr());
         }
     }
 }
@@ -632,10 +732,13 @@ pub(crate) fn spawn_worker(
                         result = send(&session, &command, &to).await;
                     }
                     // The registration can go stale, for example after sleep or a network
-                    // change. Then register again once, with the newest connection ID, and
-                    // send the command once more. Next and prev are not retried: if the
-                    // first one did arrive, the retry skips twice.
-                    if result.is_err() && command.can_retry() {
+                    // change. A call can also time out on a dead connection (CLA-88). Then
+                    // register again once, on a new connection with the newest connection
+                    // ID, and send the command once more. Next and prev are not retried: if the
+                    // first one did arrive, the retry skips twice. A stale session is not
+                    // retried here: only a new login helps, and the app retries after it.
+                    let stale = result.as_ref().is_err_and(|e| e.stale);
+                    if result.is_err() && !stale && command.can_retry() {
                         result = register(&session, &mut dealer, &sink).await.map(|_| ());
                         if result.is_ok() {
                             result = send(&session, &command, &to).await;
@@ -729,6 +832,41 @@ pub unsafe extern "C" fn lsb_connect_play(
         .map(|uri| Command::Play {
             context: uri.to_owned(),
             track,
+        });
+    queue_command(bridge, device_id, command, on_result, context)
+}
+
+/// Plays a plain list of tracks on a device, from `track_uri`, with no context URI.
+///
+/// # Safety
+/// `bridge` must be valid. `track_uris` must point to `count` NUL-terminated strings, and
+/// the other strings must be NUL-terminated. `context` and `on_result` must be safe to call
+/// from any thread.
+#[no_mangle]
+pub unsafe extern "C" fn lsb_connect_play_tracks(
+    bridge: *mut crate::LsbBridge,
+    device_id: *const c_char,
+    track_uris: *const *const c_char,
+    count: usize,
+    track_uri: *const c_char,
+    on_result: Option<LsbCommandCallback>,
+    context: *mut c_void,
+) -> i32 {
+    if track_uris.is_null() || count == 0 || count > MAX_PLAY_TRACKS {
+        return LSB_ERR_INVALID_ARGUMENT;
+    }
+    let mut tracks = Vec::with_capacity(count);
+    for &uri in std::slice::from_raw_parts(track_uris, count) {
+        match read_str(uri) {
+            Some(uri) if valid_track(uri) => tracks.push(uri.to_owned()),
+            _ => return LSB_ERR_INVALID_ARGUMENT,
+        }
+    }
+    let command = read_str(track_uri)
+        .filter(|uri| tracks.iter().any(|t| t == uri))
+        .map(|uri| Command::PlayTracks {
+            tracks,
+            track: uri.to_owned(),
         });
     queue_command(bridge, device_id, command, on_result, context)
 }

@@ -5,12 +5,63 @@ import SwiftUI
 /// button send their actions. It only maps input to actions.
 struct ClickWheel: View {
     let input: @MainActor (Action) -> Void
+    /// Silver: a white wheel with gray labels. Black: a dark gray wheel with near white labels.
+    var color = DeviceColor.silver
     /// False in snapshot tests, which cannot draw the AppKit scroll view.
     var catchesScroll = true
+    /// The wheel moves a bar, not a list: a trackpad scroll goes the other way (CLA-48).
+    var movesBar = false
+    /// When the center starts to glow: on Hello (card AT, change 166) and after the first turn
+    /// on the color pick (card AW, change 150). Nil: no glow.
+    var glowFrom: Double?
+    /// When the waiting comet starts, on the color pick until the first turn (card AW, change 200).
+    var cometFrom: Double?
+    /// The labels that glow for a first-time hint (card BA, change 151), and when they started.
+    /// The tour's step 2 lights Previous and Next together (card BA.1, change 199).
+    var label: LabelGlow?
 
-    init(input: @escaping @MainActor (Action) -> Void, catchesScroll: Bool = true, pressed: Zone? = nil) {
+    struct LabelGlow {
+        var zones: [Zone]
+        var from: Double
+
+        /// The glow's strength `t` seconds after the hint shows (CLA-86): 0 at the start, 1 at
+        /// 1.2 s and 0 again at 2.4 s, then again. Each half is eased as CSS ease-in-out,
+        /// cubic-bezier(.42, 0, .58, 1).
+        nonisolated static func strength(at t: Double) -> Double {
+            let half = Hello.pulse / 2
+            let phase = max(t, 0).truncatingRemainder(dividingBy: Hello.pulse)
+            return easeInOut(phase < half ? phase / half : 2 - phase / half)
+        }
+
+        /// cubic-bezier(.42, 0, .58, 1) at `x`: finds the curve point with that x by bisection,
+        /// and returns its y.
+        nonisolated static func easeInOut(_ x: Double) -> Double {
+            if x <= 0 { return 0 }
+            if x >= 1 { return 1 }
+            func curve(_ s: Double, _ a: Double, _ b: Double) -> Double {
+                3 * (1 - s) * (1 - s) * s * a + 3 * (1 - s) * s * s * b + s * s * s
+            }
+            var low = 0.0, high = 1.0
+            for _ in 0..<32 {
+                let mid = (low + high) / 2
+                if curve(mid, 0.42, 0.58) < x { low = mid } else { high = mid }
+            }
+            return curve((low + high) / 2, 0, 1)
+        }
+    }
+
+    init(
+        input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
+        movesBar: Bool = false, glowFrom: Double? = nil, cometFrom: Double? = nil, label: LabelGlow? = nil,
+        pressed: Zone? = nil
+    ) {
         self.input = input
+        self.color = color
         self.catchesScroll = catchesScroll
+        self.movesBar = movesBar
+        self.glowFrom = glowFrom
+        self.cometFrom = cometFrom
+        self.label = label
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
 
@@ -29,18 +80,19 @@ struct ClickWheel: View {
         }
     }
 
-    static let size: CGFloat = 196
+    static let size: CGFloat = 225
     /// A turn of this many degrees sends one detent. A turn of more than `clickSlop` cancels the click.
-    static let detent = 24.0, clickSlop = 12.0
+    nonisolated static let detent = 24.0
+    static let clickSlop = 12.0
 
     /// The mockup's button rectangles, in the wheel's coordinates.
     private static let zones: [(Zone, CGRect)] = [
-        (.menu, CGRect(x: 68, y: 12, width: 60, height: 30)),
-        (.prev, CGRect(x: 8, y: 78, width: 40, height: 40)),
-        (.next, CGRect(x: 148, y: 78, width: 40, height: 40)),
-        (.play, CGRect(x: 73, y: 154, width: 50, height: 32)),
+        (.menu, CGRect(x: 82.5, y: 4, width: 60, height: 29)),
+        (.prev, CGRect(x: 4, y: 92.5, width: 40, height: 40)),
+        (.next, CGRect(x: 181, y: 92.5, width: 40, height: 40)),
+        (.play, CGRect(x: 87.5, y: 190.4, width: 50, height: 32)),
     ]
-    private static let centerRadius: CGFloat = 34
+    private static let centerRadius: CGFloat = 40.8
 
     static func zone(at point: CGPoint) -> Zone? {
         let r = hypot(point.x - size / 2, point.y - size / 2)
@@ -65,73 +117,106 @@ struct ClickWheel: View {
     @State private var hovered: Zone?
 
     var body: some View {
+        face
+            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
+            .contentShape(Circle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
+            }
+            .accessibilityElement()
+            .accessibilityLabel("Click wheel")
+            .accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: input(.wheel(1))
+                case .decrement: input(.wheel(-1))
+                @unknown default: break
+                }
+            }
+            .accessibilityAction(named: "Select") { input(.select) }
+            .accessibilityAction(named: "Menu") { input(.menu) }
+            .accessibilityAction(named: "Play or pause") { input(.play) }
+            .accessibilityAction(named: "Next track") { input(.next) }
+            .accessibilityAction(named: "Previous track") { input(.prev) }
+    }
+
+    /// The wheel, its labels, the lights and the center.
+    private var face: some View {
         ZStack(alignment: .topLeading) {
+            // Flat, as in the photo (card BH, `wheelBg` and `wheelShadow`). Black has a faint 1
+            // point ring around it and a faint white line under it. Silver has no ring (change 240).
             Circle()
-                .fill(RadialGradient(
-                    stops: [
-                        .init(color: .white, location: 0), .init(color: Color(hex: 0xe9ecef), location: 0.55),
-                        .init(color: Color(hex: 0xdadee3), location: 1),
-                    ],
-                    center: UnitPoint(x: 0.5, y: 0.35), startRadius: 0, endRadius: 161))
-                // The mockup's inset shadows: a white glow at the top, a faint shade at the bottom.
-                .overlay {
-                    Circle().stroke(Color.white.opacity(0.9), lineWidth: 4).blur(radius: 2).offset(y: 2)
-                        .clipShape(Circle())
-                }
-                .overlay {
-                    Circle().stroke(Color.black.opacity(0.06), lineWidth: 6).blur(radius: 3).offset(y: -3)
-                        .clipShape(Circle())
-                }
-                .overlay { Circle().strokeBorder(Color(hex: 0xc3c9d0), lineWidth: 1) }
+                .fill(Color(hex: black ? 0x222223 : 0xf6fafb))
+                .background { if black { Circle().fill(Color.white.opacity(0.08)).offset(y: 1).blur(radius: 0.5) } }
+                .background { if black { Circle().fill(Color.black.opacity(0.3)).padding(-1) } }
                 .frame(width: Self.size, height: Self.size)
-            key(.menu) { Text("MENU").font(.helvetica(11, bold: true)).tracking(1) }
-            key(.prev) { IconView(.prev, width: 18, height: 12) }
-            key(.next) { IconView(.next, width: 18, height: 12) }
-            key(.play) { IconView(.playPause, width: 20, height: 12) }
+            key(.menu) { Text("MENU").font(.helvetica(14, weight: .medium)).tracking(0.7) }
+            key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
+            key(.next) { IconView(.next, width: 19.8, height: 10.2) }
+            key(.play) { IconView(.playPause, width: 24.6, height: 9.6) }
+            comets
             center
         }
         .frame(width: Self.size, height: Self.size)
-        .background { if catchesScroll { ScrollCatcher { input(.wheel($0)) } } }
-        .contentShape(Circle())
-        .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
-        .onContinuousHover { phase in
-            if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
-        }
-        .accessibilityElement()
-        .accessibilityLabel("Click wheel")
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment: input(.wheel(1))
-            case .decrement: input(.wheel(-1))
-            @unknown default: break
-            }
-        }
-        .accessibilityAction(named: "Select") { input(.select) }
-        .accessibilityAction(named: "Menu") { input(.menu) }
-        .accessibilityAction(named: "Play or pause") { input(.play) }
-        .accessibilityAction(named: "Next track") { input(.next) }
-        .accessibilityAction(named: "Previous track") { input(.prev) }
     }
+
+    /// The color pick's waiting comet until the first color step (change 200). No light follows
+    /// the turn (card AW.1, change 236).
+    @ViewBuilder private var comets: some View {
+        if let cometFrom {
+            WaitingComet(from: cometFrom)
+                .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
+        }
+    }
+
+    private var black: Bool { color == .black }
 
     private func key<Label: View>(_ zone: Zone, @ViewBuilder label: () -> Label) -> some View {
         let rect = Self.zones.first { $0.0 == zone }?.1 ?? .zero
-        return label()
-            .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? 0x3f454d : 0x7d838c))
-            .frame(width: rect.width, height: rect.height)
-            .offset(x: rect.minX, y: rect.minY)
+        return Group {
+            if let glow = self.label, glow.zones.contains(zone) {
+                GlowingLabel(from: glow.from, label: label())
+            } else {
+                label()
+                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (black ? 0xf4f4f5 : 0x8c939b)))
+            }
+        }
+        .frame(width: rect.width, height: rect.height)
+        .offset(x: rect.minX, y: rect.minY)
     }
 
     private var center: some View {
+        // Pressed in, as in the photo (card BH, `ctrBg` and `ctrShadow`): dark at the top, with
+        // a thin rim and a faint inner shadow. Pressed, it gets a little darker.
         let down = pressed == .center
-        let light = Color(hex: 0xf3f5f7), dark = Color(hex: 0xdfe3e8)
+        let stops: [Gradient.Stop] = switch (black, down) {
+        case (false, false): [
+            .init(color: Color(hex: 0xb5b5b5), location: 0), .init(color: Color(hex: 0xcfcfcf), location: 0.5),
+            .init(color: Color(hex: 0xe4e4e4), location: 1),
+        ]
+        case (false, true): [  // `ctrDown`: darker than the idle stops everywhere
+            .init(color: Color(hex: 0xa7a7a7), location: 0), .init(color: Color(hex: 0xbebebe), location: 0.5),
+            .init(color: Color(hex: 0xd2d2d2), location: 1),
+        ]
+        case (true, false): [
+            .init(color: Color(hex: 0x2a2a2b), location: 0), .init(color: Color(hex: 0x3d3d3f), location: 0.45),
+            .init(color: Color(hex: 0x636265), location: 1),
+        ]
+        case (true, true): [  // `ctrDown`: the idle stops, about 15% darker
+            .init(color: Color(hex: 0x232324), location: 0), .init(color: Color(hex: 0x343436), location: 0.45),
+            .init(color: Color(hex: 0x545356), location: 1),
+        ]
+        }
         return Circle()
-            .fill(LinearGradient.vertical(down ? dark : light, down ? light : dark))
-            .overlay {  // the mockup's 1 point white line inside the top edge
-                Circle().stroke(Color.white, lineWidth: 1).offset(y: 1).clipShape(Circle()).padding(1)
+            .fill(LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom))
+            .overlay {
+                Circle().stroke(Color.black.opacity(black ? 0.35 : 0.12), lineWidth: 2).blur(radius: 1).offset(y: 1)
+                    .clipShape(Circle())
             }
-            .overlay { Circle().strokeBorder(Color(hex: 0xc3c9d0), lineWidth: 1) }
-            .shadow(color: .black.opacity(0.12), radius: 1, y: 1)
+            // `ctrShadow`: Black has a 0.5 point rim. Silver has none (change 240).
+            .overlay { if black { Circle().strokeBorder(Color.black.opacity(0.4), lineWidth: 0.5) } }
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
+            .background { if let glowFrom { CenterGlow(from: glowFrom, radius: Self.centerRadius) } }
             .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)
     }
 
@@ -162,5 +247,30 @@ struct ClickWheel: View {
         if let start, !turned, Self.zone(at: value.location) == start { input(start.action) }
         turn = nil
         pressed = nil
+    }
+}
+
+/// A wheel label that a first-time hint lights (card BA, change 151): solid soft blue #3f8de0
+/// with a #5aa3f0 glow in three layers, 95%, 65% and 40% (change 205): the mock's drop-shadow
+/// 4/10/18 px = radius 2/5/9. Only the glow pulses (CLA-86): its radii and opacities scale with
+/// `LabelGlow.strength`, so there is no glow at the start of each 2.4 s pulse. With Reduce
+/// Motion, the glow stays full.
+private struct GlowingLabel<Label: View>: View {
+    let from: Double
+    let label: Label
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.animationTime) private var fixedTime
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
+            let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
+            let p = reduceMotion ? 1 : ClickWheel.LabelGlow.strength(at: t)
+            label
+                .foregroundStyle(Color(hex: 0x3f8de0))
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.95 * p), radius: 2 * p)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.65 * p), radius: 5 * p)
+                .shadow(color: Color(hex: 0x5aa3f0, opacity: 0.4 * p), radius: 9 * p)
+        }
+        .allowsHitTesting(false)
     }
 }

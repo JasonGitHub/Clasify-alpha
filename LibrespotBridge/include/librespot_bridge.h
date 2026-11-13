@@ -24,15 +24,23 @@
 #define LSB_ERR_CONNECT 5
 // Spotify rejected the refresh token: log in again through the browser.
 #define LSB_ERR_REFUSED 6
+// The account is not Spotify Premium. Spotify Connect and the library reads need it.
+#define LSB_ERR_NOT_PREMIUM 7
+// A Connect call timed out, or the session's Connect link broke. This session can make no
+// more Connect calls: log in again with the stored token, then try once more.
+#define LSB_ERR_STALE_SESSION 8
 
 #define LSB_EVENT_LOGGED_IN 0
 #define LSB_EVENT_ERROR 1
+// The login worked, but the account is not Premium. The bridge ended the session.
+#define LSB_EVENT_NOT_PREMIUM 2
 
 typedef struct LsbBridge LsbBridge;
 
 typedef struct LsbEvent {
     uint32_t kind;             // One of LSB_EVENT_*.
     const char *message;       // LOGGED_IN: the canonical username. ERROR: the error.
+                               // NOT_PREMIUM: the account type, for example "free".
     // The message is valid only during the callback.
     uint64_t login_id;         // The login_id that the lsb_login call for this result got.
 } LsbEvent;
@@ -43,7 +51,8 @@ typedef void (*LsbEventCallback)(void *context, const LsbEvent *event);
 LsbBridge *lsb_new(LsbEventCallback on_event, void *context);
 void lsb_free(LsbBridge *bridge);
 
-// Sends LSB_EVENT_LOGGED_IN or LSB_EVENT_ERROR with this login_id. Stores no credentials on disk.
+// Sends LSB_EVENT_LOGGED_IN, LSB_EVENT_ERROR or LSB_EVENT_NOT_PREMIUM with this login_id.
+// Stores no credentials on disk. It waits up to 5 s for the account type after it connects.
 // Calling it again replaces the session when the new login succeeds.
 // A superseded login sends no result, except in a narrow race: if lsb_login or lsb_logout is
 // called just as an earlier login succeeds, that login can still send LOGGED_IN.
@@ -59,6 +68,8 @@ int32_t lsb_logout(LsbBridge *bridge);
 // LSB_OK while the session works. LSB_ERR_NOT_LOGGED_IN when there is no session or it
 // dropped (for example after sleep or a network change). librespot does not reconnect:
 // refresh the token and call lsb_login again. A cheap check, safe to call often.
+// LSB_ERR_NOT_PREMIUM when the account type came after the login and is not Premium:
+// the bridge ends the session, and the reads and Connect calls return the same.
 int32_t lsb_session_status(LsbBridge *bridge);
 
 // OAuth with PKCE through librespot-oauth, with librespot's own client ID and
@@ -108,7 +119,13 @@ typedef struct LsbTrack {
     const char *artist;          // All artists, joined with ", ".
     const char *cover_id;        // Album cover file ID, 40 lowercase hex digits, or "".
                                  // The image is at https://i.scdn.co/image/<cover_id>.
+    const char *album_uri;       // Like "spotify:album:<id>", or "" when there is none.
+    const char *album_name;      // Or "".
+    const char *album_artist;    // The album's artists, joined with ", ", or "".
+    const char *large_cover_id;  // The large cover (about 640 px), like cover_id, or "".
     uint32_t duration_ms;
+    uint32_t disc_number;        // From 1, or 0 when Spotify does not give it.
+    uint32_t track_number;       // The place on the disc, from 1, or 0.
 } LsbTrack;
 
 typedef void (*LsbPlaylistsCallback)(void *context, int32_t status, const char *message,
@@ -117,11 +134,19 @@ typedef void (*LsbTracksCallback)(void *context, int32_t status, const char *mes
                                   const LsbTrack *tracks, size_t count);
 // The playlists in the user's list, in order. Folders are flattened.
 int32_t lsb_read_playlists(LsbBridge *bridge, LsbPlaylistsCallback on_result, void *context);
-// All tracks of a playlist ("spotify:playlist:<id>"), or of Liked Songs when
-// playlist_uri is NULL, in order and over all pages. Episodes, local files and
-// tracks without details are left out.
+// All tracks of a playlist ("spotify:playlist:<id>") or an album ("spotify:album:<id>"),
+// or of Liked Songs when playlist_uri is NULL, in order and over all pages. Episodes,
+// local files and tracks without details are left out.
 int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
                         LsbTracksCallback on_result, void *context);
+// How far a read is: done of total items have their details, and those tracks are on
+// albums albums (each album once).
+typedef void (*LsbProgressCallback)(void *context, size_t done, size_t total, size_t albums);
+// Like lsb_read_tracks. on_progress, when not NULL, gets 0 of the total first, then the
+// count after each batch of track details, on the same thread and always before on_result.
+int32_t lsb_read_tracks_progress(LsbBridge *bridge, const char *playlist_uri,
+                                 LsbProgressCallback on_progress, LsbTracksCallback on_result,
+                                 void *context);
 // The details of one track ("spotify:track:<id>"), for a track that plays from outside
 // the library. The callback gets one track, or count 0 when Spotify has none for it.
 int32_t lsb_read_track(LsbBridge *bridge, const char *track_uri,
@@ -160,11 +185,17 @@ typedef void (*LsbCommandCallback)(void *context, int32_t status, const char *me
 // Registers this session again and lists the account's other Connect devices, by name.
 int32_t lsb_connect_devices(LsbBridge *bridge, LsbDevicesCallback on_result, void *context);
 // Plays context_uri on device_id, from track_uri, or from the start when track_uri is
-// NULL. context_uri is "spotify:playlist:<id>" or, for Liked Songs,
+// NULL. context_uri is "spotify:playlist:<id>", "spotify:album:<id>" or, for Liked Songs,
 // "spotify:user:<username>:collection" with the username from LSB_EVENT_LOGGED_IN.
 // track_uri is "spotify:track:<id>". device_id has only letters, digits, '-' and '_'.
 int32_t lsb_connect_play(LsbBridge *bridge, const char *device_id, const char *context_uri,
                          const char *track_uri, LsbCommandCallback on_result, void *context);
+// Plays a plain list of count track URIs (1 to 500) on device_id, with no context URI,
+// from track_uri, which must be in the list. For the liked songs of an album.
+int32_t lsb_connect_play_tracks(LsbBridge *bridge, const char *device_id,
+                                const char *const *track_uris, size_t count,
+                                const char *track_uri, LsbCommandCallback on_result,
+                                void *context);
 // command is one of LSB_COMMAND_*.
 int32_t lsb_connect_command(LsbBridge *bridge, const char *device_id, uint32_t command,
                             LsbCommandCallback on_result, void *context);

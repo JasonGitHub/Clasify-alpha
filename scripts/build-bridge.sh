@@ -4,7 +4,7 @@
 # Run it before you build Clasify.xcodeproj. CI runs it too.
 set -euo pipefail
 cd "$(dirname "$0")/../LibrespotBridge"
-export MACOSX_DEPLOYMENT_TARGET=14.0
+export MACOSX_DEPLOYMENT_TARGET=15.0
 targets=(aarch64-apple-darwin x86_64-apple-darwin)
 rustup target add "${targets[@]}"
 libs=()

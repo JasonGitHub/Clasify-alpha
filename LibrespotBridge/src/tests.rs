@@ -27,6 +27,8 @@ fn header_matches_rust() {
         ("LSB_ERR_READ", LSB_ERR_READ as u32),
         ("LSB_ERR_CONNECT", LSB_ERR_CONNECT as u32),
         ("LSB_ERR_REFUSED", LSB_ERR_REFUSED as u32),
+        ("LSB_ERR_NOT_PREMIUM", LSB_ERR_NOT_PREMIUM as u32),
+        ("LSB_ERR_STALE_SESSION", LSB_ERR_STALE_SESSION as u32),
         ("LSB_COMMAND_PAUSE", LSB_COMMAND_PAUSE),
         ("LSB_COMMAND_RESUME", LSB_COMMAND_RESUME),
         ("LSB_COMMAND_NEXT", LSB_COMMAND_NEXT),
@@ -36,6 +38,7 @@ fn header_matches_rust() {
         ("LSB_OPTION_REPEAT_TRACK", LSB_OPTION_REPEAT_TRACK),
         ("LSB_EVENT_LOGGED_IN", LSB_EVENT_LOGGED_IN),
         ("LSB_EVENT_ERROR", LSB_EVENT_ERROR),
+        ("LSB_EVENT_NOT_PREMIUM", LSB_EVENT_NOT_PREMIUM),
     ];
     for (name, value) in constants {
         let line = format!("#define {name} {value}\n");
@@ -111,6 +114,91 @@ fn session_status_reports_a_dropped_session() {
     }
 }
 
+/// A free account no longer ends the process (the vendored librespot-core patch, CLA-66).
+/// The bridge reads the account type that librespot stores, and ends the session.
+#[test]
+fn session_status_reports_an_account_that_is_not_premium() {
+    let recorder = Recorder::default();
+    let context = &recorder as *const Recorder as *mut c_void;
+    unsafe {
+        let bridge = lsb_new(Some(record_event), context);
+        let session = {
+            let _guard = (*bridge).runtime.enter();
+            Session::new(SessionConfig::default(), None)
+        };
+        *(*bridge).connected.lock().unwrap() = Some(Connected {
+            session: session.clone(),
+        });
+        // No type yet: the login goes on.
+        assert_eq!(account_status(&session), LSB_OK);
+        assert_eq!(lsb_session_status(bridge), LSB_OK);
+        session.set_user_attribute("type", "premium");
+        assert_eq!(lsb_session_status(bridge), LSB_OK);
+        // What dispatch stores for a free account; librespot 0.8.0 called exit(1) here.
+        session.set_user_attribute("type", "free");
+        assert_eq!(account_status(&session), LSB_ERR_NOT_PREMIUM);
+        assert_eq!(lsb_session_status(bridge), LSB_ERR_NOT_PREMIUM);
+        assert!(session.is_invalid(), "the bridge ends the session");
+        // The reads say the same, not "log in again".
+        assert_eq!(lsb_session_status(bridge), LSB_ERR_NOT_PREMIUM);
+        lsb_free(bridge);
+    }
+    assert!(recorder.events.lock().unwrap().is_empty());
+}
+
+/// CLA-88: a library request that never answers ends at its limit, so the read fails and
+/// the screen shows its error row. A request that answers keeps its result or its error.
+#[test]
+fn a_library_request_that_never_answers_ends_at_its_limit() {
+    use crate::library::{read_within, READ_LIMIT};
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let limit = std::time::Duration::from_millis(200);
+    let start = std::time::Instant::now();
+    let stuck = runtime.block_on(read_within(
+        limit,
+        "cannot read a page",
+        std::future::pending::<Result<(), String>>(),
+    ));
+    assert_eq!(
+        stuck.unwrap_err(),
+        "cannot read a page: no answer within 0 s"
+    );
+    let took = start.elapsed();
+    assert!(took >= limit && took < std::time::Duration::from_secs(2));
+    let read = runtime.block_on(read_within(limit, "x", async { Ok::<_, String>(3) }));
+    assert_eq!(read, Ok(3));
+    let failed = runtime.block_on(read_within(limit, "x", async {
+        Err::<(), _>("gone".to_owned())
+    }));
+    assert_eq!(failed.unwrap_err(), "gone");
+    assert_eq!(READ_LIMIT, std::time::Duration::from_secs(20));
+}
+
+#[test]
+fn a_login_waits_for_the_account_type_but_not_forever() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let _guard = runtime.enter();
+    let session = Session::new(SessionConfig::default(), None);
+    // The type never comes: the wait ends at its limit.
+    let start = std::time::Instant::now();
+    runtime.block_on(wait_for_account_type(
+        &session,
+        std::time::Duration::from_millis(200),
+    ));
+    assert!(start.elapsed() >= std::time::Duration::from_millis(200));
+    // The type is there: no wait.
+    session.set_user_attribute("type", "free");
+    let start = std::time::Instant::now();
+    runtime.block_on(wait_for_account_type(&session, PRODUCT_INFO_WAIT));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+    // A session that dropped stops the wait too.
+    let other = Session::new(SessionConfig::default(), None);
+    other.shutdown();
+    let start = std::time::Instant::now();
+    runtime.block_on(wait_for_account_type(&other, PRODUCT_INFO_WAIT));
+    assert!(start.elapsed() < std::time::Duration::from_secs(1));
+}
+
 #[test]
 fn logout_ends_the_session() {
     let recorder = Recorder::default();
@@ -176,14 +264,20 @@ fn library_and_token_layouts_match_c() {
         offset_of!(LsbPlaylist, track_count),
     ];
     assert_eq!(playlist, [8, 16]);
-    assert_eq!(size_of::<LsbTrack>(), 40);
+    assert_eq!(size_of::<LsbTrack>(), 80);
     let track = [
         offset_of!(LsbTrack, title),
         offset_of!(LsbTrack, artist),
         offset_of!(LsbTrack, cover_id),
+        offset_of!(LsbTrack, album_uri),
+        offset_of!(LsbTrack, album_name),
+        offset_of!(LsbTrack, album_artist),
+        offset_of!(LsbTrack, large_cover_id),
         offset_of!(LsbTrack, duration_ms),
+        offset_of!(LsbTrack, disc_number),
+        offset_of!(LsbTrack, track_number),
     ];
-    assert_eq!(track, [8, 16, 24, 32]);
+    assert_eq!(track, [8, 16, 24, 32, 40, 48, 56, 64, 68, 72]);
 }
 
 mod library_tests {
@@ -433,8 +527,8 @@ mod library_tests {
             uri: format!("spotify:track:{id}"),
             title: title.to_owned(),
             artist: artist.to_owned(),
-            cover_id: String::new(),
             duration_ms,
+            ..Default::default()
         };
         assert_eq!(
             decode_metadata(&response, &uris),
@@ -443,6 +537,59 @@ mod library_tests {
                 track("2", "Two", "B", 2000)
             ]
         );
+    }
+
+    #[test]
+    fn metadata_keeps_the_album_and_the_place_on_it() {
+        let mut gid = vec![0u8; 16];
+        gid[15] = 1; // base 62: 21 zeros, then "1"
+        let message = TrackMessage {
+            name: Some("Song".to_owned()),
+            number: Some(7),
+            disc_number: Some(2),
+            album: MessageField::some(Album {
+                gid: Some(gid),
+                name: Some("Record".to_owned()),
+                artist: ["X", "Y"]
+                    .map(|a| Artist {
+                        name: Some(a.to_owned()),
+                        ..Default::default()
+                    })
+                    .to_vec(),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let mut data = details("spotify:track:9", 200, "", &[], 0);
+        data.extension_data = MessageField::some(Any {
+            value: message.write_to_bytes().unwrap(),
+            ..Default::default()
+        });
+        let response = BatchedExtensionResponse {
+            extended_metadata: vec![EntityExtensionDataArray {
+                extension_data: vec![data],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let tracks = decode_metadata(&response, &["spotify:track:9".to_owned()]);
+        let track = &tracks[0];
+        assert_eq!(
+            track.album_uri,
+            format!("spotify:album:{}1", "0".repeat(21))
+        );
+        assert_eq!(track.album_name, "Record");
+        assert_eq!(track.album_artist, "X, Y");
+        assert_eq!((track.disc_number, track.track_number), (2, 7));
+        // No album and no numbers: empty and 0, so the app can tell they are missing.
+        let none = TrackMessage::default();
+        assert_eq!(album_uri(&none), "");
+        let mut short = none.clone();
+        short.album = MessageField::some(Album {
+            gid: Some(vec![1, 2]),
+            ..Default::default()
+        });
+        assert_eq!(album_uri(&short), ""); // a gid that is not 16 bytes
     }
 
     fn image(id: u8, size: Option<Size>, width: i32) -> Image {
@@ -487,6 +634,20 @@ mod library_tests {
             "03".repeat(20)
         );
         assert_eq!(cover_id(&TrackMessage::default()), "");
+    }
+
+    #[test]
+    fn large_cover_is_the_large_size_else_the_widest() {
+        let small = image(1, Some(Size::SMALL), 64);
+        let default = image(2, Some(Size::DEFAULT), 300);
+        let large = image(3, Some(Size::LARGE), 640);
+        let track = with_covers(vec![small.clone(), large, default.clone()], vec![]);
+        assert_eq!(large_cover_id(&track), "03".repeat(20));
+        let track = with_covers(vec![small, default], vec![]);
+        assert_eq!(large_cover_id(&track), "02".repeat(20));
+        let track = with_covers(vec![], vec![image(4, None, 300)]);
+        assert_eq!(large_cover_id(&track), "04".repeat(20));
+        assert_eq!(large_cover_id(&TrackMessage::default()), "");
     }
 
     #[test]
@@ -580,6 +741,45 @@ mod library_tests {
         delivered.lock().unwrap().push((status, message, rows));
     }
 
+    extern "C" fn record_progress(
+        _context: *mut c_void,
+        _done: usize,
+        _total: usize,
+        _albums: usize,
+    ) {
+    }
+
+    /// CLA-55: a read reports 0 first, then the end of each batch of track details.
+    #[test]
+    fn progress_counts_each_batch_of_details() {
+        assert_eq!(progress_steps(0).collect::<Vec<_>>(), [0]);
+        assert_eq!(progress_steps(100).collect::<Vec<_>>(), [0, 100]);
+        assert_eq!(progress_steps(250).collect::<Vec<_>>(), [0, 100, 200, 250]);
+    }
+
+    /// Card AY, change 188: the album count grows with each batch, each album once.
+    #[test]
+    fn album_count_counts_each_album_once() {
+        let track = |album: &str| Track {
+            album_uri: album.to_owned(),
+            ..Default::default()
+        };
+        let mut seen = std::collections::HashSet::new();
+        let first = [
+            track("spotify:album:a"),
+            track("spotify:album:b"),
+            track("spotify:album:a"),
+        ];
+        assert_eq!(count_albums(&mut seen, &first), 2);
+        let second = [
+            track(""),
+            track("spotify:album:b"),
+            track("spotify:album:c"),
+        ];
+        assert_eq!(count_albums(&mut seen, &second), 3);
+        assert_eq!(count_albums(&mut seen, &[]), 3);
+    }
+
     extern "C" fn record_tracks(
         context: *mut c_void,
         status: i32,
@@ -602,7 +802,13 @@ mod library_tests {
                     read(t.title),
                     read(t.artist),
                     read(t.cover_id),
+                    read(t.album_uri),
+                    read(t.album_name),
+                    read(t.album_artist),
+                    read(t.large_cover_id),
                     t.duration_ms.to_string(),
+                    t.disc_number.to_string(),
+                    t.track_number.to_string(),
                 ]
             })
             .collect();
@@ -626,7 +832,13 @@ mod library_tests {
             title: "One".to_owned(),
             artist: "A".to_owned(),
             cover_id: "ab67".to_owned(),
+            album_uri: "spotify:album:a".to_owned(),
+            album_name: "Al\0bum".to_owned(),
+            album_artist: "B".to_owned(),
+            large_cover_id: "cd89".to_owned(),
             duration_ms: 1000,
+            disc_number: 1,
+            track_number: 3,
         };
         deliver_tracks(record_tracks, context, Ok(vec![track]), false);
         deliver_tracks(record_tracks, context, Err("offline".to_owned()), false);
@@ -644,7 +856,19 @@ mod library_tests {
                 (
                     LSB_OK,
                     None,
-                    vec![row(&["spotify:track:1", "One", "A", "ab67", "1000"])]
+                    vec![row(&[
+                        "spotify:track:1",
+                        "One",
+                        "A",
+                        "ab67",
+                        "spotify:album:a",
+                        "Al bum",
+                        "B",
+                        "cd89",
+                        "1000",
+                        "1",
+                        "3"
+                    ])]
                 ),
                 (LSB_ERR_READ, Some("offline".to_owned()), vec![]),
                 (LSB_ERR_NOT_LOGGED_IN, Some("dropped".to_owned()), vec![]),
@@ -695,13 +919,33 @@ mod library_tests {
                 lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
                 LSB_ERR_NOT_LOGGED_IN
             );
+            // An album reads all its songs (CLA-46).
             let uri = album.as_ptr();
+            assert_eq!(
+                lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
+                LSB_ERR_NOT_LOGGED_IN
+            );
+            let uri = c"spotify:artist:1".as_ptr();
             assert_eq!(
                 lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
                 LSB_ERR_INVALID_ARGUMENT
             );
             assert_eq!(
                 lsb_read_tracks(bridge, none, None, ctx),
+                LSB_ERR_INVALID_ARGUMENT
+            );
+            assert_eq!(
+                lsb_read_tracks_progress(
+                    bridge,
+                    none,
+                    Some(record_progress),
+                    Some(record_tracks),
+                    ctx
+                ),
+                LSB_ERR_NOT_LOGGED_IN
+            );
+            assert_eq!(
+                lsb_read_tracks_progress(bridge, none, Some(record_progress), None, ctx),
                 LSB_ERR_INVALID_ARGUMENT
             );
             let track = c"spotify:track:4uLU6hMCjMI75M1A2tKUQC";
@@ -863,6 +1107,41 @@ mod connect_tests {
     const PLAYLIST: &str = "spotify:playlist:37i9dQZF1DXcBWIGoYBM5M";
     const TRACK: &str = "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
 
+    /// CLA-88: a call that never answers ends at its limit as an error, and the next call
+    /// in the same queue still runs.
+    #[test]
+    fn a_connect_call_that_never_answers_does_not_block_the_next_one() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let limit = std::time::Duration::from_millis(200);
+        let start = std::time::Instant::now();
+        let (stuck, next) = runtime.block_on(async {
+            let stuck = within(
+                limit,
+                "Spotify Connect command failed",
+                std::future::pending::<Result<(), String>>(),
+            )
+            .await;
+            let next = within(limit, "Spotify Connect command failed", async { Ok(7) }).await;
+            (stuck, next)
+        });
+        let stuck = stuck.unwrap_err();
+        assert_eq!(
+            stuck.message,
+            "Spotify Connect command failed: no answer within 0 s"
+        );
+        // Only a new login helps after a timeout, so the app gets its own status.
+        assert!(stuck.stale);
+        assert_eq!(next, Ok(7));
+        let took = start.elapsed();
+        assert!(took >= limit && took < std::time::Duration::from_secs(2));
+        // A call that fails at once keeps its own error.
+        let failed = runtime.block_on(within(limit, "x", async {
+            Err::<(), _>("denied".to_owned())
+        }));
+        assert_eq!(failed.unwrap_err(), CallError::from("denied".to_owned()));
+        assert_eq!(CALL_LIMIT, std::time::Duration::from_secs(10));
+    }
+
     fn body(command: Command) -> (String, String, String) {
         let (method, path, body) = request(&command, "me", "app", "c1");
         (method.to_string(), path, body)
@@ -928,6 +1207,57 @@ mod connect_tests {
     }
 
     #[test]
+    fn play_tracks_sends_a_plain_list_with_no_context_uri() {
+        let other = "spotify:track:4uLU6hMCjMI75M1A2tKUQC";
+        let tracks = vec![TRACK.to_owned(), other.to_owned()];
+        let sent = body(Command::PlayTracks {
+            tracks,
+            track: other.to_owned(),
+        });
+        let expected = format!(
+            concat!(
+                r#"{{"command":{{"context":{{"uri":"","url":"","metadata":{{}},"#,
+                r#""pages":[{{"tracks":[{{"uri":"{0}"}},{{"uri":"{1}"}}]}}]}},"#,
+                r#""play_origin":{{"feature_identifier":"harmony","feature_version":"4.11.0"}},"#,
+                r#""options":{{"license":"on-demand","skip_to":{{"track_uri":"{1}"}},"player_options_override":{{}}}},"#,
+                r#""logging_params":{{"command_id":"c1"}},"endpoint":"play"}}}}"#
+            ),
+            TRACK, other
+        );
+        assert_eq!(sent.2, expected);
+    }
+
+    #[test]
+    fn play_tracks_checks_its_arguments() {
+        let recorder = Recorder::default();
+        let context = &recorder as *const Recorder as *mut c_void;
+        let bridge = lsb_new(Some(record_event), context);
+        let (ctx, app) = (std::ptr::null_mut(), c"app".as_ptr());
+        let (one, two) = (c"spotify:track:1".as_ptr(), c"spotify:track:2".as_ptr());
+        let album = c"spotify:album:1".as_ptr();
+        let list = [one, two];
+        let with_album = [one, album];
+        let status = Some(record_status as LsbCommandCallback);
+        unsafe {
+            let play = |tracks: *const *const c_char, count: usize, track: *const c_char| {
+                lsb_connect_play_tracks(bridge, app, tracks, count, track, status, ctx)
+            };
+            let invalid = [
+                play(std::ptr::null(), 0, one),
+                play(list.as_ptr(), 0, one),
+                play(list.as_ptr(), MAX_PLAY_TRACKS + 1, one),
+                play(with_album.as_ptr(), 2, one),
+                play(list.as_ptr(), 1, two), // the start track is not in the list
+                play(list.as_ptr(), 2, std::ptr::null()),
+            ];
+            assert_eq!(invalid, [LSB_ERR_INVALID_ARGUMENT; 6]);
+            assert_eq!(play(list.as_ptr(), 2, two), LSB_ERR_NOT_LOGGED_IN); // valid: needs a login
+            lsb_free(bridge);
+        }
+        assert!(recorder.events.lock().unwrap().is_empty());
+    }
+
+    #[test]
     fn only_safe_ids_and_uris_pass() {
         assert!(valid_device_id("a1B2-c_3"));
         for bad in ["", "a/b", "a?b", "../x", "a b", &"a".repeat(129)] {
@@ -935,10 +1265,12 @@ mod connect_tests {
         }
         assert!(valid_context(PLAYLIST));
         assert!(valid_context("spotify:user:jason.w:collection"));
+        assert!(valid_context("spotify:album:4aawyAB9vmqN3uQ7FjRGTy"));
         for bad in [
             "spotify:playlist:",
             "spotify:playlist:a/b",
-            "spotify:album:1",
+            "spotify:album:",
+            "spotify:album:a/b",
             "spotify:user::collection",
             "spotify:user:a:b:collection",
             "spotify:user:a\nb:collection",
@@ -1026,11 +1358,16 @@ mod connect_tests {
             is_active: true,
         };
         deliver_devices(record_devices, context, Ok(vec![device]));
-        deliver_devices(record_devices, context, Err("offline".to_owned()));
+        deliver_devices(record_devices, context, Err("offline".to_owned().into()));
         deliver_status(record_status, context, Ok(()));
-        deliver_status(record_status, context, Err("refused".to_owned()));
+        deliver_status(record_status, context, Err("refused".to_owned().into()));
+        // A stale session has its own status, so the app logs in again (CLA-88).
+        let stale = CallError::stale("no answer".to_owned());
+        deliver_devices(record_devices, context, Err(stale.clone()));
+        deliver_status(record_status, context, Err(stale));
         let row = ["mac", "Mac Book", "COMPUTER", "osx", "true"].map(str::to_owned);
         let failed = |m: &str| (LSB_ERR_CONNECT, Some(m.to_owned()), vec![]);
+        let stale = (LSB_ERR_STALE_SESSION, Some("no answer".to_owned()), vec![]);
         assert_eq!(
             *got.0.lock().unwrap(),
             vec![
@@ -1038,6 +1375,8 @@ mod connect_tests {
                 failed("offline"),
                 (LSB_OK, None, vec![]),
                 failed("refused"),
+                stale.clone(),
+                stale,
             ]
         );
     }
@@ -1306,5 +1645,20 @@ mod connect_tests {
             from: "phone-1".to_owned(),
         };
         assert!(transfer.can_retry());
+    }
+}
+
+/// Card AX, change 182: the page after the browser login is self-contained. Nothing on it can
+/// run code or load anything from the network.
+#[test]
+fn the_login_page_loads_nothing() {
+    let page = crate::oauth::OAUTH_PAGE;
+    assert!(page.starts_with("<!doctype html>"));
+    assert!(page.contains("<meta charset=\"utf-8\">"));
+    assert!(page.contains("You’re in"));
+    for banned in [
+        "<script", "<link", "<img", "<iframe", "src=", "href=", "url(", "@import",
+    ] {
+        assert!(!page.contains(banned), "{banned}");
     }
 }

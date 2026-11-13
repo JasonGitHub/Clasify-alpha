@@ -38,7 +38,20 @@ final class StateBox: Sendable {
     func deliver(_ state: SpotifyPlayerState) { handler.withLock { $0 }?(state) }
 }
 
+/// Runs when a command that nobody waits on gets LSB_ERR_STALE_SESSION (CLA-88).
+typealias StaleHandler = @MainActor @Sendable () -> Void
+
+/// The callback context of one command that nobody waits on.
+private final class StaleBox: Sendable {
+    let handler: StaleHandler
+    init(_ handler: @escaping StaleHandler) { self.handler = handler }
+}
+
 extension LibrespotClient {
+    /// Runs when a command with no `onStale` gets LSB_ERR_STALE_SESSION (CLA-88): the
+    /// session can send no more Connect calls, so the app logs in again.
+    @MainActor static var staleSession: StaleHandler?
+
     /// Registers Clasify as a Connect device, then lists the account's other devices.
     func devices() async throws -> [ConnectDevice] {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[ConnectDevice], any Error>) in
@@ -61,22 +74,31 @@ extension LibrespotClient {
 
     /// `command` is one of `LSB_COMMAND_*`. Returns LSB_ERR_NOT_LOGGED_IN at once when the
     /// session dropped: then the command was not queued.
+    /// `onStale` runs in place of `staleSession` when the command times out.
     @discardableResult
-    func fire(_ command: Int32, to device: String) -> Int32 {
-        lsb_connect_command(handle, device, UInt32(command), loggedCallback, nil)
+    func fire(_ command: Int32, to device: String, onStale: StaleHandler? = nil) -> Int32 {
+        logged(onStale) { lsb_connect_command(handle, device, UInt32(command), loggedCallback, $0) }
     }
 
     @discardableResult
-    func fireSeek(device: String, seconds: Double) -> Int32 {
+    func fireSeek(device: String, seconds: Double, onStale: StaleHandler? = nil) -> Int32 {
         let ms = UInt32(clamping: Int((max(seconds, 0) * 1000).rounded()))
-        return lsb_connect_seek(handle, device, ms, loggedCallback, nil)
+        return logged(onStale) { lsb_connect_seek(handle, device, ms, loggedCallback, $0) }
     }
 
     /// `percent` is 0 to 100.
     @discardableResult
-    func fireVolume(device: String, percent: Int) -> Int32 {
+    func fireVolume(device: String, percent: Int, onStale: StaleHandler? = nil) -> Int32 {
         let value = UInt16(clamping: min(max(percent, 0), 100) * 65535 / 100)
-        return lsb_connect_volume(handle, device, value, loggedCallback, nil)
+        return logged(onStale) { lsb_connect_volume(handle, device, value, loggedCallback, $0) }
+    }
+
+    /// Queues one command that nobody waits on. The bridge calls back only for a queued call.
+    private func logged(_ onStale: StaleHandler?, _ start: (UnsafeMutableRawPointer?) -> Int32) -> Int32 {
+        let box = onStale.map { Unmanaged.passRetained(StaleBox($0)).toOpaque() }
+        let status = start(box)
+        if status != LSB_OK, let box { Unmanaged<StaleBox>.fromOpaque(box).release() }
+        return status
     }
 
     /// `option` is one of `LSB_OPTION_*`.
@@ -128,6 +150,11 @@ private let connectLog = Logger(subsystem: "app.clasify.Clasify", category: "con
 /// For calls that nobody waits on. Only the status goes to the log, never the message.
 private func loggedCallback(_ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?) {
     if status != LSB_OK { connectLog.error("Connect command failed: status \(status, privacy: .public)") }
+    let handler = context.map { Unmanaged<StaleBox>.fromOpaque($0).takeRetainedValue().handler }
+    guard status == LSB_ERR_STALE_SESSION else { return }
+    Task { @MainActor in
+        if let handler { handler() } else { LibrespotClient.staleSession?() }
+    }
 }
 
 private func commandCallback(_ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?) {

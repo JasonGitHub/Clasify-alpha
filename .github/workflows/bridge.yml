@@ -1,7 +1,9 @@
 name: LibrespotBridge
 on:
   push: { branches: [main] }
-  pull_request: { paths: ["LibrespotBridge/**", ".github/workflows/bridge.yml"] }
+  pull_request:
+    paths: ["LibrespotBridge/**", ".github/workflows/bridge.yml", "scripts/licenses*/**", "scripts/licenses.py",
+            "ClasifyCore/Sources/ClasifyCore/Licenses.swift"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -9,10 +11,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: LibrespotBridge } }
-    env: { RUSTFLAGS: "-D warnings" }
     steps:
       - uses: actions/checkout@v4
       - run: cargo fmt --check
-      - run: cargo clippy --locked --all-targets
+      # -D warnings only for our code: the vendored librespot-core (CLA-66) has a
+      # warning that crates.io dependencies hide with --cap-lints.
+      - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      # Card BF, change 213: the Licenses list must match Cargo.lock.
+      - run: python3 ../scripts/licenses.py --check
       - run: cc -std=c11 -Wall -Wextra -Werror -fsyntax-only -x c include/librespot_bridge.h

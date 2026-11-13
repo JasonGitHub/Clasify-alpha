@@ -107,9 +107,14 @@ private struct TestPanel: View {
         if top.error { return "Can’t load. Press Select to try again." }
         switch top.screen {
         case .login where state.restoring: return "Signing in…"
-        case .auth: return "Waiting for browser… Approve Clasify in your browser. Menu cancels."
+        case .auth: return "Your browser is open. Log in there."
+        case .loginFailed: return "That didn’t work. No problem, it happens."
+        case .loggedIn: return "You’re in. Nice to meet you."
+        case .premium: return state.premiumFound ? "Premium." : "Premium needed. To play music, we need Spotify Premium."
         case .now: return "Select switches the wheel between volume and scrub."
         case .about: return "Clasify test build"
+        case .hello: return "Press Select to begin."
+        case .spotifyApp: return state.spotifyApp == true ? "Linked." : "We also need the Spotify app on this Mac."
         default: return nil
         }
     }
@@ -117,13 +122,21 @@ private struct TestPanel: View {
     private func title(_ screen: Screen) -> String {
         switch screen {
         case .login, .main: "Clasify"
-        case .auth: "Sign in"
+        case .auth, .loginFailed, .loggedIn, .premium: "Log In"
         case .playlists: "Playlists"
-        case .tracks(let id): state.library.first { $0.id == id }?.name ?? "Tracks"
+        case .albums: "Albums"
+        case .coverFlow, .albumPanel: "Cover Flow"
+        case .tracks(let id): state.library.first { $0.id == id }?.name ?? state.album(id)?.name ?? "Tracks"
         case .settings: "Settings"
         case .confirm: "Log out?"
         case .about: "About"
+        case .licenses: "Licenses"
+        case .license(let i): License.all.indices.contains(i) ? License.all[i].name : "License"
         case .now: "Now Playing"
+        case .hello: "Hello"
+        case .color: "Pick Your Color"
+        case .spotifyApp: "Spotify App"
+        case .yourMusic: "Your Music"
         }
     }
 
@@ -132,25 +145,38 @@ private struct TestPanel: View {
         case .logIn: "Log in with Spotify"
         case .nowPlaying: "Now Playing"
         case .playlists: "Playlists"
+        case .albums: "Albums"
+        case .coverFlow: "Cover Flow"
         case .likedSongs: "Liked Songs"
         case .shuffleSongs: "Shuffle Songs"
         case .settings: "Settings"
         case .playlist(let id): state.library.first { $0.id == id }?.name ?? id
+        case .album(let id): state.album(id)?.name ?? id
         case .track(let id): trackLabel(id)
         case .shuffle: "Shuffle: \(state.shuffle ? "On" : "Off")"
         case .repeatMode: "Repeat: \(state.repeatMode.rawValue)"
         case .skin: "Skin: \(state.skin.rawValue)"
-        case .albumArt: "Album Art: \(state.showArt ? "On" : "Off")"
+        case .albumArt: "Album Art: \(state.albumArt.rawValue)"
+        case .deviceColor: "Color: \(state.deviceColor.rawValue)"
         case .clicker: "Clicker: \(state.clicker ? "On" : "Off")"
+        case .nowPlayingBar: "Now Playing Bar: \(state.nowPlayingBar ? "On" : "Off")"
         case .about: "About"
         case .logOut: "Log Out"
         case .cancel: "Cancel"
+        case .openBrowser: "Open browser again"
+        case .tryAgain: "Try again"
+        case .getSpotifyApp: "Get Spotify App"
+        case .checkPremium: "Check again"
+        case .getPremium: "Get Premium"
+        case .premiumLogOut: "Log out"
         case .confirmLogOut: "Log Out"
+        case .color(let color): color.rawValue
+        case .license(let i): License.all.indices.contains(i) ? License.all[i].name : "License"
         }
     }
 
     private func trackLabel(_ id: String) -> String {
-        guard case .tracks(let playlist) = state.top.screen,
+        guard let playlist = state.top.screen.songList,
             let track = state.track(TrackRef(playlist: playlist, track: id))
         else { return id }
         return "\(track.title) — \(track.artist)"

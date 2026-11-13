@@ -37,7 +37,7 @@ struct CoverArt: View {
     }
 
     /// The reflection under a cover of `side` points: the cover's lower part mirrored, fading out downward.
-    func reflection(side: CGFloat, height: CGFloat) -> some View {
+    func reflection(side: CGFloat, height: CGFloat, strength: Double = 0.35) -> some View {
         Group {
             if image != nil {
                 self.frame(width: side, height: side)
@@ -49,23 +49,20 @@ struct CoverArt: View {
             }
         }
         .frame(width: side, height: height)
-        .mask(LinearGradient.vertical(.black.opacity(image == nil ? 0.45 : 0.35), .clear))
+        .mask(LinearGradient.vertical(.black.opacity(image == nil ? 0.45 : strength), .clear))
     }
 }
 
-/// CSS `perspective(240px) rotateY(18deg)` with `transform-origin: left center`: the right
-/// edge turns away from the viewer.
+/// The photo's tilt: the mockup's CSS `matrix3d(1.164835, 0.082418, 0, 0.001259, 0,1,0,0,
+/// 0,0,1,0, 0,0,0,1)` with `transform-origin: 0 0`. A point (x, y) moves to
+/// (1.164835 x, 0.082418 x + y) / (1 + 0.001259 x), so the 126.6 point cover is 126.6 tall
+/// on the left and about 109 on the right.
 struct Tilt: GeometryEffect {
-    var degrees = 18.0
-    var distance = 240.0
-
     func effectValue(size: CGSize) -> ProjectionTransform {
-        // A point (x, y) moves to (x cos a, y + x s h/2) / (1 + x s), with s = sin a / distance.
-        let a = degrees * .pi / 180, s = sin(a) / distance
         var t = ProjectionTransform()
-        t.m11 = cos(a)
-        t.m12 = size.height / 2 * s
-        t.m13 = s
+        t.m11 = 1.164835
+        t.m12 = 0.082418
+        t.m13 = 0.001259
         return t
     }
 }
