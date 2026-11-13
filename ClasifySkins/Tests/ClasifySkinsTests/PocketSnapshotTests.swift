@@ -367,7 +367,7 @@ import Testing
     @Test func onlyTheSelectedRowShowsAChevron() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 5  // About; Log out under it also opens a screen
+        s.top.sel = 7  // About; Log out under it also opens a screen
         let shot = try render(s, "settings-chevron")
         // The chevron is 8 points wide, 10 points in from the right edge of the list.
         let xs = Self.screenLeft + Self.screenWidth - 20...Self.screenLeft + Self.screenWidth - 8
@@ -375,8 +375,8 @@ import Testing
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
         }
-        #expect(box(6).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Log out
-        #expect(box(5).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+        #expect(box(8).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Log out
+        #expect(box(7).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
     }
 
     @Test func songListShowsArtistsAndTheScrollBar() throws {
@@ -668,7 +668,7 @@ import Testing
         let rows = { (row: Int, test: (Int, Int) -> Bool) in
             right.contains { x in (-3...3).contains { dy in test(x, Self.rowCenter(row) + dy) } }
         }
-        #expect(rows(0) { shot.isBlue($0, $1) })  // "Off" on the Shuffle row
+        #expect(rows(0) { shot.isBlue($0, $1) })  // "Spotify" on the Service row (card BM)
         #expect(rows(2) { shot.isLight($0, $1) })  // the selected row's value
     }
 
@@ -1391,6 +1391,22 @@ import Testing
         #expect(black.isBlue(183, 392) && !hint(black))  // the glow first; the press hint comes at 12.2 s
     }
 
+    /// Card BM, changes 257 and 264: Pick Your Music has the two services on the left and the
+    /// big logo tile of the selected one on the right, in place of the small device. Until the
+    /// logos are bundled (Jason's legal check), both tiles are dark with the name in white.
+    @Test func pickYourMusicShowsTheLogoOfTheSelectedService() throws {
+        var s = AppState()
+        s.stack = [Frame(screen: .pickMusic)]
+        let logo = (x: Self.screenLeft + 225, y: 165)  // in the tile, under its middle
+        let spotify = try render(s, "pick-music", time: 10)
+        #expect(spotify.isBlue(100, Self.rowCenter(0)) && !spotify.isBlue(100, Self.rowCenter(1)))
+        #expect(spotify.isDark(logo.x, logo.y), "\(spotify.rgb(logo.x, logo.y))")  // the dark tile
+        s.top.sel = 1
+        let apple = try render(s, "pick-music-apple", time: 10)
+        #expect(apple.isBlue(100, Self.rowCenter(1)))
+        #expect(apple.isDark(logo.x, logo.y), "\(apple.rgb(logo.x, logo.y))")
+    }
+
     /// Card AW.1, change 236: after a turn, Pick Your Color shows no light on the wheel's rim.
     /// Only the center glows.
     @Test func theColorPickShowsNoRimLightAfterATurn() throws {
@@ -1467,6 +1483,17 @@ import Testing
         let found = try render(s, "premium-found", time: 10)
         #expect(check(found))
         s.premiumFound = false; s.premiumAt = 0
+        // Card BM: Access is off (258) has two rows; Not subscribed (259) has three, with Apple
+        // Music's words. The rows start at the same place, so the blue bar never jumps.
+        s.stack = [Frame(screen: .accessOff)]
+        let off = try render(s, "access-off", time: 10)
+        #expect(headline(off) && off.isBlue(175, firstRow) && !check(off), "\(blue(off))")
+        #expect(!off.isBlue(175, firstRow + 23))  // Use Spotify
+        s.service = .appleMusic; s.words = .appleMusic
+        s.stack = [Frame(screen: .premium)]
+        let plan = try render(s, "not-subscribed", time: 10)
+        #expect(headline(plan) && plan.isBlue(175, firstRow) && !check(plan), "\(blue(plan))")
+        s.service = .spotify; s.words = .spotify
         // Card AY: the bar moves under the words while the names fill the small screen. Then
         // "You’re all set" and the green check.
         s.library = [Playlist(id: "spotify:playlist:a", name: "Road Trip", tracks: [])]

@@ -8,7 +8,7 @@ import Testing
     func allSet(_ songs: [Track] = liked.tracks) -> AppState {
         var s = AppState()
         send(&s, .launch, .restored(token: 1, ok: false), .select)  // the color pick
-        send(&s, .select, .select, .authDone(token: 2, ok: true))
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true))
         send(&s, .tick, now: 101.5)
         send(&s, .playlistsRefreshed([focusInfo]), now: 106)
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: songs), now: 110)

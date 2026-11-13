@@ -27,8 +27,11 @@ public protocol Player: AnyObject {
 /// How a login ended.
 public enum LoginResult: Equatable, Sendable {
     case ok, failed
-    /// The login worked, but the account is not Spotify Premium, so it ended (CLA-66).
+    /// The login worked, but the account is not Spotify Premium, so it ended (CLA-66). On
+    /// Apple Music: there is no subscription (card BM, change 259).
     case notPremium
+    /// The user did not allow access to the library (Apple Music, card BM, change 258).
+    case denied
 }
 
 /// Spotify login and library source (playlists and Liked Songs).
@@ -61,12 +64,43 @@ public protocol Library: AnyObject {
     /// Called on the main actor while a track read runs: how many of the list's items have
     /// their details, and how many there are. The store sets it.
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? { get set }
-    /// The name of the user's liked list on this service, such as "Liked Songs" on Spotify.
-    var likedSongsName: String { get }
+    /// The words that name this service's library on screen, such as "Liked Songs".
+    var words: LibraryWords { get }
 }
 
 extension Library {
-    public var likedSongsName: String { "Liked Songs" }
+    public var words: LibraryWords { .spotify }
+}
+
+/// The words that name a service's library on screen. The `Library` gives them, so the
+/// reducer, the menus and the skins never pick text by service (CLA-103).
+public struct LibraryWords: Equatable, Sendable {
+    /// The liked list, such as "Liked Songs".
+    public var likedSongs: String
+    /// The service, as in "Can’t reach Spotify".
+    public var service: String
+    /// How the user adds a song to the liked list, as in "Like songs in Spotify".
+    public var like: String
+    /// The screen when the account cannot play: its headline, its line, the row that opens
+    /// the plan's page, and the small device's word (card AX screen 135, card BM change 259).
+    public var needPlan: String, needPlanLine: String, getPlan: String, noPlan: String
+
+    public init(
+        likedSongs: String, service: String, like: String,
+        needPlan: String, needPlanLine: String, getPlan: String, noPlan: String
+    ) {
+        self.likedSongs = likedSongs; self.service = service; self.like = like
+        self.needPlan = needPlan; self.needPlanLine = needPlanLine; self.getPlan = getPlan; self.noPlan = noPlan
+    }
+
+    public static let spotify = LibraryWords(
+        likedSongs: "Liked Songs", service: "Spotify", like: "Like",
+        needPlan: "Premium needed", needPlanLine: "To play music, we need Spotify Premium.",
+        getPlan: "Get Premium", noPlan: "No Premium")
+    public static let appleMusic = LibraryWords(
+        likedSongs: "Favorite Songs", service: "Apple Music", like: "Favorite",
+        needPlan: "Not subscribed", needPlanLine: "To play music, we need Apple Music.",
+        getPlan: "Get Apple Music", noPlan: "No plan")
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.
@@ -77,6 +111,9 @@ public final class Store {
     @ObservationIgnored private let library: any Library
     @ObservationIgnored private let env: Dependencies
     @ObservationIgnored private var fetches: [Int: Task<Void, Never>] = [:]  // in flight, by token
+    /// Counts service switches. A background read with no token that ends after a switch is
+    /// dropped, so the old service's lists never show on the new one (CLA-103).
+    @ObservationIgnored private var serviceGen = 0
     /// Called after each `.wheel` step that moved something (see `wheelMoved`). The app clicks
     /// and ticks the trackpad here.
     @ObservationIgnored public var onWheelStep: (@MainActor () -> Void)?
@@ -84,6 +121,11 @@ public final class Store {
     @ObservationIgnored public var onGetSpotifyApp: (@MainActor () -> Void)?
     /// Opens Spotify's Premium page in the browser (card AX, screen 135). The app sets it.
     @ObservationIgnored public var onGetPremium: (@MainActor () -> Void)?
+    /// Opens the Mac's privacy settings for Apple Music (card BM, change 258). The app sets it.
+    @ObservationIgnored public var onOpenPrivacy: (@MainActor () -> Void)?
+    /// Makes `service` the active one in the player and the library, before any later effect
+    /// runs (CLA-103). The app sets it. Then the state gets the library's words.
+    @ObservationIgnored public var onSetService: (@MainActor (MusicService) -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
 
@@ -93,7 +135,7 @@ public final class Store {
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
-        self.state.likedSongsName = library.likedSongsName
+        self.state.words = library.words
         library.onProgress = { [weak self] playlist, done, total, albums in
             self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
         }
@@ -144,16 +186,18 @@ public final class Store {
                     self?.send(.tracksLoaded(token: token, playlist: id, tracks: result))
                 }
             case .refreshPlaylists:
-                let library = self.library
+                let (library, gen) = (self.library, serviceGen)
                 Task(priority: .utility) { [weak self] in
                     let result = await library.rereadPlaylists()
-                    self?.send(.playlistsRefreshed(result))
+                    guard let self, self.serviceGen == gen else { return }
+                    self.send(.playlistsRefreshed(result))
                 }
             case .refreshTracks(let id):
-                let library = self.library
+                let (library, gen) = (self.library, serviceGen)
                 Task(priority: .utility) { [weak self] in
                     let result = await library.reread(id)
-                    self?.send(.tracksRefreshed(playlist: id, tracks: result))
+                    guard let self, self.serviceGen == gen else { return }
+                    self.send(.tracksRefreshed(playlist: id, tracks: result))
                 }
             case .readArtTracks(let token, let id):
                 let library = self.library
@@ -162,10 +206,11 @@ public final class Store {
                     self?.send(.artTracksRead(token: token, playlist: id, tracks: result))
                 }
             case .readTrack(let id):
-                let library = self.library
+                let (library, gen) = (self.library, serviceGen)
                 Task { [weak self] in
                     let track = await library.track(id)
-                    self?.send(.trackRead(id, track))
+                    guard let self, self.serviceGen == gen else { return }
+                    self.send(.trackRead(id, track))
                 }
             case .prefetch:
                 let library = self.library
@@ -174,10 +219,15 @@ public final class Store {
                 let library = self.library
                 Task { [weak self] in
                     let result = await library.logIn()
-                    self?.send(result == .notPremium ? .notPremium(token: token) : .authDone(token: token, ok: result == .ok))
+                    switch result {
+                    case .notPremium: self?.send(.notPremium(token: token))
+                    case .denied: self?.send(.accessDenied(token: token))
+                    case .ok, .failed: self?.send(.authDone(token: token, ok: result == .ok))
+                    }
                 }
             case .getSpotifyApp: onGetSpotifyApp?()
             case .getPremium: onGetPremium?()
+            case .openPrivacy: onOpenPrivacy?()
             case .cancelLogIn:
                 let library = self.library
                 Task { await library.cancelLogIn() }
@@ -185,9 +235,17 @@ public final class Store {
                 let library = self.library
                 Task { [weak self] in
                     let result = await library.restoreSession()
-                    self?.send(result == .notPremium ? .notPremium(token: token) : .restored(token: token, ok: result == .ok))
+                    switch result {
+                    case .notPremium: self?.send(.notPremium(token: token))
+                    case .denied: self?.send(.accessDenied(token: token))
+                    case .ok, .failed: self?.send(.restored(token: token, ok: result == .ok))
+                    }
                 }
             case .logOut: library.logOut()
+            case .setService(let service):
+                serviceGen += 1
+                onSetService?(service)
+                send(.libraryWords(library.words))
             }
         }
     }

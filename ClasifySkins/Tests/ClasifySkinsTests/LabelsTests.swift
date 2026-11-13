@@ -45,6 +45,37 @@ func sampleState() -> AppState {
         #expect(Labels.title(.tracks(playlist: Playlist.likedSongsID), in: s) == "Favorite Songs")
     }
 
+    /// Card BM (CLA-103): the Service row shows the value of the last press, and the texts
+    /// that name the service follow the active library.
+    @Test func serviceRowAndTextsFollowTheService() {
+        var s = sampleState()
+        #expect(Labels.row(.service, on: .settings, in: s) == Labels.RowText(label: "Service", value: "Spotify"))
+        s.pendingService = .appleMusic
+        #expect(Labels.row(.service, on: .settings, in: s).value == "Apple Music")
+        s.words = .appleMusic
+        var error = Frame(screen: .playlists)
+        error.error = true
+        #expect(Labels.message(for: error, in: s)?.title == "Can’t reach Apple Music")
+        s.library = []
+        s.stack.append(Frame(screen: .albums))
+        #expect(Labels.message(for: s.top, in: s)?.body == "Favorite songs in Apple Music to see their albums. Press MENU to go back.")
+    }
+
+    /// Card BM: the titles, rows and words of Pick Your Music, Access is off and Not subscribed.
+    @Test func appleMusicSetupScreensUseTheCardWords() {
+        var s = sampleState()
+        #expect(Labels.title(.pickMusic, in: s) == "Pick Your Music" && Labels.title(.accessOff, in: s) == "Log In")
+        #expect(Labels.row(.pickService(.appleMusic), on: .pickMusic, in: s).label == "Apple Music")
+        #expect(Labels.row(.openPrivacy, on: .accessOff, in: s).label == "Open Settings")
+        #expect(Labels.row(.useSpotify, on: .accessOff, in: s).label == "Use Spotify")
+        #expect(Labels.setupWords(for: Frame(screen: .accessOff), in: s)?.headline == "Access is off")
+        #expect(Labels.row(.getPremium, on: .premium, in: s).label == "Get Premium")
+        s.words = .appleMusic
+        #expect(Labels.row(.getPremium, on: .premium, in: s).label == "Get Apple Music")
+        let words = Labels.setupWords(for: Frame(screen: .premium), in: s)
+        #expect(words == Labels.SetupWords(headline: "Not subscribed", line: "To play music, we need Apple Music."))
+    }
+
     /// Round 13 setup: the titles, the color rows, and the words that show until each screen is drawn.
     @Test func setupScreensUseTheBoardWords() {
         let s = sampleState()

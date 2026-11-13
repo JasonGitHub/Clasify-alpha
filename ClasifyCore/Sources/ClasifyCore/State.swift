@@ -114,6 +114,9 @@ public enum Screen: Equatable, Sendable {
     /// The login worked, but the account is not Spotify Premium (card AX, screen 135). Clasify
     /// needs Premium to play. "Check again" logs in again with the stored login.
     case premium
+    /// Card BM: the music service pick of the first run, after the color pick (257), and
+    /// Apple Music's screen after a "Don't Allow" in the macOS prompt (258).
+    case pickMusic, accessOff
     /// About's Licenses list, and the text of license `License.all[i]` with the names of the
     /// parts under it (card BF, change 213).
     case licenses, license(Int)
@@ -122,7 +125,7 @@ public enum Screen: Equatable, Sendable {
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -166,6 +169,8 @@ public enum Row: Equatable, Sendable {
     case logIn, nowPlaying, coverFlow, playlists, albums, likedSongs, shuffleSongs, settings
     case playlist(String), album(String), track(String)
     case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, about, logOut
+    /// Card BM, change 256: the active music service, first in Settings.
+    case service
     case cancel, confirmLogOut
     /// Rows of the login (card AX): open the browser again while it waits (170), and try
     /// again after a failed login (171). `cancel` stops the login.
@@ -175,6 +180,8 @@ public enum Row: Equatable, Sendable {
     /// Rows of the Premium screen (card AX, screen 135): log in again with the stored login,
     /// open Spotify's Premium page in the browser, and forget the login.
     case checkPremium, getPremium, premiumLogOut
+    /// Card BM: a service on Pick Your Music (257), "Open Settings" (258), "Use Spotify" (262).
+    case pickService(MusicService), openPrivacy, useSpotify
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
     /// A row of the Licenses list: license `License.all[i]` (card BF, change 213).
@@ -318,8 +325,16 @@ public struct AppState: Equatable, Sendable {
     public var restoring = false
     /// Liked Songs (once read) first, then the playlists. Each part loads when its screen opens.
     public var library: [Playlist] = []
-    /// The liked list's name on the active service ("Liked Songs" on Spotify), from the `Library`.
-    public var likedSongsName = "Liked Songs"
+    /// The words of the active service's library ("Liked Songs" on Spotify), from the `Library`.
+    public var words = LibraryWords.spotify
+    /// The liked list's name on the active service.
+    public var likedSongsName: String {
+        get { words.likedSongs }
+        set { words.likedSongs = newValue }
+    }
+    /// The service that the Settings "Service" row shows after a press, until Settings closes.
+    /// Leaving Settings switches to it (card BM, change 256). nil: no press since Settings opened.
+    public var pendingService: MusicService?
     /// The covers that take turns on the main menu's right side. `refreshArt` sets them.
     public var mainArt: [Track] = []
     /// The main menu row whose covers show. It follows the selection `artDelay` after the last
@@ -696,13 +711,16 @@ public struct AppState: Equatable, Sendable {
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
-        case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut]
+        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]
         case .loginFailed: [.tryAgain, .cancel]
         case .spotifyApp: [.getSpotifyApp]
-        case .premium: [.checkPremium, .getPremium, .premiumLogOut]
+        // Card BM, change 259: Apple Music has "Use Spotify" in place of "Log out".
+        case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
+        case .pickMusic: MusicService.allCases.map { .pickService($0) }
+        case .accessOff: [.openPrivacy, .useSpotify]
         case .licenses: License.all.indices.map { .license($0) }
         case .about, .now, .hello, .yourMusic, .loggedIn, .license: []
         }

@@ -142,7 +142,8 @@ struct PocketScreen: View {
         // With Album Art set to Now Playing or Off, they are full-width lists and load no covers.
         // The setup screens are split the same way, with the small device on the right (cards AW, AX).
         let preview = setupPreview
-        let split = state.isHalf(top.screen) || preview != nil
+        let logo = pickedService
+        let split = state.isHalf(top.screen) || preview != nil || logo != nil
         let width: CGFloat = split ? Pocket.paneWidth : Pocket.screenWidth
         ZStack(alignment: .leading) {
             if split {
@@ -151,6 +152,8 @@ struct PocketScreen: View {
                     if let preview {
                         SetupPreview(color: state.shownColor, screen: preview.screen, cable: preview.cable)
                             .frame(width: Pocket.screenWidth - Pocket.paneWidth)
+                    } else if let logo {
+                        ServiceLogo(service: logo).frame(width: Pocket.screenWidth - Pocket.paneWidth)
                     } else {
                         MainArtPanel(tracks: state.mainArt)
                     }
@@ -323,6 +326,15 @@ struct PocketScreen: View {
         return PreviewScreen.of(top.screen, in: state)
     }
 
+    /// The service of the selected row on Pick Your Music, whose logo shows on the right (card
+    /// BM, 264). Nil on other screens.
+    private var pickedService: MusicService? {
+        guard top.screen == .pickMusic else { return nil }
+        let rows = state.rows(for: top)
+        guard rows.indices.contains(top.sel), case .pickService(let service) = rows[top.sel] else { return nil }
+        return service
+    }
+
     /// The message that shows in place of the content. The song panel shows its own, inside
     /// the panel, so its cover still turns over while the album loads (CLA-46).
     private var message: Labels.Message? {
@@ -452,7 +464,8 @@ struct PocketList: View {
             }
             if top.screen == .color { ColorPickWords(state: state).layoutPriority(1) }  // its line sits at the bottom
             Spacer(minLength: 0)
-            if let footnote = words?.footnote, !footnote.isEmpty {  // at the bottom, as on the color pick
+            let footnote = top.screen == .pickMusic ? Labels.pickMusicFootnote : words?.footnote
+            if let footnote, !footnote.isEmpty {  // at the bottom, as on the color pick
                 Text(footnote)
                     .font(.helvetica(10))
                     .foregroundStyle(Color(hex: 0x5d6772))

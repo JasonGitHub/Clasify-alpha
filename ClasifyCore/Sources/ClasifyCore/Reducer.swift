@@ -70,6 +70,11 @@ public enum Action: Equatable, Sendable {
     /// The load with this `generation`, which `.select` started, did not start to play.
     /// Clasify shows again what it showed before the load, or nothing. The message is a toast.
     case loadFailed(String, generation: Int)
+    /// The active service's library names its lists with these words (after `.setService`).
+    case libraryWords(LibraryWords)
+    /// The login or restore with this token found no access to the library: the user did
+    /// not allow it in the macOS prompt (Apple Music, card BM, change 258).
+    case accessDenied(token: Int)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -111,6 +116,11 @@ public enum Effect: Equatable, Sendable {
     /// Read one track's details, for a track that Spotify plays from outside the library.
     /// The result comes back as `.trackRead`.
     case readTrack(String)
+    /// Make this music service the active one in the player and the library (CLA-103). The
+    /// store runs it before the effects after it, and answers with `.libraryWords`.
+    case setService(MusicService)
+    /// Open the Mac's privacy settings for Apple Music (card BM, change 258).
+    case openPrivacy
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -354,8 +364,20 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func leavePremium() {
         s.restoring = false
         s.authAttempt += 1  // a "Check again" that still runs is stale
-        signOut(); fx.append(.logOut)
+        logOut()
         s.premiumFound = false; s.premiumAt = 0
+    }
+    /// Signs out and forgets the login. Apple Music goes back to Pick Your Music, because
+    /// Clasify cannot sign out the Mac's Apple account (card BM, change 263).
+    func logOut() {
+        signOut(); fx.append(.logOut)
+        if s.service == .appleMusic { s.stack = [pickMusic()] }
+    }
+    /// Pick Your Music, on the active service's row (card BM, change 257).
+    func pickMusic() -> Frame {
+        var frame = Frame(screen: .pickMusic)
+        frame.sel = MusicService.allCases.firstIndex(of: s.service) ?? 0
+        return frame
     }
     /// Goes straight to the login screen, with no toast (card AX, change 181).
     func signOut() {
@@ -367,6 +389,17 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
         s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
         s.tourRestAt = now  // the tour queue stays for the next login (card BA.2)
+        s.pendingService = nil
+    }
+    /// Card BM, change 260: leaving Settings with another service. The old one stops, its
+    /// library leaves, and the new one logs in with its stored login: its main menu opens at
+    /// the top, with nothing playing. With no stored login, its login screen shows (256).
+    func switchService(to service: MusicService) {
+        signOut()
+        s.service = service
+        fx.append(.setService(service))
+        s.authAttempt += 1; s.restoring = true
+        fx.append(.restoreSession(token: s.authAttempt))
     }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)
@@ -591,11 +624,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 } else {  // not read yet: load, then shuffle
                     open(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
                 }
-            case .settings: s.stack.append(Frame(screen: .settings))
+            case .settings: s.stack.append(Frame(screen: .settings)); s.pendingService = nil
             case .playlist(let id): open(.tracks(playlist: id))
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
                 if let list = s.top.screen.songList { play(list, id) }
+            case .service: s.pendingService = (s.pendingService ?? s.service).other  // applied when Settings closes
             case .shuffle: toggleShuffle()
             case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
@@ -603,9 +637,26 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
             case .nowPlayingBar: s.nowPlayingBar.toggle()
-            case .color(let color):  // card AW: a press saves the color, then the login
+            case .color(let color):  // card AW: a press saves the color, then the music pick (card BM, 257)
                 s.deviceColor = color
-                if s.signedIn { setupNext() } else { s.stack.append(Frame(screen: .login)) }
+                if s.signedIn { setupNext() } else { s.stack.append(pickMusic()) }
+            case .pickService(let service):
+                if service != s.service { s.service = service; fx.append(.setService(service)) }
+                if service == .spotify {
+                    // Today's Log In. After a log out on Apple Music, a Spotify login that is
+                    // still stored goes on with no browser: "Signing in…" first. In the first
+                    // setup, the launch already tried the stored login.
+                    s.stack.append(Frame(screen: .login))
+                    if s.setupDone { s.authAttempt += 1; s.restoring = true; fx.append(.restoreSession(token: s.authAttempt)) }
+                } else {
+                    // Change 258: the macOS prompt shows over this screen. Its answer comes
+                    // back with this screen's token.
+                    s.authAttempt += 1
+                    s.stack[s.stack.count - 1].token = s.authAttempt
+                    fx.append(.logIn(token: s.authAttempt))
+                }
+            case .openPrivacy: fx.append(.openPrivacy)
+            case .useSpotify: switchService(to: .spotify)  // change 262
             case .about:
                 // Card BF: it opens at the top. The scroll bar shows from 0.3 s for 1.5 s.
                 s.stack.append(Frame(screen: .about))
@@ -616,14 +667,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .cancel:
                 if s.top.screen == .auth { fx.append(.cancelLogIn) }
                 s.stack.removeLast()
-            case .confirmLogOut: signOut(); fx.append(.logOut)
+            case .confirmLogOut: logOut()
             }
 
         case .menu:
             if s.top.screen == .now && s.nowMode != .volume { s.nowMode = .volume; s.overlayUntil = 0; return }
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
             if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
-            if s.top.screen == .spotifyApp { return }  // card BB: MENU does nothing
+            if s.top.screen == .spotifyApp || s.top.screen == .accessOff { return }  // cards BB, BM: MENU does nothing
             if s.top.screen == .premium { return leavePremium() }  // card AX: back to the login
             if s.top.screen == .color && !s.setupDone {
                 // CLA-62 (Jason, 12:47 JST 11-10): back to Hello, which starts again. A color
@@ -632,6 +683,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 return
             }
             if s.stack.count < 2 { return }
+            if s.top.screen == .settings, let service = s.pendingService {
+                s.pendingService = nil
+                if service != s.service { return switchService(to: service) }  // back on the old value: nothing happens
+            }
             if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
             // Change 213: back from Licenses, the idle clock starts again from the pose it left.
@@ -767,7 +822,15 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.top.screen == .yourMusic && s.top.loading { s.namesAt = now }  // the names fill in from now
             if waiting && !holdForNames() { endHeldRead() }  // no playlists: setup goes on
 
-        case .activated: refreshShown()
+        case .activated:
+            // Card BM, change 258: back from System Settings, Access is off checks again. With
+            // access, setup goes on as after Allow; still none, the screen stays as it is.
+            if s.top.screen == .accessOff && !s.restoring {
+                s.authAttempt += 1; s.restoring = true
+                fx.append(.restoreSession(token: s.authAttempt))
+                return
+            }
+            refreshShown()
 
         case .libraryStale:
             s.readAt = [:]
@@ -877,8 +940,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.restoring = false
             guard ok else { return }
             s.signedIn = true; fx.append(.prefetch)
-            // During setup, Hello and the color pick stay. The login screen goes on.
-            if s.top.screen == .login { setupNext() }
+            // During setup, Hello and the color pick stay. The login screen goes on, and so does
+            // Access is off after access was turned on (card BM, 258).
+            if s.top.screen == .login || s.top.screen == .accessOff { setupNext() }
             if s.top.screen == .premium {
                 // "Check again" found Premium: the green check for a beat, then on (screen 135).
                 s.premiumFound = true; s.premiumAt = now
@@ -889,7 +953,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Only for the login or restore that runs now, or a session that is in. A late one
             // from an older attempt ("Open browser again"), a logout or a reset is dropped.
             if let token {
-                let login = s.top.screen == .auth && s.top.token == token
+                let login = (s.top.screen == .auth || s.top.screen == .pickMusic) && s.top.token == token
                 guard login || (s.restoring && s.authAttempt == token) else { return }
             } else {
                 guard s.signedIn else { return }
@@ -905,10 +969,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.premiumFound = false; s.premiumAt = 0
 
         case .authDone(let token, let ok):
-            guard s.top.screen == .auth, s.top.token == token else { return }  // stale attempt
+            // The Apple Music prompt answers on Pick Your Music (card BM, change 258).
+            let prompt = s.top.screen == .pickMusic
+            guard s.top.screen == .auth || prompt, s.top.token == token else { return }  // stale attempt
             // A login that worked counts even if the app went offline since: its token is saved.
             // Card AX: a failed login says so in place of the wait (171). One that worked shows
             // "You’re in" for a beat (175), then goes on.
+            if !ok && prompt { s.stack[s.stack.count - 1].token = 0; return }  // a press asks again
             if !ok { s.stack[s.stack.count - 1] = Frame(screen: .loginFailed); return }
             s.signedIn = true; s.sessionEnded = false
             fx.append(.prefetch)
@@ -922,6 +989,19 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .batteryChanged(let battery):
             s.battery = battery
 
+        case .libraryWords(let words):
+            s.words = words
+
+        case .accessDenied(let token):
+            // Change 258: from the prompt on Pick Your Music, or from a restore.
+            let prompt = s.top.screen == .pickMusic && s.top.token == token
+            guard prompt || (s.restoring && s.authAttempt == token) else { return }
+            s.restoring = false
+            s.authAttempt += 1  // a late result of this login is stale
+            if !s.signedIn && (s.top.screen == .hello || s.top.screen == .color) { return }  // setup goes on to the pick
+            signOut()
+            s.stack = [Frame(screen: .accessOff)]
+
         case .expire:
             // Forget the stored login too, so that a later .launch does not restore it. The login
             // screen says "Log in again", and after the login the main menu opens (change 181).
@@ -933,9 +1013,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
             let (battery, spotifyApp) = (s.battery, s.spotifyApp)  // the Mac, which a reset does not change
+            let words = s.words  // the active service's library, which a reset does not change
             s = AppState()
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
-            s.battery = battery; s.spotifyApp = spotifyApp
+            s.battery = battery; s.spotifyApp = spotifyApp; s.words = words
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)

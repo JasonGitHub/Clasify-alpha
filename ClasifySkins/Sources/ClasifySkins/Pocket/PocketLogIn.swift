@@ -31,7 +31,8 @@ enum PreviewScreen: Equatable {
             return (screen: PreviewScreen.mark(ok: true, word: "Premium"), cable: SyncCable.Plug.once(from: state.premiumAt))
         case .premium:
             let cable = state.premiumAt > 0 ? SyncCable.Plug.once(from: state.premiumAt) : SyncCable.Plug.on
-            return (screen: PreviewScreen.mark(ok: false, word: "No Premium"), cable: cable)
+            return (screen: PreviewScreen.mark(ok: false, word: state.words.noPlan), cable: cable)
+        case .accessOff: return (screen: PreviewScreen.rows(breathe: false), cable: SyncCable.Plug.off)  // card BM, 258
         case .yourMusic where state.top.error: return nil  // the error message fills the screen
         case .yourMusic where state.top.loading:
             let names = state.namesAt > 0 ? state.firstReadNames : []

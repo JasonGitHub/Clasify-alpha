@@ -106,6 +106,12 @@ final class SpotifyConnectPlayer: Player {
     private var warmID = 0
     /// Bumped by `reset`, so an option result from before a sign-out changes nothing.
     private var session = 0
+    /// The Spotify app that Clasify launched in this session, by its process ID. Only this
+    /// one quits when Apple Music becomes active: the user's own Spotify stays.
+    private var launchedApp: pid_t?
+    /// Apple Music is active: no launch of Spotify may finish. A launch that was already
+    /// opening quits the app again (CLA-103). `prewarm` and `load` clear it.
+    private var appOff = false
 
     init(client: LibrespotClient, library: LibrespotLibrary) {
         self.client = client
@@ -142,6 +148,7 @@ final class SpotifyConnectPlayer: Player {
     // MARK: Player
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
+        appOff = false
         self.generation = generation
         // A load that replaces one still in flight keeps that one's snapshot: the old track plays.
         let before = loading && storeLoad ? beforeLoad : startedTrack.isEmpty ? nil : Snapshot(
@@ -338,6 +345,7 @@ final class SpotifyConnectPlayer: Player {
     /// device, so the first play does not wait for them. It sends no command, so it never
     /// changes what Spotify plays. A failure stays quiet: the first load tries again and shows it.
     func prewarm() {
+        appOff = false
         guard device == nil, warming == nil else { return }
         warmID += 1
         let id = warmID
@@ -374,6 +382,17 @@ final class SpotifyConnectPlayer: Player {
         movedAway = false
         startedTrack = ""
         latest = nil  // it belongs to the account that signed out
+    }
+
+    /// Apple Music is now active: the hidden Spotify app must not run (CLA-103). Quits it only
+    /// when Clasify launched it in this session; a Spotify that the user opened, or one left
+    /// from an earlier session, stays. The device and the session's state go too.
+    func quitApp() {
+        appOff = true
+        reset()
+        guard let pid = launchedApp else { return }
+        launchedApp = nil
+        NSRunningApplication(processIdentifier: pid)?.terminate()
     }
 
     /// Spotify quit. Its device must be found again after the next launch. While it played
@@ -677,9 +696,17 @@ final class SpotifyConnectPlayer: Player {
             send(.spotifyAppFound(false))  // the Spotify App screen opens (card BB, change 131)
             throw PlayerError(message: "We need the Spotify app to play music")
         }
+        guard !appOff else { throw PlayerError(message: "") }  // Apple Music became active
         let start = ContinuousClock.now
         try await Self.open(url)
         Self.logTime("Spotify launched", since: start)
+        let pid = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first?.processIdentifier
+        guard !appOff else {
+            // Apple Music became active while Spotify opened: quit it again (CLA-103).
+            if let pid { NSRunningApplication(processIdentifier: pid)?.terminate() }
+            throw PlayerError(message: "")
+        }
+        launchedApp = pid
         // Safety net: Spotify must never come to the front.
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first,
            app.isActive || !app.isHidden {

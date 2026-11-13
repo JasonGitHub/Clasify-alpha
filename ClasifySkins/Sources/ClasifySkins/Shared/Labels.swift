@@ -22,7 +22,7 @@ enum Labels {
         switch screen {
         case .login where state.restoring: "Clasify"
         case .main: "Clasify"
-        case .login, .auth, .loginFailed, .loggedIn, .premium: "Log In"  // card AX
+        case .login, .auth, .loginFailed, .loggedIn, .premium, .accessOff: "Log In"  // cards AX, BM
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
@@ -36,6 +36,7 @@ enum Labels {
         // Setup (Round 13). Hello shows no title bar text.
         case .hello: ""
         case .color: "Pick Your Color"
+        case .pickMusic: "Pick Your Music"  // card BM, change 257
         case .spotifyApp: "Spotify App"
         case .yourMusic: "Your Music"
         }
@@ -74,6 +75,8 @@ enum Labels {
             let ref = TrackRef(playlist: playlist, track: id)
             let track = state.track(ref)
             return RowText(label: track?.title ?? "", detail: track?.artist ?? "", playing: state.current == ref)
+        // Change 256: the value flips on each Select; the switch happens on leaving Settings.
+        case .service: return RowText(label: "Service", value: (state.pendingService ?? state.service).rawValue)
         case .shuffle: return RowText(label: "Shuffle", value: state.shuffle ? "Songs" : "Off")
         case .repeatMode: return RowText(label: "Repeat", value: state.repeatMode.rawValue)
         case .skin: return RowText(label: "Skin", value: state.skin.rawValue)
@@ -92,8 +95,12 @@ enum Labels {
         case .getSpotifyApp: return RowText(label: "Get Spotify App")  // card BB: no chevron
         // Card AX, screen 135: no chevrons.
         case .checkPremium: return RowText(label: "Check again")
-        case .getPremium: return RowText(label: "Get Premium")
+        case .getPremium: return RowText(label: state.words.getPlan)  // "Get Apple Music" (card BM, 259)
         case .premiumLogOut: return RowText(label: "Log out")
+        // Card BM: no chevrons.
+        case .pickService(let service): return RowText(label: service.rawValue)
+        case .openPrivacy: return RowText(label: "Open Settings")
+        case .useSpotify: return RowText(label: "Use Spotify")
         }
     }
 
@@ -106,22 +113,23 @@ enum Labels {
 
     /// Nil when the screen shows a list, Now Playing or About.
     static func message(for frame: Frame, in state: AppState) -> Message? {
+        let words = state.words
         if frame.screen == .yourMusic && !frame.error { return nil }  // card AY draws its own words
         if frame.loading { return Message(title: "Loading…", spinner: true) }
         if frame.error {
-            return Message(title: "Can’t reach Spotify", body: "Check your connection, then press center to retry.")
+            return Message(title: "Can’t reach \(words.service)", body: "Check your connection, then press center to retry.")
         }
         switch frame.screen {
         case .login where state.restoring:
             return Message(title: "Signing in…", spinner: true)
         case .tracks(let id) where Album.isID(id) && state.rows(for: frame).isEmpty:
-            return Message(title: "No songs", body: "Spotify has no songs for this album. Press MENU to go back.")
+            return Message(title: "No songs", body: "\(words.service) has no songs for this album. Press MENU to go back.")
         case .albumPanel where state.rows(for: frame).isEmpty:
-            return Message(title: "No songs", body: "Spotify has no songs for this album. Press MENU to go back.")
+            return Message(title: "No songs", body: "\(words.service) has no songs for this album. Press MENU to go back.")
         case .tracks where state.rows(for: frame).isEmpty:
-            return Message(title: "No songs", body: "Add songs to this playlist in Spotify. Press MENU to go back.")
+            return Message(title: "No songs", body: "Add songs to this playlist in \(words.service). Press MENU to go back.")
         case .albums where state.rows(for: frame).isEmpty, .coverFlow where state.rows(for: frame).isEmpty:
-            return Message(title: "No albums", body: "Like songs in Spotify to see their albums. Press MENU to go back.")
+            return Message(title: "No albums", body: "\(words.like) songs in \(words.service) to see their albums. Press MENU to go back.")
         case .now where state.current == nil:
             return Message(title: "")
         default:
@@ -152,13 +160,17 @@ enum Labels {
         case .auth: SetupWords(headline: "Take your time", line: "Your browser is open.\nLog in there.")
         case .loginFailed: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")
         case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
-        case .premium: SetupWords(headline: "Premium needed", line: "To play music, we need Spotify Premium.")  // 135
+        case .premium: SetupWords(headline: state.words.needPlan, line: state.words.needPlanLine)  // 135; card BM, 259
+        case .accessOff: SetupWords(headline: "Access is off", line: "Turn it on in System Settings.")  // card BM, 258
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
         case .yourMusic: SetupWords(headline: "You’re all set", line: ready)
         default: nil
         }
     }
+
+    /// The line at the bottom of Pick Your Music (card BM, change 257), as on Pick Your Color.
+    static let pickMusicFootnote = "You can always change it in Settings."
 
     /// The line under "You’re all set" (card AY, change 189): always the same, with no song count.
     static let ready = "Enjoy your music."
@@ -188,8 +200,8 @@ enum Labels {
         let track = index.map { tracks[$0] } ?? state.track(ref)
         return NowText(
             // A track that is not in our copy of the list, such as Spotify's autoplay after the
-            // list ends, shows as "Spotify" with no artist. Never show a raw track ID.
-            title: track?.title ?? "Spotify",
+            // list ends, shows as the service name with no artist. Never show a raw track ID.
+            title: track?.title ?? state.words.service,
             artist: track?.artist ?? "",
             list: title(.tracks(playlist: ref.playlist), in: state),
             count: index.map { "\($0 + 1) of \(tracks.count)" } ?? "",

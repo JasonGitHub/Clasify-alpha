@@ -158,7 +158,19 @@ final class AppModel {
         let appleMusic = AppleMusicPlayer()
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
-        let store = Store(player: services, library: library, settings: UserDefaults.standard)
+        let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
+        let store = Store(player: services, library: libraries, settings: UserDefaults.standard)
+        // Leaving Settings with another service (card BM, change 260). The reducer sends this
+        // before the new service logs in, so every later call goes to the new one.
+        store.onSetService = { [weak services, weak libraries, weak player, weak store] service in
+            services?.service = service
+            libraries?.service = service
+            // The hidden Spotify app does not run while Apple Music is active (CLA-103).
+            if service == .appleMusic { player?.quitApp() }
+            // Apple Music does not need the Spotify app. "Found" keeps the Spotify App screen
+            // (card BB) from opening while Apple Music is active.
+            store?.send(.spotifyAppFound(service == .appleMusic || Self.spotifyAppInstalled))
+        }
         player.send = { [weak store] action in store?.send(action) }
         appleMusic.send = { [weak store] action in store?.send(action) }
         self.store = store
@@ -168,9 +180,17 @@ final class AppModel {
         store.onGetSpotifyApp = {
             if let url = URL(string: "https://www.spotify.com/download/mac/") { NSWorkspace.shared.open(url) }
         }
-        // Card AX, screen 135: "Get Premium" opens Spotify's Premium page in the browser.
-        store.onGetPremium = {
-            if let url = URL(string: "https://www.spotify.com/premium/") { NSWorkspace.shared.open(url) }
+        // Card AX, screen 135: "Get Premium" opens Spotify's Premium page in the browser. On
+        // Apple Music, "Get Apple Music" opens Apple's page (card BM, change 259).
+        store.onGetPremium = { [weak store] in
+            let page = store?.state.service == .appleMusic ? "https://www.apple.com/apple-music/" : "https://www.spotify.com/premium/"
+            if let url = URL(string: page) { NSWorkspace.shared.open(url) }
+        }
+        // Card BM, change 258: "Open Settings" opens Privacy & Security > Media & Apple Music.
+        store.onOpenPrivacy = {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Media") {
+                NSWorkspace.shared.open(url)
+            }
         }
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
@@ -184,24 +204,26 @@ final class AppModel {
             // The queue is .main, so this runs on the main actor.
             MainActor.assumeIsolated { store?.send(.activated) }
         }
-        // Setup shows the Spotify App screen (card BB) only when the app is missing.
-        store.send(.spotifyAppFound(Self.spotifyAppInstalled))
+        // Setup shows the Spotify App screen (card BB) only when the app is missing. Apple Music
+        // does not need it: "found" keeps that screen away while Apple Music is active.
+        store.send(.spotifyAppFound(service == .appleMusic || Self.spotifyAppInstalled))
         store.send(.launch)  // restores the stored login
         // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
         // and resets the player when the session signs out.
-        ticker = Task { [weak store, weak player, weak services, artwork] in
-            var signedIn = false
+        ticker = Task { [weak store, weak player, artwork] in
+            var spotifySignedIn = false
             var spotifyCheck = 0.0  // when the Spotify App screen last looked for the app
             var beat = false
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let state = store?.state else { return }
-                if let services, services.service != state.service { services.service = state.service }
-                if state.signedIn && !signedIn { player?.prewarm() }
-                if !state.signedIn && signedIn { player?.reset() }
-                signedIn = state.signedIn
+                // Only Spotify needs the pre-warm: it starts the hidden Spotify app.
+                let spotify = state.signedIn && state.service == .spotify
+                if spotify && !spotifySignedIn { player?.prewarm() }
+                if !spotify && spotifySignedIn { player?.reset() }
+                spotifySignedIn = spotify
                 artwork.prefetchNext(in: state)
                 let now = Dependencies.live.now()
                 // While the Spotify App screen shows, look for the app every 3 s, quietly (change 174).
