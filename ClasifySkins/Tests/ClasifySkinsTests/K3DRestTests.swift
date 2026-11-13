@@ -67,6 +67,11 @@ import Testing
     }
 
     func rest(_ renderer: K3DRenderer, _ state: AppState, _ name: String) throws -> Pixels {
+        try pixels(restImage(renderer, state), name)
+    }
+
+    /// The 3D rest frame as a SwiftUI image the size of the device.
+    func restImage(_ renderer: K3DRenderer, _ state: AppState) throws -> some View {
         let size = PocketSkin.size, w = Int(size.width) * 2, h = Int(size.height) * 2
         var bytes = try #require(renderer.image(
             K3DPose(black: state.deviceColor == .black), screen: K3DSpike.snapshot(state), size: size, scale: 2))
@@ -78,7 +83,7 @@ import Testing
                 space: CGColorSpace(name: CGColorSpace.sRGB)!,
                 bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)?.makeImage()
         })
-        return try pixels(Image(decorative: image, scale: 2).frame(width: size.width, height: size.height), name)
+        return Image(decorative: image, scale: 2).frame(width: size.width, height: size.height)
     }
 
     func save(_ bitmap: NSBitmapImageRep, _ name: String) {
@@ -120,5 +125,26 @@ import Testing
         let a = try #require(flat.firstDark(rows: rows, columns: columns, green: 200))
         let b = try #require(rest.firstDark(rows: rows, columns: columns, green: 200))
         #expect(abs(a - b) <= 2, "MENU top: 2D \(Double(a) / 2) pt, 3D \(Double(b) / 2) pt")
+    }
+
+    /// Halfway through the crossfade (build 166 showed a grey blink there), the flat device
+    /// over the 3D rest frame still looks like the flat device: the screen, MENU, the body and
+    /// the wheel. The same fade with no compositing group, each layer at half opacity on its
+    /// own, dims it: that check shows the cause of the blink.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theHalfwayFadeKeepsTheDevice() throws {
+        let renderer = try #require(K3DRenderer.shared)
+        let state = AppState()
+        let flat = try flat(state, "bl-silver-2d")
+        let body3D = try restImage(renderer, state)
+        let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
+        let half = try pixels(K3DHandover(flat: 0.5, content: device) { body3D }, "k3d7-fade-half")
+        let perLayer = try pixels(device.opacity(0.5).background { body3D }, "k3d7-fade-per-layer")
+        var worst = 0
+        for (x, y) in [(183, 150), (183, 100), (183, 342), (183, 290), (183, 381), (60, 450)] {
+            let a = flat.mean(x, y), b = half.mean(x, y), c = perLayer.mean(x, y)
+            #expect(near(a, b), "at \(x), \(y): 2D \(a), halfway \(b)")
+            worst = max(worst, abs(a.r - c.r), abs(a.g - c.g), abs(a.b - c.b))
+        }
+        #expect(worst > Self.limit, "a fade per layer moves the device by only \(worst)")
     }
 }
