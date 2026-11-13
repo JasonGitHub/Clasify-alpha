@@ -2,7 +2,7 @@ import ClasifyCore
 import ClasifySkins
 import SwiftUI
 
-/// SPIKE (CLA-101): the skin with the K.3D.1 flip. Shows only when the hidden switch
+/// SPIKE (CLA-101): the skin with the K.3D.7 flip. Shows only when the hidden switch
 /// `spike.k3d` is on (`defaults write app.clasify.Clasify spike.k3d -bool true`, then
 /// relaunch). The 2D device draws card BL's look. In About, Play/Pause turns the device over
 /// to its steel back and back again. While the 3D body shows, Space or a click on it turns it
@@ -16,7 +16,7 @@ struct K3DSpikeSkin: View {
     static let isOn = UserDefaults.standard.bool(forKey: K3DSpike.key)
 
     var body: some View {
-        K3DFlipView(flip: flip, margin: DeviceWindow.margin, onTap: turn) {
+        K3DFlipView(flip: flip, black: store.state.shownColor == .black, margin: DeviceWindow.margin, onTap: turn) {
             PocketSkin(state: store.state) { action in
                 if case .play = action, store.state.top.screen == .about {
                     turn()

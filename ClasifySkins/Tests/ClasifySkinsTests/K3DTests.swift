@@ -5,8 +5,8 @@ import Testing
 
 @testable import ClasifySkins
 
-/// SPIKE (CLA-101): the K.3D.1 port. The textures load with their bytes as stored, the mesh
-/// matches the mock's `k3d_src.js`, and the shaders compile.
+/// SPIKE (CLA-101): the K.3D.7 port. The textures load with their bytes as stored, the mesh
+/// matches the mock's `k3d_src3.js`, and the shaders compile.
 @Suite @MainActor struct K3DTests {
     func pixel(_ bytes: [UInt8], _ x: Int, _ y: Int) -> [UInt8] {
         let i = (y * K3DTextures.width + x) * 4
@@ -18,11 +18,11 @@ import Testing
     @Test func theFrontKeepsItsMaterialIds() throws {
         let front = try #require(K3DTextures.rgba(.front))
         #expect(front.count == K3DTextures.width * K3DTextures.height * 4)
-        #expect(pixel(front, 500, 865) == [246, 250, 251, 255])  // wheel
+        #expect(pixel(front, 500, 865) == [247, 250, 251, 255])  // wheel
         #expect(pixel(front, 100, 1100) == [195, 199, 190, 253])  // bare aluminium
-        #expect(pixel(front, 100, 100) == [203, 211, 220, 251])  // LCD
-        #expect(pixel(front, 58, 300) == [42, 44, 46, 250])  // black bezel under the window
-        #expect(pixel(front, 365, 865) == [192, 201, 199, 249])  // center button
+        #expect(pixel(front, 100, 100) == [204, 210, 219, 251])  // LCD
+        #expect(pixel(front, 58, 300) == [42, 44, 46, 250])  // bezel ink
+        #expect(pixel(front, 365, 865) == [206, 207, 207, 249])  // center button
     }
 
     @Test func theBackAndSteelLoad() throws {
@@ -41,16 +41,38 @@ import Testing
         #expect(pixel(live, 100, 1100) == pixel(plain, 100, 1100))  // the aluminium does not change
     }
 
-    /// Counts and one vertex, checked against the mock's own code run in Node.
+    /// The back shows the app's version in place of the art's "1.0 · Build 161". Only the spec
+    /// table's value changes.
+    @Test func theBackShowsTheRealVersion() throws {
+        let art = try #require(K3DTextures.rgba(.back))
+        let back = try #require(K3DTextures.back(version: "9.9 · Build 999"))
+        #expect(back.count == art.count)
+        var changed = 0
+        for y in 0..<K3DTextures.height {
+            for x in 0..<K3DTextures.width where pixel(back, x, y) != pixel(art, x, y) {
+                #expect((330..<540).contains(x) && (936..<958).contains(y), "\(x), \(y)")
+                changed += 1
+            }
+        }
+        #expect(changed > 100)
+    }
+
+    /// Counts, two vertices and some indices, checked against the mock's own code run in Node,
+    /// with the Take apart parts and the hidden screen module left out.
     @Test func theMeshMatchesTheMock() {
         let mesh = K3DMesh()
-        #expect(mesh.vertexCount == 3102)
-        #expect(mesh.indices.count == 17400)
+        #expect(mesh.vertexCount == 8542)
+        #expect(mesh.indices.count == 47040)
         #expect(mesh.indices.allSatisfy { Int($0) < mesh.vertexCount })
-        let v = Array(mesh.vertices[(1234 * K3DMesh.stride)..<(1235 * K3DMesh.stride)])
-        let want: [Float] = [177.26997, -291.38939, 21.9, 0.83146961, -0.55557023, 0, 0, 0.93637847, 0.10655738, 1, 0.69134172, 2]
-        for (got, expected) in zip(v, want) { #expect(abs(got - expected) < 0.0001, "\(v)") }
-        #expect(Array(mesh.indices[16795..<16810]) == [2700, 2899, 2700, 2800, 2899, 2900, 2902, 2901, 2900, 2903, 2902, 2900, 2904, 2903, 2900])
+        let want: [Int: [Float]] = [
+            1234: [173.96415, -288.08357, 30.092016, 0.36168544, -0.24167049, 0.90043268, 0.97531189, 0.96995689, 0.97531189, 0.96995689, 1, 3, 1],
+            6000: [-156.5, 241.42857, 34.054415, 1, 0, 0, 0.072404372, 0.10615241, 0.072404372, 0.10615241, 1, 0, 1],
+        ]
+        for (index, expected) in want {
+            let v = Array(mesh.vertices[(index * K3DMesh.stride)..<((index + 1) * K3DMesh.stride)])
+            for (got, value) in zip(v, expected) { #expect(abs(got - value) < 0.0001, "\(index): \(v)") }
+        }
+        #expect(Array(mesh.indices[40000..<40015]) == [7118, 7116, 7117, 7118, 7119, 7119, 7118, 7120, 7117, 7119, 7118, 7119, 7120, 7118, 7119])
     }
 
     /// The flip: 0.82 s to turn with a small overshoot, settled at 1.0 s, pushed back mid-turn.
@@ -68,6 +90,27 @@ import Testing
         flip.toggle(at: t0.addingTimeInterval(2), screen: nil)
         #expect(!flip.toBack && !flip.restsOnFront(at: t0.addingTimeInterval(2.5)))
         #expect(flip.restsOnFront(at: t0.addingTimeInterval(3)))
+    }
+
+    /// The flat 2D device and the 3D body crossfade in 0.1 s where a turn leaves or reaches the
+    /// resting front, and nowhere else.
+    @Test func theFlatDeviceCrossfades() {
+        var flip = K3DFlip()
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        #expect(flip.flatOpacity(at: t0) == 1)
+        flip.toggle(at: t0, screen: nil)
+        #expect(abs(flip.flatOpacity(at: t0.addingTimeInterval(0.05)) - 0.5) < 0.001)
+        #expect(flip.flatOpacity(at: t0.addingTimeInterval(0.1)) < 0.001)
+        #expect(flip.flatOpacity(at: t0.addingTimeInterval(5)) == 0)  // the back rests
+        flip.toggle(at: t0.addingTimeInterval(5), screen: nil)
+        #expect(flip.flatOpacity(at: t0.addingTimeInterval(5.89)) == 0)
+        #expect(abs(flip.flatOpacity(at: t0.addingTimeInterval(5.95)) - 0.5) < 0.001)
+        #expect(flip.flatOpacity(at: t0.addingTimeInterval(6)) > 0.999)
+        // A turn to the back that starts mid-turn, not from the resting front, never shows 2D.
+        flip.toggle(at: t0.addingTimeInterval(10), screen: nil)
+        flip.toggle(at: t0.addingTimeInterval(10.4), screen: nil)
+        flip.toggle(at: t0.addingTimeInterval(10.45), screen: nil)
+        #expect(flip.flatOpacity(at: t0.addingTimeInterval(10.46)) == 0)
     }
 
     /// The shaders compile and link, where the machine has a Metal device.
