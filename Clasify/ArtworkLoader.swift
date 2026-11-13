@@ -9,7 +9,7 @@ import os
 /// states and times, never an ID or a name. Remove once the cause of the blink is known.
 private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
 
-/// Loads album covers from Spotify's image CDN for the skins. It keeps them in memory only:
+/// Loads album covers from Spotify's image CDN and Apple's image server (`CoverURL`) for the skins. It keeps them in memory only:
 /// an NSCache of about 50 images, and a URLSession with no URL cache, so nothing goes to disk.
 @MainActor @Observable
 final class ArtworkLoader {
@@ -156,10 +156,8 @@ final class ArtworkLoader {
     }
 
     private func load(_ coverID: String) {
-        // A cover ID is 40 hex digits. Anything else never goes into a URL.
-        guard coverID.count == 40, coverID.allSatisfy(\.isHexDigit), !loading.contains(coverID),
-              let url = URL(string: "https://i.scdn.co/image/\(coverID)")
-        else { return }
+        // A Spotify cover ID or an https mzstatic.com Artwork URL. Anything else never loads.
+        guard !loading.contains(coverID), let url = CoverURL.url(for: coverID) else { return }
         if let failed = failedAt[coverID], ContinuousClock.now - failed < .seconds(30) { return }
         loading.insert(coverID)
         let start = ContinuousClock.now
