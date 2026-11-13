@@ -153,6 +153,7 @@ private struct TestPanel: View {
         case .playlist(let id): state.library.first { $0.id == id }?.name ?? id
         case .album(let id): state.album(id)?.name ?? id
         case .track(let id): trackLabel(id)
+        case .service: "Service: \((state.pendingService ?? state.service).rawValue)"
         case .shuffle: "Shuffle: \(state.shuffle ? "On" : "Off")"
         case .repeatMode: "Repeat: \(state.repeatMode.rawValue)"
         case .skin: "Skin: \(state.skin.rawValue)"

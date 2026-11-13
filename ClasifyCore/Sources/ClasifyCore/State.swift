@@ -166,6 +166,8 @@ public enum Row: Equatable, Sendable {
     case logIn, nowPlaying, coverFlow, playlists, albums, likedSongs, shuffleSongs, settings
     case playlist(String), album(String), track(String)
     case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, about, logOut
+    /// Card BM, change 256: the active music service, first in Settings.
+    case service
     case cancel, confirmLogOut
     /// Rows of the login (card AX): open the browser again while it waits (170), and try
     /// again after a failed login (171). `cancel` stops the login.
@@ -318,8 +320,16 @@ public struct AppState: Equatable, Sendable {
     public var restoring = false
     /// Liked Songs (once read) first, then the playlists. Each part loads when its screen opens.
     public var library: [Playlist] = []
-    /// The liked list's name on the active service ("Liked Songs" on Spotify), from the `Library`.
-    public var likedSongsName = "Liked Songs"
+    /// The words of the active service's library ("Liked Songs" on Spotify), from the `Library`.
+    public var words = LibraryWords.spotify
+    /// The liked list's name on the active service.
+    public var likedSongsName: String {
+        get { words.likedSongs }
+        set { words.likedSongs = newValue }
+    }
+    /// The service that the Settings "Service" row shows after a press, until Settings closes.
+    /// Leaving Settings switches to it (card BM, change 256). nil: no press since Settings opened.
+    public var pendingService: MusicService?
     /// The covers that take turns on the main menu's right side. `refreshArt` sets them.
     public var mainArt: [Track] = []
     /// The main menu row whose covers show. It follows the selection `artDelay` after the last
@@ -696,7 +706,7 @@ public struct AppState: Equatable, Sendable {
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
-        case .settings: [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut]
+        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]

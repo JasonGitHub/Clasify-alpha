@@ -61,12 +61,30 @@ public protocol Library: AnyObject {
     /// Called on the main actor while a track read runs: how many of the list's items have
     /// their details, and how many there are. The store sets it.
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? { get set }
-    /// The name of the user's liked list on this service, such as "Liked Songs" on Spotify.
-    var likedSongsName: String { get }
+    /// The words that name this service's library on screen, such as "Liked Songs".
+    var words: LibraryWords { get }
 }
 
 extension Library {
-    public var likedSongsName: String { "Liked Songs" }
+    public var words: LibraryWords { .spotify }
+}
+
+/// The words that name a service's library on screen. The `Library` gives them, so the
+/// reducer, the menus and the skins never pick text by service (CLA-103).
+public struct LibraryWords: Equatable, Sendable {
+    /// The liked list, such as "Liked Songs".
+    public var likedSongs: String
+    /// The service, as in "Can’t reach Spotify".
+    public var service: String
+    /// How the user adds a song to the liked list, as in "Like songs in Spotify".
+    public var like: String
+
+    public init(likedSongs: String, service: String, like: String) {
+        self.likedSongs = likedSongs; self.service = service; self.like = like
+    }
+
+    public static let spotify = LibraryWords(likedSongs: "Liked Songs", service: "Spotify", like: "Like")
+    public static let appleMusic = LibraryWords(likedSongs: "Favorite Songs", service: "Apple Music", like: "Favorite")
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.
@@ -84,6 +102,9 @@ public final class Store {
     @ObservationIgnored public var onGetSpotifyApp: (@MainActor () -> Void)?
     /// Opens Spotify's Premium page in the browser (card AX, screen 135). The app sets it.
     @ObservationIgnored public var onGetPremium: (@MainActor () -> Void)?
+    /// Makes `service` the active one in the player and the library, before any later effect
+    /// runs (CLA-103). The app sets it. Then the state gets the library's words.
+    @ObservationIgnored public var onSetService: (@MainActor (MusicService) -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
 
@@ -93,7 +114,7 @@ public final class Store {
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
-        self.state.likedSongsName = library.likedSongsName
+        self.state.words = library.words
         library.onProgress = { [weak self] playlist, done, total, albums in
             self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
         }
@@ -188,6 +209,9 @@ public final class Store {
                     self?.send(result == .notPremium ? .notPremium(token: token) : .restored(token: token, ok: result == .ok))
                 }
             case .logOut: library.logOut()
+            case .setService(let service):
+                onSetService?(service)
+                send(.libraryWords(library.words))
             }
         }
     }

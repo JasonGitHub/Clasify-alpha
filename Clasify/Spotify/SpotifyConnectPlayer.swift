@@ -376,6 +376,16 @@ final class SpotifyConnectPlayer: Player {
         latest = nil  // it belongs to the account that signed out
     }
 
+    /// Apple Music is now active: the hidden Spotify app must not run (CLA-103). Quits the
+    /// app only while it is hidden, as Clasify launched it. A Spotify window that the user
+    /// opened stays. The device and the session's state belong to Spotify, so they go too.
+    func quitApp() {
+        reset()
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID) where app.isHidden {
+            app.terminate()
+        }
+    }
+
     /// Spotify quit. Its device must be found again after the next launch. While it played
     /// our track, show paused and keep the place, so Play continues there.
     private func spotifyQuit() {

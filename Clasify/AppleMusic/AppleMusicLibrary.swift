@@ -9,8 +9,8 @@ import Foundation
 /// to disk. MusicKit has no sign-in of its own: "log in" asks macOS for MusicKit access.
 @MainActor
 final class AppleMusicLibrary: Library {
-    /// Apple Music's own name for the list of favorited songs.
-    let likedSongsName = "Favorite Songs"
+    /// Apple Music's own words, such as "Favorite Songs" for the list of favorited songs.
+    let words = LibraryWords.appleMusic
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
 
     /// The reads of this session, done or running. A failed read leaves.

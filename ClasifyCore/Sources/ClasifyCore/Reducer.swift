@@ -70,6 +70,8 @@ public enum Action: Equatable, Sendable {
     /// The load with this `generation`, which `.select` started, did not start to play.
     /// Clasify shows again what it showed before the load, or nothing. The message is a toast.
     case loadFailed(String, generation: Int)
+    /// The active service's library names its lists with these words (after `.setService`).
+    case libraryWords(LibraryWords)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -111,6 +113,9 @@ public enum Effect: Equatable, Sendable {
     /// Read one track's details, for a track that Spotify plays from outside the library.
     /// The result comes back as `.trackRead`.
     case readTrack(String)
+    /// Make this music service the active one in the player and the library (CLA-103). The
+    /// store runs it before the effects after it, and answers with `.libraryWords`.
+    case setService(MusicService)
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -367,6 +372,17 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
         s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
         s.tourRestAt = now  // the tour queue stays for the next login (card BA.2)
+        s.pendingService = nil
+    }
+    /// Card BM, change 260: leaving Settings with another service. The old one stops, its
+    /// library leaves, and the new one logs in with its stored login: its main menu opens at
+    /// the top, with nothing playing. With no stored login, its login screen shows (256).
+    func switchService(to service: MusicService) {
+        signOut()
+        s.service = service
+        fx.append(.setService(service))
+        s.authAttempt += 1; s.restoring = true
+        fx.append(.restoreSession(token: s.authAttempt))
     }
     func shuffleLiked() {
         let liked = s.tracks(in: Playlist.likedSongsID)
@@ -591,11 +607,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 } else {  // not read yet: load, then shuffle
                     open(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
                 }
-            case .settings: s.stack.append(Frame(screen: .settings))
+            case .settings: s.stack.append(Frame(screen: .settings)); s.pendingService = nil
             case .playlist(let id): open(.tracks(playlist: id))
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
                 if let list = s.top.screen.songList { play(list, id) }
+            case .service: s.pendingService = (s.pendingService ?? s.service).other  // applied when Settings closes
             case .shuffle: toggleShuffle()
             case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
@@ -632,6 +649,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 return
             }
             if s.stack.count < 2 { return }
+            if s.top.screen == .settings, let service = s.pendingService {
+                s.pendingService = nil
+                if service != s.service { return switchService(to: service) }  // back on the old value: nothing happens
+            }
             if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
             // Change 213: back from Licenses, the idle clock starts again from the pose it left.
@@ -922,6 +943,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .batteryChanged(let battery):
             s.battery = battery
 
+        case .libraryWords(let words):
+            s.words = words
+
         case .expire:
             // Forget the stored login too, so that a later .launch does not restore it. The login
             // screen says "Log in again", and after the login the main menu opens (change 181).
@@ -933,9 +957,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
             let (battery, spotifyApp) = (s.battery, s.spotifyApp)  // the Mac, which a reset does not change
+            let words = s.words  // the active service's library, which a reset does not change
             s = AppState()
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
-            s.battery = battery; s.spotifyApp = spotifyApp
+            s.battery = battery; s.spotifyApp = spotifyApp; s.words = words
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)

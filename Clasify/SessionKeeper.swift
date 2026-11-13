@@ -9,7 +9,8 @@ private let log = Logger(subsystem: "app.clasify.Clasify", category: "session")
 /// Keeps the librespot session alive. librespot does not reconnect after a dropped
 /// connection (sleep, a network change), so this checks every 5 s and after each wake.
 /// After a drop, it logs in again with the stored refresh token, without a sign-out.
-/// It signs out only when Spotify refuses the refresh token.
+/// It signs out only when Spotify refuses the refresh token. While Apple Music is active, it
+/// does nothing: the Spotify session is not used then (CLA-103).
 /// After a network change, or when a Connect call times out, the session can still look
 /// alive while its connections are dead. Then it logs in again by force (CLA-88).
 @MainActor
@@ -102,7 +103,7 @@ final class SessionKeeper {
 
     /// Logs in again by force, when the user is signed in. A login that runs already is joined.
     private func forced() {
-        guard store?.state.signedIn == true, library.isLoggedIn else { return }
+        guard store?.state.signedIn == true, store?.state.service == .spotify, library.isLoggedIn else { return }
         Task { _ = await reconnect(force: true) }
     }
 
@@ -110,7 +111,7 @@ final class SessionKeeper {
     /// login failed before.
     private func check() {
         guard running == nil, ContinuousClock.now >= notBefore, store?.state.signedIn == true,
-            library.isLoggedIn, forceDue || !client.sessionAlive
+            store?.state.service == .spotify, library.isLoggedIn, forceDue || !client.sessionAlive
         else { return }
         let force = forceDue
         Task { _ = await reconnect(force: force) }

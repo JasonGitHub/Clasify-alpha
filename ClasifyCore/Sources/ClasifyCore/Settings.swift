@@ -4,6 +4,9 @@ import Foundation
 /// mixed lists or queues.
 public enum MusicService: String, CaseIterable, Sendable {
     case spotify = "Spotify", appleMusic = "Apple Music"
+
+    /// The other service: the Settings "Service" row flips between the two (card BM, change 256).
+    public var other: MusicService { self == .spotify ? .appleMusic : .spotify }
 }
 
 /// The settings that stay after a restart: Shuffle, Repeat, Album Art, Color (the device color),

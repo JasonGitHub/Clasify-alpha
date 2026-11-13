@@ -45,6 +45,22 @@ func sampleState() -> AppState {
         #expect(Labels.title(.tracks(playlist: Playlist.likedSongsID), in: s) == "Favorite Songs")
     }
 
+    /// Card BM (CLA-103): the Service row shows the value of the last press, and the texts
+    /// that name the service follow the active library.
+    @Test func serviceRowAndTextsFollowTheService() {
+        var s = sampleState()
+        #expect(Labels.row(.service, on: .settings, in: s) == Labels.RowText(label: "Service", value: "Spotify"))
+        s.pendingService = .appleMusic
+        #expect(Labels.row(.service, on: .settings, in: s).value == "Apple Music")
+        s.words = .appleMusic
+        var error = Frame(screen: .playlists)
+        error.error = true
+        #expect(Labels.message(for: error, in: s)?.title == "Can’t reach Apple Music")
+        s.library = []
+        s.stack.append(Frame(screen: .albums))
+        #expect(Labels.message(for: s.top, in: s)?.body == "Favorite songs in Apple Music to see their albums. Press MENU to go back.")
+    }
+
     /// Round 13 setup: the titles, the color rows, and the words that show until each screen is drawn.
     @Test func setupScreensUseTheBoardWords() {
         let s = sampleState()

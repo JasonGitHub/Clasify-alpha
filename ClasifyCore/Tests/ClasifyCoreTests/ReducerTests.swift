@@ -102,7 +102,7 @@ func playing(_ i: Int = 0) -> AppState {
         var s = mainMenu()
         send(&s, .wheel(5), .select)
         #expect(s.top.screen == .settings)
-        send(&s, .select, .wheel(1), .select, .select)
+        send(&s, .wheel(1), .select, .wheel(1), .select, .select)  // Service is the first row (card BM)
         #expect(s.shuffle && s.repeatMode == .one)
         send(&s, .wheel(1), .select)
         #expect(s.albumArt == .nowPlaying && s.skin == .pocket && s.toast.isEmpty)  // All, then Now Playing
@@ -112,15 +112,15 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .select)
         #expect(s.albumArt == .all && s.isHalf(.main) && s.isHalf(.playlists) && s.showsNowPlayingArt)
         #expect(!s.rows(for: s.top).contains(.skin))  // only the Pocket skin in 1.0
-        #expect(s.rows(for: s.top).count == 8)  // no Playback engine, EQ or Skin row in 1.0
+        #expect(s.rows(for: s.top).count == 9)  // no Playback engine, EQ or Skin row in 1.0
     }
 
     @Test func deviceColorGoesSilverBlackSilver() {
         var s = mainMenu()
         send(&s, .wheel(5), .select)
-        #expect(s.rows(for: s.top) == [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut])
+        #expect(s.rows(for: s.top) == [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut])
         #expect(s.deviceColor == .silver)  // the default
-        send(&s, .wheel(3), .select)
+        send(&s, .wheel(4), .select)
         #expect(s.deviceColor == .black && s.top.screen == .settings)
         send(&s, .select)
         #expect(s.deviceColor == .silver)
@@ -133,7 +133,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// top, and the scroll bar shows from 0.3 s to 1.8 s, then for 1.5 s after each step.
     @Test func aboutScrollsFiveStepsOneATurn() {
         var s = mainMenu()
-        send(&s, .wheel(5), .select, .wheel(6))  // Settings, on the About row
+        send(&s, .wheel(5), .select, .wheel(7))  // Settings, on the About row
         #expect(s.rows(for: s.top)[s.top.sel] == .about)
         send(&s, .select, now: 1000)
         #expect(s.top.screen == .about && s.top.off == 0 && s.aboutAt == 1000 && abs(s.scrollUntil - 1001.8) < 1e-9)
@@ -156,7 +156,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// About at time 1000, on the top of the page.
     func openAbout(at now: Double = 1000) -> AppState {
         var s = mainMenu()
-        send(&s, .wheel(5), .select, .wheel(6))
+        send(&s, .wheel(5), .select, .wheel(7))
         send(&s, .select, now: now)
         return s
     }
@@ -433,7 +433,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func shuffleAndRepeatSettingsGoToEngine() {
         var s = mainMenu()
-        send(&s, .wheel(5), .select)  // Settings
+        send(&s, .wheel(5), .select, .wheel(1))  // Settings, on the Shuffle row
         #expect(send(&s, .select) == [.setShuffle(true)])
         #expect(send(&s, .wheel(1), .select) == [.setRepeat(.all)])
         #expect(send(&s, .select) == [.setRepeat(.one)])
@@ -514,7 +514,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// every list while a song is loaded, and one-line lists show 8 rows.
     @Test func nowPlayingBarShowsTheBarOnEveryList() {
         var s = mainMenu()
-        send(&s, .wheel(5), .select, .wheel(5))  // Settings, on the Now Playing Bar row
+        send(&s, .wheel(5), .select, .wheel(6))  // Settings, on the Now Playing Bar row
         #expect(s.rows(for: s.top)[s.top.sel] == .nowPlayingBar)
         send(&s, .select)
         #expect(s.nowPlayingBar && s.top.screen == .settings && !s.showsBar)  // nothing loaded: no bar
@@ -529,7 +529,7 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.showsBar && s.shownRows == 8)  // Playlists: 8 rows over the bar
         send(&s, .menu)
         #expect(s.showsBar && s.shownRows == 8 && s.showsPanelBar)  // the main menu
-        send(&s, .wheel(10), .select)  // Settings: its 8 rows fit over the bar
+        send(&s, .wheel(10), .select)  // Settings: 8 of its 9 rows show over the bar
         #expect(s.top.screen == .settings && s.showsBar && s.shownRows == 8)
         s = mainMenu()
         s.nowPlayingBar = true
@@ -1050,7 +1050,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// CLA-103: the liked list takes its name from the `Library`, such as "Favorite Songs".
     @MainActor @Test func likedListTakesItsNameFromTheLibrary() {
         let library = FakeLibrary()
-        library.likedSongsName = "Favorite Songs"
+        library.words = .appleMusic
         var s = Store(player: FakePlayer(), library: library, state: mainMenu()).state
         #expect(s.likedSongsName == "Favorite Songs")
         send(&s, .play, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
@@ -1225,7 +1225,7 @@ func playing(_ i: Int = 0) -> AppState {
 
     @Test func logOutGoesThroughConfirm() {
         var s = playing()
-        send(&s, .menu, .menu, .menu, .wheel(5), .select, .wheel(7), .select)
+        send(&s, .menu, .menu, .menu, .wheel(5), .select, .wheel(8), .select)
         #expect(s.top.screen == .confirm)
         send(&s, .select)  // Cancel
         #expect(s.top.screen == .settings)
@@ -1309,7 +1309,7 @@ func playing(_ i: Int = 0) -> AppState {
 @MainActor final class FakeLibrary: Library {
     var fetches: [String] = []
     var loginResult: LoginResult = .ok
-    var likedSongsName = "Liked Songs"
+    var words = LibraryWords.spotify
     var calls: [String] = []
     func playlists() async -> [Playlist]? { fetches.append("playlists"); return [focusInfo] }
     func tracks(of playlist: String) async -> [Track]? {
