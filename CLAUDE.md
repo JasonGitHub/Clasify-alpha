@@ -9,7 +9,7 @@ Maintainer notes (stripped before Claude sees this file):
 
 # Clasify
 
-Native macOS player for Spotify playlists and Liked Songs, styled after early-2000s pocket players.
+Native macOS player for Spotify and Apple Music playlists and liked songs, styled after early-2000s pocket players. Apple Music is in 1.0 (Jason decided 2026-11-13 23:53 JST).
 
 Design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjogMQiJGJjKdAjpoY8
 
@@ -22,6 +22,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 - `ClasifySkins/` holds the SwiftUI skins. They depend on ClasifyCore only, never on the player or the library. It builds and tests on macOS only: `cd ClasifySkins && swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors`. Set `SNAPSHOT_DIR` to save the snapshot PNGs. CI: `.github/workflows/app.yml`, which uploads them as the `skin-snapshots` artifact.
 - `Clasify.xcodeproj` builds the app from the `Clasify/` folder. New Swift files there need no project edits. CI: `.github/workflows/app.yml` on macOS runners.
 - The test DMG comes from `.github/workflows/app-dmg.yml`. Each push to main that changes the app (not only workflows or docs) makes an ad-hoc signed DMG, with no secrets. A run started by hand on main makes `Clasify-build-<n>-signed.dmg`, signed with Developer ID (hardened runtime) and notarized; only that job uses the GitHub environment "release" and its secrets (Jason decided 2026-11-11 23:43 JST). Neither runs on a PR. Pin its actions to full commit SHAs. Never print a secret or add `set -x` there (CLA-69).
+- MusicKit works only in a build signed with the Team ID (App ID `app.clasify.Clasify` has the MusicKit service). Test Apple Music on the Mac with the signed DMG, never with the ad-hoc one.
 - The app builds only on macOS. Cloud sessions run on Linux and cannot run `xcodebuild`, so say in the PR when an app change was not built or tested locally.
 
 ## Hard constraints
@@ -29,13 +30,16 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 - IMPORTANT: no dependencies beyond Apple frameworks and librespot. Don't add a Swift package, CocoaPod or Rust crate without asking first.
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
 - Login tokens live only in the Keychain. Crash reports and usage analytics are allowed.
-- Album covers come only from Spotify's image CDN, `https://i.scdn.co/image/<coverID>`. `ArtworkLoader` keeps them in memory only: an NSCache and a URLSession with no URL cache. Never write a cover to disk. Skins get covers through the `artwork` environment value and never load them.
+- Album covers come only from Spotify's image CDN, `https://i.scdn.co/image/<coverID>`, and Apple's image server (`*.mzstatic.com`, from MusicKit `Artwork` URLs). `ArtworkLoader` keeps them in memory only: an NSCache and a URLSession with no URL cache. Never write a cover to disk. Skins get covers through the `artwork` environment value and never load them.
 - Tokens go in the Keychain, settings in UserDefaults. Write nothing else to disk. Run librespot with no credentials cache and no audio cache. Write no log files.
-- The library is read-only. Never call Spotify endpoints that modify playlists or Liked Songs.
+- The library is read-only, for both services. Never call Spotify endpoints or MusicKit APIs that modify playlists, liked songs or the library.
 - librespot is linked as a static Rust library over a C FFI, not run as a separate helper process.
 - 1.0 plays through the Spotify desktop app, behind the `Player` protocol. Clasify starts and controls playback with Spotify Connect commands sent through the librespot session. AppleScript must never start playback or activate Spotify. Launch Spotify hidden.
+- Apple Music plays through MusicKit's `ApplicationMusicPlayer`, behind the same `Player` protocol. No Music.app scripting.
+- One service is active at a time. No mixed lists or queues. The hidden Spotify app does not run while Apple Music is active.
 - librespot is used for login, library reads and Spotify Connect commands, not for audio. Spotify refuses audio keys to librespot (librespot#1649). No PlayPlay or other DRM work.
-- Library reads use librespot, with no Web API fallback. The shared Web API client ID is quota-blocked.
+- Spotify library reads use librespot, with no Web API fallback. The shared Web API client ID is quota-blocked.
+- Apple Music library reads use MusicKit.
 - Skins are SwiftUI (Jason decided, 2026-11-04 22:58 JST). Use small AppKit wrappers only where SwiftUI cannot do the job.
 
 ## Architecture
@@ -54,7 +58,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 
 ## Pocket skin mockup
 
-`project/Pocket-Full.dc.html` in Jason's design artifact (https://claude.ai/artifact/7TnGYuahnpRDkR2FFkwTHy) is the spec for 1.0 screens, actions and edge cases: login, browse, play, settings, offline, expired session. It replaces the copy in Clasify.zip. `project/Pocket-Compare.dc.html` and `project/Pocket-Compare-2.dc.html` there list the changes from the old copy, as numbered before-and-after cards. Copy its colors, fonts, sizes, spacing and radii from the inline styles into native views; don't port its HTML or JS. Keep Settings to Shuffle, Repeat, Album Art, Color, Clicker, Now Playing Bar, About and Log out: its EQ, Skin and Playback rows are not in 1.0. If its strings say "Mixtape", the old name, use "Clasify".
+`project/Pocket-Full.dc.html` in Jason's design artifact (https://claude.ai/artifact/7TnGYuahnpRDkR2FFkwTHy) is the spec for 1.0 screens, actions and edge cases: login, browse, play, settings, offline, expired session. It replaces the copy in Clasify.zip. `project/Pocket-Compare.dc.html` and `project/Pocket-Compare-2.dc.html` there list the changes from the old copy, as numbered before-and-after cards. Copy its colors, fonts, sizes, spacing and radii from the inline styles into native views; don't port its HTML or JS. Keep Settings to Shuffle, Repeat, Album Art, Color, Clicker, Now Playing Bar, Service, About and Log out: its EQ, Skin and Playback rows are not in 1.0. If its strings say "Mixtape", the old name, use "Clasify".
 
 ## Communication
 
