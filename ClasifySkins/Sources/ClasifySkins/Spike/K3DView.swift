@@ -58,7 +58,7 @@ public struct K3DFlipView<Content: View>: View {
             let flat = flip.flatOpacity(at: date)
             let pose = flip.pose(at: date)
             K3DHandover(flat: flat, ready: ready, content: content) { shown in
-                body3D(angle: pose.angle, lift: pose.lift, ground: shown < 1)
+                body3D(angle: pose.angle, lift: pose.lift, shows: shown < 1)
             }
         }
         .task(id: flip.start) {
@@ -70,15 +70,15 @@ public struct K3DFlipView<Content: View>: View {
         }
     }
 
-    private func body3D(angle: Double, lift: Double, ground: Bool) -> some View {
+    private func body3D(angle: Double, lift: Double, shows: Bool) -> some View {
         let size = PocketSkin.size
         let a = angle * .pi / 180
         // The mock's ground: 340 x 20 pt, 3.5 pt under the device, as wide as the body seen now.
         let wide = abs(cos(a)) + K3DMesh.depth / K3DMesh.width * abs(sin(a))
         let ready = $ready
         return ZStack {
-            // The ground only while the 3D body shows: at rest the 2D device has its own shadow.
-            if ground {
+            // The ground only while the 3D body shows (`shows`): at rest the 2D device has its own shadow.
+            if shows {
                 Circle()
                     .fill(RadialGradient(colors: [.black.opacity(0.22), .black.opacity(0)], center: .center, startRadius: 0, endRadius: 10))
                     .frame(width: 20, height: 20)
@@ -90,6 +90,11 @@ public struct K3DFlipView<Content: View>: View {
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
                 onFirstFrame: { ready.wrappedValue = true })
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
+                // At rest behind the opaque 2D device, the 3D body must not show round its edge
+                // or through its shadow. 0.001, not 0: it rounds to nothing on screen, but the
+                // view still draws and presents, so its first frame (and `ready`) comes. At 0,
+                // SwiftUI may hide the view, and a hidden view does not draw.
+                .opacity(shows ? 1 : 0.001)
         }
         // No fade or other animation when the ground comes and goes: the timeline drives it.
         .transaction { $0.animation = nil }
