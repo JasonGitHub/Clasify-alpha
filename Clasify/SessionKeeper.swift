@@ -135,6 +135,12 @@ final class SessionKeeper {
         let start = ContinuousClock.now
         let result = await library.reconnect()
         let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
+        // A switch to Apple Music during the login: its result must not sign out or replace
+        // the Apple Music screens. Spotify logs in again after a switch back.
+        guard store?.state.service == .spotify else {
+            log.notice("login ended after a switch to Apple Music; result dropped")
+            return false
+        }
         switch result {
         case .done:
             log.notice("logged in again: \(ms, privacy: .public) ms")
