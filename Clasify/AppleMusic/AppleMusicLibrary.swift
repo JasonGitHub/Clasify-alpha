@@ -76,7 +76,7 @@ final class AppleMusicLibrary: Library {
     /// The library playlists, without their songs. "Favorite Songs" shows as its own row.
     private static func readPlaylists() async -> [ClasifyCore.Playlist]? {
         guard let items = try? await MusicLibraryRequest<MusicKit.Playlist>().response().items else { return nil }
-        return items.filter { $0.name != favoritesName }.map {
+        return items.filter { $0.name != AppleMusicReads.favoritesName }.map {
             ClasifyCore.Playlist(id: AppleMusicID.playlist($0.id), name: $0.name, tracks: [])
         }
     }
@@ -84,21 +84,15 @@ final class AppleMusicLibrary: Library {
     /// The songs of one playlist, or of "Favorite Songs" for `Playlist.likedSongsID`. Music
     /// videos are left out, as the player leaves them out.
     private static func readTracks(_ id: String) async -> [ClasifyCore.Track]? {
-        let playlist: MusicKit.Playlist?
-        if id == ClasifyCore.Playlist.likedSongsID {
-            // Not checked on a Mac: Apple Music keeps favorited songs in a library playlist
-            // with this name. With no such playlist, the list is empty.
-            guard let items = try? await MusicLibraryRequest<MusicKit.Playlist>().response().items else { return nil }
-            guard let favorites = items.first(where: { $0.name == favoritesName }) else { return [] }
-            playlist = favorites
-        } else {
-            playlist = await AppleMusicReads.playlist(id)
+        do {
+            guard let playlist = try await AppleMusicReads.playlist(id) else {
+                return id == ClasifyCore.Playlist.likedSongsID ? [] : nil  // no "Favorite Songs" yet: empty
+            }
+            return await AppleMusicReads.songs(of: playlist)?.map(makeTrack)
+        } catch {
+            return nil
         }
-        guard let playlist else { return nil }
-        return await AppleMusicReads.songs(of: playlist)?.map(makeTrack)
     }
-
-    private static let favoritesName = "Favorite Songs"
 
     /// A store `Track` from a MusicKit song. The cover is the Artwork URL (PR 3 lets
     /// `ArtworkLoader` read it). The album ID is made from its title and artist, because a

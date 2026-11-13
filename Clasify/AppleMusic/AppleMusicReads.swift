@@ -1,5 +1,6 @@
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
 // only on the main actor.
+import ClasifyCore
 @preconcurrency import MusicKit
 
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
@@ -16,12 +17,22 @@ enum AppleMusicReads {
         return try? await catalog.response().items.first
     }
 
-    /// A library playlist by its store ID. nil for an unknown or unreadable playlist.
-    static func playlist(_ id: String) async -> MusicKit.Playlist? {
+    /// Apple Music's name for the library playlist of favorited songs.
+    static let favoritesName = "Favorite Songs"
+
+    /// A library playlist by its store ID, or "Favorite Songs" for `Playlist.likedSongsID`.
+    /// nil when there is no such playlist. Throws when the read fails.
+    static func playlist(_ id: String) async throws -> MusicKit.Playlist? {
+        if id == ClasifyCore.Playlist.likedSongsID {
+            // Not checked on a Mac: Apple Music keeps favorited songs in a library playlist
+            // with this name.
+            let items = try await MusicLibraryRequest<MusicKit.Playlist>().response().items
+            return items.first { $0.name == favoritesName }
+        }
         guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.playlistPrefix) else { return nil }
         var request = MusicLibraryRequest<MusicKit.Playlist>()
         request.filter(matching: \.id, equalTo: itemID)
-        return try? await request.response().items.first
+        return try await request.response().items.first
     }
 
     /// All songs of a playlist, in order, with every batch read. Music videos are left out.

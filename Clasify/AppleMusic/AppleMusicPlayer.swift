@@ -55,7 +55,7 @@ final class AppleMusicPlayer: Player {
                 return fail("That song can’t play here", id: id, load: true)
             }
             var tracks: [Song]?
-            if let context, let playlist = await AppleMusicReads.playlist(context) {
+            if let context, let playlist = try? await AppleMusicReads.playlist(context) {
                 tracks = await AppleMusicReads.songs(of: playlist)
             }
             guard id == loadID else { return }
