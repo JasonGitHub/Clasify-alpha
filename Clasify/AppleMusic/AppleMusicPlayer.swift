@@ -224,7 +224,7 @@ final class AppleMusicPlayer: Player {
     /// The tracks of a library playlist, in order. nil for an unknown or unreadable playlist.
     private static func playlistTracks(_ id: String) async -> [Song]? {
         guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.playlistPrefix) else { return nil }
-        var request = MusicLibraryRequest<Playlist>()
+        var request = MusicLibraryRequest<MusicKit.Playlist>()
         request.filter(matching: \.id, equalTo: itemID)
         guard let playlist = try? await request.response().items.first,
               let tracks = try? await playlist.with([.tracks]).tracks else { return nil }
