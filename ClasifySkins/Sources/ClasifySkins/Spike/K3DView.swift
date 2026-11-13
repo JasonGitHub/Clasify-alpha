@@ -22,6 +22,11 @@ public enum K3DSpike {
 /// its back, the 3D body shows in its place, over the window's margins too, with the mock's
 /// soft ground shadow. The two crossfade in 0.1 s where a turn leaves or reaches the resting
 /// front. A click on the 3D body calls `onTap`.
+///
+/// The Metal view stays mounted behind the 2D device, drawn at the pose the device rests in, so
+/// its frame is ready when a turn starts. Until it has shown its first frame, the 2D device
+/// stays opaque (build 167 showed the desktop through the device for 2 frames at each click:
+/// the Metal view was made at the click and had not drawn yet).
 public struct K3DFlipView<Content: View>: View {
     let flip: K3DFlip
     let black: Bool
@@ -30,6 +35,8 @@ public struct K3DFlipView<Content: View>: View {
     let content: Content
     /// Counts the turns that ended, so the body runs again and pauses the timeline.
     @State private var settled = 0
+    /// The Metal view has shown its first frame.
+    @State private var ready = false
 
     public init(
         flip: K3DFlip, black: Bool, margin: EdgeInsets, onTap: @escaping () -> Void, @ViewBuilder content: () -> Content
@@ -50,7 +57,9 @@ public struct K3DFlipView<Content: View>: View {
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
             let pose = flip.pose(at: date)
-            K3DHandover(flat: flat, content: content) { body3D(angle: pose.angle, lift: pose.lift) }
+            K3DHandover(flat: flat, ready: ready, content: content) { shown in
+                body3D(angle: pose.angle, lift: pose.lift, ground: shown < 1)
+            }
         }
         .task(id: flip.start) {
             // When the turn ends, run the body again so the timeline pauses.
@@ -61,22 +70,29 @@ public struct K3DFlipView<Content: View>: View {
         }
     }
 
-    private func body3D(angle: Double, lift: Double) -> some View {
+    private func body3D(angle: Double, lift: Double, ground: Bool) -> some View {
         let size = PocketSkin.size
         let a = angle * .pi / 180
         // The mock's ground: 340 x 20 pt, 3.5 pt under the device, as wide as the body seen now.
         let wide = abs(cos(a)) + K3DMesh.depth / K3DMesh.width * abs(sin(a))
+        let ready = $ready
         return ZStack {
-            Circle()
-                .fill(RadialGradient(colors: [.black.opacity(0.22), .black.opacity(0)], center: .center, startRadius: 0, endRadius: 10))
-                .frame(width: 20, height: 20)
-                .scaleEffect(x: 17 * wide, y: 1)
-                .position(x: size.width / 2, y: size.height + 13.5)
+            // The ground only while the 3D body shows: at rest the 2D device has its own shadow.
+            if ground {
+                Circle()
+                    .fill(RadialGradient(colors: [.black.opacity(0.22), .black.opacity(0)], center: .center, startRadius: 0, endRadius: 10))
+                    .frame(width: 20, height: 20)
+                    .scaleEffect(x: 17 * wide, y: 1)
+                    .position(x: size.width / 2, y: size.height + 13.5)
+            }
             K3DMetalView(
                 angle: angle, lift: lift, black: black, screen: flip.screen,
-                center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2))
+                center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
+                onFirstFrame: { ready.wrappedValue = true })
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
         }
+        // No fade or other animation when the ground comes and goes: the timeline drives it.
+        .transaction { $0.animation = nil }
         .frame(width: size.width, height: size.height)
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
@@ -86,20 +102,24 @@ public struct K3DFlipView<Content: View>: View {
 /// The flat 2D device over the 3D body, `flat` its opacity. The 2D device fades as one flat
 /// picture: without the compositing group, SwiftUI fades each of its layers on its own, so
 /// the body and bezel show through the screen and labels and the whole device dims to grey
-/// mid-fade (build 166). The 3D body is drawn only while the 2D device is not opaque.
+/// mid-fade (build 166). The 3D body stays mounted behind it; `body3D` gets the opacity the
+/// 2D device shows with. Until the 3D body is `ready`, the 2D device stays opaque.
 struct K3DHandover<Flat: View, Body3D: View>: View {
     let flat: Double
+    let ready: Bool
     let content: Flat
-    @ViewBuilder let body3D: () -> Body3D
+    @ViewBuilder let body3D: (Double) -> Body3D
+
+    /// The 2D device's opacity: `flat`, or 1 while the 3D body has no frame to show.
+    static func shown(flat: Double, ready: Bool) -> Double { ready ? flat : 1 }
 
     var body: some View {
+        let shown = Self.shown(flat: flat, ready: ready)
         content
             .compositingGroup()
-            .opacity(flat)
-            .allowsHitTesting(flat >= 1)
-            .background {
-                if flat < 1 { body3D() }
-            }
+            .opacity(shown)
+            .allowsHitTesting(shown >= 1)
+            .background { body3D(shown) }
     }
 }
 
@@ -110,11 +130,20 @@ struct K3DMetalView: NSViewRepresentable {
     let screen: CGImage?
     /// The device's center in the view, in points from the top left.
     let center: CGPoint
+    /// Called once, on the main actor, when the view's first frame is on screen.
+    let onFirstFrame: @MainActor () -> Void
 
-    func makeNSView(context: Context) -> K3DLayerView { K3DLayerView() }
+    func makeNSView(context: Context) -> K3DLayerView {
+        let view = K3DLayerView()
+        view.firstFrame = onFirstFrame
+        return view
+    }
 
     func updateNSView(_ view: K3DLayerView, context: Context) {
-        view.pose = K3DPose(angle: angle, lift: lift, black: black)
+        let pose = K3DPose(angle: angle, lift: lift, black: black)
+        // Draw only when the picture changes: the view stays mounted while the device rests.
+        guard pose != view.pose || screen !== view.screen || center != view.deviceCenter || !view.drewOnce else { return }
+        view.pose = pose
         view.screen = screen
         view.deviceCenter = center
         view.needsDisplay = true
@@ -122,7 +151,7 @@ struct K3DMetalView: NSViewRepresentable {
 }
 
 /// What the renderer draws: the turn, the push back, and the color.
-struct K3DPose {
+struct K3DPose: Equatable {
     var angle = 0.0, lift = 0.0
     var black = false
 }
@@ -131,6 +160,10 @@ final class K3DLayerView: MTKView {
     var pose = K3DPose()
     var screen: CGImage?
     var deviceCenter = CGPoint.zero
+    /// Called once when the first frame is on screen, then cleared.
+    var firstFrame: (@MainActor () -> Void)?
+    /// A frame was drawn.
+    private(set) var drewOnce = false
 
     init() {
         super.init(frame: .zero, device: K3DRenderer.shared?.device)
@@ -156,7 +189,16 @@ final class K3DLayerView: MTKView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        K3DRenderer.shared?.draw(in: self)
+        guard let drawable = K3DRenderer.shared?.draw(in: self) else { return }
+        drewOnce = true
+        guard firstFrame != nil else { return }
+        drawable.addPresentedHandler { [weak self] _ in Task { @MainActor in self?.firstFrameShown() } }
+    }
+
+    private func firstFrameShown() {
+        let call = firstFrame
+        firstFrame = nil
+        call?()
     }
 }
 
@@ -177,6 +219,8 @@ final class K3DLayerView: MTKView {
     private let linear: any MTLSamplerState, nearest: any MTLSamplerState
     /// The screen picture now in the front texture.
     private var frontScreen: CGImage?
+    /// The front texture's bytes as bundled, read once: a turn's new screen goes into a copy.
+    private let frontBytes: [UInt8]
 
     struct Uniforms {
         var mv: simd_float4x4
@@ -191,7 +235,8 @@ final class K3DLayerView: MTKView {
         let mesh = K3DMesh()
         guard let vertices = device.makeBuffer(bytes: mesh.vertices, length: mesh.vertices.count * 4, options: []),
               let indices = device.makeBuffer(bytes: mesh.indices, length: mesh.indices.count * 4, options: []),
-              let front = Self.texture(device, queue, K3DTextures.rgba(.front)),
+              let frontBytes = K3DTextures.rgba(.front),
+              let front = Self.texture(device, queue, frontBytes),
               let back = Self.texture(device, queue, K3DTextures.back(version: K3DTextures.version)),
               let steel = Self.texture(device, queue, K3DTextures.rgba(.steel)),
               let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest)
@@ -204,6 +249,7 @@ final class K3DLayerView: MTKView {
         self.indices = indices
         indexCount = mesh.indices.count
         self.front = front
+        self.frontBytes = frontBytes
         self.back = back
         self.steel = steel
         self.linear = linear
@@ -265,19 +311,21 @@ final class K3DLayerView: MTKView {
 
     /// Puts a new screen picture in the front's LCD.
     private func show(screen: CGImage?) {
-        guard screen !== frontScreen, let bytes = K3DTextures.front(screen: screen) else { return }
+        guard screen !== frontScreen, let bytes = K3DTextures.front(screen: screen, base: frontBytes) else { return }
         Self.fill(front, bytes, queue)
         frontScreen = screen
     }
 
-    func draw(in view: K3DLayerView) {
+    /// Draws one frame in the view. Returns the drawable it presents, nil when it drew nothing.
+    @discardableResult func draw(in view: K3DLayerView) -> (any MTLDrawable)? {
         show(screen: view.screen)
         guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
               let buffer = queue.makeCommandBuffer(), let encoder = buffer.makeRenderCommandEncoder(descriptor: pass)
-        else { return }
+        else { return nil }
         encode(encoder, pose: view.pose, size: view.bounds.size, center: view.deviceCenter)
         buffer.present(drawable)
         buffer.commit()
+        return drawable
     }
 
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {

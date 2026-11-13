@@ -44,8 +44,9 @@ enum K3DTextures {
     /// color changes; every alpha id stays as it is. `screen` is the device drawn at 2x. The
     /// texture's LCD, 600 x 450 px from (66, 65), is where the app's screen is, so each LCD pixel
     /// takes the snapshot's pixel at the same place.
-    static func front(screen: CGImage?) -> [UInt8]? {
-        guard var front = rgba(.front) else { return nil }
+    /// `base` is the bundled front, when the caller has it already.
+    static func front(screen: CGImage?, base: [UInt8]? = nil) -> [UInt8]? {
+        guard var front = base ?? rgba(.front) else { return nil }
         guard let screen, let live = draw(screen) else { return front }
         for i in stride(from: 0, to: front.count, by: 4) where front[i + 3] == 251 {
             front[i] = live[i]; front[i + 1] = live[i + 1]; front[i + 2] = live[i + 2]
