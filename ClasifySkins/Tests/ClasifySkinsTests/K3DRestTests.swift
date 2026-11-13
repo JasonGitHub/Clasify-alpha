@@ -128,8 +128,8 @@ import Testing
     }
 
     /// Halfway through the crossfade (build 166 showed a grey blink there), the flat device
-    /// over the 3D rest frame still looks like the flat device: the screen, MENU, the body and
-    /// the wheel. The same fade with no compositing group, each layer at half opacity on its
+    /// over the 3D rest frame is the average of the two: the screen, MENU, the body and the
+    /// wheel. The same fade with no compositing group, each layer at half opacity on its
     /// own, dims it: that check shows the cause of the blink.
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theHalfwayFadeKeepsTheDevice(_ color: DeviceColor) throws {
@@ -139,14 +139,18 @@ import Testing
         let name = color == .black ? "black" : "silver"
         let flat = try flat(state, "bl-\(name)-2d")
         let body3D = try restImage(renderer, state)
+        let rest = try pixels(body3D, "k3d7-rest-\(name)")
         let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
         let half = try pixels(K3DHandover(flat: 0.5, ready: true, content: device) { _ in body3D }, "k3d7-fade-half-\(name)")
         let perLayer = try pixels(device.opacity(0.5).background { body3D }, "k3d7-fade-per-layer-\(name)")
         var worst = 0
         for (x, y) in [(183, 150), (183, 100), (183, 342), (183, 290), (183, 381), (60, 450)] {
-            let a = flat.mean(x, y), b = half.mean(x, y), c = perLayer.mean(x, y)
-            #expect(near(a, b), "\(name) at \(x), \(y): 2D \(a), halfway \(b)")
-            worst = max(worst, abs(a.r - c.r), abs(a.g - c.g), abs(a.b - c.b))
+            // One picture at half opacity over the other gives their average. Where the rest
+            // frames differ (Black's MENU marks), the 2D values alone are not the right target.
+            let a = flat.mean(x, y), r = rest.mean(x, y), b = half.mean(x, y), c = perLayer.mean(x, y)
+            let mix = (r: (a.r + r.r) / 2, g: (a.g + r.g) / 2, b: (a.b + r.b) / 2)
+            #expect(near(mix, b), "\(name) at \(x), \(y): 2D \(a), 3D \(r), halfway \(b)")
+            worst = max(worst, abs(mix.r - c.r), abs(mix.g - c.g), abs(mix.b - c.b))
         }
         #expect(worst > Self.limit, "\(name): a fade per layer moves the device by only \(worst)")
     }
