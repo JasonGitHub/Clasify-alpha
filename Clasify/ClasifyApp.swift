@@ -155,8 +155,12 @@ final class AppModel {
         }
         let library = LibrespotLibrary(client: client)
         let player = SpotifyConnectPlayer(client: client, library: library)
-        let store = Store(player: player, library: library, settings: UserDefaults.standard)
+        let appleMusic = AppleMusicPlayer()
+        let service = ClasifyCore.Settings(from: UserDefaults.standard).service
+        let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
+        let store = Store(player: services, library: library, settings: UserDefaults.standard)
         player.send = { [weak store] action in store?.send(action) }
+        appleMusic.send = { [weak store] action in store?.send(action) }
         self.store = store
         let haptics = Haptics(store: store)
         store.onWheelStep = { [weak haptics] in haptics?.step() }
@@ -187,13 +191,14 @@ final class AppModel {
         // so send it only when a timer has run out.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
         // and resets the player when the session signs out.
-        ticker = Task { [weak store, weak player, artwork] in
+        ticker = Task { [weak store, weak player, weak services, artwork] in
             var signedIn = false
             var spotifyCheck = 0.0  // when the Spotify App screen last looked for the app
             var beat = false
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(250))
                 guard let state = store?.state else { return }
+                if let services, services.service != state.service { services.service = state.service }
                 if state.signedIn && !signedIn { player?.prewarm() }
                 if !state.signedIn && signedIn { player?.reset() }
                 signedIn = state.signedIn
