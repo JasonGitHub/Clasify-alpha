@@ -55,6 +55,8 @@ import Testing
         var s = AppState()
         send(&s, .launch, .restored(token: 1, ok: false), .select)  // the color pick, a list
         #expect(s.top.screen == .color && s.hint == nil)
+        send(&s, .select)  // Pick Your Music (card BM)
+        #expect(s.top.screen == .pickMusic && s.hint == nil)
         send(&s, .select)  // the login screen
         #expect(s.top.screen == .login && s.hint == nil)
     }

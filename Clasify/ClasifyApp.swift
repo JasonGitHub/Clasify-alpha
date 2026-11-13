@@ -180,9 +180,17 @@ final class AppModel {
         store.onGetSpotifyApp = {
             if let url = URL(string: "https://www.spotify.com/download/mac/") { NSWorkspace.shared.open(url) }
         }
-        // Card AX, screen 135: "Get Premium" opens Spotify's Premium page in the browser.
-        store.onGetPremium = {
-            if let url = URL(string: "https://www.spotify.com/premium/") { NSWorkspace.shared.open(url) }
+        // Card AX, screen 135: "Get Premium" opens Spotify's Premium page in the browser. On
+        // Apple Music, "Get Apple Music" opens Apple's page (card BM, change 259).
+        store.onGetPremium = { [weak store] in
+            let page = store?.state.service == .appleMusic ? "https://www.apple.com/apple-music/" : "https://www.spotify.com/premium/"
+            if let url = URL(string: page) { NSWorkspace.shared.open(url) }
+        }
+        // Card BM, change 258: "Open Settings" opens Privacy & Security > Media & Apple Music.
+        store.onOpenPrivacy = {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Media") {
+                NSWorkspace.shared.open(url)
+            }
         }
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)

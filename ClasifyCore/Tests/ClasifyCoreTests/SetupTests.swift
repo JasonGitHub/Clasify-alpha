@@ -38,9 +38,11 @@ import Testing
         var s = onColor()
         let whole = s.wholeSeq
         send(&s, .wheel(1), .select)
-        #expect(s.deviceColor == .black && s.top.screen == .login && s.rows(for: s.top) == [.logIn])
+        #expect(s.deviceColor == .black && s.top.screen == .pickMusic && s.top.sel == 0)  // card BM, change 257
         #expect(s.wholeSeq == whole)  // between two setup screens, only the content slides
-        send(&s, .menu)  // back to the color pick, with Black selected (card AX, change 172)
+        send(&s, .select)  // Spotify
+        #expect(s.top.screen == .login && s.rows(for: s.top) == [.logIn])
+        send(&s, .menu, .menu)  // back to Pick Your Music, then to the color pick, with Black selected (card AX, change 172)
         #expect(s.top.screen == .color && s.top.sel == 1 && !s.navForward)
         #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no waiting comet
         send(&s, .reset, .launch, .restored(token: 2, ok: false), .select)  // a reset keeps the settings
@@ -60,13 +62,13 @@ import Testing
         send(&s, .menu, .select, now: 108)  // back to Hello and in again
         #expect(s.top.screen == .color)
         send(&s, .wheel(1), .select, now: 108)
-        #expect(s.top.screen == .login && s.deviceColor == .black && s.shownColor == .black)
+        #expect(s.top.screen == .pickMusic && s.deviceColor == .black && s.shownColor == .black)
         #expect(mainMenu().shownColor == .silver)  // off the color pick, the setting shows
     }
 
     @Test func aLoginInSetupReadsTheLibraryThenOpensTheMainMenu() {
         var s = onColor()
-        #expect(send(&s, .select, .select) == [.logIn(token: 2)])
+        #expect(send(&s, .select, .select, .select) == [.logIn(token: 2)])  // the color, Spotify (card BM), Log In
         #expect(send(&s, .authDone(token: 2, ok: true)) == [.prefetch])
         #expect(s.top.screen == .loggedIn && s.navForward)  // "You’re in" (card AX, change 175)
         // Card AY: Liked Songs, and the playlist names for the small screen (change 141).
@@ -87,7 +89,7 @@ import Testing
     /// and reports after the read, change nothing.
     @Test func theFirstReadCountsUp() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select, .playlistsRefreshed([]))  // no names to wait for
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select, .playlistsRefreshed([]))  // no names to wait for
         #expect(s.top.screen == .yourMusic && s.readDone == 0 && s.readTotal == 0)
         send(&s, .readProgress(Playlist.likedSongsID, done: 0, total: 1240, albums: 0), .readProgress(Playlist.likedSongsID, done: 300, total: 1240, albums: 84))
         #expect(s.readDone == 300 && s.readTotal == 1240 && s.readAlbums == 84)  // change 188
@@ -103,7 +105,7 @@ import Testing
     /// music" stays until the last name has shown. Then "You’re all set" as before.
     @Test func theFirstReadWaitsForEveryName() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
         let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
         send(&s, .playlistsRefreshed(names), now: 200)
         #expect(s.firstReadNames.count == 6 && s.playlistCount == 8)  // six names show; the count is all
@@ -121,7 +123,7 @@ import Testing
 
         // Two names wait only for those: shown at 200 + 0.5 + 0.34 + 0.3 = 201.14 s.
         var two = onColor()
-        send(&two, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&two, .select, .select, .select, .authDone(token: 2, ok: true), .select)
         send(&two, .playlistsRefreshed(Array(names.prefix(2))), now: 200)
         var late = two
         send(&two, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
@@ -135,7 +137,7 @@ import Testing
     /// your music" then waits for the list, and for its names as in change 191.
     @Test func aReadBeforeTheListWaitsForTheNames() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.namesAt == 0 && s.refreshing.contains(AppState.readKey(.playlists)))
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
         #expect(s.top.loading && !s.setupDone && s.namesHold == .infinity && s.loadedTracks == [Playlist.likedSongsID])
@@ -157,7 +159,7 @@ import Testing
         let lists: [[Playlist]?] = [nil, []]
         for list in lists {
             var s = onColor()
-            send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+            send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
             send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
             #expect(s.top.loading && s.namesHold == .infinity)
             send(&s, .playlistsRefreshed(list), now: 202)
@@ -167,7 +169,7 @@ import Testing
 
     @Test func aPressOnAllSetGoesOnAtOnce() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.top.screen == .yourMusic && send(&s, .select).isEmpty && s.top.screen == .yourMusic)  // no press while it reads
         send(&s, .playlistsRefreshed([]), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .select)
         #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0)
@@ -175,7 +177,7 @@ import Testing
 
     @Test func aFailedFirstReadShowsTheErrorAndRetries() {
         var s = onColor()
-        send(&s, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
         send(&s, .playlistsRefreshed([]))  // no names to wait for
         send(&s, .readProgress(Playlist.likedSongsID, done: 900, total: 1240, albums: 0), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: nil))
         #expect(s.top.screen == .yourMusic && s.top.error && !s.setupDone)
@@ -195,7 +197,7 @@ import Testing
         #expect(s.top.screen == .yourMusic)
         // The restore ends while the login screen waits for it: setup goes on.
         s = AppState()
-        send(&s, .launch, .select, .select)
+        send(&s, .launch, .select, .select, .select)
         #expect(s.top.screen == .login && s.restoring && s.rows(for: s.top).isEmpty)
         send(&s, .restored(token: 1, ok: true))
         #expect(s.top.screen == .yourMusic && s.navForward)
@@ -203,7 +205,7 @@ import Testing
 
     @Test func theSpotifyAppScreenShowsOnlyWhenTheAppIsMissing() {
         var s = onColor()
-        send(&s, .spotifyAppFound(false), .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .spotifyAppFound(false), .select, .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.stack == [Frame(screen: .spotifyApp)] && s.spotifyApp == false)
         #expect(s.rows(for: s.top) == [.getSpotifyApp])
         #expect(send(&s, .menu, .wheel(1), .spotifyAppFound(false)).isEmpty)  // MENU does nothing, and the check goes on

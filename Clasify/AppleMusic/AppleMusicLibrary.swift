@@ -54,15 +54,28 @@ final class AppleMusicLibrary: Library {
         _ = await (list, liked)
     }
 
+    /// The macOS prompt (card BM, change 258). macOS asks only once: after that, the answer
+    /// comes back at once.
     func logIn() async -> LoginResult {
-        await MusicAuthorization.request() == .authorized ? .ok : .failed
+        await Self.result(MusicAuthorization.request())
     }
 
     /// The macOS access prompt can't be closed from here.
     func cancelLogIn() async {}
 
+    /// A switch to Apple Music that macOS never asked about shows the prompt now (change 256).
     func restoreSession() async -> LoginResult {
-        MusicAuthorization.currentStatus == .authorized ? .ok : .failed
+        let status = MusicAuthorization.currentStatus
+        return await Self.result(status == .notDetermined ? MusicAuthorization.request() : status)
+    }
+
+    /// No access: Access is off (258). No subscription: Not subscribed (259). A subscription
+    /// check that fails lets the user in, so that a short network problem does not lock them
+    /// out: the reads and plays then say what is wrong, and Settings stays reachable.
+    private static func result(_ status: MusicAuthorization.Status) async -> LoginResult {
+        guard status == .authorized else { return .denied }
+        guard let subscription = try? await MusicSubscription.current else { return .ok }
+        return subscription.canPlayCatalogContent ? .ok : .notPremium
     }
 
     /// Only the user can take MusicKit access away, in System Settings. This forgets the reads.

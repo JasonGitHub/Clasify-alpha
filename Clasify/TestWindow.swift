@@ -110,7 +110,8 @@ private struct TestPanel: View {
         case .auth: return "Your browser is open. Log in there."
         case .loginFailed: return "That didn’t work. No problem, it happens."
         case .loggedIn: return "You’re in. Nice to meet you."
-        case .premium: return state.premiumFound ? "Premium." : "Premium needed. To play music, we need Spotify Premium."
+        case .premium: return state.premiumFound ? "Premium." : "\(state.words.needPlan). \(state.words.needPlanLine)"
+        case .accessOff: return "Access is off. Turn it on in System Settings."
         case .now: return "Select switches the wheel between volume and scrub."
         case .about: return "Clasify test build"
         case .hello: return "Press Select to begin."
@@ -122,7 +123,8 @@ private struct TestPanel: View {
     private func title(_ screen: Screen) -> String {
         switch screen {
         case .login, .main: "Clasify"
-        case .auth, .loginFailed, .loggedIn, .premium: "Log In"
+        case .auth, .loginFailed, .loggedIn, .premium, .accessOff: "Log In"
+        case .pickMusic: "Pick Your Music"
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
@@ -168,7 +170,10 @@ private struct TestPanel: View {
         case .tryAgain: "Try again"
         case .getSpotifyApp: "Get Spotify App"
         case .checkPremium: "Check again"
-        case .getPremium: "Get Premium"
+        case .getPremium: state.words.getPlan
+        case .pickService(let service): service.rawValue
+        case .openPrivacy: "Open Settings"
+        case .useSpotify: "Use Spotify"
         case .premiumLogOut: "Log out"
         case .confirmLogOut: "Log Out"
         case .color(let color): color.rawValue

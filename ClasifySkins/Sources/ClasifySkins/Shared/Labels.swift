@@ -22,7 +22,7 @@ enum Labels {
         switch screen {
         case .login where state.restoring: "Clasify"
         case .main: "Clasify"
-        case .login, .auth, .loginFailed, .loggedIn, .premium: "Log In"  // card AX
+        case .login, .auth, .loginFailed, .loggedIn, .premium, .accessOff: "Log In"  // cards AX, BM
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
@@ -36,6 +36,7 @@ enum Labels {
         // Setup (Round 13). Hello shows no title bar text.
         case .hello: ""
         case .color: "Pick Your Color"
+        case .pickMusic: "Pick Your Music"  // card BM, change 257
         case .spotifyApp: "Spotify App"
         case .yourMusic: "Your Music"
         }
@@ -94,8 +95,12 @@ enum Labels {
         case .getSpotifyApp: return RowText(label: "Get Spotify App")  // card BB: no chevron
         // Card AX, screen 135: no chevrons.
         case .checkPremium: return RowText(label: "Check again")
-        case .getPremium: return RowText(label: "Get Premium")
+        case .getPremium: return RowText(label: state.words.getPlan)  // "Get Apple Music" (card BM, 259)
         case .premiumLogOut: return RowText(label: "Log out")
+        // Card BM: no chevrons.
+        case .pickService(let service): return RowText(label: service.rawValue)
+        case .openPrivacy: return RowText(label: "Open Settings")
+        case .useSpotify: return RowText(label: "Use Spotify")
         }
     }
 
@@ -155,13 +160,17 @@ enum Labels {
         case .auth: SetupWords(headline: "Take your time", line: "Your browser is open.\nLog in there.")
         case .loginFailed: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")
         case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
-        case .premium: SetupWords(headline: "Premium needed", line: "To play music, we need Spotify Premium.")  // 135
+        case .premium: SetupWords(headline: state.words.needPlan, line: state.words.needPlanLine)  // 135; card BM, 259
+        case .accessOff: SetupWords(headline: "Access is off", line: "Turn it on in System Settings.")  // card BM, 258
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
         case .yourMusic: SetupWords(headline: "You’re all set", line: ready)
         default: nil
         }
     }
+
+    /// The line at the bottom of Pick Your Music (card BM, change 257), as on Pick Your Color.
+    static let pickMusicFootnote = "You can always change it in Settings."
 
     /// The line under "You’re all set" (card AY, change 189): always the same, with no song count.
     static let ready = "Enjoy your music."

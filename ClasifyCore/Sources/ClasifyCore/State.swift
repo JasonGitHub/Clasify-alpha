@@ -114,6 +114,9 @@ public enum Screen: Equatable, Sendable {
     /// The login worked, but the account is not Spotify Premium (card AX, screen 135). Clasify
     /// needs Premium to play. "Check again" logs in again with the stored login.
     case premium
+    /// Card BM: the music service pick of the first run, after the color pick (257), and
+    /// Apple Music's screen after a "Don't Allow" in the macOS prompt (258).
+    case pickMusic, accessOff
     /// About's Licenses list, and the text of license `License.all[i]` with the names of the
     /// parts under it (card BF, change 213).
     case licenses, license(Int)
@@ -122,7 +125,7 @@ public enum Screen: Equatable, Sendable {
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -177,6 +180,8 @@ public enum Row: Equatable, Sendable {
     /// Rows of the Premium screen (card AX, screen 135): log in again with the stored login,
     /// open Spotify's Premium page in the browser, and forget the login.
     case checkPremium, getPremium, premiumLogOut
+    /// Card BM: a service on Pick Your Music (257), "Open Settings" (258), "Use Spotify" (262).
+    case pickService(MusicService), openPrivacy, useSpotify
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
     /// A row of the Licenses list: license `License.all[i]` (card BF, change 213).
@@ -712,7 +717,10 @@ public struct AppState: Equatable, Sendable {
         case .auth: [.openBrowser, .cancel]
         case .loginFailed: [.tryAgain, .cancel]
         case .spotifyApp: [.getSpotifyApp]
-        case .premium: [.checkPremium, .getPremium, .premiumLogOut]
+        // Card BM, change 259: Apple Music has "Use Spotify" in place of "Log out".
+        case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
+        case .pickMusic: MusicService.allCases.map { .pickService($0) }
+        case .accessOff: [.openPrivacy, .useSpotify]
         case .licenses: License.all.indices.map { .license($0) }
         case .about, .now, .hello, .yourMusic, .loggedIn, .license: []
         }

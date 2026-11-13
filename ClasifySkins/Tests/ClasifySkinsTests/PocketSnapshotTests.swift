@@ -1391,6 +1391,22 @@ import Testing
         #expect(black.isBlue(183, 392) && !hint(black))  // the glow first; the press hint comes at 12.2 s
     }
 
+    /// Card BM, changes 257 and 264: Pick Your Music has the two services on the left and the
+    /// big logo of the selected one on the right, in place of the small device.
+    @Test func pickYourMusicShowsTheLogoOfTheSelectedService() throws {
+        var s = AppState()
+        s.stack = [Frame(screen: .pickMusic)]
+        let logo = (x: Self.screenLeft + 225, y: 165)  // in the tile, under its middle
+        let spotify = try render(s, "pick-music", time: 10)
+        #expect(spotify.isBlue(100, Self.rowCenter(0)) && !spotify.isBlue(100, Self.rowCenter(1)))
+        let green = spotify.rgb(logo.x, logo.y)
+        #expect(green.g > green.r + 100, "\(green)")  // Spotify's green circle
+        s.top.sel = 1
+        let apple = try render(s, "pick-music-apple", time: 10)
+        #expect(apple.isBlue(100, Self.rowCenter(1)))
+        #expect(apple.isDark(logo.x, logo.y), "\(apple.rgb(logo.x, logo.y))")  // Apple Music's black tile
+    }
+
     /// Card AW.1, change 236: after a turn, Pick Your Color shows no light on the wheel's rim.
     /// Only the center glows.
     @Test func theColorPickShowsNoRimLightAfterATurn() throws {
@@ -1467,6 +1483,17 @@ import Testing
         let found = try render(s, "premium-found", time: 10)
         #expect(check(found))
         s.premiumFound = false; s.premiumAt = 0
+        // Card BM: Access is off (258) has two rows; Not subscribed (259) has three, with Apple
+        // Music's words. The rows start at the same place, so the blue bar never jumps.
+        s.stack = [Frame(screen: .accessOff)]
+        let off = try render(s, "access-off", time: 10)
+        #expect(headline(off) && off.isBlue(175, firstRow) && !check(off), "\(blue(off))")
+        #expect(!off.isBlue(175, firstRow + 23))  // Use Spotify
+        s.service = .appleMusic; s.words = .appleMusic
+        s.stack = [Frame(screen: .premium)]
+        let plan = try render(s, "not-subscribed", time: 10)
+        #expect(headline(plan) && plan.isBlue(175, firstRow) && !check(plan), "\(blue(plan))")
+        s.service = .spotify; s.words = .spotify
         // Card AY: the bar moves under the words while the names fill the small screen. Then
         // "You’re all set" and the green check.
         s.library = [Playlist(id: "spotify:playlist:a", name: "Road Trip", tracks: [])]

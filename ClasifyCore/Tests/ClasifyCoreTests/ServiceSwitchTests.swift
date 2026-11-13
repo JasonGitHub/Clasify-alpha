@@ -5,7 +5,7 @@ import Testing
 @Suite struct ServiceSwitchTests {
     /// Opens Settings from the main menu. The Service row is the first row (change 256).
     func openSettings(_ s: inout AppState) {
-        while s.top.screen != .main { send(&s, .menu) }
+        for _ in 0..<8 where s.top.screen != .main { send(&s, .menu) }
         s.top.sel = s.rows(for: s.top).firstIndex(of: .settings) ?? -1
         send(&s, .select)
     }
@@ -34,7 +34,8 @@ import Testing
         let fx = send(&s, .menu)
         #expect(fx == [.stop, .setService(.appleMusic), .restoreSession(token: s.authAttempt)])
         #expect(s.service == .appleMusic && s.pendingService == nil)
-        #expect(s.current == nil && !s.isPlaying && s.library.isEmpty && !s.signedIn)
+        #expect(s.current == nil && !s.isPlaying)
+        #expect(s.library.isEmpty && !s.signedIn)
         #expect(s.top.screen == .login && s.restoring)  // "Signing in…"
         send(&s, .restored(token: s.authAttempt, ok: true))
         #expect(s.stack.count == 1 && s.top.screen == .main && s.top.sel == 0)
@@ -67,6 +68,81 @@ import Testing
         s.pendingService = .appleMusic  // as if left from before
         openSettings(&s)
         #expect(s.pendingService == nil)
+    }
+
+    /// Change 257: the first run picks the service after the color. Apple Music asks macOS at
+    /// once, over this screen (258); after Allow, "You’re in" as after a Spotify login.
+    @Test func pickYourMusicAsksMacOSForAppleMusic() {
+        var s = afterSetup()
+        s.setupDone = false
+        send(&s, .launch, .restored(token: 1, ok: false), .select, .select)  // Hello, the color
+        #expect(s.top.screen == .pickMusic)
+        #expect(s.rows(for: s.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+        #expect(s.top.sel == 0)
+        #expect(send(&s, .wheel(1), .select) == [.setService(.appleMusic), .logIn(token: 2)])
+        #expect(s.service == .appleMusic && s.top.screen == .pickMusic)
+        #expect(s.top.token == 2 && s.top.sel == 1)
+        send(&s, .authDone(token: 2, ok: false))  // the prompt failed: a press asks again
+        #expect(s.top.screen == .pickMusic && s.top.token == 0)
+        #expect(send(&s, .select) == [.logIn(token: 3)])  // the service is set already
+        send(&s, .authDone(token: 3, ok: true))
+        #expect(s.top.screen == .loggedIn && s.signedIn)
+    }
+
+    /// Change 258: after "Don't Allow", Access is off. MENU does nothing; "Open Settings"
+    /// opens System Settings, and "Use Spotify" switches to Spotify (262).
+    @Test func accessOffOpensSettingsOrUsesSpotify() {
+        var s = afterSetup()
+        s.setupDone = false
+        send(&s, .launch, .restored(token: 1, ok: false), .select, .select, .wheel(1), .select)
+        send(&s, .accessDenied(token: 1))  // an older attempt
+        #expect(s.top.screen == .pickMusic)
+        #expect(send(&s, .accessDenied(token: 2)) == [])
+        #expect(s.stack == [Frame(screen: .accessOff)])
+        #expect(s.rows(for: s.top) == [.openPrivacy, .useSpotify])
+        #expect(send(&s, .menu) == [] && s.top.screen == .accessOff)
+        #expect(send(&s, .select) == [.openPrivacy])
+        #expect(send(&s, .wheel(1), .select) == [.setService(.spotify), .restoreSession(token: 4)])
+        #expect(s.service == .spotify && s.top.screen == .login && s.restoring)
+    }
+
+    /// A switch to Apple Music with no access ends on Access is off too, never on a dead end.
+    @Test func aSwitchWithNoAccessShowsAccessOff() {
+        var s = mainMenu()
+        openSettings(&s)
+        send(&s, .select, .menu)
+        send(&s, .accessDenied(token: s.authAttempt))
+        #expect(s.stack == [Frame(screen: .accessOff)])
+        #expect(!s.restoring && !s.signedIn)
+    }
+
+    /// Change 259: no subscription shows the Premium screen with Apple Music's words, and
+    /// "Use Spotify" in place of "Log out".
+    @Test func noSubscriptionOffersUseSpotify() {
+        var s = mainMenu()
+        openSettings(&s)
+        send(&s, .select, .menu)
+        send(&s, .notPremium(token: s.authAttempt))
+        #expect(s.stack == [Frame(screen: .premium)])
+        #expect(s.rows(for: s.top) == [.checkPremium, .getPremium, .useSpotify])
+        #expect(send(&s, .wheel(2), .select).contains(.setService(.spotify)))
+    }
+
+    /// Change 263: Log out on Apple Music stops the music, clears the library and goes back
+    /// to Pick Your Music, on Apple Music. Spotify there uses its stored login, if any.
+    @Test func logOutOnAppleMusicGoesToPickYourMusic() {
+        var s = mainMenu()
+        openSettings(&s)
+        send(&s, .select, .menu)
+        send(&s, .restored(token: s.authAttempt, ok: true))
+        openSettings(&s)
+        s.top.sel = s.rows(for: s.top).firstIndex(of: .logOut) ?? -1
+        #expect(send(&s, .select, .wheel(1), .select) == [.logOut])
+        #expect(s.stack.count == 1 && s.top.screen == .pickMusic && s.top.sel == 1)
+        #expect(!s.signedIn && s.library.isEmpty)
+        let fx = send(&s, .wheel(-1), .select)
+        #expect(fx == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
+        #expect(s.top.screen == .login && s.restoring)
     }
 
     /// `.libraryWords`: the texts follow the active service's library. A reset keeps them.
