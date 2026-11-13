@@ -145,11 +145,18 @@ struct ClickWheel: View {
         ZStack(alignment: .topLeading) {
             // Flat, as in the photo (card BH, `wheelBg` and `wheelShadow`). Black has a faint 1
             // point ring around it and a faint white line under it. Silver has no ring (change 240).
-            Circle()
-                .fill(Color(hex: black ? 0x222223 : 0xf6fafb))
-                .background { if black { Circle().fill(Color.white.opacity(0.08)).offset(y: 1).blur(radius: 0.5) } }
-                .background { if black { Circle().fill(Color.black.opacity(0.3)).padding(-1) } }
-                .frame(width: Self.size, height: Self.size)
+            if look == .bl {
+                Circle()
+                    .fill(BL.wheel(black: black))
+                    .background { Circle().fill(Color.black.opacity(BL.wheelRing(black: black))).padding(-0.5) }
+                    .frame(width: Self.size, height: Self.size)
+            } else {
+                Circle()
+                    .fill(Color(hex: black ? 0x222223 : 0xf6fafb))
+                    .background { if black { Circle().fill(Color.white.opacity(0.08)).offset(y: 1).blur(radius: 0.5) } }
+                    .background { if black { Circle().fill(Color.black.opacity(0.3)).padding(-1) } }
+                    .frame(width: Self.size, height: Self.size)
+            }
             key(.menu) { Text("MENU").font(.helvetica(14, weight: .medium)).tracking(0.7) }
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
             key(.next) { IconView(.next, width: 19.8, height: 10.2) }
@@ -185,7 +192,25 @@ struct ClickWheel: View {
         .offset(x: rect.minX, y: rect.minY)
     }
 
-    private var center: some View {
+    @ViewBuilder private var center: some View {
+        if look == .bl { blCenter } else { bhCenter }
+    }
+
+    /// SPIKE (CLA-101): card BL's flat center, its thin ring and its top line.
+    private var blCenter: some View {
+        Circle()
+            .fill(LinearGradient(stops: BL.center(black: black, down: pressed == .center), startPoint: .top, endPoint: .bottom))
+            .overlay {
+                TopCrescent().fill(Color.black.opacity(BL.centerTopLine(black: black)), style: FillStyle(eoFill: true))
+                    .clipShape(Circle())
+            }
+            .background { Circle().fill(Color.black.opacity(BL.centerRing(black: black))).padding(-0.5) }
+            .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
+            .background { if let glowFrom { CenterGlow(from: glowFrom, radius: Self.centerRadius) } }
+            .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)
+    }
+
+    private var bhCenter: some View {
         // Pressed in, as in the photo (card BH, `ctrBg` and `ctrShadow`): dark at the top, with
         // a thin rim and a faint inner shadow. Pressed, it gets a little darker.
         let down = pressed == .center
@@ -260,6 +285,8 @@ private struct GlowingLabel<Label: View>: View {
     let label: Label
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
+    /// SPIKE (CLA-101): BL only with the hidden switch.
+    @Environment(\.pocketLook) private var look
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
