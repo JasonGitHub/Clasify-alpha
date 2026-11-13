@@ -45,12 +45,7 @@ final class AppleMusicLibrary: Library {
     }
 
     func track(_ id: String) async -> ClasifyCore.Track? {
-        guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.songPrefix) else { return nil }
-        var request = MusicLibraryRequest<Song>()
-        request.filter(matching: \.id, equalTo: itemID)
-        if let song = try? await request.response().items.first { return Self.makeTrack(song) }
-        let catalog = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: itemID)
-        return (try? await catalog.response().items.first).map(Self.makeTrack)
+        await AppleMusicReads.song(id).map(Self.makeTrack)
     }
 
     func prefetch() async {
@@ -97,15 +92,10 @@ final class AppleMusicLibrary: Library {
             guard let favorites = items.first(where: { $0.name == favoritesName }) else { return [] }
             playlist = favorites
         } else {
-            guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.playlistPrefix) else { return nil }
-            var request = MusicLibraryRequest<MusicKit.Playlist>()
-            request.filter(matching: \.id, equalTo: itemID)
-            playlist = try? await request.response().items.first
+            playlist = await AppleMusicReads.playlist(id)
         }
-        guard let playlist, let tracks = try? await playlist.with([.tracks]).tracks else { return nil }
-        return tracks.compactMap { entry -> ClasifyCore.Track? in
-            if case .song(let song) = entry { makeTrack(song) } else { nil }
-        }
+        guard let playlist else { return nil }
+        return await AppleMusicReads.songs(of: playlist)?.map(makeTrack)
     }
 
     private static let favoritesName = "Favorite Songs"
