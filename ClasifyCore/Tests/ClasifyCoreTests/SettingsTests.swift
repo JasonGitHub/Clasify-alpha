@@ -19,6 +19,7 @@ final class FakeSettings: SettingsStore {
     var saved = Settings()
     saved.shuffle = true; saved.repeatMode = .one; saved.albumArt = .nowPlaying; saved.deviceColor = .black; saved.clicker = false
     saved.nowPlayingBar = true
+    saved.service = .appleMusic
     saved.setupDone = true
     saved.hintsDone = [.menu]
     saved.tourOn = true; saved.tourHides = [.tourPlay: 2, .tourNext: 1]
@@ -26,13 +27,13 @@ final class FakeSettings: SettingsStore {
     #expect(store.values == [
         "settings.shuffle": "true", "settings.repeat": "One",
         "settings.albumArt": "Now Playing", "settings.deviceColor": "Black", "settings.clicker": "false",
-        "settings.nowPlayingBar": "true", "setup.done": "true", "hints.done": "menu",
+        "settings.nowPlayingBar": "true", "settings.service": "Apple Music", "setup.done": "true", "hints.done": "menu",
         "hints.tour": "true", "hints.hides": "tour.next:1,tour.play:2",
     ])
     #expect(Settings(from: store) == saved)
     store.values = [
         "settings.shuffle": "yes", "settings.repeat": "Twice", "settings.albumArt": "On", "settings.deviceColor": "Gold",
-        "settings.clicker": "1", "setup.done": "yes", "hints.done": "later",
+        "settings.clicker": "1", "settings.service": "Tidal", "setup.done": "yes", "hints.done": "later",
         "hints.tour": "yes", "hints.hides": "later:2,tour.play:x",
     ]
     #expect(Settings(from: store) == Settings())  // unknown values give the defaults

@@ -373,6 +373,8 @@ public struct AppState: Equatable, Sendable {
     /// The Now Playing Bar setting (Round 11 card AK, change 109): the bar for the playing song
     /// on every list. Off by default.
     public var nowPlayingBar = false
+    /// The music service that plays and that the lists come from (CLA-103). Spotify by default.
+    public var service = MusicService.spotify
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
     public var aboutAt: Double = 0
     /// About is one page that scrolls 5 wheel steps (card BF, change 207). Its step is the
