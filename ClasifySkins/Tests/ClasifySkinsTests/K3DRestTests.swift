@@ -16,6 +16,11 @@ import Testing
 /// 7 are for Metal against WebGL: the mock's camera draws the face 1.3% larger, and the
 /// mipmaps filter a little differently.
 ///
+/// Both pictures are read the same way: the 3D frame is shown as a SwiftUI image and drawn
+/// with the same `ImageRenderer` as the 2D device. A first run read the 2D through
+/// `ImageRenderer` and the 3D as raw bytes, and every 2D value came out lighter (#2a2c2e read
+/// as #373a3c), while the 3D matched the mock's render within 1.
+///
 /// The tests show as skipped where the machine has no Metal device. Where it has one, a
 /// renderer that fails to load fails the test.
 @Suite @MainActor struct K3DRestTests {
@@ -45,8 +50,9 @@ import Testing
         }
     }
 
-    func flat(_ state: AppState, _ name: String) throws -> Pixels {
-        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl))
+    /// The view drawn at 2x by `ImageRenderer`, read as sRGB.
+    func pixels<V: View>(_ view: V, _ name: String) throws -> Pixels {
+        let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
         save(bitmap, name)
@@ -56,24 +62,23 @@ import Testing
         }
     }
 
+    func flat(_ state: AppState, _ name: String) throws -> Pixels {
+        try pixels(PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl), name)
+    }
+
     func rest(_ renderer: K3DRenderer, _ state: AppState, _ name: String) throws -> Pixels {
         let size = PocketSkin.size, w = Int(size.width) * 2, h = Int(size.height) * 2
         var bytes = try #require(renderer.image(
             K3DPose(black: state.deviceColor == .black), screen: K3DSpike.snapshot(state), size: size, scale: 2))
         #expect(bytes.count == w * h * 4)
-        // Premultiplied BGRA, rows from the top. Inside the body the alpha is 255.
-        let image = bytes.withUnsafeMutableBytes { buffer in
+        // Premultiplied BGRA, rows from the top, in sRGB: the Metal view's color space.
+        let image = try #require(bytes.withUnsafeMutableBytes { buffer in
             CGContext(
                 data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
                 space: CGColorSpace(name: CGColorSpace.sRGB)!,
                 bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)?.makeImage()
-        }
-        if let image { save(NSBitmapImageRep(cgImage: image), name) }
-        let copy = bytes
-        return Pixels(width: w) { x, y in
-            let i = (y * w + x) * 4
-            return (Int(copy[i + 2]), Int(copy[i + 1]), Int(copy[i]))
-        }
+        })
+        return try pixels(Image(decorative: image, scale: 2).frame(width: size.width, height: size.height), name)
     }
 
     func save(_ bitmap: NSBitmapImageRep, _ name: String) {

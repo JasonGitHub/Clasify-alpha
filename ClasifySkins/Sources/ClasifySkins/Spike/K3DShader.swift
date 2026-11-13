@@ -2,8 +2,9 @@
 /// `makeLibrary(source:)`. The math is the frozen `k3d_src3.js` (`data-edge="parts"`, the
 /// physical light, `uPhys` 1) for the assembled device, line by line, with its uniforms fixed
 /// at the frozen values (`UC` in the mock). Not ported, as the folder's README says: the old
-/// light (`uPhys` 0), the 2D layer and the LCD parallax (`u2d`, `lcdUV`), the other edge
-/// options, and everything only Take apart draws (`ex` > 0, materials above 10, back faces).
+/// light (`uPhys` 0), the 2D layer (`u2d`, `t2`), the other edge options, and everything only
+/// Take apart draws (`ex` > 0, materials above 10, back faces). The LCD parallax (`lcdUV`) is
+/// part of the frozen look and is ported (the README's correction, 23:20 JST 11-13).
 ///
 /// Changes from the mock:
 /// - `ss` replaces `smoothstep`, because the mock calls it with edge0 > edge1, which Metal does
@@ -99,8 +100,18 @@ enum K3DShader {
     // Matte metal in the physical light: the tint, 58% reflective, back to sRGB.
     float3 matte(float E) { return pow(pow(uTint, float3(2.2)) * 0.58 * E, float3(0.4545)); }
 
-    // The front parts (material 3): plate, window, wheel and button. The mock's frontVR.
-    float3 front(float3 n, float3 vp, float3 vo, float3x3 M, float2 uv, float pt, float3 t, float id) {
+    // The LCD sits 4 pt under the clear window: at an angle its picture shifts against the bezel.
+    float2 lcdUV(float3 n, float3 vp, float3x3 M, float2 uv) {
+        float3 v = normalize(-vp);
+        float3 tx = normalize(M * float3(1.0, 0.0, 0.0)), ty = normalize(M * float3(0.0, 1.0, 0.0));
+        float vz = max(dot(v, n), 0.2);
+        float2 off = float2(dot(v, tx), dot(v, ty)) / vz * 4.0;
+        return uv + float2(-off.x / 366.0, off.y / 613.0);
+    }
+
+    // The front parts (material 3): plate, window, wheel and button. The mock's frontVR. `pu` is
+    // where the LCD picture is read, and `pic` its color there.
+    float3 front(float3 n, float3 vp, float3 vo, float3x3 M, float2 uv, float pt, float3 t, float id, float2 pu, float3 pic) {
         float3 v = normalize(-vp);
         float3 r = reflect(-v, n);
         float3 Ld = normalize(float3(-0.45, 0.55, 0.7));
@@ -134,9 +145,9 @@ enum K3DShader {
         if (hi > 0.5 && isId(id, 250.0) > 0.5) col = float3(0.165, 0.173, 0.180);  // the bezel ink
         float lcd = hi * isId(id, 251.0), win = max(lcd, hi * isId(id, 250.0));
         if (lcd > 0.5) {
-            float2 px = uv * float2(732.0, 1226.0);
+            float2 px = pu * float2(732.0, 1226.0);  // past the picture's edge: the dark inner wall
             float inside = step(66.0, px.x) * step(px.x, 666.0) * step(65.0, px.y) * step(px.y, 515.0);
-            col = mix(float3(0.10, 0.10, 0.11), t * (0.80 + 0.24 * dif) + 0.05 * env(r), inside);
+            col = mix(float3(0.10, 0.10, 0.11), pic * (0.80 + 0.24 * dif) + 0.05 * env(r), inside);
             float e = min(min(px.x - 66.0, 666.0 - px.x), min(px.y - 65.0, 515.0 - px.y));  // a soft shade inside the bezel
             col *= mix(0.80, 1.0, ss(0.0, 7.0, e));
         }
@@ -189,7 +200,8 @@ enum K3DShader {
         } else if (vm < 3.5) {  // the front parts
             float3 t = tf.sample(sm, in.vuv).rgb;
             float id = tf.sample(sn, in.vuv, level(0)).a;  // the material id, not blended
-            col = front(n, in.vp, in.vo, M, in.vuv, pt, t, id);
+            float2 pu = lcdUV(n, in.vp, M, in.vuv);
+            col = saturate(front(n, in.vp, in.vo, M, in.vuv, pt, t, id, pu, tf.sample(sm, pu).rgb));
             float isL = isId(id, 251.0) * (1.0 - step(0.5, in.vuv.y));
             float rw = length(o - float2(0.0, -127.0));
             if (pt > 2.5 && pt < 3.5) col *= mix(1.0, 0.86, ss(111.6, 112.5, rw));  // the thin gap line round the wheel
