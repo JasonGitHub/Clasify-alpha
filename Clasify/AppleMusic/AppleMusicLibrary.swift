@@ -45,7 +45,7 @@ final class AppleMusicLibrary: Library {
     }
 
     func track(_ id: String) async -> ClasifyCore.Track? {
-        await AppleMusicReads.song(id).map(Self.makeTrack)
+        await AppleMusicReads.song(id).map(AppleMusicReads.track)
     }
 
     func prefetch() async {
@@ -88,25 +88,9 @@ final class AppleMusicLibrary: Library {
             guard let playlist = try await AppleMusicReads.playlist(id) else {
                 return id == ClasifyCore.Playlist.likedSongsID ? [] : nil  // no "Favorite Songs" yet: empty
             }
-            return await AppleMusicReads.songs(of: playlist)?.map(makeTrack)
+            return await AppleMusicReads.songs(of: playlist)?.map(AppleMusicReads.track)
         } catch {
             return nil
         }
-    }
-
-    /// A store `Track` from a MusicKit song. The cover is the Artwork URL (PR 3 lets
-    /// `ArtworkLoader` read it). The album ID is made from its title and artist, because a
-    /// song has no album ID without one more read per song.
-    private static func makeTrack(_ song: Song) -> ClasifyCore.Track {
-        let album = song.albumTitle.map {
-            ClasifyCore.Album(id: AppleMusicID.albumPrefix + $0 + "\u{1F}" + song.artistName, name: $0, artist: song.artistName)
-        }
-        return ClasifyCore.Track(
-            id: AppleMusicID.song(song.id), title: song.title, artist: song.artistName,
-            duration: song.duration ?? 0,
-            coverID: song.artwork?.url(width: 300, height: 300)?.absoluteString,
-            album: album, disc: song.discNumber, number: song.trackNumber,
-            largeCoverID: song.artwork?.url(width: 640, height: 640)?.absoluteString
-        )
     }
 }
