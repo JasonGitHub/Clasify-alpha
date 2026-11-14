@@ -40,6 +40,10 @@ final class AppleMusicPlayer: Player {
     /// A load set a queue. Before that, nothing here touches MusicKit, so a Spotify user never
     /// starts it.
     private var hasQueue = false
+    /// The queued songs by their keys, to the store IDs that the library gave them. The queue's
+    /// entries can carry other IDs than the library songs that we queued (build 177: a catalog
+    /// ID, not checked on a Mac), so a poll finds the song by any of its keys.
+    private var queued = QueueMatch()
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
@@ -59,8 +63,10 @@ final class AppleMusicPlayer: Player {
             guard id == loadID else { return }
             if let tracks, let start = tracks.first(where: { $0.id == song.id }) {
                 player.queue = ApplicationMusicPlayer.Queue(for: tracks, startingAt: start)
+                queued = QueueMatch(tracks.map { (id: AppleMusicID.song($0.id), keys: Self.keys($0)) })
             } else {
                 player.queue = ApplicationMusicPlayer.Queue(for: [song])  // not in the list: plays alone
+                queued = QueueMatch([(id: trackID, keys: Self.keys(song))])
             }
             hasQueue = true
             applyModes()
@@ -202,12 +208,29 @@ final class AppleMusicPlayer: Player {
             lastPlaying = false
             return send(.trackEnded(generation: generation))
         }
-        let track = player.queue.currentEntry.flatMap(AppleMusicID.of) ?? lastTrack
+        // A song that we did not queue (none should come) keeps the last one: never report an
+        // ID that the library did not give.
+        let track = player.queue.currentEntry.flatMap(storeID) ?? lastTrack
         if let track, track != lastTrack || playing != lastPlaying {
             lastTrack = track
             lastPlaying = playing
             send(.trackChanged(track, playing: playing, generation: generation))
         }
         if playing { send(.position(player.playbackTime, generation: generation)) }
+    }
+
+    /// The store ID of the song that a queue entry plays, or nil if it is not one that we queued.
+    private func storeID(_ entry: ApplicationMusicPlayer.Queue.Entry) -> String? {
+        if case .song(let song) = entry.item, let id = queued.id(for: Self.keys(song)) { return id }
+        // Not resolved yet, or no known key: the title and artist that the entry shows.
+        return entry.subtitle.flatMap { queued.id(title: entry.title, artist: $0) }
+    }
+
+    /// The keys that can name one song: its MusicKit ID, its catalog ID, its ISRC, and last its
+    /// title with its artist.
+    private static func keys(_ song: Song) -> SongKeys {
+        SongKeys(
+            ids: [song.id.rawValue] + (AppleMusicReads.catalogID(song).map { [$0] } ?? []),
+            isrc: song.isrc, title: song.title, artist: song.artistName)
     }
 }

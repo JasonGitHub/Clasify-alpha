@@ -1,6 +1,7 @@
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
 // only on the main actor.
 import ClasifyCore
+import Foundation
 @preconcurrency import MusicKit
 
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
@@ -15,6 +16,16 @@ enum AppleMusicReads {
         if let song = try? await library.response().items.first { return song }
         let catalog = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: itemID)
         return try? await catalog.response().items.first
+    }
+
+    /// The catalog ID of a library song, or nil. MusicKit keeps it only in the play
+    /// parameters, which are opaque but Codable. Their JSON has "catalogId", as in the Apple
+    /// Music API (not checked on a Mac).
+    static func catalogID(_ song: Song) -> String? {
+        guard let params = song.playParameters, let data = try? JSONEncoder().encode(params),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        return json["catalogId"] as? String
     }
 
     /// Apple Music's name for the library playlist of favorited songs.
