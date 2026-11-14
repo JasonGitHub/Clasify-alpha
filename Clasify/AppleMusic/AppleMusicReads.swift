@@ -164,11 +164,12 @@ enum AppleMusicReads {
     /// The album reads of one library read, kept on the main actor while they run.
     @MainActor private final class AlbumReads {
         var albums: [MusicKit.Album] = []
-        /// The songs of album `i`, when its read worked.
+        /// The songs of album `i`, when its read worked. Only the library's songs: a plain
+        /// `with([.tracks])` can give a catalog album's other songs too.
         var songs: [Int: [Song]] = [:]
 
         func read(_ i: Int) async {
-            if let read = await AppleMusicReads.songs(in: try? await albums[i].with([.tracks]).tracks) { songs[i] = read }
+            if let read = await AppleMusicReads.songs(in: try? await albums[i].with([.tracks], preferredSource: .library).tracks) { songs[i] = read }
         }
     }
 
