@@ -66,6 +66,11 @@ final class AppleMusicPlayer: Player {
             var tracks: [Song]?
             if let context { tracks = await AppleMusicReads.songs(for: context) }
             guard id == loadID else { return }
+            let kind = context.map { $0 == ClasifyCore.Playlist.likedSongsID ? "liked" : ClasifyCore.Album.isID($0) ? "album" : "playlist" } ?? "none"
+            timing.notice("""
+                apple load (TEMP): context \(kind, privacy: .public), tracks \(tracks.map { "\($0.count)" } ?? "nil", privacy: .public), \
+                start found \(tracks?.contains { Self.same($0, song) } == true ? "yes" : "no", privacy: .public)
+                """)
             if let tracks, let start = tracks.first(where: { Self.same($0, song) }) {
                 player.queue = ApplicationMusicPlayer.Queue(for: tracks, startingAt: start)
                 queued = QueueMatch(tracks.map { (id: AppleMusicID.song($0.id), keys: Self.keys($0)) })
