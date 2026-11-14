@@ -2,7 +2,8 @@ name: App DMG
 # Builds the test DMG of the app from main (CLA-69). Not part of PR CI.
 # - A push to main that changes the app makes an ad-hoc signed DMG. That job uses no secret.
 # - A run started by hand on main makes a DMG signed with Developer ID and notarized. Only that
-#   job uses environment "release" and its secrets. Neither job ever runs on a PR.
+#   job uses environment "release" and its secrets. It also puts the DMG on the public beta page
+#   (Vercel Blob, CLA-96). Neither job ever runs on a PR.
 on:
   workflow_dispatch:
   push:
@@ -107,6 +108,47 @@ jobs:
           done
           xcrun stapler validate "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+      - name: Upload the DMG and latest.json to the beta page's Vercel Blob store
+        # CLA-96: mypod-beta.vercel.app reads beta/latest.json and links its "url". The DMG gets a
+        # new public path per build, beta/myPod-beta-<n>.dmg. latest.json has a fixed path and is
+        # overwritten, with a 60 s cache so the page sees a new build within about a minute.
+        # The token is read only here. It goes to curl through a config on stdin, never on a
+        # command line. Never add set -x or print the token (CLA-69).
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          BETA: myPod-beta-${{ github.run_number }}.dmg
+          BUILD: ${{ github.run_number }}
+        run: |
+          if [ -z "$BLOB_READ_WRITE_TOKEN" ]; then
+            echo "::error::The secret BLOB_READ_WRITE_TOKEN is not set in environment release. The DMG was not uploaded."
+            exit 1
+          fi
+          # The store id is the 4th part of the token (vercel_blob_rw_<store>_<rest>), as the
+          # Vercel Blob SDK reads it. It is not secret: it is in every public blob URL.
+          store=$(printf '%s' "$BLOB_READ_WRITE_TOKEN" | cut -d_ -f4)
+          # PUT https://vercel.com/api/blob/?pathname=<path>, as the SDK's put() sends it (API version 13).
+          put() {  # put <file> <pathname> <content type> <allow overwrite 0/1> [cache max-age s]
+            printf 'header = "authorization: Bearer %s"\n' "$BLOB_READ_WRITE_TOKEN" | curl -sS -K - \
+              --retry 3 --retry-all-errors -X PUT --data-binary "@$1" -o blob.json -w '%{http_code}' \
+              -H "x-api-version: 13" -H "x-vercel-blob-store-id: $store" -H "x-vercel-blob-access: public" \
+              -H "x-content-type: $3" -H "content-type: $3" -H "x-add-random-suffix: 0" -H "x-allow-overwrite: $4" \
+              ${5:+-H "x-cache-control-max-age: $5"} \
+              "https://vercel.com/api/blob/?pathname=${2//\//%2F}" > status.txt || true
+            if [ "$(cat status.txt)" != "200" ]; then
+              echo "::error::Upload of $2 failed (HTTP $(cat status.txt))."
+              cat blob.json; echo
+              exit 1
+            fi
+          }
+          put "$DMG" "beta/$BETA" application/x-apple-diskimage 1
+          url=$(jq -er .url blob.json)
+          echo "DMG: $url"
+          jq -n --argjson build "$BUILD" --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg file "$BETA" --arg url "$url" \
+            '{build: $build, date: $date, file: $file, url: $url}' > latest.json
+          cat latest.json
+          put latest.json beta/latest.json application/json 1 60
+          echo "latest.json: $(jq -er .url blob.json)"
+          rm -f blob.json status.txt
       - name: Delete the signing keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
