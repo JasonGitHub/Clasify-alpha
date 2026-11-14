@@ -457,7 +457,8 @@ struct PocketList: View {
                               playlists: state.namesAt > 0 ? state.playlistCount : nil, albums: state.readAlbums,
                               namesFrom: state.namesAt > 0 ? state.namesAt : nil, names: state.firstReadNames.count,
                               songs: state.firstReadSongs, late: state.namesLate,
-                              waitsForNames: state.refreshing.contains(AppState.readKey(.playlists)))
+                              waitsForNames: state.refreshing.contains(AppState.readKey(.playlists)),
+                              songWords: (state.words.oneSong, state.words.manySongs))
             }
             ForEach(shown, id: \.self) { index in
                 PocketRow(text: Labels.row(rows[index], on: top.screen, in: state),

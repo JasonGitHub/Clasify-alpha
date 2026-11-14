@@ -310,6 +310,8 @@ struct SetupProgress: View {
     var late: Double?
     /// The playlist list is still being read: the bar and the counts wait at 0 for it.
     var waitsForNames = false
+    /// The song count's noun, one and many, from `LibraryWords` ("liked songs" on Spotify).
+    var songWords = (one: "liked song", many: "liked songs")
     @Environment(\.animationTime) private var fixedTime
 
     /// Change 197: how far the bar and the counts may be, `t` seconds after the names came:
@@ -343,7 +345,9 @@ struct SetupProgress: View {
 
     /// The three count lines, as a number and its words. A line is nil until its number is
     /// known: the playlists when the list came, the albums and songs when the read has a total.
-    nonisolated static func counts(done: Int, total: Int, playlists: Int?, albums: Int) -> [(number: String, words: String)?] {
+    nonisolated static func counts(
+        done: Int, total: Int, playlists: Int?, albums: Int, songWords: (one: String, many: String) = ("liked song", "liked songs")
+    ) -> [(number: String, words: String)?] {
         func line(_ n: Int?, _ one: String, _ many: String) -> (number: String, words: String)? {
             n.map { ($0.formatted(), $0 == 1 ? one : many) }
         }
@@ -351,7 +355,7 @@ struct SetupProgress: View {
         return [
             line(playlists, "playlist", "playlists"),
             line(read ? albums : nil, "album", "albums"),
-            line(read ? min(done, total) : nil, "liked song", "liked songs"),
+            line(read ? min(done, total) : nil, songWords.one, songWords.many),
         ]
     }
 
@@ -377,7 +381,7 @@ struct SetupProgress: View {
 
     private func content(_ shown: (done: Int, playlists: Int?, albums: Int), fill: Double) -> some View {
         let done = shown.done
-        let counts = Self.counts(done: done, total: total, playlists: shown.playlists, albums: shown.albums)
+        let counts = Self.counts(done: done, total: total, playlists: shown.playlists, albums: shown.albums, songWords: songWords)
         return VStack(alignment: .leading, spacing: 6) {
             if total > 0 {
                 GeometryReader { geo in

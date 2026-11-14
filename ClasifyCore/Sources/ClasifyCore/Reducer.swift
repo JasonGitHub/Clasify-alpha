@@ -1068,12 +1068,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if opened || (s.artRow, s.current, s.loadedTracks) != (artBefore.0, artBefore.2, artBefore.3) || s.library != artBefore.1 || s.extraTracks != artBefore.4 {
             s.refreshArt()
         }
-        // The list that the covers come from: the selected playlist, or Liked Songs for the main
+        // The list that the covers come from: the selected playlist, or `albumsList` for the main
         // menu's rows (see `refreshArt`), which nothing else reads at first open.
         let artList: String? = switch s.artRow {
         case .playlist(let id)?: id
         case .nowPlaying?, nil: nil
-        default: s.top.screen == .main ? Playlist.likedSongsID : nil  // Playlists picks a playlist soon
+        default: s.top.screen == .main ? s.albumsList : nil  // Playlists picks a playlist soon
         }
         // Read when the covers move to a list or the app comes back online, not on each
         // tick, so a failed read is tried again only when the row is selected again.

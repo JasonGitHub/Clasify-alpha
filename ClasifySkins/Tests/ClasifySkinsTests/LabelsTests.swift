@@ -112,6 +112,12 @@ func sampleState() -> AppState {
         #expect(words(counts) == ["107 playlists", "84 albums", "\(1240.formatted()) liked songs"])
         #expect(words(SetupProgress.counts(done: 1, total: 2, playlists: 1, albums: 1)) == ["1 playlist", "1 album", "1 liked song"])
         #expect(SetupProgress.label(counts) == "107 playlists, 84 albums, \(1240.formatted()) liked songs")
+        // On Apple Music the count is the whole library: "songs", as Apple's own library says.
+        let apple = (one: LibraryWords.appleMusic.oneSong, many: LibraryWords.appleMusic.manySongs)
+        #expect(words(SetupProgress.counts(done: 631, total: 631, playlists: 3, albums: 52, songWords: apple)) == ["3 playlists", "52 albums", "631 songs"])
+        #expect(words(SetupProgress.counts(done: 1, total: 1, playlists: 1, albums: 1, songWords: apple)) == ["1 playlist", "1 album", "1 song"])
+        let spotify = (one: LibraryWords.spotify.oneSong, many: LibraryWords.spotify.manySongs)
+        #expect(words(SetupProgress.counts(done: 1300, total: 1240, playlists: 107, albums: 84, songWords: spotify)) == words(counts))
         // CLA-84: the number column is as wide as the largest final count from the start.
         #expect(SetupProgress.widest(playlists: 107, albums: 84, total: 1240) == 1240.formatted())
         #expect(SetupProgress.widest(playlists: 2100, albums: 84, total: 455) == 2100.formatted())

@@ -73,6 +73,23 @@ import Testing
         #expect(send(&s, .wheel(1), .select, now: 150) == [])  // Albums
     }
 
+    @Test func afterSetupOnAppleMusicTheMainMenuHasCoversAndShuffleSongsLoadsFavoritesFirst() {
+        var s = appleMenu()
+        // Setup read only the library: Favorite Songs is not read yet.
+        let covered = Self.songs.map { var t = $0; t.coverID = "c-\($0.id)"; return t }
+        s.library = [Playlist(id: Playlist.libraryID, name: "", tracks: covered)]
+        s.loadedTracks = [Playlist.libraryID]
+        s.readAt[Playlist.libraryID] = 100
+        s.artRow = .likedSongs; s.refreshArt()
+        #expect(s.mainArt.count == 4 && Set(s.mainArt.map(\.id)) == ["a1", "a2", "a3", "lone"])
+        // Shuffle Songs reads Favorite Songs, then plays from it.
+        let fx = send(&s, .wheel(4), .select)
+        #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
+        #expect(fx.contains(.fetchTracks(token: s.top.token, playlist: Playlist.likedSongsID)))
+        send(&s, .tracksLoaded(token: s.top.token, playlist: Playlist.likedSongsID, tracks: Self.favorites))
+        #expect(s.current == TrackRef(playlist: Playlist.likedSongsID, track: "a1") && s.shuffle && s.top.screen == .now)
+    }
+
     @Test func aStaleAlbumsScreenRereadsTheLibrary() {
         var s = appleMenu()
         send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)

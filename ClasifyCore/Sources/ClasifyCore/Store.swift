@@ -87,15 +87,18 @@ public struct LibraryWords: Equatable, Sendable {
     /// The list that Albums and Cover Flow group into albums: Liked Songs on Spotify, the
     /// whole library (`Playlist.libraryID`) on Apple Music, as on an iPod.
     public var albumsList: String
+    /// The setup count's noun for `albumsList`'s songs, one and many: "liked song(s)" on
+    /// Spotify, "song(s)" on Apple Music, which counts the whole library.
+    public var oneSong: String, manySongs: String
 
     public init(
         likedSongs: String, service: String, like: String,
         needPlan: String, needPlanLine: String, getPlan: String, noPlan: String,
-        albumsList: String = Playlist.likedSongsID
+        albumsList: String = Playlist.likedSongsID, oneSong: String = "liked song", manySongs: String = "liked songs"
     ) {
         self.likedSongs = likedSongs; self.service = service; self.like = like
         self.needPlan = needPlan; self.needPlanLine = needPlanLine; self.getPlan = getPlan; self.noPlan = noPlan
-        self.albumsList = albumsList
+        self.albumsList = albumsList; self.oneSong = oneSong; self.manySongs = manySongs
     }
 
     public static let spotify = LibraryWords(
@@ -105,7 +108,8 @@ public struct LibraryWords: Equatable, Sendable {
     public static let appleMusic = LibraryWords(
         likedSongs: "Favorite Songs", service: "Apple Music", like: "Favorite",
         needPlan: "Not subscribed", needPlanLine: "To play music, we need Apple Music.",
-        getPlan: "Get Apple Music", noPlan: "No plan", albumsList: Playlist.libraryID)
+        getPlan: "Get Apple Music", noPlan: "No plan",
+        albumsList: Playlist.libraryID, oneSong: "song", manySongs: "songs")
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.

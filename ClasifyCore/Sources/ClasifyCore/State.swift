@@ -397,9 +397,9 @@ public struct AppState: Equatable, Sendable {
     public var library: [Playlist] = []
     /// The words of the active service's library ("Liked Songs" on Spotify), from the `Library`.
     public var words = LibraryWords.spotify
-    /// The liked list's name on the active service.
     /// The list that Albums and Cover Flow group into albums, from the `Library`.
     public var albumsList: String { words.albumsList }
+    /// The liked list's name on the active service.
     public var likedSongsName: String {
         get { words.likedSongs }
         set { words.likedSongs = newValue }
@@ -649,8 +649,9 @@ public struct AppState: Equatable, Sendable {
 
     /// Picks the covers of the main menu's right side for `artRow`, into `mainArt`:
     /// - Now Playing: the playing track's cover only.
-    /// - Playlists: albums from the playlists already read, or Liked Songs until one is read.
-    /// - Liked Songs, Shuffle Songs and Settings: albums from Liked Songs.
+    /// - Playlists: albums from the playlists already read, or `albumsList` until one is read.
+    /// - Liked Songs, Shuffle Songs and Settings: albums from `albumsList` (Liked Songs on
+    ///   Spotify, the library on Apple Music), which setup reads.
     /// - A playlist on the Playlists screen: albums from that playlist. Until its tracks are
     ///   read, or when the read failed or has no covers, the covers that show stay.
     /// - An album on the Albums screen: that album's cover.
@@ -658,7 +659,7 @@ public struct AppState: Equatable, Sendable {
     /// With none of these, the playing track's cover. Tracks with no cover are left out.
     public mutating func refreshArt() {
         let playing = current.flatMap { track($0) }.flatMap { $0.coverID == nil ? nil : $0 }
-        let liked = tracks(in: Playlist.likedSongsID)
+        let liked = tracks(in: albumsList)
         var pool: [Track]
         switch artRow {
         case .playlist(let id)?, .album(let id)?:
