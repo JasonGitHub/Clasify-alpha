@@ -227,6 +227,7 @@ enum AppleMusicReads {
 
     private static func logCovers(_ songs: [Song], _ stats: CoverStats) {
         var own = 0, aat = 0, aatPasses = 0, fat = 0, withISRC = 0, cloudIDs = 0, keys = Set<String>()
+        var aatShape = "none", fatScheme = "none"  // the first failing aat, and the first fat: no path, no ID
         for song in songs {
             if song.isrc?.isEmpty == false { withISRC += 1 }
             if song.id.rawValue.hasPrefix("i.") { cloudIDs += 1 }  // the shape of a cloud library ID
@@ -234,17 +235,27 @@ enum AppleMusicReads {
             if CoverURL.url(for: url.absoluteString) != nil { own += 1; continue }
             let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             for item in items { keys.insert(item.name) }
-            if items.contains(where: { $0.name == "aat" }) {
+            if let value = items.first(where: { $0.name == "aat" })?.value {
                 aat += 1
                 if cover(song.artwork) != nil { aatPasses += 1 }
+                else if aatShape == "none" {
+                    let parts = URLComponents(string: value)
+                    aatShape = "scheme \(parts?.scheme ?? "none") host \(parts?.host ?? "none") "
+                        + "{w} \(value.contains("{w}") ? "yes" : "no") / \(value.hasPrefix("/") ? "yes" : "no") length \(value.count)"
+                }
             }
-            if items.contains(where: { $0.name == "fat" }) { fat += 1 }
+            if let value = items.first(where: { $0.name == "fat" })?.value {
+                fat += 1
+                if fatScheme == "none" { fatScheme = URLComponents(string: value)?.scheme ?? "no scheme" }
+            }
         }
         let names = keys.subtracting(["aat", "fat"]).sorted().joined(separator: " ")
         let threw = stats.errors.isEmpty ? "no" : stats.errors.joined(separator: ", ")
         timing.notice("""
             apple covers (TEMP): songs \(songs.count, privacy: .public), own passes \(own, privacy: .public), \
-            aat \(aat, privacy: .public), aat passes \(aatPasses, privacy: .public), fat \(fat, privacy: .public), \
+            aat \(aat, privacy: .public), aat passes \(aatPasses, privacy: .public), \
+            first failing aat [\(aatShape, privacy: .public)], fat \(fat, privacy: .public) \
+            (scheme \(fatScheme, privacy: .public)), \
             other keys [\(names, privacy: .public)], isrc \(withISRC, privacy: .public), \
             i. ids \(cloudIDs, privacy: .public), isrc asked \(stats.isrcs, privacy: .public), \
             batches \(stats.batches, privacy: .public), returned \(stats.returned, privacy: .public), \
