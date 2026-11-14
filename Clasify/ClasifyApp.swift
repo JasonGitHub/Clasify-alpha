@@ -95,20 +95,14 @@ enum DeviceWindow {
 
 /// The skin, or the temporary test window while the skin is new.
 struct AppContent: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        content
-            // When Apple's sheet cannot load, Apple's web page opens as before.
-            .appleMusicOffer(isPresented: $model.showsAppleMusicOffer, options: model.appleMusicOfferOptions) { [model] in
-                model.showsAppleMusicOffer = false
-                AppleMusicOffer.openPage()
-            }
-            .onAppear {
-                let openWindow = openWindow
-                DeviceWindow.open = { openWindow(id: DeviceWindow.id) }
-            }
+        content.onAppear {
+            let openWindow = openWindow
+            DeviceWindow.open = { openWindow(id: DeviceWindow.id) }
+        }
     }
 
     @ViewBuilder private var content: some View {
@@ -145,9 +139,6 @@ final class AppModel {
     var showsTestWindow = false
     /// The album covers that the skin draws.
     let artwork = ArtworkLoader()
-    /// Apple's Apple Music sign-up sheet shows (card BM, change 259).
-    var showsAppleMusicOffer = false
-    let appleMusicOfferOptions = AppleMusicOffer.makeOptions()
     @ObservationIgnored private var ticker: Task<Void, Never>?
     /// TEST: trackpad ticks that follow the wheel.
     @ObservationIgnored private var haptics: Haptics?
@@ -189,13 +180,10 @@ final class AppModel {
             if let url = URL(string: "https://www.spotify.com/download/mac/") { NSWorkspace.shared.open(url) }
         }
         // Card AX, screen 135: "Get Premium" opens Spotify's Premium page in the browser. On
-        // Apple Music, "Get Apple Music" shows Apple's sign-up sheet in the app (card BM, change 259).
-        store.onGetPremium = { [weak self, weak store] in
-            if store?.state.service == .appleMusic {
-                self?.showsAppleMusicOffer = true
-            } else if let url = URL(string: "https://www.spotify.com/premium/") {
-                NSWorkspace.shared.open(url)
-            }
+        // Apple Music, "Get Apple Music" opens Apple's page (card BM, change 259).
+        store.onGetPremium = { [weak store] in
+            let page = store?.state.service == .appleMusic ? "https://www.apple.com/apple-music/" : "https://www.spotify.com/premium/"
+            if let url = URL(string: page) { NSWorkspace.shared.open(url) }
         }
         // Card BM, change 258: "Open Settings" opens Privacy & Security > Media & Apple Music.
         store.onOpenPrivacy = {
