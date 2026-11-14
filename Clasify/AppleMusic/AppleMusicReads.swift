@@ -3,6 +3,10 @@
 import ClasifyCore
 import Foundation
 @preconcurrency import MusicKit
+import os
+
+/// TEMP (Apple Music covers, CLA-103): counts only, never a title or an ID.
+private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
 
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
 /// Read-only: nothing here changes the library.
@@ -103,7 +107,7 @@ enum AppleMusicReads {
 
     /// Forgets one album read (nil: all), so that the next read asks MusicKit again.
     static func forgetAlbums(_ albumID: String? = nil) {
-        if let albumID { albums[albumID] = nil } else { albums = [:]; apiLibrary = nil }
+        if let albumID { albums[albumID] = nil } else { albums = [:] }
     }
 
     private static func readAlbum(_ albumID: String) async -> (songs: [Song], album: ClasifyCore.Album?)? {
@@ -148,13 +152,33 @@ enum AppleMusicReads {
 
     /// Store `Track`s from MusicKit songs, with covers that `ArtworkLoader` can load.
     static func tracks(_ songs: [Song]) async -> [ClasifyCore.Track] {
-        AppleMusicCoverProbe.runOnce(songs)  // TEMP (CLA-103): delete with AppleMusicCoverProbe.swift
-        // Own cover first, then the catalog reads, then the API library list (macOS 27).
+        // Own cover first, then the catalog reads, then the iTunesLibrary item (macOS 27).
         var covers = await catalogCovers(songs)
         let missing = songs.filter { cover($0.artwork) == nil && covers[$0.id] == nil }
-        let more = await libraryAPICovers(missing)
+        let more = await libraryCovers(missing)
         covers.merge(more) { first, _ in first }
         return songs.map { track($0, cover: covers[$0.id]) }
+    }
+
+    /// Covers from Apple's iTunesLibrary framework (`AppleMusicArt`) for library songs with no
+    /// usable cover: opaque `LibraryCover` IDs that `ArtworkLoader` reads in memory.
+    private static func libraryCovers(_ songs: [Song]) async -> [MusicItemID: Cover] {
+        guard !songs.isEmpty else { return [:] }
+        let start = ContinuousClock.now
+        let keys = songs.map { (id: $0.id.rawValue, key: LibraryKey.of(title: $0.title, artist: $0.artistName, album: $0.albumTitle)) }
+        let match = await AppleMusicArt.shared.match(keys)
+        var covers: [MusicItemID: Cover] = [:]
+        for song in songs {
+            guard let pid = match.found[song.id.rawValue] else { continue }
+            covers[song.id] = Cover(
+                small: LibraryCover.coverID(persistentID: pid, side: 300), large: LibraryCover.coverID(persistentID: pid, side: 640))
+        }
+        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
+        timing.notice("""
+            apple covers (TEMP): asked \(songs.count, privacy: .public), matched by id \(match.byID, privacy: .public), \
+            by name \(match.byName, privacy: .public), with image \(covers.count, privacy: .public), ms \(ms, privacy: .public)
+            """)
+        return covers
     }
 
     /// A cover's two addresses, for `Track.coverID` and `Track.largeCoverID`.
@@ -178,9 +202,9 @@ enum AppleMusicReads {
         return Cover(small: small, large: at(640) ?? small)
     }
 
-    /// Catalog IDs that the ISRC reads and the API library list found, by library song ID. The
+    /// Catalog IDs that the ISRC reads found, by library song ID. The
     /// play parameters have no catalog ID on macOS 27 (build 188), so `catalogID(_:)` also looks here.
-    static var foundCatalogIDs: [MusicItemID: String] = [:]
+    private static var foundCatalogIDs: [MusicItemID: String] = [:]
 
     /// Covers from the catalog for library songs with no usable cover of their own: by their
     /// catalog ID when the play parameters have one, else by ISRC, 100 per read. An ISRC can

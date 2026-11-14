@@ -18,7 +18,6 @@ final class AppleMusicLibrary: Library {
     private var trackReads: [String: Task<[ClasifyCore.Track]?, Never>] = [:]
 
     func playlists() async -> [ClasifyCore.Playlist]? {
-        AppleMusicReads.startAPILibrary()  // covers for the song lists: start early (CLA-103)
         let read = listRead ?? Task { await Self.readPlaylists() }
         listRead = read
         let list = await read.value
@@ -43,11 +42,13 @@ final class AppleMusicLibrary: Library {
 
     func rereadPlaylists() async -> [ClasifyCore.Playlist]? {
         listRead = nil
+        await AppleMusicArt.shared.forget()
         return await playlists()
     }
 
     func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
         trackReads[playlist] = nil
+        await AppleMusicArt.shared.forget()
         if ClasifyCore.Album.isID(playlist) { AppleMusicReads.forgetAlbums(playlist) }
         return await tracks(of: playlist)
     }
@@ -92,6 +93,7 @@ final class AppleMusicLibrary: Library {
         listRead = nil
         trackReads = [:]
         AppleMusicReads.forgetAlbums()
+        Task { await AppleMusicArt.shared.forget() }
     }
 
     // MARK: - Reads
