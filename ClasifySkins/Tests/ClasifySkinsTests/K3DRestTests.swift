@@ -6,7 +6,7 @@ import Testing
 
 @testable import ClasifySkins
 
-/// SPIKE (CLA-101, K.3D spike 2): at the end of a turn to the front, the K.3D.7 body at rest
+/// SPIKE (CLA-101, K.3D spike 2): at the end of a turn to the front, the K.3D.8 body at rest
 /// crossfades to card BL's 2D device in 0.1 s. The two must look the same there, or the fade
 /// shows a jump. Points are in device points, read at 2x.
 ///
@@ -92,9 +92,30 @@ import Testing
         try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-\(name).png"))
     }
 
+    /// An sRGB color as this read path shows it: drawn by `ImageRenderer` and read back like
+    /// the pictures.
+    func asRead(_ c: (r: Int, g: Int, b: Int)) throws -> (r: Int, g: Int, b: Int) {
+        let swatch = Color(.sRGB, red: Double(c.r) / 255, green: Double(c.g) / 255, blue: Double(c.b) / 255)
+        return try pixels(swatch.frame(width: 10, height: 10), "swatch").read(10, 10)
+    }
+
     func near(_ a: (r: Int, g: Int, b: Int), _ b: (r: Int, g: Int, b: Int)) -> Bool {
         abs(a.r - b.r) <= Self.limit && abs(a.g - b.g) <= Self.limit && abs(a.b - b.b) <= Self.limit
     }
+
+    /// K.3D.8 Black straight on, as the mock draws it (`about/k3d8/stills/black_0_0.png`, the
+    /// same 9 x 9 point means). Card BL's 2D Black still has K.3D.7's values until step 2, so the
+    /// Black rest frame is checked against the mock, not against BL: the plate is up to 14
+    /// lighter in the middle and 8 darker low down, the button 13 darker.
+    ///
+    /// These are sRGB bytes of the PNG. This read path shows dark values lighter (#2a2c2e reads
+    /// as #373a3c, see above), so each mock value is drawn as a swatch and read back the same
+    /// way before it is compared. The first CI run compared the bytes as they are, and every
+    /// Black point was 15 to 19 lighter in 3D. That fits the lift above, which would leave about 4.
+    static let black8: [(x: Int, y: Int, c: (r: Int, g: Int, b: Int))] = [
+        (183, 290, (82, 83, 87)), (183, 560, (57, 58, 60)), (183, 381, (33, 33, 34)),
+        (183, 433, (56, 57, 59)), (60, 450, (67, 68, 71)), (306, 450, (62, 63, 66)),
+    ]
 
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theRestFrameMatchesBL(_ color: DeviceColor) throws {
@@ -103,13 +124,13 @@ import Testing
         state.deviceColor = color
         let name = color == .black ? "black" : "silver"
         let flat = try flat(state, "bl-\(name)-2d")
-        let rest = try rest(renderer, state, "k3d7-rest-\(name)")
+        let rest = try rest(renderer, state, "k3d8-rest-\(name)")
         // The body between the screen and the wheel and low down, the wheel, the center button.
-        for (x, y) in [(183, 290), (183, 560), (183, 381), (183, 433), (60, 450), (306, 450)] {
-            let a = flat.mean(x, y), b = rest.mean(x, y)
-            #expect(near(a, b), "\(name) at \(x), \(y): 2D \(a), 3D \(b)")
+        for (x, y, mock) in Self.black8 {
+            let a = try color == .black ? asRead(mock) : flat.mean(x, y), b = rest.mean(x, y)
+            #expect(near(a, b), "\(name) at \(x), \(y): \(color == .black ? "K.3D.8 mock" : "2D") \(a), 3D \(b)")
         }
-        // The bezel, one pixel: ink #2a2c2e on both.
+        // The bezel, one pixel: ink #2a2c2e on both. K.3D.8 keeps the screen surround.
         let a = flat.read(60, 240), b = rest.read(60, 240)
         #expect(near(a, b), "\(name) bezel: 2D \(a), 3D \(b)")
     }
@@ -119,7 +140,7 @@ import Testing
         let renderer = try #require(K3DRenderer.shared)
         let state = AppState()
         let flat = try flat(state, "bl-silver-2d")
-        let rest = try rest(renderer, state, "k3d7-rest-silver")
+        let rest = try rest(renderer, state, "k3d8-rest-silver")
         // The wheel's top is 321 pt down. MENU is 45 pt wide around x 183.
         let rows = (321 + 4) * 2..<(321 + 34) * 2, columns = 160 * 2..<206 * 2
         let a = try #require(flat.firstDark(rows: rows, columns: columns, green: 200))
@@ -139,10 +160,10 @@ import Testing
         let name = color == .black ? "black" : "silver"
         let flat = try flat(state, "bl-\(name)-2d")
         let body3D = try restImage(renderer, state)
-        let rest = try pixels(body3D, "k3d7-rest-\(name)")
+        let rest = try pixels(body3D, "k3d8-rest-\(name)")
         let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
-        let half = try pixels(K3DHandover(flat: 0.5, ready: true, content: device) { _ in body3D }, "k3d7-fade-half-\(name)")
-        let perLayer = try pixels(device.opacity(0.5).background { body3D }, "k3d7-fade-per-layer-\(name)")
+        let half = try pixels(K3DHandover(flat: 0.5, ready: true, content: device) { _ in body3D }, "k3d8-fade-half-\(name)")
+        let perLayer = try pixels(device.opacity(0.5).background { body3D }, "k3d8-fade-per-layer-\(name)")
         var worst = 0
         for (x, y) in [(183, 150), (183, 100), (183, 342), (183, 290), (183, 381), (60, 450)] {
             // One picture at half opacity over the other gives their average. Where the rest
@@ -178,7 +199,7 @@ import Testing
         let state = AppState()
         let flat = try flat(state, "bl-silver-2d")
         let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
-        let waiting = try pixels(K3DHandover(flat: 0.2, ready: false, content: device) { _ in Color.red }, "k3d7-fade-waiting")
+        let waiting = try pixels(K3DHandover(flat: 0.2, ready: false, content: device) { _ in Color.red }, "k3d8-fade-waiting")
         for (x, y) in [(183, 150), (183, 290), (183, 381), (60, 450)] {
             let a = flat.mean(x, y), b = waiting.mean(x, y)
             #expect(abs(a.r - b.r) <= 1 && abs(a.g - b.g) <= 1 && abs(a.b - b.b) <= 1, "at \(x), \(y): 2D \(a), waiting \(b)")

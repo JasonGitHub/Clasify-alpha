@@ -1,5 +1,8 @@
-/// SPIKE (CLA-101): the K.3D.7 shaders in Metal Shading Language, compiled at run time with
-/// `makeLibrary(source:)`. The math is the frozen `k3d_src3.js` (`data-edge="parts"`, the
+/// SPIKE (CLA-101): the K.3D.8 shaders in Metal Shading Language, compiled at run time with
+/// `makeLibrary(source:)`. K.3D.8 is K.3D.7 with a new Black (charcoal plate with grain and a
+/// light fall, a shaded button, a glossy wheel) and a sheen on the Silver wheel: the
+/// `bk2` blocks of the About thread's K.3D.8 export (`about/k3d8/export/k3d_src3.js`, 17:06 JST
+/// 11-14). Mesh and textures are the same as K.3D.7. The math is `k3d_src3.js` (`data-edge="parts"`, the
 /// physical light, `uPhys` 1) for the assembled device, line by line, with its uniforms fixed
 /// at the frozen values (`UC` in the mock). Not ported, as the folder's README says: the old
 /// light (`uPhys` 0), the 2D layer (`u2d`, `t2`), the other edge options, and everything only
@@ -206,9 +209,24 @@ enum K3DShader {
             float rw = length(o - float2(0.0, -127.0));
             if (pt > 2.5 && pt < 3.5) col *= mix(1.0, 0.86, ss(111.6, 112.5, rw));  // the thin gap line round the wheel
             if (pt > 4.5) col *= mix(1.0, 0.88, ss(40.6, 41.5, rw));  // and round the button
-            if (u.blk > 0.5) {  // Black: dark plate and button, a black wheel with white marks
-                if ((pt > 0.5 && pt < 1.5) || pt > 4.5) col = mix(col * 0.34, col, isL);
-                if (pt > 2.5 && pt < 3.5) col = mix(col * 0.12, float3(0.90), ss(0.80, 0.60, dot(t, float3(0.333))));
+            if (u.blk < 0.5 && pt > 2.5 && pt < 3.5) {  // K.3D.8 Silver wheel: a weak sheen, a soft shade at the rim and the hole
+                col *= 0.955 + 0.055 * env(r);
+                col *= 1.0 - 0.055 * ss(108.0, 112.0, rw) - 0.045 * ss(46.0, 42.5, rw);
+            }
+            if (u.blk > 0.5) {  // K.3D.8 Black: charcoal plate with grain and a light fall, a shaded button, a glossy black wheel
+                float L = dot(col, float3(0.333));
+                float2 d = o - float2(0.0, -127.0);
+                if ((pt > 0.5 && pt < 1.5) || pt > 4.5) {
+                    float gn = fract(sin(dot(floor(o * 3.0), float2(12.9898, 78.233))) * 43758.5453);  // grain, one cell per 1/3 pt
+                    float3 ch = float3(0.285, 0.290, 0.303) * pow(L / 0.80, 1.7) * (0.86 + 0.30 * ss(-300.0, 300.0, o.y)) * (0.97 + 0.06 * gn);
+                    if (pt > 4.5) ch *= 0.84 * (1.0 - 0.12 * d.y / 41.0) * (1.0 - 0.07 * dot(d, d) / 1681.0);
+                    col = mix(ch, col, isL);  // the screen surround keeps its look
+                }
+                if (pt > 2.5 && pt < 3.5) {
+                    float3 wb = float3(0.040, 0.041, 0.046) * (0.7 + 0.6 * L) + 0.085 * env(r) * ss(0.2, 0.9, L)
+                        + 0.05 * ss(107.5, 111.5, rw) + 0.03 * ss(46.0, 42.5, rw);
+                    col = mix(wb, float3(0.93), ss(0.80, 0.60, dot(t, float3(0.333))));  // white marks
+                }
             }
         } else {  // the back: mirror steel with a frosted etch
             float e = env(r);
