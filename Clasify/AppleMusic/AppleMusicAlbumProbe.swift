@@ -31,11 +31,25 @@ enum AppleMusicAlbumProbe {
             var parts = ["own \(own)"]
             // Today: the song's library album, read with its tracks.
             let libraryAlbum = try? await song.with([.albums]).albums?.first
-            parts.append("library " + (await count { libraryAlbum }))
+            parts.append("library " + (await count {
+                guard let libraryAlbum else { return nil }
+                return try await libraryAlbum.with([.tracks])
+            }))
             // 1a. The same library album, asked again with the catalog as the preferred source.
-            parts.append("w1 album catalog " + (await count { try await libraryAlbum?.with([.tracks], preferredSource: .catalog) }))
-            // 1b. The song's albums, asked with the catalog as the preferred source.
-            parts.append("w1 song catalog " + (await count { try await song.with([.albums], preferredSource: .catalog).albums?.first }))
+            // Its own tracks are counted: a second `with` would read them the library way again.
+            var other1a = "no"
+            parts.append("w1 album catalog " + (await count {
+                let album = try await libraryAlbum?.with([.tracks], preferredSource: .catalog)
+                if let album, album.id != libraryAlbum?.id { other1a = "yes" }
+                return album
+            }) + " other id \(other1a)")
+            // 1b. The song's albums asked with the catalog as the preferred source, then its tracks the same way.
+            var other1b = "no"
+            parts.append("w1 song catalog " + (await count {
+                let album = try await song.with([.albums], preferredSource: .catalog).albums?.first?.with([.tracks], preferredSource: .catalog)
+                if let album, album.id != libraryAlbum?.id { other1b = "yes" }
+                return album
+            }) + " other id \(other1b)")
             // 2. The Apple Music API library album with its catalog album: by ID, else by name.
             let key = albumKey(song.albumTitle ?? "", song.artistName)
             let join = libraryAlbum.flatMap { api.byID[$0.id.rawValue] }.map { ("id", $0) } ?? api.byKey[key].map { ("name", $0) }
@@ -43,7 +57,8 @@ enum AppleMusicAlbumProbe {
                 let (how, catalogID) = join
                 parts.append("w2 join \(how) catalog \(catalogID == nil ? "no" : "yes") " + (await count {
                     guard let catalogID else { return nil }
-                    return try await MusicCatalogResourceRequest<MusicKit.Album>(matching: \.id, equalTo: MusicItemID(catalogID)).response().items.first
+                    return try await MusicCatalogResourceRequest<MusicKit.Album>(matching: \.id, equalTo: MusicItemID(catalogID))
+                        .response().items.first?.with([.tracks])
                 }))
             } else {
                 parts.append("w2 join no")
@@ -53,7 +68,7 @@ enum AppleMusicAlbumProbe {
                 var request = MusicCatalogSearchRequest(term: "\(song.title) \(song.artistName)", types: [Song.self])
                 request.limit = 10
                 let hit = try await request.response().songs.first { albumKey($0.albumTitle ?? "", $0.artistName) == key }
-                return try await hit?.with([.albums]).albums?.first
+                return try await hit?.with([.albums]).albums?.first?.with([.tracks])
             }))
             timing.notice("apple albums probe (TEMP): \(parts.joined(separator: ", "), privacy: .public)")
         }
@@ -61,14 +76,20 @@ enum AppleMusicAlbumProbe {
 
     private static func albumKey(_ title: String, _ artist: String) -> String { LibraryKey.of(title: title, artist: artist, album: nil) }
 
-    /// The song count of the album that `read` gives, and ms: "N (ms M)", "none (ms M)" or
-    /// "threw <type> <code> (ms M)".
+    /// The song count of the album that `read` gives, with its tracks already read (every batch,
+    /// with no second `with`), and ms: "N (ms M)", "none (ms M)" or "threw <type> <code> (ms M)".
     private static func count(_ read: () async throws -> MusicKit.Album?) async -> String {
         let start = ContinuousClock.now
-        let result: String
+        var result = "none"
         do {
-            if let album = try await read() { result = (await AppleMusicReads.songs(of: album)).map { "\($0.count)" } ?? "tracks failed" }
-            else { result = "none" }
+            if var batch = try await read()?.tracks {
+                var songs = batch.filter { if case .song = $0 { true } else { false } }.count
+                while batch.hasNextBatch, let next = try await batch.nextBatch() {
+                    songs += next.filter { if case .song = $0 { true } else { false } }.count
+                    batch = next
+                }
+                result = "\(songs)"
+            }
         } catch { result = "threw \(type(of: error)) \((error as NSError).code)" }
         return "\(result) (ms \(Int((ContinuousClock.now - start) / .milliseconds(1))))"
     }
