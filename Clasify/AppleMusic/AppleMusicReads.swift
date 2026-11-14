@@ -27,9 +27,10 @@ enum AppleMusicReads {
     /// Music API (not checked on a Mac).
     static func catalogID(_ song: Song) -> String? {
         guard let params = song.playParameters, let data = try? JSONEncoder().encode(params),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return json["catalogId"] as? String
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["catalogId"] as? String
+        else { return foundCatalogIDs[song.id] }  // else from an ISRC read, if one matched its album
+        return id
     }
 
     /// Apple Music's name for the library playlist of favorited songs.
@@ -151,86 +152,147 @@ enum AppleMusicReads {
 
     /// Store `Track`s from MusicKit songs, with covers that `ArtworkLoader` can load.
     static func tracks(_ songs: [Song]) async -> [ClasifyCore.Track] {
-        let covers = await catalogCovers(songs)
-        return songs.map { track($0, cover: covers[$0.id]) }
+        let catalog = await catalogCovers(songs)
+        return songs.map { track($0, cover: catalog[$0.id]) }
     }
 
-    /// The catalog songs' Artwork for library songs whose own Artwork URL is not https. A
-    /// library song's Artwork gives a `musicKit://` URL (build 177: no covers; not checked on a
-    /// Mac), which only MusicKit's own view can draw, and `CoverURL` rightly refuses it. The
-    /// same song from the catalog gives an https URL on `*.mzstatic.com`. One read for each 100
-    /// songs, not one per album. A failed read leaves those songs without a cover.
-    private static func catalogCovers(_ songs: [Song]) async -> [MusicItemID: Artwork] {
-        var catalogIDs: [MusicItemID: [MusicItemID]] = [:]  // catalog ID to its library songs' IDs
-        for song in songs where !isWeb(song.artwork) {
-            if let id = catalogID(song) { catalogIDs[MusicItemID(id), default: []].append(song.id) }
+    /// A cover's two addresses, for `Track.coverID` and `Track.largeCoverID`.
+    struct Cover { let small: String, large: String }
+
+    /// The cover addresses of an Artwork that `CoverURL` allows, or nil:
+    /// - its own URL, when that is https on `*.mzstatic.com` (catalog songs);
+    /// - for a library song, whose URL is `musicKit://artwork/...` (build 188, macOS 27), the
+    ///   https address in its `aat` query item, with any size template filled. Its `fat` item
+    ///   (a local file) is never used: covers come only from Apple's image server.
+    static func cover(_ art: Artwork?) -> Cover? {
+        guard let art else { return nil }
+        func at(_ size: Int) -> String? {
+            guard let url = art.url(width: size, height: size) else { return nil }
+            if CoverURL.url(for: url.absoluteString) != nil { return url.absoluteString }
+            guard let aat = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "aat" })?.value else { return nil }
+            let filled = aat.replacingOccurrences(of: "{w}", with: "\(size)").replacingOccurrences(of: "{h}", with: "\(size)")
+                .replacingOccurrences(of: "{c}", with: "bb").replacingOccurrences(of: "{f}", with: "jpg")
+            return CoverURL.url(for: filled)?.absoluteString
         }
-        var covers: [MusicItemID: Artwork] = [:]
-        var batches = 0, returned = 0, otherID = 0, errors: [String] = []
-        let ids = Array(catalogIDs.keys)
-        for start in stride(from: 0, to: ids.count, by: 100) {
-            let batch = Array(ids[start..<min(start + 100, ids.count)])
-            let request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: batch)
-            batches += 1
-            let items: MusicItemCollection<Song>
-            do { items = try await request.response().items } catch {
-                errors.append("\(type(of: error)) \((error as NSError).code)")  // TEMP: type and code only
-                continue
-            }
-            returned += items.count
-            for item in items {
-                if catalogIDs[item.id] == nil { otherID += 1 }  // TEMP: came back under an ID not asked
-                guard let art = item.artwork, isWeb(art) else { continue }
-                for id in catalogIDs[item.id] ?? [] { covers[id] = art }  // each library copy of the song
+        guard let small = at(300) else { return nil }
+        return Cover(small: small, large: at(640) ?? small)
+    }
+
+    /// Catalog IDs that the ISRC reads found, by library song ID. The play parameters have no
+    /// catalog ID on macOS 27 (build 188), so `catalogID(_:)` also looks here.
+    private static var foundCatalogIDs: [MusicItemID: String] = [:]
+
+    /// Covers from the catalog for library songs with no usable cover of their own: by their
+    /// catalog ID when the play parameters have one, else by ISRC, 100 per read. An ISRC can
+    /// name the same recording on several releases, so the release with the song's own album
+    /// title wins, and only that one gives a catalog ID for the whole-album read (#215). A
+    /// failed read leaves those songs without a cover; the list is never lost.
+    private static func catalogCovers(_ songs: [Song]) async -> [MusicItemID: Cover] {
+        var byID: [String: [Song]] = [:], byISRC: [String: [Song]] = [:]
+        for song in songs where cover(song.artwork) == nil {
+            if let id = catalogID(song) { byID[id, default: []].append(song) }
+            else if let isrc = song.isrc, !isrc.isEmpty { byISRC[isrc, default: []].append(song) }
+        }
+        var covers: [MusicItemID: Cover] = [:]
+        var stats = CoverStats()
+        let ids = await catalogRead(Array(byID.keys), &stats) {
+            MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: $0.map { MusicItemID($0) })
+        }
+        for item in ids {
+            for song in byID[item.id.rawValue] ?? [] where covers[song.id] == nil { covers[song.id] = cover(item.artwork) }
+        }
+        let byRecording = await catalogRead(Array(byISRC.keys), &stats) {
+            MusicCatalogResourceRequest<Song>(matching: \.isrc, memberOf: $0)
+        }
+        for (isrc, mine) in byISRC {
+            let found = byRecording.filter { $0.isrc == isrc }
+            guard let any = found.first else { continue }
+            stats.matched += 1
+            for song in mine {
+                let same = found.first { $0.albumTitle?.lowercased() == song.albumTitle?.lowercased() }
+                if let same, foundCatalogIDs[song.id] == nil { foundCatalogIDs[song.id] = same.id.rawValue }
+                if covers[song.id] == nil { covers[song.id] = cover((same ?? any).artwork) }
             }
         }
-        logCovers(
-            songs, catalogIDs: catalogIDs.count, batches: batches, returned: returned, otherID: otherID,
-            errors: errors, found: covers.count)
+        stats.isrcs = byISRC.count
+        stats.found = covers.values.count
+        logCovers(songs, stats)
         return covers
     }
 
-    /// TEMP (build 183, no Apple Music cover shows): where the covers get lost, as counts. No
-    /// title and no ID; for addresses only one scheme.
-    private static func logCovers(
-        _ songs: [Song], catalogIDs: Int, batches: Int, returned: Int, otherID: Int, errors: [String], found: Int
-    ) {
-        var passes = 0, otherHost = 0, notHTTPS = 0, none = 0, scheme = "none"
-        for song in songs {
-            guard let url = song.artwork?.url(width: 300, height: 300) else { none += 1; continue }
-            if CoverURL.url(for: url.absoluteString) != nil { passes += 1 }
-            else if url.scheme?.lowercased() == "https" { otherHost += 1 }
-            else { notHTTPS += 1; if scheme == "none" { scheme = url.scheme ?? "empty" } }
+    /// Catalog songs for `values`, 100 per read. A read that throws is counted and skipped.
+    private static func catalogRead(
+        _ values: [String], _ stats: inout CoverStats, _ request: ([String]) -> MusicCatalogResourceRequest<Song>
+    ) async -> [Song] {
+        var songs: [Song] = []
+        for start in stride(from: 0, to: values.count, by: 100) {
+            stats.batches += 1
+            do { songs += try await request(Array(values[start..<min(start + 100, values.count)])).response().items } catch {
+                stats.errors.append("\(type(of: error)) \((error as NSError).code)")  // TEMP: type and code only
+            }
         }
-        let threw = errors.isEmpty ? "no" : errors.joined(separator: ", ")
+        stats.returned += songs.count
+        return songs
+    }
+
+    /// TEMP (builds 183 and 188, no Apple Music cover shows): counts of what the cover reads
+    /// saw. No title, no ID, no query value: query key NAMES only.
+    private struct CoverStats {
+        var isrcs = 0, batches = 0, returned = 0, matched = 0, found = 0, errors: [String] = []
+    }
+
+    private static func logCovers(_ songs: [Song], _ stats: CoverStats) {
+        var own = 0, aat = 0, aatPasses = 0, fat = 0, withISRC = 0, cloudIDs = 0, keys = Set<String>()
+        var aatShape = "none", fatScheme = "none"  // the first failing aat, and the first fat: no path, no ID
+        for song in songs {
+            if song.isrc?.isEmpty == false { withISRC += 1 }
+            if song.id.rawValue.hasPrefix("i.") { cloudIDs += 1 }  // the shape of a cloud library ID
+            guard let url = song.artwork?.url(width: 300, height: 300) else { continue }
+            if CoverURL.url(for: url.absoluteString) != nil { own += 1; continue }
+            let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            for item in items { keys.insert(item.name) }
+            if let value = items.first(where: { $0.name == "aat" })?.value {
+                aat += 1
+                if cover(song.artwork) != nil { aatPasses += 1 }
+                else if aatShape == "none" {
+                    let parts = URLComponents(string: value)
+                    aatShape = "scheme \(parts?.scheme ?? "none") host \(parts?.host ?? "none") "
+                        + "{w} \(value.contains("{w}") ? "yes" : "no") / \(value.hasPrefix("/") ? "yes" : "no") length \(value.count)"
+                }
+            }
+            if let value = items.first(where: { $0.name == "fat" })?.value {
+                fat += 1
+                if fatScheme == "none" { fatScheme = URLComponents(string: value)?.scheme ?? "no scheme" }
+            }
+        }
+        let names = keys.subtracting(["aat", "fat"]).sorted().joined(separator: " ")
+        let threw = stats.errors.isEmpty ? "no" : stats.errors.joined(separator: ", ")
         timing.notice("""
-            apple covers (TEMP): songs \(songs.count, privacy: .public), own passes \(passes, privacy: .public), \
-            own https other host \(otherHost, privacy: .public), own not https \(notHTTPS, privacy: .public) \
-            (scheme \(scheme, privacy: .public)), no artwork \(none, privacy: .public), \
-            catalog ids \(catalogIDs, privacy: .public), batches \(batches, privacy: .public), \
-            returned \(returned, privacy: .public), other id \(otherID, privacy: .public), \
-            threw \(threw, privacy: .public), found \(found, privacy: .public)
+            apple covers (TEMP): songs \(songs.count, privacy: .public), own passes \(own, privacy: .public), \
+            aat \(aat, privacy: .public), aat passes \(aatPasses, privacy: .public), \
+            first failing aat [\(aatShape, privacy: .public)], fat \(fat, privacy: .public) \
+            (scheme \(fatScheme, privacy: .public)), \
+            other keys [\(names, privacy: .public)], isrc \(withISRC, privacy: .public), \
+            i. ids \(cloudIDs, privacy: .public), isrc asked \(stats.isrcs, privacy: .public), \
+            batches \(stats.batches, privacy: .public), returned \(stats.returned, privacy: .public), \
+            matched \(stats.matched, privacy: .public), threw \(threw, privacy: .public), \
+            catalog found \(stats.found, privacy: .public)
             """)
     }
 
-    private static func isWeb(_ art: Artwork?) -> Bool {
-        art?.url(width: 300, height: 300)?.scheme?.lowercased() == "https"
-    }
-
-    /// A store `Track` from a MusicKit song. The cover is the song's own Artwork URL, or else
-    /// `cover`, the catalog's Artwork for it. The album ID is made from its title and artist,
-    /// because a song has no album ID without one more read per song.
-    static func track(_ song: Song, cover: Artwork? = nil) -> ClasifyCore.Track {
-        let art = isWeb(song.artwork) ? song.artwork : cover ?? song.artwork
+    /// A store `Track` from a MusicKit song. The cover is the song's own (`cover(_:)`), or else
+    /// `cover`, found in the catalog. The album ID is made from its title and artist, because a
+    /// song has no album ID without one more read per song.
+    static func track(_ song: Song, cover catalog: Cover? = nil) -> ClasifyCore.Track {
+        let art = Self.cover(song.artwork) ?? catalog
         let album = song.albumTitle.map {
             ClasifyCore.Album(id: AppleMusicID.albumPrefix + $0 + "\u{1F}" + song.artistName, name: $0, artist: song.artistName)
         }
         return ClasifyCore.Track(
             id: AppleMusicID.song(song.id), title: song.title, artist: song.artistName,
-            duration: song.duration ?? 0,
-            coverID: art?.url(width: 300, height: 300)?.absoluteString,
-            album: album, disc: song.discNumber, number: song.trackNumber,
-            largeCoverID: art?.url(width: 640, height: 640)?.absoluteString
+            duration: song.duration ?? 0, coverID: art?.small,
+            album: album, disc: song.discNumber, number: song.trackNumber, largeCoverID: art?.large
         )
     }
 }
