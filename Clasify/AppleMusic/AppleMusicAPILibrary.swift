@@ -98,7 +98,9 @@ extension AppleMusicReads {
         while !offsets.isEmpty {
             let pages = await withTaskGroup(of: (Int, Data?, String?).self) { group in
                 for offset in offsets { group.addTask { await Self.page(offset) } }
-                return await group.reduce(into: [(Int, Data?, String?)]()) { $0.append($1) }.sorted { $0.0 < $1.0 }
+                var all: [(Int, Data?, String?)] = []
+                while let page = await group.next() { all.append(page) }
+                return all.sorted { $0.0 < $1.0 }
             }
             var full = true
             for (_, data, error) in pages {
