@@ -6,7 +6,7 @@ import Testing
 @testable import ClasifySkins
 
 /// SPIKE (CLA-101, K.3D spike 2): card BL's 2D look, drawn only with the hidden switch. The
-/// expected colors come from `design-review/round17/bl/k7.json`, BL v2. Points are in device
+/// expected colors come from `design-review/round17/bl/v3/k8.json`, BL v3 (Silver as in v2). Points are in device
 /// points, read at 2x.
 @Suite @MainActor struct BLTests {
     struct Shot {
@@ -81,16 +81,19 @@ import Testing
         #expect(near(center, try reference(0xcdcdce)), "center \(center)")
     }
 
-    /// Black: the dark gray tone, the flat #1e1e1e wheel and the flat #454545 center.
+    /// Black (v3): the charcoal tone, the #202123 wheel and the shaded center.
     @Test func blBlack() throws {
         let shot = try render(.black, "bl-black")
-        // 47% down: #4f4f4f to #4c4c4c is #4c, with the side shade #4a. BH is #656467 here.
+        // 47% down: #5c5d61 (40%) to #55565a (49%) is #565759, with the 2.5% side shade
+        // #545559. BH is #656467 here.
         let middle = shot.mean(Self.x, 290)
-        #expect(near(middle, try reference(0x4a4a4a)), "body \(middle)")
+        #expect(near(middle, try reference(0x545559)), "body \(middle)")
+        // 52.5 pt from the wheel's center (47% of its radius), between the hole and rim shades.
         let wheel = shot.pixel(Self.x * 2, (Self.wheelTop + 60) * 2)
-        #expect(near(wheel, try reference(0x1e1e1e)), "wheel \(wheel)")
+        #expect(near(wheel, try reference(0x202123)), "wheel \(wheel)")
+        // The center's middle: #393a3c at 50%, inside the edge shade.
         let center = shot.pixel(Self.x * 2, Self.centerY * 2)
-        #expect(near(center, try reference(0x454545)), "center \(center)")
+        #expect(near(center, try reference(0x393a3c)), "center \(center)")
         // BL's bezel is #2a2c2e on Black too, not BH's near black #050505.
         let bezel = shot.pixel(30 * 2, 120 * 2)
         #expect(near(bezel, try reference(0x2a2c2e)), "bezel \(bezel)")
