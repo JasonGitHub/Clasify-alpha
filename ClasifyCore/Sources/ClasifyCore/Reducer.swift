@@ -842,14 +842,21 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             else { return }
             // The screens that show this list: the song list, and for Liked Songs, Albums and its albums.
             var screens = [Screen.tracks(playlist: id)]
-            for f in s.stack where s.readKey(f.screen) == id && !screens.contains(f.screen) { screens.append(f.screen) }
+            // The whole library: each read album is its library songs, so it changes with it.
+            let albums = id == Playlist.libraryID ? s.library.map(\.id).filter(Album.isID) : []
+            for f in s.stack where (s.readKey(f.screen) == id || albums.contains(s.readKey(f.screen))) && !screens.contains(f.screen) {
+                screens.append(f.screen)
+            }
             let old = screens.map { s.rows(for: Frame(screen: $0)) }
             // The playing track left the list (or its album): keep its details for Now Playing.
             // An album that was not read shows its liked songs, so it changes with Liked Songs.
             let pl = s.current?.playlist ?? ""
-            let shows = pl == id || (id == s.albumsList && Album.isID(pl) && !s.loadedTracks.contains(pl))
+            let shows = pl == id || albums.contains(pl) || (id == s.albumsList && Album.isID(pl) && !s.loadedTracks.contains(pl))
             let playing = shows ? s.current.flatMap { s.track($0) } : nil
             s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
+            for j in s.library.indices where albums.contains(s.library[j].id) {
+                s.library[j].tracks = Album.songs(s.library[j].id, in: tracks); s.library[j].trackCount = s.library[j].tracks.count
+            }
             if let ref = s.current, let playing, s.track(ref) == nil { keepExtra(playing) }
             s.readAt[id] = now
             for (screen, rows) in zip(screens, old) { keepSelection(on: screen, old: rows) }

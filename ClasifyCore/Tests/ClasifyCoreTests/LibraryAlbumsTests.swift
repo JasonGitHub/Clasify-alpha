@@ -103,6 +103,20 @@ import Testing
         #expect(s.rows(for: Frame(screen: .playlists)).isEmpty && s.playlistCount == 0)
     }
 
+    @Test func aLibraryRereadUpdatesTheReadAlbumsSoTheScreenMatchesTheQueue() {
+        var s = appleMenu()
+        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs))
+        send(&s, .select, .tracksLoaded(token: 2, playlist: Self.album.id, tracks: [Self.songs[1], Self.songs[0], Self.songs[2]]))
+        send(&s, .wheel(1), .select)  // a2 plays in the album
+        #expect(s.current == TrackRef(playlist: Self.album.id, track: "a2"))
+        send(&s, .menu)  // back to the album
+        s.refreshing = [Playlist.libraryID]
+        send(&s, .tracksRefreshed(playlist: Playlist.libraryID, tracks: [Self.songs[2], Self.songs[1], Self.songs[3]]))
+        #expect(s.tracks(in: Self.album.id).map(\.id) == ["a1", "a3"] && s.rows(for: s.top) == [.track("a1"), .track("a3")])
+        #expect(s.extraTracks.map(\.id) == ["a2"])  // Now Playing keeps the song that left
+        #expect(s.isLoaded(.tracks(playlist: Self.album.id)))  // no read again: it is up to date
+    }
+
     @Test func aStaleAlbumsScreenRereadsTheLibrary() {
         var s = appleMenu()
         send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)
