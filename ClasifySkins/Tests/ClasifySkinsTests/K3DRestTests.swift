@@ -176,6 +176,39 @@ import Testing
         #expect(worst > Self.limit, "\(name): a fade per layer moves the device by only \(worst)")
     }
 
+    /// Shadow option 1 (Jason 17:30 JST 11-14): at the turn's first frame the 3D flip's shadow
+    /// takes over from the 2D device's own. Straight on, they must be the same, or the shadow
+    /// steps where they hand over (build 194: it dipped, then lightened). The 2D device with
+    /// its shadow, against the same device with its shadow off over `K3DShadow` at angle 0,
+    /// on a light ground, in the window's margins: below, to the sides, and the corners.
+    @Test(arguments: [DeviceColor.silver, .black])
+    func theShadowHandsOverWithNoStep(_ color: DeviceColor) throws {
+        var state = AppState()
+        state.deviceColor = color
+        let name = color == .black ? "black" : "silver"
+        let ground = Color(.sRGB, red: 0.9, green: 0.9, blue: 0.9)
+        let margin = EdgeInsets(top: 5, leading: 60, bottom: 90, trailing: 60)
+        let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
+        let own = try pixels(device.padding(margin).background(ground), "shadow-2d-\(name)")
+        let spike = try pixels(
+            ZStack {
+                K3DShadow(angle: 0, lift: 0, black: color == .black)
+                device.environment(\.pocketDropShadow, false)
+            }
+            .padding(margin).background(ground), "shadow-k3d-\(name)")
+        var darkest = 255
+        for (x, y) in [(243, 640), (243, 660), (243, 690), (100, 650), (386, 650), (52, 400), (434, 400), (52, 600), (434, 600)] {
+            let a = own.mean(x, y), b = spike.mean(x, y)
+            #expect(abs(a.r - b.r) <= 2 && abs(a.g - b.g) <= 2 && abs(a.b - b.b) <= 2, "\(name) at \(x), \(y): 2D \(a), 3D \(b)")
+            darkest = min(darkest, a.g)
+        }
+        // The points are in the shadow: without one they would read as the ground.
+        #expect(darkest < 220, "\(name): darkest \(darkest)")
+        // The 3D shadow's black copy never shows, even with no device over it.
+        let bare = try pixels(K3DShadow(angle: 0, lift: 0, black: true).padding(margin).background(ground), "shadow-bare")
+        #expect(bare.mean(243, 300).g > 200, "inside the body: \(bare.mean(243, 300))")
+    }
+
     /// Metal calls the first frame's presented handler on its own queue. Build 168 crashed
     /// there: the handler was main-actor code, and Swift stops the app when such code runs off
     /// the main queue. Called from another queue, the handler must not stop the app, and the

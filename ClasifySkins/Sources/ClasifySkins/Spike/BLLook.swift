@@ -18,6 +18,19 @@ extension EnvironmentValues {
     }
 }
 
+private struct PocketDropShadowKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// The device draws its drop shadow. SPIKE (CLA-101): off only while the 3D flip draws the
+    /// same shadow from the 3D body (`K3DShadow`).
+    public var pocketDropShadow: Bool {
+        get { self[PocketDropShadowKey.self] }
+        set { self[PocketDropShadowKey.self] = newValue }
+    }
+}
+
 /// Card BL's values, BL v2 (Designer 1, 22:48 JST 11-13, the current candidate), from
 /// `design-review/round17/bl/k7.json`. All BL numbers live in this file. From v1
 /// (`k7-spike1.json`), only the Silver tone's last stops and the Silver wheel ring changed. The

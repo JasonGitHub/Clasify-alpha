@@ -75,20 +75,23 @@ import Testing
         #expect(!asked)
     }
 
-    /// The ground fades in as the 2D device, with its own shadow, fades out. Where the two
-    /// shadows overlap mid-fade, they are never darker than the darker of the two alone: no dip
-    /// (build 194). Black's 2D shadow is 45%, Silver's 30%, the ground 22%.
-    @Test func theTwoShadowsNeverAddUp() {
-        #expect(K3DFlipView<EmptyView>.groundOpacity(shown: 1) == 0)
-        #expect(K3DFlipView<EmptyView>.groundOpacity(shown: 0) == 1)
-        for flat in [0.45, 0.30] {
-            for step in 0...100 {
-                let shown = Double(step) / 100
-                let ground = 0.22 * K3DFlipView<EmptyView>.groundOpacity(shown: shown)
-                let both = 1 - (1 - flat * shown) * (1 - ground)
-                #expect(both <= max(flat, 0.22) + 1e-9, "\(flat) at \(shown): \(both)")
-            }
-        }
+    /// The shadow's shape follows the 3D body: straight on, it is the 2D body's own rounded
+    /// rectangle (366 x 613 pt, 20 pt lower at the top for the shadow's copy). Edge-on it is as
+    /// narrow as the body's depth; from the back as wide as the body, a little smaller.
+    @Test func theShadowFollowsTheBody() {
+        let front = K3DShadow.outline(angle: 0, lift: 0, drop: 0).boundingRect
+        #expect(abs(front.minX) < 0.01 && abs(front.minY) < 0.01, "\(front)")
+        #expect(abs(front.width - 366) < 0.01 && abs(front.height - 613) < 0.01, "\(front)")
+        let copy = K3DShadow.outline(angle: 0, lift: 0, drop: PocketSkin.shadowDrop).boundingRect
+        #expect(abs(copy.minY - 20) < 0.01 && abs(copy.maxY - 613) < 0.01, "\(copy)")
+        let edge = K3DShadow.outline(angle: 90, lift: 70, drop: 0).boundingRect
+        #expect(edge.width > 50 && edge.width < 80, "\(edge)")
+        #expect(abs(edge.midX - 183) < 1, "\(edge)")
+        let back = K3DShadow.outline(angle: 180, lift: 0, drop: 0).boundingRect
+        #expect(back.width > 360 && back.width < 366, "\(back)")
+        // The hull's corners are the 2D shape's: a point on the corner's curve is on the outline.
+        let path = K3DShadow.outline(angle: 0, lift: 0, drop: 0)
+        #expect(path.contains(CGPoint(x: 12, y: 12)) && !path.contains(CGPoint(x: 4, y: 4)))
     }
 
     /// The back shows the app's version in place of the art's "1.0 · Build 161". Only the spec

@@ -19,8 +19,8 @@ public enum K3DSpike {
 }
 
 /// Shows `content`, the 2D device, while the front rests flat. While the device turns or shows
-/// its back, the 3D body shows in its place, over the window's margins too, with the mock's
-/// soft ground shadow. The two crossfade in 0.1 s where a turn leaves or reaches the resting
+/// its back, the 3D body shows in its place, over the window's margins too, with the 2D
+/// device's drop shadow cast from its outline. The two crossfade in 0.1 s where a turn leaves or reaches the resting
 /// front. A click on the 3D body calls `onTap`.
 ///
 /// The Metal view stays mounted behind the 2D device, drawn at the pose the device rests in, so
@@ -70,30 +70,17 @@ public struct K3DFlipView<Content: View>: View {
         }
     }
 
-    /// The ground's opacity under a 2D device shown at `shown`: the rest of the fade.
-    static func groundOpacity(shown: Double) -> Double { 1 - shown }
-
-    /// The 3D body and its ground, under the 2D device that shows with opacity `shown`.
+    /// The 3D body and its shadow, under the 2D device that shows with opacity `shown`.
     private func body3D(angle: Double, lift: Double, shown: Double) -> some View {
         let shows = shown < 1
         let size = PocketSkin.size
-        let a = angle * .pi / 180
-        // The mock's ground: 340 x 20 pt, 3.5 pt under the device, as wide as the body seen now.
-        let wide = abs(cos(a)) + K3DMesh.depth / K3DMesh.width * abs(sin(a))
         let ready = $ready
         return ZStack {
-            // The ground only while the 3D body shows (`shows`): at rest the 2D device has its own
-            // shadow. The 2D shadow fades with the 2D device, so the ground fades in as it fades
-            // out: the two never both draw at full strength (build 194 showed a dark dip in the
-            // fade's first frame). Where they overlap, the sum is never darker than the darker one.
-            if shows {
-                Circle()
-                    .fill(RadialGradient(colors: [.black.opacity(0.22), .black.opacity(0)], center: .center, startRadius: 0, endRadius: 10))
-                    .frame(width: 20, height: 20)
-                    .scaleEffect(x: 17 * wide, y: 1)
-                    .position(x: size.width / 2, y: size.height + 13.5)
-                    .opacity(Self.groundOpacity(shown: shown))
-            }
+            // The 2D device's drop shadow, from the 3D body's outline, only while the 3D body shows
+            // (`shows`). Then the 2D device's own shadow is off (`K3DHandover`), so one shadow
+            // shows at any time, with no step where they hand over (shadow option 1, Jason 17:30
+            // JST 11-14). At rest on the front, the 2D device draws its own.
+            if shows { K3DShadow(angle: angle, lift: lift, black: black) }
             K3DMetalView(
                 angle: angle, lift: lift, black: black, screen: flip.screen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
@@ -105,7 +92,7 @@ public struct K3DFlipView<Content: View>: View {
                 // SwiftUI may hide the view, and a hidden view does not draw.
                 .opacity(shows ? 1 : 0.001)
         }
-        // No fade or other animation when the ground comes and goes: the timeline drives it.
+        // No fade or other animation when the shadow comes and goes: the timeline drives it.
         .transaction { $0.animation = nil }
         .frame(width: size.width, height: size.height)
         .contentShape(Rectangle())
@@ -132,6 +119,8 @@ struct K3DHandover<Flat: View, Body3D: View>: View {
     var body: some View {
         let shown = Self.shown(flat: flat, ready: ready)
         content
+            // While the 3D body shows, it draws the one shadow: the 2D device's own is off.
+            .environment(\.pocketDropShadow, shown >= 1)
             .compositingGroup()
             .opacity(shown)
             .allowsHitTesting(shown >= 1)
