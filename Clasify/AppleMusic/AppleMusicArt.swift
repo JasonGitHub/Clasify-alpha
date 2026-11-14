@@ -57,7 +57,7 @@ actor AppleMusicArt {
     func counts() -> (albums: Int, purchased: Int, cloud: Int, songs: Int)? {
         open()
         guard library != nil else { return nil }
-        let songs: [ITLibMediaItem] = items.values.filter { $0.mediaKind == .KindSong }  // the SDK's Swift name
+        let songs: [ITLibMediaItem] = items.values.filter { $0.mediaKind == .kindSong }  // the SDK's Swift name (not .song)
         let albums = Set(songs.map { $0.album.persistentID.uint64Value }).count
         return (albums, songs.filter { $0.isPurchased }.count, songs.filter { $0.isCloud }.count, songs.count)
     }
