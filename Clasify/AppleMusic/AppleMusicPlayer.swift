@@ -68,7 +68,7 @@ final class AppleMusicPlayer: Player {
             guard id == loadID else { return }
             let list = tracks?.map { (id: AppleMusicID.song($0.id), keys: Self.keys($0)) } ?? []
             let start = QueueMatch.start(of: trackID, keys: Self.keys(song), in: list)
-            let kind = context.map { $0 == ClasifyCore.Playlist.likedSongsID ? "liked" : ClasifyCore.Album.isID($0) ? "album" : "playlist" } ?? "none"
+            let kind = context.map { Self.kind($0) } ?? "none"
             timing.notice("""
                 apple load (TEMP): context \(kind, privacy: .public), tracks \(tracks.map { "\($0.count)" } ?? "nil", privacy: .public), \
                 start found \(start.map { $0.byID ? "yes (row id)" : "yes (key)" } ?? "no", privacy: .public), \
@@ -277,6 +277,14 @@ final class AppleMusicPlayer: Player {
 
     /// The keys that can name one song: its MusicKit ID, its catalog ID, its ISRC, and last its
     /// title with its artist.
+    /// TEMP: the kind of a play context, for the "apple load" line.
+    private static func kind(_ context: String) -> String {
+        if context == ClasifyCore.Playlist.likedSongsID { return "liked" }
+        if context == ClasifyCore.Playlist.songsID { return "songs" }
+        if ClasifyCore.Playlist.isArtistID(context) { return "artist" }
+        return ClasifyCore.Album.isID(context) ? "album" : "playlist"
+    }
+
     private static func keys(_ song: Song) -> SongKeys {
         SongKeys(
             ids: [song.id.rawValue] + (AppleMusicReads.catalogID(song).map { [$0] } ?? []),

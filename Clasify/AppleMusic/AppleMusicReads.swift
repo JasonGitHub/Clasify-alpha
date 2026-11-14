@@ -74,6 +74,11 @@ enum AppleMusicReads {
     /// The songs that a store context plays: a playlist, "Favorite Songs", or an album
     /// (`applemusic:album:`, its library songs: `album(_:)`). nil when the context can't be read.
     static func songs(for context: String) async -> [Song]? {
+        if context == ClasifyCore.Playlist.songsID || ClasifyCore.Playlist.isArtistID(context) {
+            guard let albums = await libraryAlbums(), let order = await order(of: context, in: albums) else { return nil }
+            let songs = albums.flatMap { $0.songs }
+            return order.map { songs[$0] }
+        }
         guard context.hasPrefix(AppleMusicID.albumPrefix) else {
             guard let playlist = try? await Self.playlist(context) else { return nil }
             return await Self.songs(of: playlist)
@@ -108,7 +113,56 @@ enum AppleMusicReads {
     private static var libraryRead: Task<[LibraryAlbum]?, Never>?
 
     /// Forgets the library read, so that the next read asks MusicKit again.
-    static func forgetLibrary() { libraryRead = nil }
+    static func forgetLibrary() { libraryRead = nil; artistNames = [:] }
+
+    // MARK: Artists and Songs (card BN)
+
+    /// The library's artists (`MusicLibraryRequest<Artist>`, as the Music app's Library >
+    /// Artists shows them), with every batch read. nil when the read fails.
+    static func artists() async -> [ClasifyCore.Playlist]? {
+        let start = ContinuousClock.now
+        guard var batch = try? await MusicLibraryRequest<MusicKit.Artist>().response().items else { return nil }
+        var all = Array(batch)
+        while batch.hasNextBatch {
+            guard let next = try? await batch.nextBatch() else { return nil }
+            all += next
+            batch = next
+        }
+        let list = all.map { ClasifyCore.Playlist(id: AppleMusicID.artistPrefix + $0.id.rawValue, name: $0.name, tracks: []) }
+        artistNames = Dictionary(list.map { ($0.id, $0.name) }) { first, _ in first }
+        let songs = await libraryAlbums()?.reduce(0) { $0 + $1.songs.count }
+        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
+        timing.notice("""
+            apple artists (TEMP): artists \(list.count, privacy: .public), \
+            library songs \(songs.map { "\($0)" } ?? "none", privacy: .public), ms \(ms, privacy: .public)
+            """)
+        return list
+    }
+
+    /// The names of the artists that `artists()` read, by store ID.
+    private static var artistNames: [String: String] = [:]
+
+    /// The songs of a library list (card BN), as indexes into the library albums' songs, in
+    /// list order. `Playlist.songsID`: all of them, in `Track.titleOrder`. An artist: the songs
+    /// whose artist or album artist has the artist's name, in `Track.artistOrder`. The list
+    /// screen and the player's queue both use this, so they always match. nil for an artist
+    /// that the artists read can't find.
+    static func order(of list: String, in albums: [LibraryAlbum]) async -> [Int]? {
+        var keys: [ClasifyCore.Track] = []
+        for entry in albums {
+            for song in entry.songs {
+                var key = track(song)  // no covers: only the order's fields count
+                key.album = entry.album
+                key.id = String(keys.count)
+                keys.append(key)
+            }
+        }
+        if list == ClasifyCore.Playlist.songsID { return ClasifyCore.Track.titleOrder(keys).compactMap { Int($0.id) } }
+        if artistNames[list] == nil { _ = await artists() }  // after a relaunch or a library read again
+        guard let name = artistNames[list] else { return nil }
+        let mine = keys.filter { $0.artist == name || $0.album?.artist == name }
+        return ClasifyCore.Track.artistOrder(mine).compactMap { Int($0.id) }
+    }
 
     /// Store `Track`s for library albums, in order, each carrying its album.
     static func tracks(of albums: [LibraryAlbum]) async -> [ClasifyCore.Track] {
