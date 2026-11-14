@@ -84,13 +84,18 @@ public struct LibraryWords: Equatable, Sendable {
     /// The screen when the account cannot play: its headline, its line, the row that opens
     /// the plan's page, and the small device's word (card AX screen 135, card BM change 259).
     public var needPlan: String, needPlanLine: String, getPlan: String, noPlan: String
+    /// The list that Albums and Cover Flow group into albums: Liked Songs on Spotify, the
+    /// whole library (`Playlist.libraryID`) on Apple Music, as on an iPod.
+    public var albumsList: String
 
     public init(
         likedSongs: String, service: String, like: String,
-        needPlan: String, needPlanLine: String, getPlan: String, noPlan: String
+        needPlan: String, needPlanLine: String, getPlan: String, noPlan: String,
+        albumsList: String = Playlist.likedSongsID
     ) {
         self.likedSongs = likedSongs; self.service = service; self.like = like
         self.needPlan = needPlan; self.needPlanLine = needPlanLine; self.getPlan = getPlan; self.noPlan = noPlan
+        self.albumsList = albumsList
     }
 
     public static let spotify = LibraryWords(
@@ -100,7 +105,7 @@ public struct LibraryWords: Equatable, Sendable {
     public static let appleMusic = LibraryWords(
         likedSongs: "Favorite Songs", service: "Apple Music", like: "Favorite",
         needPlan: "Not subscribed", needPlanLine: "To play music, we need Apple Music.",
-        getPlan: "Get Apple Music", noPlan: "No plan")
+        getPlan: "Get Apple Music", noPlan: "No plan", albumsList: Playlist.libraryID)
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.

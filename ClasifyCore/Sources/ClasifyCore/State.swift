@@ -90,6 +90,14 @@ public struct Playlist: Equatable, Sendable {
     public var trackCount: Int
 
     public static let likedSongsID = "liked"
+    /// All songs of the library (Apple Music only, where Albums and Cover Flow show the
+    /// library's own albums). It is never a Playlists row, a play context or a playlist count.
+    public static let libraryID = "library:all"
+
+    /// The list is not a playlist: Liked Songs, the whole library or an album.
+    public static func isHidden(_ id: String) -> Bool {
+        id == likedSongsID || id == libraryID || Album.isID(id)
+    }
 
     public init(id: String, name: String, tracks: [Track], trackCount: Int? = nil) {
         self.id = id; self.name = name; self.tracks = tracks; self.trackCount = trackCount ?? tracks.count
@@ -373,11 +381,11 @@ public struct AppState: Equatable, Sendable {
     }
     /// The playlist names that show on the small screen during the first read: up to 6.
     public var firstReadNames: [String] {
-        Array(library.lazy.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name))
+        Array(library.lazy.filter { !Playlist.isHidden($0.id) }.prefix(6).map(\.name))
     }
     /// The number of playlists, for the first read's count (change 188).
     public var playlistCount: Int {
-        library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.count
+        library.filter { !Playlist.isHidden($0.id) }.count
     }
     /// The Spotify session expired (card AX, change 181). The login screen then says "Log in
     /// again". A logout, a login that works and a reset clear it.
@@ -390,6 +398,8 @@ public struct AppState: Equatable, Sendable {
     /// The words of the active service's library ("Liked Songs" on Spotify), from the `Library`.
     public var words = LibraryWords.spotify
     /// The liked list's name on the active service.
+    /// The list that Albums and Cover Flow group into albums, from the `Library`.
+    public var albumsList: String { words.albumsList }
     public var likedSongsName: String {
         get { words.likedSongs }
         set { words.likedSongs = newValue }
@@ -659,7 +669,7 @@ public struct AppState: Equatable, Sendable {
         case .nowPlaying?:
             pool = []
         case .playlists?:
-            pool = library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) && loadedTracks.contains($0.id) }
+            pool = library.filter { !Playlist.isHidden($0.id) && loadedTracks.contains($0.id) }
                 .flatMap(\.tracks)
             if !pool.contains(where: { $0.coverID != nil }) { pool = liked }
         default:
@@ -706,19 +716,22 @@ public struct AppState: Equatable, Sendable {
         switch screen {
         case .playlists: playlistsLoaded
         case .tracks(let id), .albumPanel(let id): loadedTracks.contains(id)
-        case .albums, .coverFlow, .yourMusic: loadedTracks.contains(Playlist.likedSongsID)
+        case .albums, .coverFlow, .yourMusic: loadedTracks.contains(albumsList)
         default: true
         }
     }
 
     /// The `readAt` key of a list screen: the playlist ID that it reads, or "" for the playlist list.
-    public static func readKey(_ screen: Screen) -> String {
+    /// `albums` is the list that Albums, Cover Flow and setup read (`albumsList`).
+    public static func readKey(_ screen: Screen, albums: String = Playlist.likedSongsID) -> String {
         switch screen {
         case .tracks(let id), .albumPanel(let id): id  // an album reads all its songs (CLA-46)
-        case .albums, .coverFlow, .yourMusic: Playlist.likedSongsID  // setup reads Liked Songs first
+        case .albums, .coverFlow, .yourMusic: albums  // setup reads it first
         default: ""
         }
     }
+    /// The `readAt` key of a list screen on the active service.
+    public func readKey(_ screen: Screen) -> String { Self.readKey(screen, albums: albumsList) }
 
     /// A playlist's tracks. For an album ID, all songs of the album in album order, once read
     /// (CLA-46). Before that, its songs in Liked Songs in disc and track order, so the album's
@@ -726,7 +739,7 @@ public struct AppState: Equatable, Sendable {
     public func tracks(in playlist: String) -> [Track] {
         if let list = library.first(where: { $0.id == playlist }) { return list.tracks }
         guard Album.isID(playlist) else { return [] }
-        return Album.songs(playlist, in: tracks(in: Playlist.likedSongsID))
+        return Album.songs(playlist, in: tracks(in: albumsList))
     }
 
     /// An album in Liked Songs, by its URI, with the artist as `albums` gives it. When its last
@@ -734,7 +747,7 @@ public struct AppState: Equatable, Sendable {
     /// as the playing one), so the title bar, the song panel and Now Playing keep its name.
     public func album(_ id: String) -> Album? {
         let read = Album.isID(id) ? library.first(where: { $0.id == id })?.tracks : nil
-        let track = tracks(in: Playlist.likedSongsID).first { $0.album?.id == id }
+        let track = tracks(in: albumsList).first { $0.album?.id == id }
             ?? read?.first { $0.album?.id == id } ?? extraTracks.first { $0.album?.id == id }
         guard let track, var album = track.album else { return nil }
         if album.artist == nil { album.artist = track.artist.isEmpty ? nil : track.artist }
@@ -747,7 +760,7 @@ public struct AppState: Equatable, Sendable {
     public var albums: [Album] {
         var found: [String: Album] = [:]
         var order: [String] = []
-        for track in tracks(in: Playlist.likedSongsID) {
+        for track in tracks(in: albumsList) {
             guard var album = track.album, found[album.id] == nil else { continue }
             if album.artist == nil { album.artist = track.artist.isEmpty ? nil : track.artist }
             found[album.id] = album
@@ -769,7 +782,7 @@ public struct AppState: Equatable, Sendable {
         case .login: restoring ? [] : [.logIn]
         case .main:
             (current == nil ? [] : [.nowPlaying]) + [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings]
-        case .playlists: library.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.map { .playlist($0.id) }
+        case .playlists: library.filter { !Playlist.isHidden($0.id) }.map { .playlist($0.id) }
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
@@ -810,7 +823,7 @@ public struct AppState: Equatable, Sendable {
     /// that has one. Cover Flow draws the albums with these.
     public var albumCovers: [String: String] {
         var covers: [String: String] = [:]
-        for track in tracks(in: Playlist.likedSongsID) {
+        for track in tracks(in: albumsList) {
             guard let album = track.album?.id, covers[album] == nil, let cover = track.coverID else { continue }
             covers[album] = cover
         }
