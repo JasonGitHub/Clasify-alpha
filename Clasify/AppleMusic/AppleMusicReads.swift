@@ -137,7 +137,7 @@ enum AppleMusicReads {
         await withTaskGroup(of: Void.self) { group in
             for i in reads.albums.indices {
                 if i >= 4 { _ = await group.next() }
-                group.addTask { @MainActor in await reads.read(i) }
+                group.addTask { @Sendable @MainActor in await reads.read(i) }
             }
         }
         var albums: [LibraryAlbum] = []
