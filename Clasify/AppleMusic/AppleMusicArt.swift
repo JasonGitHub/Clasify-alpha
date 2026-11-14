@@ -52,6 +52,16 @@ actor AppleMusicArt {
         return context.makeImage().map { Image(cgImage: $0) }
     }
 
+    /// TEMP (CLA-103, the 6th album): over the library's song items, counts only: distinct
+    /// albums, purchased items, cloud items and songs. nil when the library can't open.
+    func counts() -> (albums: Int, purchased: Int, cloud: Int, songs: Int)? {
+        open()
+        guard library != nil else { return nil }
+        let songs: [ITLibMediaItem] = items.values.filter { $0.mediaKind == .kindSong }  // the SDK's Swift name (not .song)
+        let albums = Set(songs.map { $0.album.persistentID.uint64Value }).count
+        return (albums, songs.filter { $0.isPurchased }.count, songs.filter { $0.isCloud }.count, songs.count)
+    }
+
     /// Opens the library once. A failed open is tried again on the next call.
     private func open() {
         guard library == nil, let opened = try? ITLibrary(apiVersion: "1.0") else { return }

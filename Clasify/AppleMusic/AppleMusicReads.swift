@@ -58,7 +58,7 @@ enum AppleMusicReads {
     }
 
     /// The songs of a track list, with every batch read. Music videos are left out.
-    private static func songs(in first: MusicItemCollection<MusicKit.Track>?) async -> [Song]? {
+    fileprivate static func songs(in first: MusicItemCollection<MusicKit.Track>?) async -> [Song]? {
         guard var batch = first else { return nil }
         var tracks = Array(batch)
         while batch.hasNextBatch {
@@ -81,61 +81,96 @@ enum AppleMusicReads {
         return await album(context)
     }
 
-    /// The songs of the album that the Albums screen names `albumID` (its title and the song
-    /// artist), from the library's own songs in disc and track order: the songs that the user
-    /// has, as on an iPod (Jason, 11-14). nil when the library can't be read. The library
+    /// The library songs of album `albumID` (`applemusic:album:<MusicKit album ID>`), in disc
+    /// and track order: the songs that the user has, as on an iPod (Jason, 11-14). Empty for an
+    /// album that is not in the library now; nil when the library can't be read. The library
     /// list, the album screen and the player's queue are the same songs with the same IDs.
     static func album(_ albumID: String) async -> [Song]? {
-        guard let songs = await librarySongs() else { return nil }
-        return inOrder(songs.filter { track($0).album?.id == albumID })
+        guard let albums = await libraryAlbums() else { return nil }
+        return albums.first { $0.album.id == albumID }?.songs ?? []
     }
 
-    /// All songs of the library, read once in this session and shared while the read runs.
-    /// A failed read leaves. `forgetLibrary` clears it.
-    static func librarySongs() async -> [Song]? {
+    /// One album of the library: the Albums screen's album (its MusicKit ID, title and album
+    /// artist, so a compilation stays one album) and its library songs in disc and track order.
+    typealias LibraryAlbum = (album: ClasifyCore.Album, songs: [Song])
+
+    /// The albums of the library (`MusicLibraryRequest<Album>`, as the Music app's Library >
+    /// Albums shows them), read once in this session and shared while the read runs. A failed
+    /// read leaves. `forgetLibrary` clears it.
+    static func libraryAlbums() async -> [LibraryAlbum]? {
         let read = libraryRead ?? Task { await readLibrary() }
         libraryRead = read
-        let songs = await read.value
-        if songs == nil { libraryRead = nil }
-        return songs
+        let albums = await read.value
+        if albums == nil { libraryRead = nil }
+        return albums
     }
 
-    private static var libraryRead: Task<[Song]?, Never>?
+    private static var libraryRead: Task<[LibraryAlbum]?, Never>?
 
     /// Forgets the library read, so that the next read asks MusicKit again.
     static func forgetLibrary() { libraryRead = nil }
 
-    /// Every library song, with every batch read, so the list is never cut short. nil when a
-    /// read fails. Not checked on a Mac: the speed with a large library.
-    private static func readLibrary() async -> [Song]? {
-        let start = ContinuousClock.now
-        guard var batch = try? await MusicLibraryRequest<Song>().response().items else { return nil }
-        var songs = Array(batch)
-        while batch.hasNextBatch {
-            guard let next = try? await batch.nextBatch() else { return nil }
-            songs += next
-            batch = next
+    /// Store `Track`s for library albums, in order, each carrying its album.
+    static func tracks(of albums: [LibraryAlbum]) async -> [ClasifyCore.Track] {
+        var tracks = await self.tracks(albums.flatMap { $0.songs })
+        var i = 0
+        for entry in albums {
+            for _ in entry.songs { tracks[i].album = entry.album; i += 1 }
         }
-        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
-        let grouped = Set(songs.compactMap { track($0).album?.id }).count
-        let albums = await libraryAlbumCount()
-        timing.notice("""
-            apple library (TEMP): songs \(songs.count, privacy: .public), albums grouped \(grouped, privacy: .public), \
-            library albums \(albums.map { String($0) } ?? "failed", privacy: .public), ms \(ms, privacy: .public)
-            """)
-        return songs
+        return tracks
     }
 
-    /// TEMP: how many albums MusicKit's own library list has, to compare with our grouping.
-    private static func libraryAlbumCount() async -> Int? {
+    /// The album list with every batch read (nil when that read fails), then each album's
+    /// songs, at most 4 reads at a time. An album whose read fails is left out, and the TEMP
+    /// line counts it, so one bad album never loses the list. Not checked on a Mac: the speed
+    /// with many albums (one read per album).
+    private static func readLibrary() async -> [LibraryAlbum]? {
+        let start = ContinuousClock.now
         guard var batch = try? await MusicLibraryRequest<MusicKit.Album>().response().items else { return nil }
-        var count = batch.count
+        let reads = AlbumReads()
+        reads.albums = Array(batch)
         while batch.hasNextBatch {
             guard let next = try? await batch.nextBatch() else { return nil }
-            count += next.count
+            reads.albums += next
             batch = next
         }
-        return count
+        await withTaskGroup(of: Void.self) { group in
+            for i in reads.albums.indices {
+                if i >= 4 { _ = await group.next() }
+                group.addTask { @Sendable @MainActor in await reads.read(i) }
+            }
+        }
+        var albums: [LibraryAlbum] = []
+        for (i, album) in reads.albums.enumerated() {
+            guard let songs = reads.songs[i] else { continue }
+            let key = ClasifyCore.Album(id: AppleMusicID.albumPrefix + album.id.rawValue, name: album.title, artist: album.artistName)
+            albums.append((key, inOrder(songs)))
+        }
+        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
+        let empty = albums.filter { $0.songs.isEmpty }.count
+        let itl = await AppleMusicArt.shared.counts()
+        timing.notice("""
+            apple library (TEMP): albums \(albums.count, privacy: .public), with 0 songs \(empty, privacy: .public), \
+            album songs \(albums.reduce(0) { $0 + $1.songs.count }, privacy: .public), \
+            album reads failed \(reads.albums.count - albums.count, privacy: .public), ms \(ms, privacy: .public); \
+            itunes library: albums \(itl.map { "\($0.albums)" } ?? "none", privacy: .public), \
+            songs \(itl.map { "\($0.songs)" } ?? "none", privacy: .public), \
+            purchased \(itl.map { "\($0.purchased)" } ?? "none", privacy: .public), \
+            cloud \(itl.map { "\($0.cloud)" } ?? "none", privacy: .public)
+            """)
+        return albums
+    }
+
+    /// The album reads of one library read, kept on the main actor while they run.
+    @MainActor private final class AlbumReads {
+        var albums: [MusicKit.Album] = []
+        /// The songs of album `i`, when its read worked. Only the library's songs: a plain
+        /// `with([.tracks])` can give a catalog album's other songs too.
+        var songs: [Int: [Song]] = [:]
+
+        func read(_ i: Int) async {
+            if let read = await AppleMusicReads.songs(in: try? await albums[i].with([.tracks], preferredSource: .library).tracks) { songs[i] = read }
+        }
     }
 
     /// Songs in disc and track order, as `Album.songs` sorts them. Songs with no number keep
