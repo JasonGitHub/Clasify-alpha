@@ -113,8 +113,17 @@ jobs:
           done
           xcrun stapler validate "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
+      - name: Delete the signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: ${{ env.DMG }}
+          path: ${{ env.DMG }}
+          retention-days: 14
       - name: Upload the DMG and latest.json to the beta page's Vercel Blob store
         # Only a run started with beta = true. Every other step is the same for both values.
+        # After the artifact upload, so a failed Blob upload never costs the signed DMG artifact.
         if: inputs.beta
         # CLA-96: mypod-beta.vercel.app reads beta/latest.json and links its "url". The DMG gets a
         # new public path per build, beta/myPod-beta-<n>.dmg. latest.json has a fixed path and is
@@ -142,8 +151,9 @@ jobs:
               ${5:+-H "x-cache-control-max-age: $5"} \
               "https://vercel.com/api/blob/?pathname=${2//\//%2F}" > status.txt || true
             if [ "$(cat status.txt)" != "200" ]; then
-              echo "::error::Upload of $2 failed (HTTP $(cat status.txt))."
-              cat blob.json; echo
+              # Only the error's code and message, as the SDK reads them (getBlobError), never
+              # the whole body.
+              echo "::error::Upload of $2 failed (HTTP $(cat status.txt)): $(jq -r '"\(.error.code // "unknown_error"): \(.error.message // "")"' blob.json 2>/dev/null || echo "no JSON body")"
               exit 1
             fi
           }
@@ -156,11 +166,3 @@ jobs:
           put latest.json beta/latest.json application/json 1 60
           echo "latest.json: $(jq -er .url blob.json)"
           rm -f blob.json status.txt
-      - name: Delete the signing keychain
-        if: always()
-        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-        with:
-          name: ${{ env.DMG }}
-          path: ${{ env.DMG }}
-          retention-days: 14
