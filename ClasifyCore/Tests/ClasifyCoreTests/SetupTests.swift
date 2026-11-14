@@ -53,6 +53,8 @@ import Testing
         #expect(AppState.namesEnd(names: 6, songs: 15, late: 0.5) == 1)
         #expect(close(AppState.namesEnd(names: 6, songs: 15, late: 1.5), 1.7))
         #expect(AppState.namesEnd(names: 6, songs: 15, late: 3) == 3)  // every name had shown
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: 2.4) == 2.5)  // never later than before
+        #expect(close(AppState.namesEnd(names: 2, songs: 100, late: 1), 1.14))
         #expect(close(AppState.namesProgress(at: 1, names: 6, songs: 15, late: 1.5), 0.4))  // the old pace
         #expect(close(AppState.namesProgress(at: 1.5, names: 6, songs: 15, late: 1.5), 0.6))
         #expect(close(AppState.namesProgress(at: 1.6, names: 6, songs: 15, late: 1.5), 0.8))

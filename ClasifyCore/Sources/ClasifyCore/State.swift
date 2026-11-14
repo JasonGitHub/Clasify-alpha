@@ -333,14 +333,15 @@ public struct AppState: Equatable, Sendable {
     public static let lateFinish = 0.2
     /// When the names are done, in seconds after they came. `late`: the count came that many
     /// seconds after the names; nil when it came before them, or has not come. A late count
-    /// moves the end to its own time, but the rest takes at least `lateFinish`. The 191 hold,
-    /// the names and the bar all end here.
+    /// moves the end to its own time, but the rest takes at least `lateFinish`, and never ends
+    /// later than the old time. The 191 hold, the names and the bar all end here.
     public static func namesEnd(names: Int, songs: Int?, late: Double?) -> Double {
         guard names > 0 else { return 0 }
         let stay = namesTime(names: names, songs: songs)
         guard let late else { return stay }
-        if late >= fullNamesTime(names) { return late }  // every name had shown
-        return max(stay, late + lateFinish)
+        let full = fullNamesTime(names)
+        if late >= full { return late }  // every name had shown
+        return max(stay, min(full, late + lateFinish))
     }
     /// How far the names are, 0 to 1, `t` seconds after they came: steady until `namesEnd`.
     /// Before a late count, at the time above; after it, from there to the end. It never goes
