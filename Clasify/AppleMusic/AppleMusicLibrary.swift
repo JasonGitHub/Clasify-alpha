@@ -49,7 +49,10 @@ final class AppleMusicLibrary: Library {
     func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
         trackReads[playlist] = nil
         await AppleMusicArt.shared.forget()
-        if ClasifyCore.Album.isID(playlist) { AppleMusicReads.forgetAlbums(playlist) }
+        if playlist == ClasifyCore.Playlist.libraryID {  // the albums come from the library read
+            AppleMusicReads.forgetLibrary()
+            for id in trackReads.keys where ClasifyCore.Album.isID(id) { trackReads[id] = nil }
+        }
         return await tracks(of: playlist)
     }
 
@@ -60,8 +63,9 @@ final class AppleMusicLibrary: Library {
 
     func prefetch() async {
         async let list = playlists()
-        async let liked = tracks(of: ClasifyCore.Playlist.likedSongsID)
-        _ = await (list, liked)
+        async let library = tracks(of: ClasifyCore.Playlist.libraryID)  // Albums and setup read it
+        _ = await (list, library)
+        _ = await tracks(of: ClasifyCore.Playlist.likedSongsID)
     }
 
     /// The macOS prompt (card BM, change 258). macOS asks only once: after that, the answer
@@ -92,7 +96,7 @@ final class AppleMusicLibrary: Library {
     func logOut() {
         listRead = nil
         trackReads = [:]
-        AppleMusicReads.forgetAlbums()
+        AppleMusicReads.forgetLibrary()
         Task { await AppleMusicArt.shared.forget() }
     }
 
@@ -106,18 +110,17 @@ final class AppleMusicLibrary: Library {
         }
     }
 
-    /// The songs of one playlist, of "Favorite Songs" for `Playlist.likedSongsID`, or of an
-    /// album (`applemusic:album:`). Music videos are left out, as the player leaves them out.
+    /// The songs of one playlist, of "Favorite Songs" for `Playlist.likedSongsID`, of the
+    /// whole library for `Playlist.libraryID`, or of an album (`applemusic:album:`, its library
+    /// songs). Music videos are left out, as the player leaves them out.
     private static func readTracks(_ id: String) async -> [ClasifyCore.Track]? {
+        if id == ClasifyCore.Playlist.libraryID {
+            guard let songs = await AppleMusicReads.librarySongs() else { return nil }
+            return await AppleMusicReads.tracks(songs)
+        }
         if ClasifyCore.Album.isID(id) {
-            guard let read = await AppleMusicReads.album(id) else { return nil }
-            // Every song carries the Albums screen's album, so that `Album.songs` and the
-            // reducer find it, even a song whose own title or artist differs.
-            return await AppleMusicReads.tracks(read.songs).map { track in
-                var track = track
-                track.album = read.album ?? track.album
-                return track
-            }
+            guard let songs = await AppleMusicReads.album(id) else { return nil }
+            return await AppleMusicReads.tracks(songs)
         }
         do {
             guard let playlist = try await AppleMusicReads.playlist(id) else {
