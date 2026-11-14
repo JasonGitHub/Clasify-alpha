@@ -34,7 +34,7 @@ struct K3DSpikeSkin: View {
     }
 
     private func turn() {
-        // The 3D front shows the screen as it is now.
-        flip.toggle(at: .now, screen: flip.toBack ? nil : K3DSpike.snapshot(store.state, artwork: artwork))
+        // The 3D front shows the screen as it is now. The snapshot is made before the turn starts.
+        flip.turn { K3DSpike.snapshot(store.state, artwork: artwork) }
     }
 }

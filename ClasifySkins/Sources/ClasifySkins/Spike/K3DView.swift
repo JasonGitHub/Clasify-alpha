@@ -58,7 +58,7 @@ public struct K3DFlipView<Content: View>: View {
             let flat = flip.flatOpacity(at: date)
             let pose = flip.pose(at: date)
             K3DHandover(flat: flat, ready: ready, content: content) { shown in
-                body3D(angle: pose.angle, lift: pose.lift, shows: shown < 1)
+                body3D(angle: pose.angle, lift: pose.lift, shown: shown)
             }
         }
         .task(id: flip.start) {
@@ -70,20 +70,29 @@ public struct K3DFlipView<Content: View>: View {
         }
     }
 
-    private func body3D(angle: Double, lift: Double, shows: Bool) -> some View {
+    /// The ground's opacity under a 2D device shown at `shown`: the rest of the fade.
+    static func groundOpacity(shown: Double) -> Double { 1 - shown }
+
+    /// The 3D body and its ground, under the 2D device that shows with opacity `shown`.
+    private func body3D(angle: Double, lift: Double, shown: Double) -> some View {
+        let shows = shown < 1
         let size = PocketSkin.size
         let a = angle * .pi / 180
         // The mock's ground: 340 x 20 pt, 3.5 pt under the device, as wide as the body seen now.
         let wide = abs(cos(a)) + K3DMesh.depth / K3DMesh.width * abs(sin(a))
         let ready = $ready
         return ZStack {
-            // The ground only while the 3D body shows (`shows`): at rest the 2D device has its own shadow.
+            // The ground only while the 3D body shows (`shows`): at rest the 2D device has its own
+            // shadow. The 2D shadow fades with the 2D device, so the ground fades in as it fades
+            // out: the two never both draw at full strength (build 194 showed a dark dip in the
+            // fade's first frame). Where they overlap, the sum is never darker than the darker one.
             if shows {
                 Circle()
                     .fill(RadialGradient(colors: [.black.opacity(0.22), .black.opacity(0)], center: .center, startRadius: 0, endRadius: 10))
                     .frame(width: 20, height: 20)
                     .scaleEffect(x: 17 * wide, y: 1)
                     .position(x: size.width / 2, y: size.height + 13.5)
+                    .opacity(Self.groundOpacity(shown: shown))
             }
             K3DMetalView(
                 angle: angle, lift: lift, black: black, screen: flip.screen,
@@ -259,6 +268,10 @@ final class K3DLayerView: MTKView {
         self.steel = steel
         self.linear = linear
         self.nearest = nearest
+        // Warm-up: one frame of the back, off screen, when the view is mounted. In build 194 the
+        // first turn repeated a frame near edge-on, where the back first shows. The likely cause
+        // is first-use work for the back texture and its shader path, so it is done here.
+        _ = image(K3DPose(angle: 180), screen: nil, size: PocketSkin.size, scale: 1)
     }
 
     /// The shaders and the pipeline. Internal so a test can check that the shaders compile.
@@ -313,6 +326,10 @@ final class K3DLayerView: MTKView {
         descriptor.tAddressMode = .clampToEdge
         return device.makeSamplerState(descriptor: descriptor)
     }
+
+    /// Puts a new screen picture in the front's LCD now, before a turn starts, so the turn's
+    /// first frame has no texture work to do.
+    func prepare(screen: CGImage) { show(screen: screen) }
 
     /// Puts a new screen picture in the front's LCD.
     private func show(screen: CGImage?) {

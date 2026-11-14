@@ -284,6 +284,15 @@ public struct K3DFlip {
         if toBack { self.screen = screen }
     }
 
+    /// Starts a turn to the other side, as `toggle` does. A turn to the back first makes the
+    /// screen picture and puts it in the 3D front, and only then starts the turn's clock: in
+    /// build 194 the snapshot and the texture took time from the turn, and its first frames jumped.
+    @MainActor public mutating func turn(screen make: () -> CGImage?) {
+        let screen = toBack ? nil : make()
+        if let screen { K3DRenderer.shared?.prepare(screen: screen) }
+        toggle(at: .now, screen: screen)
+    }
+
     /// No turn runs: the device rests on one side.
     func isResting(at now: Date) -> Bool { now.timeIntervalSince(start) >= Self.duration }
 
