@@ -49,7 +49,17 @@ enum AppleMusicReads {
     /// All songs of a playlist, in order, with every batch read. Music videos are left out.
     /// nil when a read fails, so a long list is never cut short.
     static func songs(of playlist: MusicKit.Playlist) async -> [Song]? {
-        guard var batch = try? await playlist.with([.tracks]).tracks else { return nil }
+        await songs(in: try? await playlist.with([.tracks]).tracks)
+    }
+
+    /// All songs of an album, in its order, with every batch read. nil when a read fails.
+    static func songs(of album: MusicKit.Album) async -> [Song]? {
+        await songs(in: try? await album.with([.tracks]).tracks)
+    }
+
+    /// The songs of a track list, with every batch read. Music videos are left out.
+    private static func songs(in first: MusicItemCollection<MusicKit.Track>?) async -> [Song]? {
+        guard var batch = first else { return nil }
         var tracks = Array(batch)
         while batch.hasNextBatch {
             guard let next = try? await batch.nextBatch() else { return nil }
@@ -62,15 +72,77 @@ enum AppleMusicReads {
     }
 
     /// The songs that a store context plays: a playlist, "Favorite Songs", or an album
-    /// (`applemusic:album:`). An album plays its songs from "Favorite Songs" in the order that
-    /// the Albums screen shows them (`Album.songs`). nil when the context can't be read.
+    /// (`applemusic:album:`, all its songs: `album(_:)`). nil when the context can't be read.
     static func songs(for context: String) async -> [Song]? {
-        let albumContext = context.hasPrefix(AppleMusicID.albumPrefix)
-        let id = albumContext ? ClasifyCore.Playlist.likedSongsID : context
-        guard let playlist = try? await Self.playlist(id), let songs = await Self.songs(of: playlist) else { return nil }
-        guard albumContext else { return songs }
-        let byID = Dictionary(songs.map { (AppleMusicID.song($0.id), $0) }, uniquingKeysWith: { first, _ in first })
-        return ClasifyCore.Album.songs(context, in: songs.map { Self.track($0) }).compactMap { byID[$0.id] }
+        guard context.hasPrefix(AppleMusicID.albumPrefix) else {
+            guard let playlist = try? await Self.playlist(context) else { return nil }
+            return await Self.songs(of: playlist)
+        }
+        return await album(context)?.songs
+    }
+
+    /// All songs of the album that the Albums screen names `albumID` (its title and the song
+    /// artist), in disc and track order, as Spotify shows a whole album (CLA-46). The album is
+    /// found through one of its songs in "Favorite Songs". Its library album holds only the
+    /// songs in the library, so the catalog album is read too, and the longer list is used
+    /// (the library one if the same). When neither can be read, the album's songs from
+    /// "Favorite Songs" stay. `album` is the Albums screen's own album, for the tracks to carry.
+    /// nil when "Favorite Songs" can't be read. Not checked on a Mac: that MusicKit gives a
+    /// library song's albums, and the whole catalog album.
+    static func album(_ albumID: String) async -> (songs: [Song], album: ClasifyCore.Album?)? {
+        if let read = albums[albumID] { return read }
+        let read = await readAlbum(albumID)
+        if let read { albums[albumID] = read }
+        return read
+    }
+
+    /// The album reads of this session, so that the library's list and the player's queue are
+    /// the same songs with the same IDs. `forgetAlbums` clears them.
+    private static var albums: [String: (songs: [Song], album: ClasifyCore.Album?)] = [:]
+
+    /// Forgets one album read (nil: all), so that the next read asks MusicKit again.
+    static func forgetAlbums(_ albumID: String? = nil) {
+        if let albumID { albums[albumID] = nil } else { albums = [:] }
+    }
+
+    private static func readAlbum(_ albumID: String) async -> (songs: [Song], album: ClasifyCore.Album?)? {
+        let list: MusicKit.Playlist?
+        do { list = try await playlist(ClasifyCore.Playlist.likedSongsID) } catch { return nil }
+        guard let list else { return ([], nil) }  // no "Favorite Songs" yet: no albums
+        guard let favorites = await songs(of: list) else { return nil }
+        let byID = Dictionary(favorites.map { (AppleMusicID.song($0.id), $0) }, uniquingKeysWith: { first, _ in first })
+        let own = ClasifyCore.Album.songs(albumID, in: favorites.map { track($0) })
+        guard let first = own.first, let pick = byID[first.id] else { return ([], nil) }
+        let library = await librarySongs(ofAlbumOf: pick) ?? []
+        let catalog = await catalogSongs(ofAlbumOf: pick) ?? []
+        let whole = catalog.count > library.count ? catalog : library
+        guard whole.count > own.count else { return (own.compactMap { byID[$0.id] }, first.album) }
+        // A song of "Favorite Songs" stays its library copy, with the ID that the store knows
+        // from there, also inside a catalog album.
+        let mine = Dictionary(favorites.compactMap { song in catalogID(song).map { ($0, song) } }, uniquingKeysWith: { first, _ in first })
+        return (inOrder(whole).map { mine[$0.id.rawValue] ?? $0 }, first.album)
+    }
+
+    /// The songs of a song's library album.
+    private static func librarySongs(ofAlbumOf song: Song) async -> [Song]? {
+        guard let album = try? await song.with([.albums]).albums?.first else { return nil }
+        return await songs(of: album)
+    }
+
+    /// The songs of a library song's album in the catalog. nil for a song not in the catalog.
+    private static func catalogSongs(ofAlbumOf song: Song) async -> [Song]? {
+        guard let id = catalogID(song) else { return nil }
+        var request = MusicCatalogResourceRequest<Song>(matching: \.id, equalTo: MusicItemID(id))
+        request.properties = [.albums]
+        guard let album = try? await request.response().items.first?.albums?.first else { return nil }
+        return await songs(of: album)
+    }
+
+    /// Songs in disc and track order, as `Album.songs` sorts them. Songs with no number keep
+    /// their order, after the numbered ones of their disc.
+    private static func inOrder(_ songs: [Song]) -> [Song] {
+        let order = { (e: (offset: Int, element: Song)) in (e.element.discNumber ?? 1, e.element.trackNumber ?? Int.max, e.offset) }
+        return songs.enumerated().sorted { order($0) < order($1) }.map(\.element)
     }
 
     /// Store `Track`s from MusicKit songs, with covers that `ArtworkLoader` can load.
