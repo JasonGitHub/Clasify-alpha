@@ -26,11 +26,25 @@ final class AppleMusicLibrary: Library {
     }
 
     func tracks(of playlist: String) async -> [ClasifyCore.Track]? {
-        let read = trackReads[playlist] ?? Task { await Self.readTracks(playlist) }
-        trackReads[playlist] = read
-        let tracks = await read.value
-        if tracks == nil { trackReads[playlist] = nil }
+        let tracks = await read(Self.source(of: playlist)).map { songs in
+            ClasifyCore.Album.isID(playlist) ? ClasifyCore.Album.songs(playlist, in: songs) : songs
+        }
         if let tracks { onProgress?(playlist, tracks.count, tracks.count, Set(tracks.compactMap(\.album)).count) }
+        return tracks
+    }
+
+    /// The list that a store ID reads. An album (`applemusic:album:`) has no read of its own:
+    /// its songs come from "Favorite Songs", as the Albums screen and the player take them.
+    private static func source(of id: String) -> String {
+        ClasifyCore.Album.isID(id) ? ClasifyCore.Playlist.likedSongsID : id
+    }
+
+    /// One list's read, shared while it runs and kept after it ends. A failed read leaves.
+    private func read(_ id: String) async -> [ClasifyCore.Track]? {
+        let read = trackReads[id] ?? Task { await Self.readTracks(id) }
+        trackReads[id] = read
+        let tracks = await read.value
+        if tracks == nil { trackReads[id] = nil }
         return tracks
     }
 
@@ -40,7 +54,7 @@ final class AppleMusicLibrary: Library {
     }
 
     func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
-        trackReads[playlist] = nil
+        trackReads[Self.source(of: playlist)] = nil
         return await tracks(of: playlist)
     }
 
