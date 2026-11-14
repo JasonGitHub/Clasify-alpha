@@ -66,14 +66,17 @@ final class AppleMusicPlayer: Player {
             var tracks: [Song]?
             if let context { tracks = await AppleMusicReads.songs(for: context) }
             guard id == loadID else { return }
+            let list = tracks?.map { (id: AppleMusicID.song($0.id), keys: Self.keys($0)) } ?? []
+            let start = QueueMatch.start(of: trackID, keys: Self.keys(song), in: list)
             let kind = context.map { $0 == ClasifyCore.Playlist.likedSongsID ? "liked" : ClasifyCore.Album.isID($0) ? "album" : "playlist" } ?? "none"
             timing.notice("""
                 apple load (TEMP): context \(kind, privacy: .public), tracks \(tracks.map { "\($0.count)" } ?? "nil", privacy: .public), \
-                start found \(tracks?.contains { Self.same($0, song) } == true ? "yes" : "no", privacy: .public)
+                start found \(start.map { $0.byID ? "yes (row id)" : "yes (key)" } ?? "no", privacy: .public), \
+                song id same \(AppleMusicID.song(song.id) == trackID ? "yes" : "no", privacy: .public)
                 """)
-            if let tracks, let start = tracks.first(where: { Self.same($0, song) }) {
-                player.queue = ApplicationMusicPlayer.Queue(for: tracks, startingAt: start)
-                queued = QueueMatch(tracks.map { (id: AppleMusicID.song($0.id), keys: Self.keys($0)) })
+            if let tracks, let start {
+                player.queue = ApplicationMusicPlayer.Queue(for: tracks, startingAt: tracks[start.index])
+                queued = QueueMatch(list)
             } else {
                 player.queue = ApplicationMusicPlayer.Queue(for: [song])  // not in the list: plays alone
                 queued = QueueMatch([(id: trackID, keys: Self.keys(song))])
@@ -263,12 +266,6 @@ final class AppleMusicPlayer: Player {
             send(.trackChanged(track, playing: playing, generation: generation))
         }
         if playing { send(.position(player.playbackTime, generation: generation)) }
-    }
-
-    /// The same song, by its ID or by its catalog ID. A whole album can come from the catalog,
-    /// while the picked song is the library copy from "Favorite Songs", or the other way round.
-    private static func same(_ a: Song, _ b: Song) -> Bool {
-        a.id == b.id || AppleMusicReads.catalogID(a) == b.id.rawValue || AppleMusicReads.catalogID(b) == a.id.rawValue
     }
 
     /// The store ID of the song that a queue entry plays, or nil if it is not one that we queued.
