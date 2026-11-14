@@ -59,7 +59,8 @@ final class AppleMusicLibrary: Library {
     }
 
     func track(_ id: String) async -> ClasifyCore.Track? {
-        await AppleMusicReads.song(id).map(AppleMusicReads.track)
+        guard let song = await AppleMusicReads.song(id) else { return nil }
+        return await AppleMusicReads.tracks([song]).first
     }
 
     func prefetch() async {
@@ -115,7 +116,8 @@ final class AppleMusicLibrary: Library {
             guard let playlist = try await AppleMusicReads.playlist(id) else {
                 return id == ClasifyCore.Playlist.likedSongsID ? [] : nil  // no "Favorite Songs" yet: empty
             }
-            return await AppleMusicReads.songs(of: playlist)?.map(AppleMusicReads.track)
+            guard let songs = await AppleMusicReads.songs(of: playlist) else { return nil }
+            return await AppleMusicReads.tracks(songs)
         } catch {
             return nil
         }
