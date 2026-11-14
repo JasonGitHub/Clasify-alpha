@@ -127,7 +127,6 @@ final class AppleMusicLibrary: Library {
                 return id == ClasifyCore.Playlist.likedSongsID ? [] : nil  // no "Favorite Songs" yet: empty
             }
             guard let songs = await AppleMusicReads.songs(of: playlist) else { return nil }
-            if id == ClasifyCore.Playlist.likedSongsID { AppleMusicAlbumProbe.runOnce(songs) }  // TEMP (CLA-103)
             return await AppleMusicReads.tracks(songs)
         } catch {
             return nil
