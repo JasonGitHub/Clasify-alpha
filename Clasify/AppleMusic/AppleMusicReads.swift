@@ -148,6 +148,7 @@ enum AppleMusicReads {
 
     /// Store `Track`s from MusicKit songs, with covers that `ArtworkLoader` can load.
     static func tracks(_ songs: [Song]) async -> [ClasifyCore.Track] {
+        AppleMusicCoverProbe.runOnce(songs)  // TEMP (CLA-103): delete with AppleMusicCoverProbe.swift
         // Own cover first, then the catalog reads, then the API library list (macOS 27).
         var covers = await catalogCovers(songs)
         let missing = songs.filter { cover($0.artwork) == nil && covers[$0.id] == nil }
