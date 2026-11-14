@@ -151,6 +151,7 @@ struct ClickWheel: View {
             if look == .bl {
                 Circle()
                     .fill(BL.wheel(black: black))
+                    .overlay { Circle().fill(BL.wheelShade(black: black, radius: Self.size / 2)) }
                     .overlay { Circle().strokeBorder(Color.black.opacity(BL.wheelInnerRing(black: black)), lineWidth: 1) }
                     .background { Circle().fill(Color.black.opacity(BL.wheelRing(black: black))).padding(-0.5) }
                     .frame(width: Self.size, height: Self.size)
@@ -189,7 +190,7 @@ struct ClickWheel: View {
                 GlowingLabel(from: glow.from, label: label())
             } else {
                 label()
-                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (black ? 0xf4f4f5 : 0x8c939b)))
+                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (look == .bl ? BL.label(black: black) : black ? 0xf4f4f5 : 0x8c939b)))
             }
         }
         .frame(width: rect.width, height: rect.height)
@@ -204,6 +205,7 @@ struct ClickWheel: View {
     private var blCenter: some View {
         Circle()
             .fill(LinearGradient(stops: BL.center(black: black, down: pressed == .center), startPoint: .top, endPoint: .bottom))
+            .overlay { Circle().fill(BL.centerShade(black: black, radius: Self.centerRadius)) }
             .overlay {
                 TopCrescent().fill(Color.black.opacity(BL.centerTopLine(black: black)), style: FillStyle(eoFill: true))
                     .clipShape(Circle())
