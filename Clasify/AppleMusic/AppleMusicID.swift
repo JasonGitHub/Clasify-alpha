@@ -19,14 +19,4 @@ enum AppleMusicID {
         guard id.hasPrefix(prefix), id.count > prefix.count else { return nil }
         return MusicItemID(String(id.dropFirst(prefix.count)))
     }
-
-    /// The store ID of a queue entry's song or music video. nil while MusicKit has not
-    /// resolved the entry's item yet.
-    static func of(_ entry: ApplicationMusicPlayer.Queue.Entry) -> String? {
-        switch entry.item {
-        case .song(let item): Self.song(item.id)
-        case .musicVideo(let item): songPrefix + item.id.rawValue
-        default: nil
-        }
-    }
 }
