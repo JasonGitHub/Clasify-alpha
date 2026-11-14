@@ -155,6 +155,20 @@ import Testing
         #expect(worst > Self.limit, "\(name): a fade per layer moves the device by only \(worst)")
     }
 
+    /// Metal calls the first frame's presented handler on its own queue. Build 168 crashed
+    /// there: the handler was main-actor code, and Swift stops the app when such code runs off
+    /// the main queue. Called from another queue, the handler must not stop the app, and the
+    /// view still learns of its first frame on the main actor.
+    @Test func theFirstFrameHandlerRunsOffTheMainQueue() async {
+        let view = K3DLayerView()
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            view.firstFrame = { done.resume() }
+            let handler: @Sendable (Int) -> Void = K3DRenderer.presentedHandler(for: view)
+            DispatchQueue.global().async { handler(0) }
+        }
+        #expect(view.firstFrame == nil)
+    }
+
     /// Until the Metal view has shown its first frame, the 2D device stays opaque, so nothing
     /// shows through it (build 167 showed the desktop for 2 frames at each click). Here the 3D
     /// body is plain red: any of it in the picture means the device was see-through.

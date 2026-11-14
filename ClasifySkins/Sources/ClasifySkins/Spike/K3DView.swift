@@ -330,11 +330,21 @@ final class K3DLayerView: MTKView {
         encode(encoder, pose: view.pose, size: view.bounds.size, center: view.deviceCenter)
         if view.firstFrame != nil {
             // Before the commit, so the handler cannot miss the presentation.
-            drawable.addPresentedHandler { [weak view] _ in Task { @MainActor in view?.firstFrameShown() } }
+            drawable.addPresentedHandler(Self.presentedHandler(for: view))
         }
         buffer.present(drawable)
         buffer.commit()
         return true
+    }
+
+    /// The handler for the first frame's presentation. Metal calls it on its own queue
+    /// (com.Metal.CompletionQueueDispatch), never on the main thread. A closure written inside
+    /// `draw(in:)` is main-actor code in Swift 6, and the runtime stops the app when it runs off
+    /// the main queue (build 168 crashed this way 0.3 s after launch). Made here, outside the
+    /// main actor, the closure is @Sendable and nonisolated: it only starts a main-actor task.
+    /// The view is a main-actor class, so it is Sendable and may be captured.
+    nonisolated static func presentedHandler<Drawable>(for view: K3DLayerView) -> @Sendable (Drawable) -> Void {
+        { [weak view] _ in Task { @MainActor in view?.firstFrameShown() } }
     }
 
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
