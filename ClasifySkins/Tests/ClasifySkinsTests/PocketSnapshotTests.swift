@@ -673,7 +673,8 @@ import Testing
         s.playlistsLoaded = true
         #expect(s.rows(for: s.top).first == .playlist(Playlist.likedSongsID))
         let playlists = try render(s, "apple-playlists")
-        #expect(playlists.isBlue(125, Self.rowCenter(0)))
+        let probe = (0...3).map { row in [60, 125, 250].map { playlists.rgb($0, Self.rowCenter(row)) } }
+        #expect(playlists.isBlue(125, Self.rowCenter(0)), "rows 0-3 at x 60, 125, 250: \(probe)")
 
         s.artists = ["2Pac", "Low Orbit", "The Lowlights"].enumerated().map {
             Playlist(id: "applemusic:artist:\($0.offset)", name: $0.element, tracks: [])
