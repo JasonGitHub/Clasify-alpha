@@ -21,6 +21,8 @@ public struct PocketSkin: View {
     @Environment(\.pocketPreview) private var preview
     /// SPIKE (CLA-101): BL only with the hidden switch.
     @Environment(\.pocketLook) private var look
+    /// SPIKE (CLA-101): off while the 3D flip draws this shadow itself.
+    @Environment(\.pocketDropShadow) private var dropShadow
 
     public init(state: AppState, send: @escaping @MainActor (Action) -> Void) {
         self.state = state
@@ -49,7 +51,7 @@ public struct PocketSkin: View {
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
             // A new color crossfades in 0.45 s (card AW, changes 150 and 203).
-            Bodies(black: fade ?? (state.shownColor == .black ? 1 : 0), preview: preview, look: look)
+            Bodies(black: fade ?? (state.shownColor == .black ? 1 : 0), shadow: !preview && dropShadow, look: look)
                 .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
         }
         // Keys come through a window-level monitor, not SwiftUI focus (CLA-79).
@@ -228,7 +230,8 @@ public struct PocketSkin: View {
 private struct Bodies: View, Animatable {
     /// 0 is Silver, 1 is Black.
     var black: Double
-    let preview: Bool
+    /// The drop shadow shows: not on a setup screen's small device, nor while the 3D flip draws it.
+    let shadow: Bool
     var look = PocketLook.bh
 
     // `Animatable` is nonisolated while `View` is on the main actor. `black` is a plain Double
@@ -240,7 +243,7 @@ private struct Bodies: View, Animatable {
 
     var body: some View {
         ZStack {
-            if !preview {
+            if shadow {
                 // The shadow comes from a hidden copy of the body that starts lower, so it does not
                 // reach above the device into the window's small top margin (CLA-94). The opaque
                 // body above always covers it.
