@@ -118,7 +118,8 @@ enum AppleMusicReads {
     // MARK: Artists and Songs (card BN)
 
     /// The library's artists (`MusicLibraryRequest<Artist>`, as the Music app's Library >
-    /// Artists shows them), with every batch read. nil when the read fails.
+    /// Artists shows them), with every batch read, that have a song in the library albums.
+    /// nil when a read fails.
     static func artists() async -> [ClasifyCore.Playlist]? {
         let start = ContinuousClock.now
         guard var batch = try? await MusicLibraryRequest<MusicKit.Artist>().response().items else { return nil }
@@ -128,13 +129,20 @@ enum AppleMusicReads {
             all += next
             batch = next
         }
-        let list = all.map { ClasifyCore.Playlist(id: AppleMusicID.artistPrefix + $0.id.rawValue, name: $0.name, tracks: []) }
+        // Only artists with a song in the library albums, so that no artist opens on "No songs":
+        // the request can give many more artists than those albums hold (CTO, 11-14).
+        guard let albums = await libraryAlbums() else { return nil }
+        var names = Set(albums.compactMap { $0.album.artist })
+        for entry in albums { for song in entry.songs { names.insert(song.artistName) } }
+        let list = all.filter { names.contains($0.name) }.map {
+            ClasifyCore.Playlist(id: AppleMusicID.artistPrefix + $0.id.rawValue, name: $0.name, tracks: [])
+        }
         artistNames = Dictionary(list.map { ($0.id, $0.name) }) { first, _ in first }
-        let songs = await libraryAlbums()?.reduce(0) { $0 + $1.songs.count }
         let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
         timing.notice("""
-            apple artists (TEMP): artists \(list.count, privacy: .public), \
-            library songs \(songs.map { "\($0)" } ?? "none", privacy: .public), ms \(ms, privacy: .public)
+            apple artists (TEMP): artists from the request \(all.count, privacy: .public), \
+            artists shown \(list.count, privacy: .public), \
+            songs \(albums.reduce(0) { $0 + $1.songs.count }, privacy: .public), ms \(ms, privacy: .public)
             """)
         return list
     }
