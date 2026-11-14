@@ -10,6 +10,8 @@ public enum Action: Equatable, Sendable {
     case playlistsLoaded(token: Int, playlists: [Playlist]?)
     /// The tracks of one playlist (or Liked Songs) were read. nil when the read failed.
     case tracksLoaded(token: Int, playlist: String, tracks: [Track]?)
+    /// The library's artists were read (card BN). nil when the read failed.
+    case artistsLoaded(token: Int, artists: [Playlist]?)
     /// A background re-read that `.refreshPlaylists` or `.refreshTracks` asked for. nil when it
     /// failed: the old rows stay.
     case playlistsRefreshed([Playlist]?)
@@ -92,6 +94,8 @@ public enum Effect: Equatable, Sendable {
     case fetchPlaylists(token: Int)
     /// Read one playlist's tracks; the result comes back as `.tracksLoaded` with this token.
     case fetchTracks(token: Int, playlist: String)
+    /// Read the library's artists; the result comes back as `.artistsLoaded` with this token.
+    case fetchArtists(token: Int)
     /// Read the playlist list or one playlist's tracks again, past the library's cache, while the
     /// screen shows the old rows. The result comes back as `.playlistsRefreshed` or `.tracksRefreshed`.
     case refreshPlaylists
@@ -192,6 +196,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func fetch(_ screen: Screen) {
         let key = s.readKey(screen)  // Albums and Cover Flow read `albumsList`, an album itself
         if screen == .yourMusic { s.readDone = 0; s.readTotal = 0; s.readAlbums = 0; s.namesHold = 0; s.firstReadSongs = nil; s.firstReadSongsAt = 0 }  // each first read, or retry, counts from 0
+        if screen == .artists { return fx.append(.fetchArtists(token: s.tok)) }
         fx.append(key.isEmpty ? .fetchPlaylists(token: s.tok) : .fetchTracks(token: s.tok, playlist: key))
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
@@ -211,7 +216,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if s.top.screen == .coverFlow && !s.top.error { placeCoverFlow() }
         if s.shuffleToken == token && !s.top.error {
             s.shuffleToken = nil
-            if s.pendingPlay { startLiked() } else { shuffleLiked() }
+            if s.pendingPlay { startLiked() } else { shuffle(s.shuffleList) }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
@@ -238,7 +243,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// Only a screen opening, `.activated` and `.libraryStale` call this, so a wheel turn never starts a read.
     func refreshIfStale(_ screen: Screen, after limit: Double = staleAfter) {
         let key = s.readKey(screen)
-        guard !s.offline, now - (s.readAt[key] ?? 0) >= limit, !s.refreshing.contains(key) else { return }
+        // The artists are read once a session (card BN).
+        guard screen != .artists, !s.offline, now - (s.readAt[key] ?? 0) >= limit, !s.refreshing.contains(key) else { return }
         s.refreshing.insert(key)
         fx.append(key.isEmpty ? .refreshPlaylists : .refreshTracks(playlist: key))
     }
@@ -383,7 +389,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func signOut() {
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false; s.sessionEnded = false  // the library belongs to that account
-        s.library = []; s.playlistsLoaded = false; s.loadedTracks = []
+        s.library = []; s.playlistsLoaded = false; s.loadedTracks = []; s.artists = []; s.artistsLoaded = false
         s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
@@ -401,11 +407,12 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.authAttempt += 1; s.restoring = true
         fx.append(.restoreSession(token: s.authAttempt))
     }
-    func shuffleLiked() {
-        let liked = s.tracks(in: Playlist.likedSongsID)
-        guard !liked.isEmpty else { return }
+    /// Plays the list in shuffle, from a random song.
+    func shuffle(_ list: String) {
+        let songs = s.tracks(in: list)
+        guard !songs.isEmpty else { return }
         s.shuffle = true  // before play, so the engine gets shuffle on with the load
-        play(Playlist.likedSongsID, liked[env.random(liked.count)].id)
+        play(list, songs[env.random(songs.count)].id)
     }
     func playLikedInOrder() {
         guard let first = s.tracks(in: Playlist.likedSongsID).first else { return }  // no songs: nothing to do
@@ -413,7 +420,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     /// Liked Songs as the Shuffle setting says now: a random start in shuffle, or the first song.
     func startLiked() {
-        if s.shuffle { shuffleLiked() } else { playLikedInOrder() }
+        if s.shuffle { shuffle(Playlist.likedSongsID) } else { playLikedInOrder() }
     }
     /// Play with nothing to resume (CLA-61): Liked Songs, as the Shuffle setting says. Shuffle
     /// on starts at a random song, as Shuffle Songs does. Liked Songs that is not read yet
@@ -613,16 +620,19 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 open(.coverFlow)
                 if !s.top.loading { placeCoverFlow() }
             case .playlists: open(.playlists)
+            case .artists: open(.artists)
+            case .songs: open(.tracks(playlist: Playlist.songsID))
+            case .artist(let id): open(.tracks(playlist: id))
             case .albums: open(.albums)
             case .album(let id): open(.tracks(playlist: id))
             case .likedSongs: open(.tracks(playlist: Playlist.likedSongsID))
             case .shuffleSongs:
                 if s.offline { return toast(offlineStart) }
                 s.pendingPlay = false
-                if s.loadedTracks.contains(Playlist.likedSongsID) {
-                    shuffleLiked()
+                if s.loadedTracks.contains(s.shuffleList) {
+                    shuffle(s.shuffleList)
                 } else {  // not read yet: load, then shuffle
-                    open(.tracks(playlist: Playlist.likedSongsID)); s.shuffleToken = s.tok
+                    open(.tracks(playlist: s.shuffleList)); s.shuffleToken = s.tok
                 }
             case .settings: s.stack.append(Frame(screen: .settings)); s.pendingService = nil
             case .playlist(let id): open(.tracks(playlist: id))
@@ -801,6 +811,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             }
             s.beforeLoad = nil; s.loadPending = false
             if s.top.screen != .spotifyApp { toast(msg) }
+
+        case .artistsLoaded(let token, let artists):
+            guard s.top.loading, s.top.token == token else { return }  // stale load
+            if let artists {
+                s.artists = artists.sorted { Playlist.nameOrder($0.name, $1.name) }
+                s.artistsLoaded = true
+            }
+            finishLoad(token, ok: artists != nil)
 
         case .playlistsLoaded(let token, let playlists):
             guard s.top.loading, s.top.token == token else { return }  // stale load

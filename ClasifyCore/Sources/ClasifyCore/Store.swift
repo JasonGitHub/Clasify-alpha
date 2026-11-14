@@ -66,10 +66,14 @@ public protocol Library: AnyObject {
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? { get set }
     /// The words that name this service's library on screen, such as "Liked Songs".
     var words: LibraryWords { get }
+    /// The library's artists, as lists with no tracks: their IDs (`Playlist.isArtistID`) and
+    /// names (card BN). `tracks(of:)` reads an artist's songs. nil when the read fails.
+    func artists() async -> [Playlist]?
 }
 
 extension Library {
     public var words: LibraryWords { .spotify }
+    public func artists() async -> [Playlist]? { [] }
 }
 
 /// The words that name a service's library on screen. The `Library` gives them, so the
@@ -90,15 +94,20 @@ public struct LibraryWords: Equatable, Sendable {
     /// The setup count's noun for `albumsList`'s songs, one and many: "liked song(s)" on
     /// Spotify, "song(s)" on Apple Music, which counts the songs of the library's albums.
     public var oneSong: String, manySongs: String
+    /// The main menu has Artists and Songs, and Playlists starts with the liked list, as on an
+    /// iPod (card BN). Apple Music turns it on once its reads are in.
+    public var libraryRows: Bool
 
     public init(
         likedSongs: String, service: String, like: String,
         needPlan: String, needPlanLine: String, getPlan: String, noPlan: String,
-        albumsList: String = Playlist.likedSongsID, oneSong: String = "liked song", manySongs: String = "liked songs"
+        albumsList: String = Playlist.likedSongsID, oneSong: String = "liked song", manySongs: String = "liked songs",
+        libraryRows: Bool = false
     ) {
         self.likedSongs = likedSongs; self.service = service; self.like = like
         self.needPlan = needPlan; self.needPlanLine = needPlanLine; self.getPlan = getPlan; self.noPlan = noPlan
         self.albumsList = albumsList; self.oneSong = oneSong; self.manySongs = manySongs
+        self.libraryRows = libraryRows
     }
 
     public static let spotify = LibraryWords(
@@ -186,6 +195,13 @@ public final class Store {
                     let result = await library.playlists()
                     self?.fetches[token] = nil
                     self?.send(.playlistsLoaded(token: token, playlists: result))
+                }
+            case .fetchArtists(let token):
+                let library = self.library
+                fetches[token] = Task { [weak self] in
+                    let result = await library.artists()
+                    self?.fetches[token] = nil
+                    self?.send(.artistsLoaded(token: token, artists: result))
                 }
             case .fetchTracks(let token, let id):
                 let library = self.library

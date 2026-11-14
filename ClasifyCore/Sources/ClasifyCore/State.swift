@@ -94,9 +94,22 @@ public struct Playlist: Equatable, Sendable {
     /// Albums and Cover Flow show the library's own albums, as the Music app's Library does). It is never a Playlists row, a play context or a playlist count.
     public static let libraryID = "library:all"
 
-    /// The list is not a playlist: Liked Songs, the whole library or an album.
+    /// All songs of the library, for the Songs row (Apple Music only, card BN), in title order
+    /// (`Track.titleOrder`). It is never a Playlists row or a playlist count.
+    public static let songsID = "library:songs"
+    /// An artist's songs, for a row of the Artists screen (card BN): its ID from the `Library`.
+    public static func isArtistID(_ id: String) -> Bool { id.hasPrefix("applemusic:artist:") || id.hasPrefix("spotify:artist:") }
+
+    /// The list is not a playlist: Liked Songs, the whole library, all songs, an artist or an album.
     public static func isHidden(_ id: String) -> Bool {
-        id == likedSongsID || id == libraryID || Album.isID(id)
+        id == likedSongsID || id == libraryID || id == songsID || isArtistID(id) || Album.isID(id)
+    }
+
+    /// Names in list order (card BN): numbers and symbols first, then A to Z, with no regard to
+    /// case or accents, and a leading "The " left out, so "The Lowlights" sorts under L.
+    public static func nameOrder(_ a: String, _ b: String) -> Bool { Album.SortKey(dropThe(a)) < Album.SortKey(dropThe(b)) }
+    static func dropThe(_ name: String) -> String {
+        name.lowercased().hasPrefix("the ") && name.count > 4 ? String(name.dropFirst(4)) : name
     }
 
     public init(id: String, name: String, tracks: [Track], trackCount: Int? = nil) {
@@ -128,12 +141,14 @@ public enum Screen: Equatable, Sendable {
     /// About's Licenses list, and the text of license `License.all[i]` with the names of the
     /// parts under it (card BF, change 213).
     case licenses, license(Int)
+    /// The library's artists (Apple Music, card BN). An artist's songs show on `tracks`.
+    case artists
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -176,6 +191,8 @@ public struct Frame: Equatable, Sendable {
 public enum Row: Equatable, Sendable {
     case logIn, nowPlaying, coverFlow, playlists, albums, likedSongs, shuffleSongs, settings
     case playlist(String), album(String), track(String)
+    /// Card BN (Apple Music): the main menu's Artists and Songs, and one artist by its ID.
+    case artists, songs, artist(String)
     case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, about, logOut
     /// Card BM, change 256: the active music service, first in Settings.
     case service
@@ -399,6 +416,9 @@ public struct AppState: Equatable, Sendable {
     public var words = LibraryWords.spotify
     /// The list that Albums and Cover Flow group into albums, from the `Library`.
     public var albumsList: String { words.albumsList }
+    /// The list Shuffle Songs plays. With the library rows (Apple Music), all library songs,
+    /// the same as the Songs list, as on an iPod (change 278). Else the liked list.
+    public var shuffleList: String { words.libraryRows ? Playlist.songsID : Playlist.likedSongsID }
     /// The liked list's name on the active service.
     public var likedSongsName: String {
         get { words.likedSongs }
@@ -419,6 +439,10 @@ public struct AppState: Equatable, Sendable {
     public var artSeed = 0
     /// The playlist list was read in this session.
     public var playlistsLoaded = false
+    /// The library's artists in `Playlist.nameOrder`, with no tracks (card BN), and whether
+    /// they were read in this session.
+    public var artists: [Playlist] = []
+    public var artistsLoaded = false
     /// The playlists (and `Playlist.likedSongsID`) whose tracks were read in this session.
     public var loadedTracks: Set<String> = []
     public var current: TrackRef?
@@ -716,6 +740,7 @@ public struct AppState: Equatable, Sendable {
     public func isLoaded(_ screen: Screen) -> Bool {
         switch screen {
         case .playlists: playlistsLoaded
+        case .artists: artistsLoaded
         case .tracks(let id), .albumPanel(let id): loadedTracks.contains(id)
         case .albums, .coverFlow, .yourMusic: loadedTracks.contains(albumsList)
         default: true
@@ -773,6 +798,15 @@ public struct AppState: Equatable, Sendable {
         return keyed.sorted { ($0.key, $0.album.id) < ($1.key, $1.album.id) }.map(\.album)
     }
 
+    /// The name of a song list for its title bar and its row: a playlist, the liked list,
+    /// "Songs" (card BN) or an artist. Nil for an unknown ID.
+    public func listName(_ id: String) -> String? {
+        if id == Playlist.likedSongsID { return likedSongsName }
+        if id == Playlist.songsID { return "Songs" }
+        if Playlist.isArtistID(id) { return artists.first { $0.id == id }?.name }
+        return library.first { $0.id == id }?.name
+    }
+
     /// The track in its playlist, else in `extraTracks`.
     public func track(_ ref: TrackRef) -> Track? {
         tracks(in: ref.playlist).first { $0.id == ref.track } ?? extraTracks.first { $0.id == ref.track }
@@ -782,8 +816,14 @@ public struct AppState: Equatable, Sendable {
         switch frame.screen {
         case .login: restoring ? [] : [.logIn]
         case .main:
-            (current == nil ? [] : [.nowPlaying]) + [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings]
-        case .playlists: library.filter { !Playlist.isHidden($0.id) }.map { .playlist($0.id) }
+            (current == nil ? [] : [.nowPlaying])
+                + (words.libraryRows
+                    ? [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .settings]  // card BN
+                    : [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings])
+        case .playlists:
+            (words.libraryRows ? [.playlist(Playlist.likedSongsID)] : [])  // card BN: Favorite Songs first
+                + library.filter { !Playlist.isHidden($0.id) }.map { .playlist($0.id) }
+        case .artists: artists.map { .artist($0.id) }
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
@@ -854,4 +894,31 @@ public enum Hint: String, CaseIterable, Sendable {
     case tourPlay = "tour.play", tourNext = "tour.next", tourMenu = "tour.menu"
 
     public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu }
+}
+
+extension Track {
+    /// The Songs list's order (card BN): by title in `Playlist.nameOrder`; equal titles keep
+    /// their order. The `Library` gives `Playlist.songsID` in this order, so the list and the
+    /// player's queue match.
+    public static func titleOrder(_ tracks: [Track]) -> [Track] {
+        tracks.enumerated().sorted { a, b in
+            let (x, y) = (a.element.title, b.element.title)
+            if Playlist.nameOrder(x, y) { return true }
+            if Playlist.nameOrder(y, x) { return false }
+            return a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// One artist's songs (card BN): by album name in `Playlist.nameOrder`, then disc, then
+    /// track number; songs with no number keep their order after the numbered ones.
+    public static func artistOrder(_ tracks: [Track]) -> [Track] {
+        tracks.enumerated().sorted { a, b in
+            let (x, y) = (a.element.album?.name ?? "", b.element.album?.name ?? "")
+            if Playlist.nameOrder(x, y) { return true }
+            if Playlist.nameOrder(y, x) { return false }
+            let ka = (a.element.disc ?? 1, a.element.number ?? Int.max, a.offset)
+            let kb = (b.element.disc ?? 1, b.element.number ?? Int.max, b.offset)
+            return ka < kb
+        }.map(\.element)
+    }
 }

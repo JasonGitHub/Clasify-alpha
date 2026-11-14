@@ -27,7 +27,8 @@ enum Labels {
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
         case .tracks(let id) where Album.isID(id): state.album(id)?.name ?? ""
-        case .tracks(let id): state.library.first { $0.id == id }?.name ?? (id == Playlist.likedSongsID ? state.likedSongsName : "")
+        case .tracks(let id): state.listName(id) ?? ""
+        case .artists: "Artists"
         case .settings: "Settings"
         case .confirm: "Log out?"
         case .about: "About"
@@ -65,7 +66,11 @@ enum Labels {
         case .shuffleSongs: return RowText(label: "Shuffle Songs")
         case .settings: return RowText(label: "Settings", opens: true)
         case .playlist(let id):
-            return RowText(label: state.library.first { $0.id == id }?.name ?? "", opens: true)
+            return RowText(label: state.listName(id) ?? "", opens: true)
+        // Card BN: the main menu's Artists and Songs, and one line per artist.
+        case .artists: return RowText(label: "Artists", opens: true)
+        case .songs: return RowText(label: "Songs", opens: true)
+        case .artist(let id): return RowText(label: state.listName(id) ?? "", opens: true)
         case .album(let id):
             // Two lines, like a song row: the album, then its artist.
             let album = state.album(id)
@@ -126,8 +131,12 @@ enum Labels {
             return Message(title: "No songs", body: "\(words.service) has no songs for this album. Press MENU to go back.")
         case .albumPanel where state.rows(for: frame).isEmpty:
             return Message(title: "No songs", body: "\(words.service) has no songs for this album. Press MENU to go back.")
+        case .tracks(let id) where (id == Playlist.songsID || Playlist.isArtistID(id)) && state.rows(for: frame).isEmpty:
+            return Message(title: "No songs", body: "Add songs to your library in \(words.service). Press MENU to go back.")
         case .tracks where state.rows(for: frame).isEmpty:
             return Message(title: "No songs", body: "Add songs to this playlist in \(words.service). Press MENU to go back.")
+        case .artists where state.rows(for: frame).isEmpty:
+            return Message(title: "No artists", body: "Add songs to your library in \(words.service). Press MENU to go back.")
         case .albums where state.rows(for: frame).isEmpty, .coverFlow where state.rows(for: frame).isEmpty:
             return Message(title: "No albums", body: "\(words.like) songs in \(words.service) to see their albums. Press MENU to go back.")
         case .now where state.current == nil:
