@@ -657,6 +657,40 @@ import Testing
         }
     }
 
+    /// Card BN: Apple Music's main menu (7 rows), Playlists with Favorite Songs first, and
+    /// Artists: one-line rows with no big letter.
+    @Test func appleMusicLibraryScreens() throws {
+        // A row is selected when most of the pane's width is blue: the white words cover only part of it.
+        func selected(_ shot: Snapshot, _ row: Int) -> Bool {
+            (Self.screenLeft + 3...Self.screenLeft + 147).filter { shot.isBlue($0, Self.rowCenter(row)) }.count > 60
+        }
+        var s = sampleState()
+        s.service = .appleMusic; s.words = .appleMusic
+        #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .settings])
+        s.top.sel = 2
+        let main = try render(s, "apple-main")
+        #expect(selected(main, 2) && !selected(main, 1))
+        #expect(main.isLight(125, Self.rowCenter(7)))  // no 8th row (the pane is 150 points wide)
+
+        s.stack = [Frame(screen: .main), Frame(screen: .playlists)]
+        s.stack[0].sel = 1
+        s.playlistsLoaded = true
+        #expect(s.rows(for: s.top).first == .playlist(Playlist.likedSongsID))
+        let playlists = try render(s, "apple-playlists")
+        #expect(selected(playlists, 0) && !selected(playlists, 1))
+
+        s.artists = ["2Pac", "Low Orbit", "The Lowlights"].enumerated().map {
+            Playlist(id: "applemusic:artist:\($0.offset)", name: $0.element, tracks: [])
+        }
+        s.artistsLoaded = true
+        s.stack = [Frame(screen: .main), Frame(screen: .artists)]
+        s.stack[0].sel = 2; s.top.sel = 1
+        let artists = try render(s, "apple-artists")
+        // One-line rows of 22.9 points, like the main menu: the 2nd row is selected, the 4th is empty.
+        #expect(selected(artists, 1) && !selected(artists, 0))
+        #expect(artists.isLight(125, Self.rowCenter(3)))
+    }
+
     @Test func settings() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
