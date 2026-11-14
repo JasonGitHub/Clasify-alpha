@@ -26,17 +26,9 @@ final class AppleMusicLibrary: Library {
     }
 
     func tracks(of playlist: String) async -> [ClasifyCore.Track]? {
-        let tracks = await read(Self.source(of: playlist)).map { songs in
-            ClasifyCore.Album.isID(playlist) ? ClasifyCore.Album.songs(playlist, in: songs) : songs
-        }
+        let tracks = await read(playlist)
         if let tracks { onProgress?(playlist, tracks.count, tracks.count, Set(tracks.compactMap(\.album)).count) }
         return tracks
-    }
-
-    /// The list that a store ID reads. An album (`applemusic:album:`) has no read of its own:
-    /// its songs come from "Favorite Songs", as the Albums screen and the player take them.
-    private static func source(of id: String) -> String {
-        ClasifyCore.Album.isID(id) ? ClasifyCore.Playlist.likedSongsID : id
     }
 
     /// One list's read, shared while it runs and kept after it ends. A failed read leaves.
@@ -54,7 +46,7 @@ final class AppleMusicLibrary: Library {
     }
 
     func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
-        trackReads[Self.source(of: playlist)] = nil
+        trackReads[playlist] = nil
         return await tracks(of: playlist)
     }
 
@@ -109,9 +101,19 @@ final class AppleMusicLibrary: Library {
         }
     }
 
-    /// The songs of one playlist, or of "Favorite Songs" for `Playlist.likedSongsID`. Music
-    /// videos are left out, as the player leaves them out.
+    /// The songs of one playlist, of "Favorite Songs" for `Playlist.likedSongsID`, or of an
+    /// album (`applemusic:album:`). Music videos are left out, as the player leaves them out.
     private static func readTracks(_ id: String) async -> [ClasifyCore.Track]? {
+        if ClasifyCore.Album.isID(id) {
+            guard let read = await AppleMusicReads.album(id) else { return nil }
+            // Every song carries the Albums screen's album, so that `Album.songs` and the
+            // reducer find it, even a song whose own title or artist differs.
+            return await AppleMusicReads.tracks(read.songs).map { track in
+                var track = track
+                track.album = read.album ?? track.album
+                return track
+            }
+        }
         do {
             guard let playlist = try await AppleMusicReads.playlist(id) else {
                 return id == ClasifyCore.Playlist.likedSongsID ? [] : nil  // no "Favorite Songs" yet: empty
