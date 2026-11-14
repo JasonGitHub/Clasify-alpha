@@ -17,7 +17,7 @@ enum AppleMusicOffer {
     /// Made once and kept: a forum report says the sheet can crash when its options change
     /// while it shows.
     static func makeOptions() -> MusicSubscriptionOffer.Options {
-        var options = MusicSubscriptionOffer.Options()
+        var options = MusicSubscriptionOffer.Options.default
         options.affiliateToken = affiliateToken
         options.campaignToken = campaignToken
         return options
