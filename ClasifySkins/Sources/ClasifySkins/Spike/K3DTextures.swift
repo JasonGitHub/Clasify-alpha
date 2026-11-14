@@ -11,6 +11,8 @@ import ImageIO
 /// as they are in the PNG: no premultiplied alpha and no color conversion.
 enum K3DTextures {
     static let width = 732, height = 1226
+    /// The LCD (id 251) in the front texture, in px: 600 x 450 from (66, 65).
+    static let lcd = (x: 66..<666, y: 65..<515)
 
     enum Name: String { case front = "k3d-front", back = "k3d-back", steel = "k3d-steel" }
 
@@ -48,8 +50,14 @@ enum K3DTextures {
     static func front(screen: CGImage?, base: [UInt8]? = nil) -> [UInt8]? {
         guard var front = base ?? rgba(.front) else { return nil }
         guard let screen, let live = draw(screen) else { return front }
-        for i in stride(from: 0, to: front.count, by: 4) where front[i + 3] == 251 {
-            front[i] = live[i]; front[i + 1] = live[i + 1]; front[i + 2] = live[i + 2]
+        // Every id 251 pixel is in this rect: only its 270,000 pixels are looked at, not the
+        // texture's 897,432 (build 194 stuttered at the turn's start).
+        for y in lcd.y {
+            for x in lcd.x {
+                let i = (y * width + x) * 4
+                guard front[i + 3] == 251 else { continue }
+                front[i] = live[i]; front[i + 1] = live[i + 1]; front[i + 2] = live[i + 2]
+            }
         }
         return front
     }

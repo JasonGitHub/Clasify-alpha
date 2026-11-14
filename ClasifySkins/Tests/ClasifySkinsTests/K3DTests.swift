@@ -1,6 +1,7 @@
 import ClasifyCore
 import Foundation
 import Metal
+import SwiftUI
 import Testing
 
 @testable import ClasifySkins
@@ -39,6 +40,55 @@ import Testing
         let live = try #require(K3DTextures.front(screen: shot))
         #expect(stride(from: 3, to: plain.count, by: 4).allSatisfy { plain[$0] == live[$0] })
         #expect(pixel(live, 100, 1100) == pixel(plain, 100, 1100))  // the aluminium does not change
+    }
+
+    /// Every LCD pixel (id 251) is in `K3DTextures.lcd`, the only rect a live screen looks at.
+    @Test func theLCDIsInItsRect() throws {
+        let plain = try #require(K3DTextures.rgba(.front))
+        var count = 0
+        for i in stride(from: 3, to: plain.count, by: 4) where plain[i] == 251 {
+            let p = i / 4, x = p % K3DTextures.width, y = p / K3DTextures.width
+            #expect(K3DTextures.lcd.x.contains(x) && K3DTextures.lcd.y.contains(y), "\(x), \(y)")
+            count += 1
+        }
+        #expect(count == 600 * 450)
+    }
+
+    /// A turn to the back makes its screen picture first and starts its clock after: the
+    /// snapshot's time does not come out of the turn (build 194 jumped at the turn's start).
+    /// A turn to the front makes no picture.
+    @Test func theTurnStartsAfterTheSnapshot() throws {
+        var flip = K3DFlip()
+        let shot = try #require(K3DSpike.snapshot(AppState()))
+        var made = Date.distantFuture
+        flip.turn {
+            Thread.sleep(forTimeInterval: 0.05)
+            made = .now
+            return shot
+        }
+        #expect(flip.toBack)
+        #expect(flip.start >= made)
+        #expect(flip.screen === shot)
+        var asked = false
+        flip.turn { asked = true; return nil }
+        #expect(!flip.toBack)
+        #expect(!asked)
+    }
+
+    /// The ground fades in as the 2D device, with its own shadow, fades out. Where the two
+    /// shadows overlap mid-fade, they are never darker than the darker of the two alone: no dip
+    /// (build 194). Black's 2D shadow is 45%, Silver's 30%, the ground 22%.
+    @Test func theTwoShadowsNeverAddUp() {
+        #expect(K3DFlipView<EmptyView>.groundOpacity(shown: 1) == 0)
+        #expect(K3DFlipView<EmptyView>.groundOpacity(shown: 0) == 1)
+        for flat in [0.45, 0.30] {
+            for step in 0...100 {
+                let shown = Double(step) / 100
+                let ground = 0.22 * K3DFlipView<EmptyView>.groundOpacity(shown: shown)
+                let both = 1 - (1 - flat * shown) * (1 - ground)
+                #expect(both <= max(flat, 0.22) + 1e-9, "\(flat) at \(shown): \(both)")
+            }
+        }
     }
 
     /// The back shows the app's version in place of the art's "1.0 · Build 161". Only the spec
