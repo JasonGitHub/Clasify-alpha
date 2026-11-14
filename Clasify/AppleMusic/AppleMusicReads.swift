@@ -70,22 +70,57 @@ enum AppleMusicReads {
         guard let playlist = try? await Self.playlist(id), let songs = await Self.songs(of: playlist) else { return nil }
         guard albumContext else { return songs }
         let byID = Dictionary(songs.map { (AppleMusicID.song($0.id), $0) }, uniquingKeysWith: { first, _ in first })
-        return ClasifyCore.Album.songs(context, in: songs.map(Self.track)).compactMap { byID[$0.id] }
+        return ClasifyCore.Album.songs(context, in: songs.map { Self.track($0) }).compactMap { byID[$0.id] }
     }
 
-    /// A store `Track` from a MusicKit song. The cover is the Artwork URL (PR 3 lets
-    /// `ArtworkLoader` read it). The album ID is made from its title and artist, because a
-    /// song has no album ID without one more read per song.
-    static func track(_ song: Song) -> ClasifyCore.Track {
+    /// Store `Track`s from MusicKit songs, with covers that `ArtworkLoader` can load.
+    static func tracks(_ songs: [Song]) async -> [ClasifyCore.Track] {
+        let covers = await catalogCovers(songs)
+        return songs.map { track($0, cover: covers[$0.id]) }
+    }
+
+    /// The catalog songs' Artwork for library songs whose own Artwork URL is not https. A
+    /// library song's Artwork gives a `musicKit://` URL (build 177: no covers; not checked on a
+    /// Mac), which only MusicKit's own view can draw, and `CoverURL` rightly refuses it. The
+    /// same song from the catalog gives an https URL on `*.mzstatic.com`. One read for each 100
+    /// songs, not one per album. A failed read leaves those songs without a cover.
+    private static func catalogCovers(_ songs: [Song]) async -> [MusicItemID: Artwork] {
+        var catalogIDs: [MusicItemID: [MusicItemID]] = [:]  // catalog ID to its library songs' IDs
+        for song in songs where !isWeb(song.artwork) {
+            if let id = catalogID(song) { catalogIDs[MusicItemID(id), default: []].append(song.id) }
+        }
+        var covers: [MusicItemID: Artwork] = [:]
+        let ids = Array(catalogIDs.keys)
+        for start in stride(from: 0, to: ids.count, by: 100) {
+            let batch = Array(ids[start..<min(start + 100, ids.count)])
+            let request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: batch)
+            guard let items = try? await request.response().items else { continue }
+            for item in items {
+                guard let art = item.artwork, isWeb(art) else { continue }
+                for id in catalogIDs[item.id] ?? [] { covers[id] = art }  // each library copy of the song
+            }
+        }
+        return covers
+    }
+
+    private static func isWeb(_ art: Artwork?) -> Bool {
+        art?.url(width: 300, height: 300)?.scheme?.lowercased() == "https"
+    }
+
+    /// A store `Track` from a MusicKit song. The cover is the song's own Artwork URL, or else
+    /// `cover`, the catalog's Artwork for it. The album ID is made from its title and artist,
+    /// because a song has no album ID without one more read per song.
+    static func track(_ song: Song, cover: Artwork? = nil) -> ClasifyCore.Track {
+        let art = isWeb(song.artwork) ? song.artwork : cover ?? song.artwork
         let album = song.albumTitle.map {
             ClasifyCore.Album(id: AppleMusicID.albumPrefix + $0 + "\u{1F}" + song.artistName, name: $0, artist: song.artistName)
         }
         return ClasifyCore.Track(
             id: AppleMusicID.song(song.id), title: song.title, artist: song.artistName,
             duration: song.duration ?? 0,
-            coverID: song.artwork?.url(width: 300, height: 300)?.absoluteString,
+            coverID: art?.url(width: 300, height: 300)?.absoluteString,
             album: album, disc: song.discNumber, number: song.trackNumber,
-            largeCoverID: song.artwork?.url(width: 640, height: 640)?.absoluteString
+            largeCoverID: art?.url(width: 640, height: 640)?.absoluteString
         )
     }
 }
