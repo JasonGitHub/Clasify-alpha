@@ -47,6 +47,7 @@ final class AppleMusicLibrary: Library {
 
     func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
         trackReads[playlist] = nil
+        if ClasifyCore.Album.isID(playlist) { AppleMusicReads.forgetAlbums(playlist) }
         return await tracks(of: playlist)
     }
 
@@ -89,6 +90,7 @@ final class AppleMusicLibrary: Library {
     func logOut() {
         listRead = nil
         trackReads = [:]
+        AppleMusicReads.forgetAlbums()
     }
 
     // MARK: - Reads

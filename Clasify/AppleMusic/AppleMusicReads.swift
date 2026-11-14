@@ -90,6 +90,22 @@ enum AppleMusicReads {
     /// nil when "Favorite Songs" can't be read. Not checked on a Mac: that MusicKit gives a
     /// library song's albums, and the whole catalog album.
     static func album(_ albumID: String) async -> (songs: [Song], album: ClasifyCore.Album?)? {
+        if let read = albums[albumID] { return read }
+        let read = await readAlbum(albumID)
+        if let read { albums[albumID] = read }
+        return read
+    }
+
+    /// The album reads of this session, so that the library's list and the player's queue are
+    /// the same songs with the same IDs. `forgetAlbums` clears them.
+    private static var albums: [String: (songs: [Song], album: ClasifyCore.Album?)] = [:]
+
+    /// Forgets one album read (nil: all), so that the next read asks MusicKit again.
+    static func forgetAlbums(_ albumID: String? = nil) {
+        if let albumID { albums[albumID] = nil } else { albums = [:] }
+    }
+
+    private static func readAlbum(_ albumID: String) async -> (songs: [Song], album: ClasifyCore.Album?)? {
         let list: MusicKit.Playlist?
         do { list = try await playlist(ClasifyCore.Playlist.likedSongsID) } catch { return nil }
         guard let list else { return ([], nil) }  // no "Favorite Songs" yet: no albums
@@ -101,7 +117,10 @@ enum AppleMusicReads {
         let catalog = await catalogSongs(ofAlbumOf: pick) ?? []
         let whole = catalog.count > library.count ? catalog : library
         guard whole.count > own.count else { return (own.compactMap { byID[$0.id] }, first.album) }
-        return (inOrder(whole), first.album)
+        // A song of "Favorite Songs" stays its library copy, with the ID that the store knows
+        // from there, also inside a catalog album.
+        let mine = Dictionary(favorites.compactMap { song in catalogID(song).map { ($0, song) } }, uniquingKeysWith: { first, _ in first })
+        return (inOrder(whole).map { mine[$0.id.rawValue] ?? $0 }, first.album)
     }
 
     /// The songs of a song's library album.
