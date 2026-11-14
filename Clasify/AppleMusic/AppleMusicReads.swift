@@ -3,6 +3,10 @@
 import ClasifyCore
 import Foundation
 @preconcurrency import MusicKit
+import os
+
+/// TEMP (Apple Music covers, build 183): counts only, never a title or an ID.
+private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
 
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
 /// Read-only: nothing here changes the library.
@@ -162,17 +166,51 @@ enum AppleMusicReads {
             if let id = catalogID(song) { catalogIDs[MusicItemID(id), default: []].append(song.id) }
         }
         var covers: [MusicItemID: Artwork] = [:]
+        var batches = 0, returned = 0, otherID = 0, errors: [String] = []
         let ids = Array(catalogIDs.keys)
         for start in stride(from: 0, to: ids.count, by: 100) {
             let batch = Array(ids[start..<min(start + 100, ids.count)])
             let request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: batch)
-            guard let items = try? await request.response().items else { continue }
+            batches += 1
+            let items: MusicItemCollection<Song>
+            do { items = try await request.response().items } catch {
+                errors.append("\(type(of: error)) \((error as NSError).code)")  // TEMP: type and code only
+                continue
+            }
+            returned += items.count
             for item in items {
+                if catalogIDs[item.id] == nil { otherID += 1 }  // TEMP: came back under an ID not asked
                 guard let art = item.artwork, isWeb(art) else { continue }
                 for id in catalogIDs[item.id] ?? [] { covers[id] = art }  // each library copy of the song
             }
         }
+        logCovers(
+            songs, catalogIDs: catalogIDs.count, batches: batches, returned: returned, otherID: otherID,
+            errors: errors, found: covers.count)
         return covers
+    }
+
+    /// TEMP (build 183, no Apple Music cover shows): where the covers get lost, as counts. No
+    /// title and no ID; for addresses only one scheme.
+    private static func logCovers(
+        _ songs: [Song], catalogIDs: Int, batches: Int, returned: Int, otherID: Int, errors: [String], found: Int
+    ) {
+        var passes = 0, otherHost = 0, notHTTPS = 0, none = 0, scheme = "none"
+        for song in songs {
+            guard let url = song.artwork?.url(width: 300, height: 300) else { none += 1; continue }
+            if CoverURL.url(for: url.absoluteString) != nil { passes += 1 }
+            else if url.scheme?.lowercased() == "https" { otherHost += 1 }
+            else { notHTTPS += 1; if scheme == "none" { scheme = url.scheme ?? "empty" } }
+        }
+        let threw = errors.isEmpty ? "no" : errors.joined(separator: ", ")
+        timing.notice("""
+            apple covers (TEMP): songs \(songs.count, privacy: .public), own passes \(passes, privacy: .public), \
+            own https other host \(otherHost, privacy: .public), own not https \(notHTTPS, privacy: .public) \
+            (scheme \(scheme, privacy: .public)), no artwork \(none, privacy: .public), \
+            catalog ids \(catalogIDs, privacy: .public), batches \(batches, privacy: .public), \
+            returned \(returned, privacy: .public), other id \(otherID, privacy: .public), \
+            threw \(threw, privacy: .public), found \(found, privacy: .public)
+            """)
     }
 
     private static func isWeb(_ art: Artwork?) -> Bool {
