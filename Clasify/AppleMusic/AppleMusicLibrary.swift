@@ -33,11 +33,21 @@ final class AppleMusicLibrary: Library {
 
     /// One list's read, shared while it runs and kept after it ends. A failed read leaves.
     private func read(_ id: String) async -> [ClasifyCore.Track]? {
-        let read = trackReads[id] ?? Task { await Self.readTracks(id) }
+        let read = trackReads[id] ?? Task { await self.readList(id) }
         trackReads[id] = read
         let tracks = await read.value
         if tracks == nil { trackReads[id] = nil }
         return tracks
+    }
+
+    /// Card BN: all library songs (`Playlist.songsID`) or one artist's songs are the library
+    /// read's tracks in another order (`AppleMusicReads.order`), so their covers are read once.
+    private func readList(_ id: String) async -> [ClasifyCore.Track]? {
+        guard id == ClasifyCore.Playlist.songsID || ClasifyCore.Playlist.isArtistID(id) else { return await Self.readTracks(id) }
+        guard let all = await read(ClasifyCore.Playlist.libraryID), let albums = await AppleMusicReads.libraryAlbums(),
+              all.count == albums.reduce(0, { $0 + $1.songs.count }),  // the same library read
+              let order = await AppleMusicReads.order(of: id, in: albums) else { return nil }
+        return order.map { all[$0] }
     }
 
     func rereadPlaylists() async -> [ClasifyCore.Playlist]? {
@@ -49,12 +59,17 @@ final class AppleMusicLibrary: Library {
     func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
         trackReads[playlist] = nil
         await AppleMusicArt.shared.forget()
-        if playlist == ClasifyCore.Playlist.libraryID {  // the albums come from this read
+        if playlist == ClasifyCore.Playlist.libraryID {  // the albums, Songs and artists come from this read
             AppleMusicReads.forgetLibrary()
-            for id in trackReads.keys where ClasifyCore.Album.isID(id) { trackReads[id] = nil }
+            for id in trackReads.keys where ClasifyCore.Album.isID(id) || (ClasifyCore.Playlist.isHidden(id) && id != ClasifyCore.Playlist.likedSongsID) {
+                trackReads[id] = nil
+            }
         }
         return await tracks(of: playlist)
     }
+
+    /// Card BN: a new read each time, as the reducer asks once a session.
+    func artists() async -> [ClasifyCore.Playlist]? { await AppleMusicReads.artists() }
 
     func track(_ id: String) async -> ClasifyCore.Track? {
         guard let song = await AppleMusicReads.song(id) else { return nil }

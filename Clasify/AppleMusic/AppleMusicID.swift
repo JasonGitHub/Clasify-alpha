@@ -11,6 +11,8 @@ enum AppleMusicID {
     /// A library album has its MusicKit ID after this prefix. A song's own album (in a playlist
     /// or "Favorite Songs") has its title and artist instead (`AppleMusicReads.track`).
     static let albumPrefix = "applemusic:album:"
+    /// A library artist (card BN), with its MusicKit ID after the prefix (`Playlist.isArtistID`).
+    static let artistPrefix = "applemusic:artist:"
 
     static func song(_ id: MusicItemID) -> String { songPrefix + id.rawValue }
     static func playlist(_ id: MusicItemID) -> String { playlistPrefix + id.rawValue }
