@@ -90,6 +90,19 @@ import Testing
         #expect(s.current == TrackRef(playlist: Playlist.likedSongsID, track: "a1") && s.shuffle && s.top.screen == .now)
     }
 
+    @Test func aRelaunchOnAppleMusicKeepsTheLibraryThatTheMainMenuReadsForCovers() {
+        var s = appleMenu()
+        s.artReads = [:]
+        send(&s, .wheel(3), now: 101)  // Favorite Songs
+        let fx = send(&s, .tick, now: 102)  // the covers move to the row: read the albums list
+        guard let token = s.artReads[Playlist.libraryID] else { Issue.record("no library read: \(fx)"); return }
+        #expect(fx.contains(.readArtTracks(token: token, playlist: Playlist.libraryID)))
+        let covered = Self.songs.map { var t = $0; t.coverID = "c-\($0.id)"; return t }
+        send(&s, .artTracksRead(token: token, playlist: Playlist.libraryID, tracks: covered), now: 103)
+        #expect(s.isLoaded(.albums) && s.tracks(in: Playlist.libraryID).count == 4 && !s.mainArt.isEmpty)
+        #expect(s.rows(for: Frame(screen: .playlists)).isEmpty && s.playlistCount == 0)
+    }
+
     @Test func aStaleAlbumsScreenRereadsTheLibrary() {
         var s = appleMenu()
         send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)

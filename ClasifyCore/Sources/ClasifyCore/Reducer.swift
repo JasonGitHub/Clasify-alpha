@@ -868,6 +868,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
             } else if id == Playlist.likedSongsID {  // first, as an open's read puts it; not a Playlists row
                 s.library.insert(Playlist(id: id, name: s.likedSongsName, tracks: tracks), at: 0)
+            } else if id == Playlist.libraryID {  // the main menu's covers on Apple Music; not a row
+                s.library.append(Playlist(id: id, name: "", tracks: tracks))
             } else {
                 return  // the playlist is gone
             }
