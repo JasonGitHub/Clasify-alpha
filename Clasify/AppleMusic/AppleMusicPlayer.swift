@@ -169,7 +169,18 @@ final class AppleMusicPlayer: Player {
         try? await Task.sleep(for: .milliseconds(600))
         let resolved = player.queue.currentEntry.flatMap(storeID) != nil
         logSkip(forward, "loading no, threw \(threw), entries \(player.queue.entries.count), index \(before) -> \(currentIndex()), "
-            + "resolved \(resolved ? "yes" : "no"), status \(player.state.playbackStatus)")
+            + "resolved \(resolved ? "yes" : "no") (\(matchKind(player.queue.currentEntry))), status \(player.state.playbackStatus)")
+    }
+
+    /// TEMP: whether the entry's item is a song, and which key kind finds it in the queue.
+    private func matchKind(_ entry: ApplicationMusicPlayer.Queue.Entry?) -> String {
+        guard let entry else { return "no entry" }
+        let byName = entry.subtitle.flatMap { queued.id(title: entry.title, artist: $0) } != nil ? "title" : "none"
+        guard case .song(let song) = entry.item else { return "song no, entry \(byName)" }
+        let keys = Self.keys(song), none = "\u{1F}"  // a title and artist that match nothing
+        if queued.id(for: SongKeys(ids: keys.ids, title: none, artist: none)) != nil { return "song yes, id" }
+        if queued.id(for: SongKeys(ids: [], isrc: keys.isrc, title: none, artist: none)) != nil { return "song yes, isrc" }
+        return queued.id(for: keys) != nil ? "song yes, title" : "song yes, none, entry \(byName)"
     }
 
     /// TEMP: the current entry's place in the queue, or "none".
