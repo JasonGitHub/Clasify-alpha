@@ -10,6 +10,93 @@ import Testing
         send(&s, .launch, .restored(token: 1, ok: false), .select)
         return s
     }
+    /// A library of 100 liked songs: the first read takes the full time (changes 266 and 267).
+    let big = Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: tracks("b", 100, 10))
+
+    /// Changes 266 and 267: a small first read goes faster. 20 songs or fewer: the names take
+    /// 1 s and "You’re all set" 1.5 s; 100 or more, or no count yet: 2.5 s each, as before.
+    @Test func theSetupPaceFollowsTheSongCount() {
+        let close = { (a: Double, b: Double) in abs(a - b) < 1e-9 }
+        // Six names: 2.5 s at most (CLA-80).
+        for (songs, time) in [(0, 1.0), (1, 1.0), (20, 1.0), (60, 1.75), (100, 2.5), (5000, 2.5)] {
+            #expect(close(AppState.namesTime(names: 6, songs: songs), time))
+        }
+        #expect(close(AppState.namesTime(names: 6, songs: nil), 2.5))
+        // Never longer than today's time for that many names: one name shows at 0.8 s.
+        #expect(close(AppState.namesTime(names: 1, songs: 5000), 0.8) && close(AppState.namesTime(names: 1, songs: 1), 0.8))
+        #expect(AppState.namesTime(names: 0, songs: 60) == 0)
+        for (songs, time) in [(0, 1.5), (1, 1.5), (20, 1.5), (60, 2.0), (100, 2.5), (5000, 2.5)] {
+            #expect(close(AppState.allSetTime(songs: songs), time))
+        }
+        #expect(AppState.allSetTime(songs: nil) == 2.5)
+        // The names keep their order and all show inside the time. A count that comes later
+        // only moves them on.
+        for names in [1, 6] {
+            for songs in [nil, 1, 60, 5000] as [Int?] {
+                let end = AppState.namesTime(names: names, songs: songs)
+                #expect(AppState.nameOpacity(names - 1, of: names, at: end, songs: songs, late: nil) > 1 - 1e-9)
+                #expect(AppState.nameOpacity(0, of: names, at: 0, songs: songs, late: nil) == 0)
+                for t in stride(from: 0.0, through: 3, by: 0.05) {
+                    #expect(AppState.nameOpacity(names - 1, of: names, at: t, songs: songs, late: nil) <= AppState.nameOpacity(0, of: names, at: t, songs: songs, late: nil))
+                    #expect(AppState.nameOpacity(names - 1, of: names, at: t, songs: nil, late: nil) <= AppState.nameOpacity(names - 1, of: names, at: t, songs: songs, late: nil))
+                }
+            }
+        }
+    }
+
+    /// Change 266 with a late count (Apple Music gives it only at the end of the read): the
+    /// old pace until it comes, then on to the end of the new time, or in 0.2 s when that has
+    /// passed. Nothing jumps back.
+    @Test func aLateCountFinishesTheNames() {
+        let close = { (a: Double, b: Double) in abs(a - b) < 1e-9 }
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: nil) == 1)
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: 0.5) == 1)
+        #expect(close(AppState.namesEnd(names: 6, songs: 15, late: 1.5), 1.7))
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: 3) == 3)  // every name had shown
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: 2.4) == 2.5)  // never later than before
+        #expect(close(AppState.namesEnd(names: 2, songs: 100, late: 1), 1.14))
+        #expect(close(AppState.namesProgress(at: 1, names: 6, songs: 15, late: 1.5), 0.4))  // the old pace
+        #expect(close(AppState.namesProgress(at: 1.5, names: 6, songs: 15, late: 1.5), 0.6))
+        #expect(close(AppState.namesProgress(at: 1.6, names: 6, songs: 15, late: 1.5), 0.8))
+        #expect(close(AppState.namesProgress(at: 1.7, names: 6, songs: 15, late: 1.5), 1))
+        #expect(close(AppState.namesProgress(at: 0.75, names: 6, songs: 15, late: 0.5), 0.6))
+        for late in [0.3, 1.5, 2.4, 3] {
+            var last = 0.0
+            for t in stride(from: 0.0, through: 4, by: 0.01) {
+                let p = AppState.namesProgress(at: t, names: 6, songs: 15, late: late)
+                #expect(p >= last - 1e-9)
+                last = p
+            }
+            #expect(last == 1 && AppState.nameOpacity(5, of: 6, at: AppState.namesEnd(names: 6, songs: 15, late: late), songs: 15, late: late) > 1 - 1e-9)
+        }
+        // In the reducer: the names came at 200, the count and the songs at 201.5.
+        var s = onColor()
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
+        let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
+        send(&s, .playlistsRefreshed(names), now: 200)
+        #expect(s.namesLate == nil)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 2, total: 2, albums: 1), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201.5)
+        #expect(s.namesLate == 1.5 && s.top.loading && abs(s.namesHold - 201.7) < 1e-9)
+        send(&s, .tick, now: 201.8)
+        #expect(!s.top.loading && s.setupDone && abs(s.beatUntil - 203.3) < 1e-9)
+    }
+
+    /// Changes 266 and 267 in the reducer: a small library waits 1 s for six names and shows
+    /// "You’re all set" for 1.5 s. The count is the read's first total, and stays.
+    @Test func aSmallFirstReadGoesFaster() {
+        var s = onColor()
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 0, total: liked.tracks.count, albums: 0), now: 199)
+        #expect(s.firstReadSongs == liked.tracks.count)
+        let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
+        send(&s, .playlistsRefreshed(names), now: 200)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 1, total: 500, albums: 0), now: 200.2)
+        #expect(s.firstReadSongs == liked.tracks.count)  // the pace never slows down
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 200.5)
+        #expect(s.top.loading && abs(s.namesHold - 201) < 1e-9)
+        send(&s, .tick, now: 201)
+        #expect(!s.top.loading && s.setupDone && abs(s.beatUntil - 202.5) < 1e-9)
+    }
 
     @Test func aFirstLaunchShowsHelloThenTheColorPick() {
         var s = AppState()
@@ -78,10 +165,10 @@ import Testing
         send(&s, .playlistsRefreshed([focusInfo]), now: 106)  // a slow read: they still fill in one by one from now
         #expect(s.top.loading && s.library.map(\.id) == ["focus"] && s.namesAt == 106)  // the read goes on
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 110)
-        // "You’re all set" for 2.5 s (change 140), then the main menu.
+        // "You’re all set" (change 140), 1.5 s for a small library (change 267), then the main menu.
         #expect(s.stack == [Frame(screen: .yourMusic, token: 1)] && s.setupDone && s.loadedTracks == [Playlist.likedSongsID])
-        #expect(s.beatUntil == 112.5 && send(&s, .menu, .wheel(1), now: 111).isEmpty && s.top.screen == .yourMusic)
-        send(&s, .tick, now: 112.5)
+        #expect(s.beatUntil == 111.5 && send(&s, .menu, .wheel(1), now: 111).isEmpty && s.top.screen == .yourMusic)
+        send(&s, .tick, now: 111.5)
         #expect(s.stack == [Frame(screen: .main)] && s.beatUntil == 0)
     }
 
@@ -98,7 +185,7 @@ import Testing
         send(&s, .readProgress("focus", done: 5, total: 8, albums: 3))  // another read
         #expect(s.readDone == 300 && s.readTotal == 1240 && s.readAlbums == 84)
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), .readProgress(Playlist.likedSongsID, done: 1240, total: 1240, albums: 0))
-        #expect(s.readDone == 300)  // late: the read has ended
+        #expect(s.readDone == liked.tracks.count)  // the read has ended: full, and a late report changes nothing
     }
 
     /// Change 191: when Liked Songs is read before every playlist name showed, "Getting your
@@ -109,15 +196,15 @@ import Testing
         let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
         send(&s, .playlistsRefreshed(names), now: 200)
         #expect(s.firstReadNames.count == 6 && s.playlistCount == 8)  // six names show; the count is all
-        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: big.tracks), now: 201)
         // The sixth name has shown at 200 + 0.5 + 5 × 0.34 + 0.3 = 202.5 s (CLA-80).
         #expect(s.top.loading && !s.setupDone && abs(s.namesHold - 202.5) < 1e-9)
         #expect(s.loadedTracks == [Playlist.likedSongsID])  // the songs are kept already
-        let albums = Set(liked.tracks.compactMap { $0.album?.id }).count
-        #expect(s.readDone == liked.tracks.count && s.readTotal == liked.tracks.count && s.readAlbums == albums)  // full
+        let albums = Set(big.tracks.compactMap { $0.album?.id }).count
+        #expect(s.readDone == big.tracks.count && s.readTotal == big.tracks.count && s.readAlbums == albums)  // full
         #expect(send(&s, .select, now: 202).isEmpty && s.top.loading)  // no press meanwhile
         send(&s, .readProgress(Playlist.likedSongsID, done: 1, total: 2, albums: 1), .tick, now: 202.2)
-        #expect(s.top.loading && s.readDone == liked.tracks.count)  // a late report changes nothing
+        #expect(s.top.loading && s.readDone == big.tracks.count)  // a late report changes nothing
         send(&s, .offline(true), .tick, now: 202.6)
         #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && abs(s.beatUntil - 205.1) < 1e-9)
 
@@ -126,10 +213,10 @@ import Testing
         send(&two, .select, .select, .select, .authDone(token: 2, ok: true), .select)
         send(&two, .playlistsRefreshed(Array(names.prefix(2))), now: 200)
         var late = two
-        send(&two, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+        send(&two, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: big.tracks), now: 201)
         #expect(abs(two.namesHold - 201.14) < 1e-9 && !two.setupDone)
         // A read that ends after the names waits for nothing.
-        send(&late, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201.5)
+        send(&late, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: big.tracks), now: 201.5)
         #expect(late.setupDone && late.namesHold == 0)
     }
 
@@ -139,9 +226,9 @@ import Testing
         var s = onColor()
         send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.namesAt == 0 && s.refreshing.contains(AppState.readKey(.playlists)))
-        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: big.tracks), now: 201)
         #expect(s.top.loading && !s.setupDone && s.namesHold == .infinity && s.loadedTracks == [Playlist.likedSongsID])
-        #expect(s.readDone == liked.tracks.count && s.readTotal == liked.tracks.count)  // the bar is full
+        #expect(s.readDone == big.tracks.count && s.readTotal == big.tracks.count)  // the bar is full
         send(&s, .tick, now: 300)
         #expect(s.top.loading && !s.setupDone)  // it waits for the list
         let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
@@ -163,7 +250,7 @@ import Testing
             send(&s, .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201)
             #expect(s.top.loading && s.namesHold == .infinity)
             send(&s, .playlistsRefreshed(list), now: 202)
-            #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && s.beatUntil == 204.5)
+            #expect(!s.top.loading && !s.top.error && s.setupDone && s.namesHold == 0 && s.beatUntil == 203.5)
         }
     }
 
