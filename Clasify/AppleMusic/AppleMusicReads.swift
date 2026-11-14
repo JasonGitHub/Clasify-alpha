@@ -85,9 +85,9 @@ enum AppleMusicReads {
     /// same song from the catalog gives an https URL on `*.mzstatic.com`. One read for each 100
     /// songs, not one per album. A failed read leaves those songs without a cover.
     private static func catalogCovers(_ songs: [Song]) async -> [MusicItemID: Artwork] {
-        var catalogIDs: [MusicItemID: MusicItemID] = [:]  // catalog ID to library ID
+        var catalogIDs: [MusicItemID: [MusicItemID]] = [:]  // catalog ID to its library songs' IDs
         for song in songs where !isWeb(song.artwork) {
-            if let id = catalogID(song) { catalogIDs[MusicItemID(id)] = song.id }
+            if let id = catalogID(song) { catalogIDs[MusicItemID(id), default: []].append(song.id) }
         }
         var covers: [MusicItemID: Artwork] = [:]
         let ids = Array(catalogIDs.keys)
@@ -96,7 +96,8 @@ enum AppleMusicReads {
             let request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: batch)
             guard let items = try? await request.response().items else { continue }
             for item in items {
-                if let art = item.artwork, isWeb(art), let id = catalogIDs[item.id] { covers[id] = art }
+                guard let art = item.artwork, isWeb(art) else { continue }
+                for id in catalogIDs[item.id] ?? [] { covers[id] = art }  // each library copy of the song
             }
         }
         return covers
