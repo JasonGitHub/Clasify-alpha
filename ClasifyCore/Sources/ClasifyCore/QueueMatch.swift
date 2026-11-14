@@ -41,4 +41,14 @@ public struct QueueMatch: Sendable {
     public func id(title: String, artist: String) -> String? {
         byKey[SongKeys.name(title, artist)]
     }
+
+    /// Where a load starts in its list: the row with the store ID that was picked, else the
+    /// first row that any of the song's keys names, strongest key first. nil: not in the list.
+    /// The song that a load reads by its ID can carry another ID than the list's row
+    /// ("Favorite Songs", build 206), so the row's own ID comes first.
+    public static func start(of id: String, keys: SongKeys, in list: [(id: String, keys: SongKeys)]) -> (index: Int, byID: Bool)? {
+        if let i = list.firstIndex(where: { $0.id == id }) { return (i, true) }
+        guard let found = QueueMatch(list).id(for: keys), let i = list.firstIndex(where: { $0.id == found }) else { return nil }
+        return (i, false)
+    }
 }
