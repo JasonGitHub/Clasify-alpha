@@ -662,19 +662,18 @@ import Testing
     @Test func appleMusicLibraryScreens() throws {
         var s = sampleState()
         s.service = .appleMusic; s.words = .appleMusic
-        s.albumArt = .off  // full-width rows, so the selection shows across the screen
         #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .settings])
         s.top.sel = 2
         let main = try render(s, "apple-main")
-        #expect(main.isBlue(Self.screenLeft + 170, Self.rowCenter(2)) && !main.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
-        #expect(main.isLight(Self.screenLeft + 170, Self.rowCenter(7)))  // no 8th row
+        #expect(main.isBlue(125, Self.rowCenter(2)) && !main.isBlue(125, Self.rowCenter(1)))
+        #expect(main.isLight(125, Self.rowCenter(7)))  // no 8th row (the pane is 150 points wide)
 
         s.stack = [Frame(screen: .main), Frame(screen: .playlists)]
         s.stack[0].sel = 1
         s.playlistsLoaded = true
         #expect(s.rows(for: s.top).first == .playlist(Playlist.likedSongsID))
         let playlists = try render(s, "apple-playlists")
-        #expect(playlists.isBlue(Self.screenLeft + 170, Self.rowCenter(0)))
+        #expect(playlists.isBlue(125, Self.rowCenter(0)))
 
         s.artists = ["2Pac", "Low Orbit", "The Lowlights"].enumerated().map {
             Playlist(id: "applemusic:artist:\($0.offset)", name: $0.element, tracks: [])
@@ -684,8 +683,8 @@ import Testing
         s.stack[0].sel = 2; s.top.sel = 1
         let artists = try render(s, "apple-artists")
         // One-line rows of 22.9 points, like the main menu: the 2nd row is selected, the 4th is empty.
-        #expect(artists.isBlue(Self.screenLeft + 170, Self.rowCenter(1)) && !artists.isBlue(Self.screenLeft + 170, Self.rowCenter(0)))
-        #expect(artists.isLight(Self.screenLeft + 170, Self.rowCenter(3)))
+        #expect(artists.isBlue(125, Self.rowCenter(1)) && !artists.isBlue(125, Self.rowCenter(0)))
+        #expect(artists.isLight(125, Self.rowCenter(3)))
     }
 
     @Test func settings() throws {
