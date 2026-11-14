@@ -191,7 +191,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     }
     func fetch(_ screen: Screen) {
         let key = AppState.readKey(screen)  // Albums and Cover Flow read Liked Songs, an album itself
-        if screen == .yourMusic { s.readDone = 0; s.readTotal = 0; s.readAlbums = 0; s.namesHold = 0; s.firstReadSongs = nil }  // each first read, or retry, counts from 0
+        if screen == .yourMusic { s.readDone = 0; s.readTotal = 0; s.readAlbums = 0; s.namesHold = 0; s.firstReadSongs = nil; s.firstReadSongsAt = 0 }  // each first read, or retry, counts from 0
         fx.append(key.isEmpty ? .fetchPlaylists(token: s.tok) : .fetchTracks(token: s.tok, playlist: key))
     }
     /// Opens a list screen. Only a list that this session has not read yet loads.
@@ -320,7 +320,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// when every name has shown already, or there are none.
     func holdForNames() -> Bool {
         let n = s.firstReadNames.count
-        let shown = s.namesAt + AppState.namesTime(names: n, songs: s.firstReadSongs)
+        let shown = s.namesAt + AppState.namesEnd(names: n, songs: s.firstReadSongs, late: s.namesLate)
         guard n > 0 && now < shown else { return false }
         s.namesHold = shown
         return true
@@ -894,7 +894,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 // come late; the count also sets the pace (changes 266 and 267).
                 s.readDone = tracks.count; s.readTotal = tracks.count
                 s.readAlbums = Set(tracks.compactMap { $0.album?.id }).count
-                s.firstReadSongs = s.firstReadSongs ?? tracks.count
+                if s.firstReadSongs == nil { s.firstReadSongs = tracks.count; s.firstReadSongsAt = now }
                 let listPending = s.namesAt == 0 && s.refreshing.contains(AppState.readKey(.playlists))
                 if listPending { s.namesHold = .infinity }
                 if listPending || (s.namesAt > 0 && holdForNames()) { return }
@@ -915,7 +915,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.readDone = total == s.readTotal ? max(s.readDone, done) : done
             s.readTotal = total
             s.readAlbums = max(s.readAlbums, albums)
-            if total > 0 && s.firstReadSongs == nil { s.firstReadSongs = total }  // changes 266 and 267
+            if total > 0 && s.firstReadSongs == nil { s.firstReadSongs = total; s.firstReadSongsAt = now }  // changes 266 and 267
 
         case .spotifyAppFound(let found):
             let was = s.spotifyApp

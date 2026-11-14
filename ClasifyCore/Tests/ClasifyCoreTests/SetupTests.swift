@@ -34,14 +34,49 @@ import Testing
         for names in [1, 6] {
             for songs in [nil, 1, 60, 5000] as [Int?] {
                 let end = AppState.namesTime(names: names, songs: songs)
-                #expect(AppState.nameOpacity(names - 1, of: names, at: end, songs: songs) > 1 - 1e-9)
-                #expect(AppState.nameOpacity(0, of: names, at: 0, songs: songs) == 0)
+                #expect(AppState.nameOpacity(names - 1, of: names, at: end, songs: songs, late: nil) > 1 - 1e-9)
+                #expect(AppState.nameOpacity(0, of: names, at: 0, songs: songs, late: nil) == 0)
                 for t in stride(from: 0.0, through: 3, by: 0.05) {
-                    #expect(AppState.nameOpacity(names - 1, of: names, at: t, songs: songs) <= AppState.nameOpacity(0, of: names, at: t, songs: songs))
-                    #expect(AppState.nameOpacity(names - 1, of: names, at: t, songs: nil) <= AppState.nameOpacity(names - 1, of: names, at: t, songs: songs))
+                    #expect(AppState.nameOpacity(names - 1, of: names, at: t, songs: songs, late: nil) <= AppState.nameOpacity(0, of: names, at: t, songs: songs, late: nil))
+                    #expect(AppState.nameOpacity(names - 1, of: names, at: t, songs: nil, late: nil) <= AppState.nameOpacity(names - 1, of: names, at: t, songs: songs, late: nil))
                 }
             }
         }
+    }
+
+    /// Change 266 with a late count (Apple Music gives it only at the end of the read): the
+    /// old pace until it comes, then on to the end of the new time, or in 0.2 s when that has
+    /// passed. Nothing jumps back.
+    @Test func aLateCountFinishesTheNames() {
+        let close = { (a: Double, b: Double) in abs(a - b) < 1e-9 }
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: nil) == 1)
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: 0.5) == 1)
+        #expect(close(AppState.namesEnd(names: 6, songs: 15, late: 1.5), 1.7))
+        #expect(AppState.namesEnd(names: 6, songs: 15, late: 3) == 3)  // every name had shown
+        #expect(close(AppState.namesProgress(at: 1, names: 6, songs: 15, late: 1.5), 0.4))  // the old pace
+        #expect(close(AppState.namesProgress(at: 1.5, names: 6, songs: 15, late: 1.5), 0.6))
+        #expect(close(AppState.namesProgress(at: 1.6, names: 6, songs: 15, late: 1.5), 0.8))
+        #expect(close(AppState.namesProgress(at: 1.7, names: 6, songs: 15, late: 1.5), 1))
+        #expect(close(AppState.namesProgress(at: 0.75, names: 6, songs: 15, late: 0.5), 0.6))
+        for late in [0.3, 1.5, 2.4, 3] {
+            var last = 0.0
+            for t in stride(from: 0.0, through: 4, by: 0.01) {
+                let p = AppState.namesProgress(at: t, names: 6, songs: 15, late: late)
+                #expect(p >= last - 1e-9)
+                last = p
+            }
+            #expect(last == 1 && AppState.nameOpacity(5, of: 6, at: AppState.namesEnd(names: 6, songs: 15, late: late), songs: 15, late: late) > 1 - 1e-9)
+        }
+        // In the reducer: the names came at 200, the count and the songs at 201.5.
+        var s = onColor()
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .select)
+        let names = (1...8).map { Playlist(id: "p\($0)", name: "P\($0)", tracks: [], trackCount: 1) }
+        send(&s, .playlistsRefreshed(names), now: 200)
+        #expect(s.namesLate == nil)
+        send(&s, .readProgress(Playlist.likedSongsID, done: 2, total: 2, albums: 1), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 201.5)
+        #expect(s.namesLate == 1.5 && s.top.loading && abs(s.namesHold - 201.7) < 1e-9)
+        send(&s, .tick, now: 201.8)
+        #expect(!s.top.loading && s.setupDone && abs(s.beatUntil - 203.3) < 1e-9)
     }
 
     /// Changes 266 and 267 in the reducer: a small library waits 1 s for six names and shows

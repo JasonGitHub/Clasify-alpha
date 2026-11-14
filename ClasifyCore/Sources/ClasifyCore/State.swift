@@ -322,21 +322,53 @@ public struct AppState: Equatable, Sendable {
     public static let nameStart = 0.5, nameGap = 0.34, nameFade = 0.3
     /// Change 266: seconds from when the names came until the last of `names` has shown. 1 s
     /// for `songs` 20 or fewer, up to 2.5 s for 100 or more, and never longer than the time
-    /// above for that many names. The time above while the count is not known. The 191 hold,
-    /// the names and the bar all use it.
+    /// above for that many names. The time above while the count is not known.
     public static func namesTime(names: Int, songs: Int?) -> Double {
         guard names > 0 else { return 0 }
-        let full = nameStart + nameGap * Double(names - 1) + nameFade
-        return min(full, 1 + 1.5 * setupPace(songs: songs))
+        return min(fullNamesTime(names), 1 + 1.5 * setupPace(songs: songs))
+    }
+    static func fullNamesTime(_ names: Int) -> Double { nameStart + nameGap * Double(names - 1) + nameFade }
+    /// Seconds that the rest takes when the count comes after the names (Apple Music gives it
+    /// only at the end of the read).
+    public static let lateFinish = 0.2
+    /// When the names are done, in seconds after they came. `late`: the count came that many
+    /// seconds after the names; nil when it came before them, or has not come. A late count
+    /// moves the end to its own time, but the rest takes at least `lateFinish`. The 191 hold,
+    /// the names and the bar all end here.
+    public static func namesEnd(names: Int, songs: Int?, late: Double?) -> Double {
+        guard names > 0 else { return 0 }
+        let stay = namesTime(names: names, songs: songs)
+        guard let late else { return stay }
+        if late >= fullNamesTime(names) { return late }  // every name had shown
+        return max(stay, late + lateFinish)
+    }
+    /// How far the names are, 0 to 1, `t` seconds after they came: steady until `namesEnd`.
+    /// Before a late count, at the time above; after it, from there to the end. It never goes
+    /// back, so the bar and the names never jump back.
+    public static func namesProgress(at t: Double, names: Int, songs: Int?, late: Double?) -> Double {
+        guard names > 0 else { return 1 }
+        let end = namesEnd(names: names, songs: songs, late: late)
+        let p: Double
+        if let late, t >= late {
+            let from = min(1, late / fullNamesTime(names))
+            p = end > late ? from + (1 - from) * (t - late) / (end - late) : 1
+        } else {
+            p = t / (late == nil ? end : fullNamesTime(names))
+        }
+        return min(max(p, 0), 1)
     }
     /// Name `i`'s opacity, `t` seconds after the names came. The times above, made shorter in
-    /// step so that the last name has shown at `namesTime`. A count that comes later only
-    /// makes it go faster, so a name never fades back.
-    public static func nameOpacity(_ i: Int, of names: Int, at t: Double, songs: Int?) -> Double {
+    /// step with `namesProgress`, so the last name has shown at `namesEnd`.
+    public static func nameOpacity(_ i: Int, of names: Int, at t: Double, songs: Int?, late: Double?) -> Double {
         guard names > 0 else { return 0 }
-        let full = nameStart + nameGap * Double(names - 1) + nameFade
-        let u = t * full / namesTime(names: names, songs: songs)
+        let u = namesProgress(at: t, names: names, songs: songs, late: late) * fullNamesTime(names)
         return min(max((u - nameStart - nameGap * Double(i)) / nameFade, 0), 1)
+    }
+    /// When `firstReadSongs` came. 0 before.
+    public var firstReadSongsAt: Double = 0
+    /// Seconds from when the names came until the count came, when it came after them.
+    public var namesLate: Double? {
+        namesAt > 0 && firstReadSongs != nil && firstReadSongsAt > namesAt ? firstReadSongsAt - namesAt : nil
     }
     /// The playlist names that show on the small screen during the first read: up to 6.
     public var firstReadNames: [String] {

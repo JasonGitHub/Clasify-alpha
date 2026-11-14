@@ -456,7 +456,7 @@ struct PocketList: View {
                 SetupProgress(done: state.readDone, total: state.readTotal,
                               playlists: state.namesAt > 0 ? state.playlistCount : nil, albums: state.readAlbums,
                               namesFrom: state.namesAt > 0 ? state.namesAt : nil, names: state.firstReadNames.count,
-                              songs: state.firstReadSongs,
+                              songs: state.firstReadSongs, late: state.namesLate,
                               waitsForNames: state.refreshing.contains(AppState.readKey(.playlists)))
             }
             ForEach(shown, id: \.self) { index in

@@ -13,8 +13,8 @@ enum PreviewScreen: Equatable {
     /// 174; "No Premium", screen 135).
     case mark(ok: Bool, word: String)
     /// The playlist names fill in one by one from time `from`, like an iPod sync (card AY, 141),
-    /// at the pace of a read of `songs` songs (change 266).
-    case names([String], from: Double, songs: Int?)
+    /// at the pace of a read of `songs` songs, which came `late` seconds after the names (change 266).
+    case names([String], from: Double, songs: Int?, late: Double?)
 
     /// The small device's screen and its sync cable on a setup screen. Nil on other screens.
     static func of(_ screen: Screen, in state: AppState) -> (screen: PreviewScreen, cable: SyncCable.Plug?)? {
@@ -37,7 +37,7 @@ enum PreviewScreen: Equatable {
         case .yourMusic where state.top.error: return nil  // the error message fills the screen
         case .yourMusic where state.top.loading:
             let names = state.namesAt > 0 ? state.firstReadNames : []
-            return (screen: PreviewScreen.names(names, from: state.namesAt, songs: state.firstReadSongs), cable: SyncCable.Plug.light)
+            return (screen: PreviewScreen.names(names, from: state.namesAt, songs: state.firstReadSongs, late: state.namesLate), cable: SyncCable.Plug.light)
         case .yourMusic: return (screen: PreviewScreen.mark(ok: true, word: "Synced"), cable: SyncCable.Plug.on)
         default: return nil
         }
@@ -92,7 +92,7 @@ struct PreviewScreenContent: View {
         }
         ZStack {
             rows.opacity(shown == 0 ? 1 : 0)
-            if case .names(let list, let from, let songs) = screen { names(list, from: from, songs: songs) }
+            if case .names(let list, let from, let songs, let late) = screen { names(list, from: from, songs: songs, late: late) }
             mark(ok: false, word: Self.failWord(screen)).opacity(shown == 1 ? 1 : 0)
             mark(ok: true, word: Self.okWord(screen)).opacity(shown == 2 ? 1 : 0)
         }
@@ -118,12 +118,12 @@ struct PreviewScreenContent: View {
     }
 
     /// The playlist names: bold 17 point rows, 27 points tall, from 20 points down.
-    private func names(_ list: [String], from: Double, songs: Int?) -> some View {
+    private func names(_ list: [String], from: Double, songs: Int?, late: Double?) -> some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil)) { context in
             let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(list.indices, id: \.self) { i in
-                    let shown = AppState.nameOpacity(i, of: list.count, at: t, songs: songs)
+                    let shown = AppState.nameOpacity(i, of: list.count, at: t, songs: songs, late: late)
                     Text(list[i])
                         .font(.helvetica(17, bold: true))
                         .foregroundStyle(Pocket.ink)
@@ -306,22 +306,23 @@ struct SetupProgress: View {
     var names = 0
     /// The first read's song count, which sets the pace (change 266). nil before it is known.
     var songs: Int?
+    /// The count came this many seconds after the names (`AppState.namesLate`).
+    var late: Double?
     /// The playlist list is still being read: the bar and the counts wait at 0 for it.
     var waitsForNames = false
     @Environment(\.animationTime) private var fixedTime
 
     /// Change 197: how far the bar and the counts may be, `t` seconds after the names came:
     /// 0 to 1 at a steady speed until the last of `names` names has shown. 1 with no names.
-    nonisolated static func grow(at t: Double, names: Int, songs: Int?) -> Double {
-        guard names > 0 else { return 1 }
-        return min(1, max(0, t / AppState.namesTime(names: names, songs: songs)))
+    nonisolated static func grow(at t: Double, names: Int, songs: Int?, late: Double? = nil) -> Double {
+        AppState.namesProgress(at: t, names: names, songs: songs, late: late)
     }
 
     /// How far the bar and the counts may be at `now` (change 197): 0 while the list is read,
-    /// so they start when it comes and never jump back; then `grow(at:names:songs:)`. 1 when there are
+    /// so they start when it comes and never jump back; then `grow(at:names:songs:late:)`. 1 when there are
     /// no names to wait for, for example when the list read failed.
-    nonisolated static func grow(now: Double, namesFrom: Double?, names: Int, songs: Int?, waiting: Bool) -> Double {
-        if let namesFrom { return grow(at: now - namesFrom, names: names, songs: songs) }
+    nonisolated static func grow(now: Double, namesFrom: Double?, names: Int, songs: Int?, late: Double? = nil, waiting: Bool) -> Double {
+        if let namesFrom { return grow(at: now - namesFrom, names: names, songs: songs, late: late) }
         return waiting ? 0 : 1
     }
 
@@ -368,7 +369,7 @@ struct SetupProgress: View {
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: fixedTime != nil || namesFrom == nil)) { context in
             let now = fixedTime ?? context.date.timeIntervalSinceReferenceDate
-            let grow = Self.grow(now: now, namesFrom: namesFrom, names: names, songs: songs, waiting: waitsForNames)
+            let grow = Self.grow(now: now, namesFrom: namesFrom, names: names, songs: songs, late: late, waiting: waitsForNames)
             content(Self.shown(done: done, total: total, playlists: playlists, albums: albums, grow: grow),
                     fill: Self.fill(done: done, total: total, grow: grow))
         }

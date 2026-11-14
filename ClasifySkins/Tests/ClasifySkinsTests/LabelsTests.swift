@@ -141,6 +141,8 @@ func sampleState() -> AppState {
         #expect(SetupProgress.grow(now: 101, namesFrom: 101, names: 6, songs: nil, waiting: false) == 0)
         #expect(abs(SetupProgress.grow(now: 102.25, namesFrom: 101, names: 6, songs: nil, waiting: false) - 0.5) < 1e-9)
         #expect(abs(SetupProgress.grow(now: 101.5, namesFrom: 101, names: 6, songs: 15, waiting: false) - 0.5) < 1e-9)
+        // A count that comes 1.5 s after the names: the rest in 0.2 s.
+        #expect(abs(SetupProgress.grow(now: 102.6, namesFrom: 101, names: 6, songs: 15, late: 1.5, waiting: false) - 0.8) < 1e-9)
         #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, songs: nil, waiting: false) == 1)  // the list read failed: the real values
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
