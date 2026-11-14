@@ -132,7 +132,7 @@ enum AppleMusicReads {
         // Only artists with a song in the library albums, so that no artist opens on "No songs":
         // the request can give many more artists than those albums hold (CTO, 11-14).
         guard let albums = await libraryAlbums() else { return nil }
-        var names = Set(albums.compactMap { $0.album.artist })
+        var names = Set(albums.filter { !$0.songs.isEmpty }.compactMap { $0.album.artist })  // an empty album gives no artist
         for entry in albums { for song in entry.songs { names.insert(song.artistName) } }
         let list = all.filter { names.contains($0.name) }.map {
             ClasifyCore.Playlist(id: AppleMusicID.artistPrefix + $0.id.rawValue, name: $0.name, tracks: [])
