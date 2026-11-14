@@ -90,8 +90,8 @@ public struct Playlist: Equatable, Sendable {
     public var trackCount: Int
 
     public static let likedSongsID = "liked"
-    /// All songs of the library (Apple Music only, where Albums and Cover Flow show the
-    /// library's own albums). It is never a Playlists row, a play context or a playlist count.
+    /// The songs of the library's albums, each carrying its album (Apple Music only, where
+    /// Albums and Cover Flow show the library's own albums, as the Music app's Library does). It is never a Playlists row, a play context or a playlist count.
     public static let libraryID = "library:all"
 
     /// The list is not a playlist: Liked Songs, the whole library or an album.

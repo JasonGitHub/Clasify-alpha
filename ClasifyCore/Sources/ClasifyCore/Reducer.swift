@@ -842,7 +842,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             else { return }
             // The screens that show this list: the song list, and for Liked Songs, Albums and its albums.
             var screens = [Screen.tracks(playlist: id)]
-            // The whole library: each read album is its library songs, so it changes with it.
+            // The library's albums: each read album is its songs there, so it changes with them.
             let albums = id == Playlist.libraryID ? s.library.map(\.id).filter(Album.isID) : []
             for f in s.stack where (s.readKey(f.screen) == id || albums.contains(s.readKey(f.screen))) && !screens.contains(f.screen) {
                 screens.append(f.screen)

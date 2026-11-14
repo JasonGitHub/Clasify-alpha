@@ -85,10 +85,10 @@ public struct LibraryWords: Equatable, Sendable {
     /// the plan's page, and the small device's word (card AX screen 135, card BM change 259).
     public var needPlan: String, needPlanLine: String, getPlan: String, noPlan: String
     /// The list that Albums and Cover Flow group into albums: Liked Songs on Spotify, the
-    /// whole library (`Playlist.libraryID`) on Apple Music, as on an iPod.
+    /// songs of the library's albums (`Playlist.libraryID`) on Apple Music, as on an iPod.
     public var albumsList: String
     /// The setup count's noun for `albumsList`'s songs, one and many: "liked song(s)" on
-    /// Spotify, "song(s)" on Apple Music, which counts the whole library.
+    /// Spotify, "song(s)" on Apple Music, which counts the songs of the library's albums.
     public var oneSong: String, manySongs: String
 
     public init(

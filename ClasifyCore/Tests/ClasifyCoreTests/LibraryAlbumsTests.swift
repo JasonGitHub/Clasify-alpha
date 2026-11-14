@@ -117,6 +117,19 @@ import Testing
         #expect(s.isLoaded(.tracks(playlist: Self.album.id)))  // no read again: it is up to date
     }
 
+    @Test func aCompilationStaysOneAlbumWithItsAlbumArtist() {
+        var s = appleMenu()
+        let mix = Album(id: "applemusic:album:123", name: "Mix", artist: "Various Artists")
+        let songs = [
+            Track(id: "m2", title: "m2", artist: "B", duration: 100, album: mix, number: 2),
+            Track(id: "m1", title: "m1", artist: "A", duration: 100, album: mix, number: 1),
+        ]
+        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: songs))
+        #expect(s.rows(for: s.top) == [.album(mix.id)] && s.albums.map(\.artist) == ["Various Artists"])
+        #expect(s.tracks(in: mix.id).map(\.id) == ["m1", "m2"])
+        #expect(s.rows(for: Frame(screen: .playlists)).isEmpty && s.playlistCount == 0)
+    }
+
     @Test func aStaleAlbumsScreenRereadsTheLibrary() {
         var s = appleMenu()
         send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)
