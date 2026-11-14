@@ -2,10 +2,15 @@ name: App DMG
 # Builds the test DMG of the app from main (CLA-69). Not part of PR CI.
 # - A push to main that changes the app makes an ad-hoc signed DMG. That job uses no secret.
 # - A run started by hand on main makes a DMG signed with Developer ID and notarized. Only that
-#   job uses environment "release" and its secrets. It also puts the DMG on the public beta page
-#   (Vercel Blob, CLA-96). Neither job ever runs on a PR.
+#   job uses environment "release" and its secrets. Started with beta = true, it also puts the DMG
+#   on the public beta page (Vercel Blob, CLA-96). Neither job ever runs on a PR.
 on:
   workflow_dispatch:
+    inputs:
+      beta:
+        description: "Also put this signed build on the public beta page (Vercel Blob, CLA-96)"
+        type: boolean
+        default: false
   push:
     branches: [main]
     # Only a merge that can change the app makes a new test DMG. Workflow and doc changes do not.
@@ -109,6 +114,8 @@ jobs:
           xcrun stapler validate "$DMG"
           spctl --assess --type open --context context:primary-signature --verbose=2 "$DMG"
       - name: Upload the DMG and latest.json to the beta page's Vercel Blob store
+        # Only a run started with beta = true. Every other step is the same for both values.
+        if: inputs.beta
         # CLA-96: mypod-beta.vercel.app reads beta/latest.json and links its "url". The DMG gets a
         # new public path per build, beta/myPod-beta-<n>.dmg. latest.json has a fixed path and is
         # overwritten, with a 60 s cache so the page sees a new build within about a minute.
