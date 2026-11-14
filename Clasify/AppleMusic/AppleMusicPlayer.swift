@@ -3,6 +3,11 @@ import Foundation
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
 // only on the main actor.
 @preconcurrency import MusicKit
+import os
+
+/// TEMP (CLA-103, build 202: Next and Previous do nothing in Shuffle Songs): one line per press,
+/// counts and flags only, no titles, no IDs.
+private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
 
 /// Plays Apple Music inside Clasify with MusicKit's `ApplicationMusicPlayer` (CLA-103). No
 /// other app opens: the spike (CLA-102, build 164) showed no Music.app window and no Dock icon.
@@ -140,16 +145,41 @@ final class AppleMusicPlayer: Player {
 
     func next(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(true); pendingSeek = nil; return }  // the load runs it
-        guard hasQueue else { return }
-        Task { _ = try? await player.skipToNextEntry() }  // the next poll reports the new track
+        if loading { pendingSkips.append(true); pendingSeek = nil; return logSkip(true, "loading yes") }  // the load runs it
+        guard hasQueue else { return logSkip(true, "no queue") }
+        Task { await skip(true) }  // the next poll reports the new track
     }
 
     func prev(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(false); pendingSeek = nil; return }  // the load runs it
-        guard hasQueue else { return }
-        Task { _ = try? await player.skipToPreviousEntry() }
+        if loading { pendingSkips.append(false); pendingSeek = nil; return logSkip(false, "loading yes") }  // the load runs it
+        guard hasQueue else { return logSkip(false, "no queue") }
+        Task { await skip(false) }
+    }
+
+    /// The same skip as before, with a TEMP log line around it. Errors are still dropped.
+    private func skip(_ forward: Bool) async {
+        let before = currentIndex()
+        var threw = "no"
+        do {
+            if forward { _ = try await player.skipToNextEntry() } else { _ = try await player.skipToPreviousEntry() }
+        } catch {
+            threw = "\((error as NSError).domain) \((error as NSError).code)"
+        }
+        try? await Task.sleep(for: .milliseconds(600))
+        let resolved = player.queue.currentEntry.flatMap(storeID) != nil
+        logSkip(forward, "loading no, threw \(threw), entries \(player.queue.entries.count), index \(before) -> \(currentIndex()), "
+            + "resolved \(resolved ? "yes" : "no"), status \(player.state.playbackStatus)")
+    }
+
+    /// TEMP: the current entry's place in the queue, or "none".
+    private func currentIndex() -> String {
+        guard let current = player.queue.currentEntry else { return "none" }
+        return player.queue.entries.firstIndex { $0.id == current.id }.map { "\($0)" } ?? "not in entries"
+    }
+
+    private func logSkip(_ forward: Bool, _ details: String) {
+        timing.notice("apple skip (TEMP): \(forward ? "next" : "prev", privacy: .public), shuffle \(self.shuffle ? "on" : "off", privacy: .public), \(details, privacy: .public)")
     }
 
     func setShuffle(_ on: Bool) {
