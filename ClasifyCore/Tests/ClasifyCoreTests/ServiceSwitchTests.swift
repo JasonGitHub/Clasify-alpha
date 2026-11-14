@@ -186,8 +186,9 @@ import Testing
     _ = await libraries.logIn()
     libraries.logOut()
     _ = await libraries.playlists()
+    _ = await libraries.artists()
     #expect(spotify.calls == ["restoreSession"] && spotify.fetches.isEmpty)
-    #expect(apple.calls == ["logIn", "logOut"] && apple.fetches == ["playlists"])
+    #expect(apple.calls == ["logIn", "logOut"] && apple.fetches == ["playlists", "artists"])
     libraries.onProgress = { _, _, _, _ in }
     #expect(spotify.onProgress != nil && apple.onProgress != nil)
 }

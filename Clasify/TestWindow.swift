@@ -128,7 +128,8 @@ private struct TestPanel: View {
         case .playlists: "Playlists"
         case .albums: "Albums"
         case .coverFlow, .albumPanel: "Cover Flow"
-        case .tracks(let id): state.library.first { $0.id == id }?.name ?? state.album(id)?.name ?? "Tracks"
+        case .tracks(let id): state.listName(id) ?? state.album(id)?.name ?? "Tracks"
+        case .artists: "Artists"
         case .settings: "Settings"
         case .confirm: "Log out?"
         case .about: "About"
@@ -152,7 +153,10 @@ private struct TestPanel: View {
         case .likedSongs: "Liked Songs"
         case .shuffleSongs: "Shuffle Songs"
         case .settings: "Settings"
-        case .playlist(let id): state.library.first { $0.id == id }?.name ?? id
+        case .playlist(let id): state.listName(id) ?? id
+        case .artists: "Artists"
+        case .songs: "Songs"
+        case .artist(let id): state.listName(id) ?? id
         case .album(let id): state.album(id)?.name ?? id
         case .track(let id): trackLabel(id)
         case .service: "Service: \((state.pendingService ?? state.service).rawValue)"
