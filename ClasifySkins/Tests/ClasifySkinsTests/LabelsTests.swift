@@ -116,20 +116,32 @@ func sampleState() -> AppState {
         #expect(SetupProgress.widest(playlists: 107, albums: 84, total: 1240) == 1240.formatted())
         #expect(SetupProgress.widest(playlists: 2100, albums: 84, total: 455) == 2100.formatted())
         #expect(SetupProgress.widest(playlists: nil, albums: 0, total: 0) == "0")
-        // Change 197: the bar and the counts grow steadily over the name time: 0.5 + 0.34 × 5 + 0.3 = 2.5 s for 6 names (CLA-80).
-        #expect(SetupProgress.grow(at: -1, names: 6) == 0 && abs(SetupProgress.grow(at: 1.25, names: 6) - 0.5) < 1e-9)
-        #expect(SetupProgress.grow(at: 2.4, names: 6) < 1 && SetupProgress.grow(at: 2.51, names: 6) == 1 && SetupProgress.grow(at: 9, names: 6) == 1)
-        #expect(SetupProgress.grow(at: 0.4, names: 1) == 0.5 && SetupProgress.grow(at: 0, names: 0) == 1)  // no names: the real values
+        // Change 197: the bar and the counts grow steadily over the name time: 0.5 + 0.34 × 5 + 0.3 = 2.5 s for 6 names (CLA-80),
+        // with 100 songs or more, or before the count is known (change 266).
+        for songs in [nil, 100, 5000] as [Int?] {
+            #expect(SetupProgress.grow(at: -1, names: 6, songs: songs) == 0 && abs(SetupProgress.grow(at: 1.25, names: 6, songs: songs) - 0.5) < 1e-9)
+            #expect(SetupProgress.grow(at: 2.4, names: 6, songs: songs) < 1 && SetupProgress.grow(at: 2.51, names: 6, songs: songs) == 1)
+        }
+        #expect(SetupProgress.grow(at: 0.4, names: 1, songs: nil) == 0.5 && SetupProgress.grow(at: 0, names: 0, songs: nil) == 1)  // no names: the real values
+        // Change 266: 20 songs or fewer take 1 s; 60 songs take 1.75 s.
+        #expect(abs(SetupProgress.grow(at: 0.5, names: 6, songs: 15) - 0.5) < 1e-9 && SetupProgress.grow(at: 1.01, names: 6, songs: 15) == 1)
+        #expect(abs(SetupProgress.grow(at: 0.875, names: 6, songs: 60) - 0.5) < 1e-9)
         let half = SetupProgress.shown(done: 455, total: 455, playlists: 107, albums: 84, grow: 0.5)
         #expect(half.done == 227 && half.playlists == 53 && half.albums == 42)  // rounded down
         let full = SetupProgress.shown(done: 455, total: 455, playlists: 107, albums: 84, grow: 1)
         #expect(full.done == 455 && full.playlists == 107 && full.albums == 84)  // they end at the real totals
         #expect(SetupProgress.shown(done: 100, total: 455, playlists: nil, albums: 30, grow: 0.5).done == 100)  // a slower read
+        // Change 265: the bar fills smoothly, not in whole songs; the count stays a whole number.
+        #expect(abs(SetupProgress.fill(done: 15, total: 15, grow: 0.53) - 0.53) < 1e-9)
+        #expect(SetupProgress.shown(done: 15, total: 15, playlists: nil, albums: 0, grow: 0.53).done == 7)
+        #expect(abs(SetupProgress.fill(done: 100, total: 400, grow: 0.5) - 0.25) < 1e-9)  // a slower read
+        #expect(SetupProgress.fill(done: 0, total: 0, grow: 1) == 0 && SetupProgress.fill(done: 9, total: 8, grow: 1) == 1)
         // Liked Songs read before the list came: 0 until the list comes, then it grows from 0.
-        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, waiting: true) == 0)
-        #expect(SetupProgress.grow(now: 101, namesFrom: 101, names: 6, waiting: false) == 0)
-        #expect(abs(SetupProgress.grow(now: 102.25, namesFrom: 101, names: 6, waiting: false) - 0.5) < 1e-9)
-        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, waiting: false) == 1)  // the list read failed: the real values
+        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, songs: 15, waiting: true) == 0)
+        #expect(SetupProgress.grow(now: 101, namesFrom: 101, names: 6, songs: nil, waiting: false) == 0)
+        #expect(abs(SetupProgress.grow(now: 102.25, namesFrom: 101, names: 6, songs: nil, waiting: false) - 0.5) < 1e-9)
+        #expect(abs(SetupProgress.grow(now: 101.5, namesFrom: 101, names: 6, songs: 15, waiting: false) - 0.5) < 1e-9)
+        #expect(SetupProgress.grow(now: 100, namesFrom: nil, names: 0, songs: nil, waiting: false) == 1)  // the list read failed: the real values
         #expect(Labels.message(for: Frame(screen: .color), in: s) == nil)
     }
 

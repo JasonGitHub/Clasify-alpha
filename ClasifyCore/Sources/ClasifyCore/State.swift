@@ -292,7 +292,18 @@ public struct AppState: Equatable, Sendable {
     /// Seconds that "You’re in", "Linked" and "Premium" show before the next step.
     public static let beatTime = 1.5
     /// Seconds that "You’re all set" (card AY, change 140) shows before the main menu: no hurry.
-    public static let allSetTime = 2.5
+    /// Change 267: 1.5 s for `songs` 20 or fewer, 2.5 s for 100 or more, or when the count is
+    /// not known.
+    public static func allSetTime(songs: Int?) -> Double { 1.5 + setupPace(songs: songs) }
+    /// Card AY, changes 266 and 267: a small first read goes faster. 0 for 20 songs or fewer,
+    /// 1 for 100 or more, and a straight line between. 1 when the count is not known yet.
+    static func setupPace(songs: Int?) -> Double {
+        guard let songs else { return 1 }
+        return min(max(Double(songs - 20) / 80, 0), 1)
+    }
+    /// The song count of the first read: its first total, or the songs it read. nil until the
+    /// library gives one. It stays as it was first given, so the pace never slows down.
+    public var firstReadSongs: Int?
     /// When the playlist names came during the first library read (card AY). A skin fills
     /// them in one by one from then. 0 before they come.
     public var namesAt: Double = 0
@@ -309,6 +320,24 @@ public struct AppState: Equatable, Sendable {
     /// `nameFade`, `nameGap` after the one before it, from `nameStart` after they came. Six
     /// names have shown 2.5 s after they came (CLA-80). The 191 hold and the skin use these too.
     public static let nameStart = 0.5, nameGap = 0.34, nameFade = 0.3
+    /// Change 266: seconds from when the names came until the last of `names` has shown. 1 s
+    /// for `songs` 20 or fewer, up to 2.5 s for 100 or more, and never longer than the time
+    /// above for that many names. The time above while the count is not known. The 191 hold,
+    /// the names and the bar all use it.
+    public static func namesTime(names: Int, songs: Int?) -> Double {
+        guard names > 0 else { return 0 }
+        let full = nameStart + nameGap * Double(names - 1) + nameFade
+        return min(full, 1 + 1.5 * setupPace(songs: songs))
+    }
+    /// Name `i`'s opacity, `t` seconds after the names came. The times above, made shorter in
+    /// step so that the last name has shown at `namesTime`. A count that comes later only
+    /// makes it go faster, so a name never fades back.
+    public static func nameOpacity(_ i: Int, of names: Int, at t: Double, songs: Int?) -> Double {
+        guard names > 0 else { return 0 }
+        let full = nameStart + nameGap * Double(names - 1) + nameFade
+        let u = t * full / namesTime(names: names, songs: songs)
+        return min(max((u - nameStart - nameGap * Double(i)) / nameFade, 0), 1)
+    }
     /// The playlist names that show on the small screen during the first read: up to 6.
     public var firstReadNames: [String] {
         Array(library.lazy.filter { $0.id != Playlist.likedSongsID && !Album.isID($0.id) }.prefix(6).map(\.name))
