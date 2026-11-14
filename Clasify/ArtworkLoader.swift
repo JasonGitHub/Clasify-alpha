@@ -9,7 +9,8 @@ import os
 /// states and times, never an ID or a name. Remove once the cause of the blink is known.
 private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
 
-/// Loads album covers from Spotify's image CDN and Apple's image server (`CoverURL`) for the skins. It keeps them in memory only:
+/// Loads album covers from Spotify's image CDN and Apple's image server (`CoverURL`), and Apple
+/// Music library covers from iTunesLibrary (`AppleMusicArt`), for the skins. It keeps them in memory only:
 /// an NSCache of about 50 images, and a URLSession with no URL cache, so nothing goes to disk.
 @MainActor @Observable
 final class ArtworkLoader {
@@ -156,17 +157,25 @@ final class ArtworkLoader {
     }
 
     private func load(_ coverID: String) {
-        // A Spotify cover ID or an https mzstatic.com Artwork URL. Anything else never loads.
+        // A Spotify cover ID, an https mzstatic.com Artwork URL, or an Apple Music library
+        // cover (`LibraryCover`, read in memory by `AppleMusicArt`). Anything else never loads.
         guard !loading.contains(coverID) else { return }
-        guard let url = CoverURL.url(for: coverID) else { return logRefused(coverID) }
+        let library = LibraryCover.parse(coverID)
+        let url = library == nil ? CoverURL.url(for: coverID) : nil
+        guard library != nil || url != nil else { return logRefused(coverID) }
         if let failed = failedAt[coverID], ContinuousClock.now - failed < .seconds(30) { return }
         loading.insert(coverID)
         let start = ContinuousClock.now
         Task {
             defer { loading.remove(coverID); arrived += 1 }
-            if let data = await Self.fetch(url, with: session),
-               let source = CGImageSourceCreateWithData(data as CFData, nil),
-               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+            var image: CGImage?
+            if let library {
+                image = await AppleMusicArt.shared.image(library.persistentID, side: library.side)?.cgImage
+            } else if let url, let data = await Self.fetch(url, with: session),
+                      let source = CGImageSourceCreateWithData(data as CFData, nil) {
+                image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+            }
+            if let image {
                 cache.setObject(image, forKey: coverID as NSString)
                 arrivedAt[coverID] = Date.timeIntervalSinceReferenceDate
                 if wanted.contains(coverID) { kept[coverID] = image }
