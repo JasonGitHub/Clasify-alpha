@@ -26,11 +26,11 @@ enum AppleMusicReads {
     /// parameters, which are opaque but Codable. Their JSON has "catalogId", as in the Apple
     /// Music API (not checked on a Mac).
     static func catalogID(_ song: Song) -> String? {
-        if let found = foundCatalogIDs[song.id] { return found }  // from an ISRC read
         guard let params = song.playParameters, let data = try? JSONEncoder().encode(params),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return nil }
-        return json["catalogId"] as? String
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = json["catalogId"] as? String
+        else { return foundCatalogIDs[song.id] }  // else from an ISRC read, if one matched its album
+        return id
     }
 
     /// Apple Music's name for the library playlist of favorited songs.
@@ -183,40 +183,57 @@ enum AppleMusicReads {
     /// catalog ID on macOS 27 (build 188), so `catalogID(_:)` also looks here.
     private static var foundCatalogIDs: [MusicItemID: String] = [:]
 
-    /// Covers from the catalog for library songs with no usable cover of their own, found by
-    /// ISRC, 100 per read. A failed read leaves those songs without a cover; the list is never
-    /// lost. The catalog IDs found also serve the whole-album read (#215).
+    /// Covers from the catalog for library songs with no usable cover of their own: by their
+    /// catalog ID when the play parameters have one, else by ISRC, 100 per read. An ISRC can
+    /// name the same recording on several releases, so the release with the song's own album
+    /// title wins, and only that one gives a catalog ID for the whole-album read (#215). A
+    /// failed read leaves those songs without a cover; the list is never lost.
     private static func catalogCovers(_ songs: [Song]) async -> [MusicItemID: Cover] {
-        var byISRC: [String: [MusicItemID]] = [:]
+        var byID: [String: [Song]] = [:], byISRC: [String: [Song]] = [:]
         for song in songs where cover(song.artwork) == nil {
-            if let isrc = song.isrc, !isrc.isEmpty { byISRC[isrc, default: []].append(song.id) }
+            if let id = catalogID(song) { byID[id, default: []].append(song) }
+            else if let isrc = song.isrc, !isrc.isEmpty { byISRC[isrc, default: []].append(song) }
         }
         var covers: [MusicItemID: Cover] = [:]
         var stats = CoverStats()
-        let isrcs = Array(byISRC.keys)
-        for start in stride(from: 0, to: isrcs.count, by: 100) {
-            let batch = Array(isrcs[start..<min(start + 100, isrcs.count)])
-            let request = MusicCatalogResourceRequest<Song>(matching: \.isrc, memberOf: batch)
-            stats.batches += 1
-            let items: MusicItemCollection<Song>
-            do { items = try await request.response().items } catch {
-                stats.errors.append("\(type(of: error)) \((error as NSError).code)")  // TEMP: type and code only
-                continue
-            }
-            stats.returned += items.count
-            for item in items {
-                guard let isrc = item.isrc, let mine = byISRC[isrc] else { continue }
-                stats.matched += 1
-                for id in mine {
-                    foundCatalogIDs[id] = foundCatalogIDs[id] ?? item.id.rawValue
-                    if covers[id] == nil, let found = cover(item.artwork) { covers[id] = found }
-                }
+        let ids = await catalogRead(Array(byID.keys), &stats) {
+            MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: $0.map { MusicItemID($0) })
+        }
+        for item in ids {
+            for song in byID[item.id.rawValue] ?? [] where covers[song.id] == nil { covers[song.id] = cover(item.artwork) }
+        }
+        let byRecording = await catalogRead(Array(byISRC.keys), &stats) {
+            MusicCatalogResourceRequest<Song>(matching: \.isrc, memberOf: $0)
+        }
+        for (isrc, mine) in byISRC {
+            let found = byRecording.filter { $0.isrc == isrc }
+            guard let any = found.first else { continue }
+            stats.matched += 1
+            for song in mine {
+                let same = found.first { $0.albumTitle?.lowercased() == song.albumTitle?.lowercased() }
+                if let same, foundCatalogIDs[song.id] == nil { foundCatalogIDs[song.id] = same.id.rawValue }
+                if covers[song.id] == nil { covers[song.id] = cover((same ?? any).artwork) }
             }
         }
-        stats.isrcs = isrcs.count
-        stats.found = covers.count
+        stats.isrcs = byISRC.count
+        stats.found = covers.values.count
         logCovers(songs, stats)
         return covers
+    }
+
+    /// Catalog songs for `values`, 100 per read. A read that throws is counted and skipped.
+    private static func catalogRead(
+        _ values: [String], _ stats: inout CoverStats, _ request: ([String]) -> MusicCatalogResourceRequest<Song>
+    ) async -> [Song] {
+        var songs: [Song] = []
+        for start in stride(from: 0, to: values.count, by: 100) {
+            stats.batches += 1
+            do { songs += try await request(Array(values[start..<min(start + 100, values.count)])).response().items } catch {
+                stats.errors.append("\(type(of: error)) \((error as NSError).code)")  // TEMP: type and code only
+            }
+        }
+        stats.returned += songs.count
+        return songs
     }
 
     /// TEMP (builds 183 and 188, no Apple Music cover shows): counts of what the cover reads
