@@ -1323,6 +1323,7 @@ func playing(_ i: Int = 0) -> AppState {
         fetches.append("reread \(playlist)"); return library.first { $0.id == playlist }?.tracks
     }
     func track(_ id: String) async -> Track? { fetches.append(id); return extra[id] }
+    func artists() async -> [Playlist]? { fetches.append("artists"); return [] }
     func prefetch() async { calls.append("prefetch") }
     func logIn() async -> LoginResult { calls.append("logIn"); return loginResult }
     func cancelLogIn() async { calls.append("cancelLogIn") }

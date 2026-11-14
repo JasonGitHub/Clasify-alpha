@@ -85,6 +85,18 @@ import Testing
         #expect(send(&s, .select).contains { if case .load(_, Playlist.songsID, true, _) = $0 { true } else { false } })
     }
 
+    @Test func aPlaylistRereadKeepsTheReadSongsAndArtistLists() {
+        var s = withRows()
+        send(&s, .wheel(4), .select, .tracksLoaded(token: 1, playlist: Playlist.songsID, tracks: focus.tracks), .menu)
+        send(&s, .wheel(-2), .select, .artistsLoaded(token: 2, artists: Self.artists))
+        send(&s, .select, .tracksLoaded(token: 3, playlist: Self.ids.c, tracks: focus.tracks))
+        s.refreshing = [AppState.readKey(.playlists)]
+        send(&s, .playlistsRefreshed([focusInfo]))
+        #expect(s.isLoaded(.tracks(playlist: Playlist.songsID)) && s.isLoaded(.tracks(playlist: Self.ids.c)))
+        #expect(s.tracks(in: Playlist.songsID).count == 8 && s.rows(for: s.top).count == 8)
+        #expect(s.rows(for: Frame(screen: .playlists)) == [.playlist(Playlist.likedSongsID), .playlist("focus")] && s.playlistCount == 1)
+    }
+
     @Test func aSignOutForgetsTheArtists() {
         var s = withRows()
         send(&s, .wheel(2), .select, .artistsLoaded(token: 1, artists: Self.artists))

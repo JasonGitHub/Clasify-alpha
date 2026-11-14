@@ -31,6 +31,7 @@ public final class ServiceLibrary: Library {
     public func rereadPlaylists() async -> [Playlist]? { await active.rereadPlaylists() }
     public func reread(_ playlist: String) async -> [Track]? { await active.reread(playlist) }
     public func track(_ id: String) async -> Track? { await active.track(id) }
+    public func artists() async -> [Playlist]? { await active.artists() }
     public func prefetch() async { await active.prefetch() }
     public func logIn() async -> LoginResult { await active.logIn() }
     public func cancelLogIn() async { await active.cancelLogIn() }

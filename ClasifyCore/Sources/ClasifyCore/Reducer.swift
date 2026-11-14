@@ -273,16 +273,17 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.extraTracks.append(track)
         if s.extraTracks.count > extraTrackLimit { s.extraTracks.removeFirst(s.extraTracks.count - extraTrackLimit) }
     }
-    /// Puts the playlist list in, and keeps Liked Songs, the albums already read and the
-    /// tracks already read for playlists that are still there.
+    /// Puts the playlist list in, and keeps the lists that are not playlists (Liked Songs, the
+    /// library, Songs, artists, albums) and the tracks already read for playlists still there.
     func setPlaylists(_ playlists: [Playlist]) {
         let read = Dictionary(s.library.map { ($0.id, $0.tracks) }, uniquingKeysWith: { a, _ in a })
+        let hidden = s.library.filter { Playlist.isHidden($0.id) && !Album.isID($0.id) }
         let albums = s.library.filter { Album.isID($0.id) }
-        let kept = Set(playlists.map(\.id) + albums.map(\.id)).union([Playlist.likedSongsID, Playlist.libraryID])
+        let kept = Set(playlists.map(\.id) + hidden.map(\.id) + albums.map(\.id)).union([Playlist.likedSongsID, Playlist.libraryID])
         // The playing playlist is gone: keep the playing track's details for Now Playing.
         if let ref = s.current, !Album.isID(ref.playlist), !kept.contains(ref.playlist), let track = s.track(ref) { keepExtra(track) }
         s.loadedTracks = s.loadedTracks.intersection(kept)
-        s.library = s.library.filter { $0.id == Playlist.likedSongsID || $0.id == Playlist.libraryID } + playlists.map {
+        s.library = hidden + playlists.map {
             var p = $0
             if s.loadedTracks.contains(p.id) { p.tracks = read[p.id] ?? [] }
             return p
