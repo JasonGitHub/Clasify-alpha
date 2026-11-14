@@ -32,13 +32,26 @@ extension AppleMusicReads {
     /// The API list, read once a session. `forgetAlbums()` forgets it.
     static var apiLibrary: Task<APILibrary, Never>?
 
+    /// How long a song list waits for the API list. After that the list shows with the
+    /// blue-grey squares, and the read goes on for the lists read later.
+    static let apiWait = Duration.seconds(5)
+
+    /// Starts the API list read, if it is not running or done. The playlists read calls it,
+    /// so the list is often ready before the first song list.
+    @discardableResult static func startAPILibrary() -> Task<APILibrary, Never> {
+        let read = apiLibrary ?? Task { await Self.readAPILibrary() }
+        apiLibrary = read
+        return read
+    }
+
     /// Covers for library songs from the API list. It also keeps the catalog IDs found, for
     /// the whole-album read and the queue keys.
     static func libraryAPICovers(_ songs: [Song]) async -> [MusicItemID: Cover] {
         guard !songs.isEmpty else { return [:] }
-        let read = apiLibrary ?? Task { await Self.readAPILibrary() }
-        apiLibrary = read
-        let library = await read.value
+        guard let library = await value(of: startAPILibrary(), within: apiWait) else {
+            timing.notice("apple covers (TEMP): asked \(songs.count, privacy: .public), api list not ready after 5 s")
+            return [:]
+        }
         var covers: [MusicItemID: Cover] = [:], byID = 0, byName = 0
         for song in songs {
             let found: APISong
@@ -59,6 +72,22 @@ extension AppleMusicReads {
             ms \(library.ms, privacy: .public), threw \(threw, privacy: .public)
             """)
         return covers
+    }
+
+    /// The read's result, or nil when it does not end within `wait`. The read is not stopped.
+    private static func value(of read: Task<APILibrary, Never>, within wait: Duration) async -> APILibrary? {
+        await withCheckedContinuation { (done: CheckedContinuation<APILibrary?, Never>) in
+            let once = Once(done)
+            Task { @MainActor in once.resume(await read.value) }
+            Task { @MainActor in try? await Task.sleep(for: wait); once.resume(nil) }
+        }
+    }
+
+    /// Resumes a continuation once: the first of the read and the timer wins.
+    @MainActor private final class Once {
+        private var done: CheckedContinuation<APILibrary?, Never>?
+        nonisolated init(_ done: CheckedContinuation<APILibrary?, Never>) { self.done = done }
+        func resume(_ value: APILibrary?) { done?.resume(returning: value); done = nil }
     }
 
     /// Reads the whole API list: the first page, then 8 pages at a time until a page is short.

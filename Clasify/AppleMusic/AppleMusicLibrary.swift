@@ -18,6 +18,7 @@ final class AppleMusicLibrary: Library {
     private var trackReads: [String: Task<[ClasifyCore.Track]?, Never>] = [:]
 
     func playlists() async -> [ClasifyCore.Playlist]? {
+        AppleMusicReads.startAPILibrary()  // covers for the song lists: start early (CLA-103)
         let read = listRead ?? Task { await Self.readPlaylists() }
         listRead = read
         let list = await read.value
