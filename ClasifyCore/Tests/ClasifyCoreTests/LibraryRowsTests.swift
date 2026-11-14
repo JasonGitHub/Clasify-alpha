@@ -14,18 +14,15 @@ import Testing
 
     func withRows() -> AppState {
         var s = mainMenu()
-        var words = LibraryWords.appleMusic
-        words.libraryRows = true
-        send(&s, .libraryWords(words))
+        send(&s, .libraryWords(.appleMusic))
         return s
     }
 
-    @Test func spotifyAndAppleMusicKeepTheirRowsUntilLibraryRowsIsOn() {
+    @Test func appleMusicHasTheLibraryRowsAndSpotifyKeepsItsRows() {
         var s = mainMenu()
         let old: [Row] = [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings]
         #expect(s.rows(for: s.top) == old && !LibraryWords.spotify.libraryRows)
-        send(&s, .libraryWords(.appleMusic))
-        #expect(s.rows(for: s.top) == old && !LibraryWords.appleMusic.libraryRows)
+        #expect(LibraryWords.appleMusic.libraryRows)
         s = withRows()
         #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .settings])
         s.library = [focusInfo]; s.playlistsLoaded = true

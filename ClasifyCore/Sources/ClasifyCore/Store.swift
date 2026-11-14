@@ -95,7 +95,7 @@ public struct LibraryWords: Equatable, Sendable {
     /// Spotify, "song(s)" on Apple Music, which counts the songs of the library's albums.
     public var oneSong: String, manySongs: String
     /// The main menu has Artists and Songs, and Playlists starts with the liked list, as on an
-    /// iPod (card BN). Apple Music turns it on once its reads are in.
+    /// iPod (card BN). On for Apple Music only.
     public var libraryRows: Bool
 
     public init(
@@ -118,7 +118,7 @@ public struct LibraryWords: Equatable, Sendable {
         likedSongs: "Favorite Songs", service: "Apple Music", like: "Favorite",
         needPlan: "Not subscribed", needPlanLine: "To play music, we need Apple Music.",
         getPlan: "Get Apple Music", noPlan: "No plan",
-        albumsList: Playlist.libraryID, oneSong: "song", manySongs: "songs")
+        albumsList: Playlist.libraryID, oneSong: "song", manySongs: "songs", libraryRows: true)
 }
 
 /// Holds all app state. Only `send` changes it, and only through `reduce`.

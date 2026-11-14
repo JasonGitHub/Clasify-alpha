@@ -14,7 +14,8 @@ import Testing
     ]
     static let favorites = [songs[1]]
 
-    /// Signed in on the main menu, with the Apple Music words.
+    /// Signed in on the main menu, with the Apple Music words. Its main menu (card BN): Cover
+    /// Flow, Playlists, Artists, Albums (row 3), Songs, Shuffle Songs, Settings.
     func appleMenu() -> AppState {
         var s = mainMenu()
         send(&s, .libraryWords(.appleMusic))
@@ -35,23 +36,23 @@ import Testing
 
     @Test func albumsOnAppleMusicReadTheWholeLibrary() {
         var s = appleMenu()
-        #expect(send(&s, .wheel(2), .select) == [.fetchTracks(token: 1, playlist: Playlist.libraryID)])
+        #expect(send(&s, .wheel(3), .select) == [.fetchTracks(token: 1, playlist: Playlist.libraryID)])
         send(&s, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs))
         #expect(!s.top.loading && s.rows(for: s.top) == [.album(Self.album.id)])
         #expect(s.albumCovers.isEmpty && s.album(Self.album.id)?.name == "A")
         // Before the album's own read, it shows all its library songs, not only the favorited one.
         #expect(s.tracks(in: Self.album.id).map(\.id) == ["a1", "a2", "a3"])
-        // Favorite Songs stays its own list.
-        send(&s, .menu)
-        #expect(send(&s, .wheel(1), .select) == [.fetchTracks(token: 2, playlist: Playlist.likedSongsID)])
-        send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: Self.favorites))
+        // Favorite Songs stays its own list: the first row of Playlists.
+        send(&s, .menu, .wheel(-2), .select, .playlistsLoaded(token: 2, playlists: [focusInfo]))
+        #expect(send(&s, .select) == [.fetchTracks(token: 3, playlist: Playlist.likedSongsID)])
+        send(&s, .tracksLoaded(token: 3, playlist: Playlist.likedSongsID, tracks: Self.favorites))
         #expect(s.rows(for: s.top) == [.track("a1")])
         #expect(s.isLoaded(.albums) && s.tracks(in: Playlist.libraryID).count == 4)
     }
 
     @Test func aSongOfALibraryAlbumPlaysInTheAlbumNotTheLibrary() {
         var s = appleMenu()
-        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs))
+        send(&s, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs))
         #expect(send(&s, .select) == [.fetchTracks(token: 2, playlist: Self.album.id)])
         send(&s, .tracksLoaded(token: 2, playlist: Self.album.id, tracks: [Self.songs[1], Self.songs[0], Self.songs[2]]))
         let fx = send(&s, .select)
@@ -61,19 +62,19 @@ import Testing
 
     @Test func theLibraryIsNeverAPlaylistRowOrCount() {
         var s = appleMenu()
-        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)
+        send(&s, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)
         #expect(Playlist.isHidden(Playlist.libraryID) && Playlist.isHidden(Playlist.likedSongsID))
         #expect(Playlist.isHidden(Self.album.id) && !Playlist.isHidden("focus"))
-        send(&s, .wheel(-1), .select, .playlistsLoaded(token: 2, playlists: [focusInfo]))
-        #expect(s.rows(for: s.top) == [.playlist("focus")])
+        send(&s, .wheel(-2), .select, .playlistsLoaded(token: 2, playlists: [focusInfo]))
+        #expect(s.rows(for: s.top) == [.playlist(Playlist.likedSongsID), .playlist("focus")])
         #expect(s.playlistCount == 1 && s.firstReadNames == ["Focus"])
         // The playlist list keeps the library read, so Albums opens without a read again.
         #expect(s.isLoaded(.albums) && s.tracks(in: Playlist.libraryID).count == 4)
         send(&s, .menu)
-        #expect(send(&s, .wheel(1), .select, now: 150) == [])  // Albums
+        #expect(send(&s, .wheel(2), .select, now: 150) == [])  // Albums
     }
 
-    @Test func afterSetupOnAppleMusicTheMainMenuHasCoversAndShuffleSongsLoadsFavoritesFirst() {
+    @Test func afterSetupOnAppleMusicTheMainMenuHasCoversAndShuffleSongsReadsAllSongsFirst() {
         var s = appleMenu()
         // Setup read only the library: Favorite Songs is not read yet.
         let covered = Self.songs.map { var t = $0; t.coverID = "c-\($0.id)"; return t }
@@ -82,30 +83,30 @@ import Testing
         s.readAt[Playlist.libraryID] = 100
         s.artRow = .likedSongs; s.refreshArt()
         #expect(s.mainArt.count == 4 && Set(s.mainArt.map(\.id)) == ["a1", "a2", "a3", "lone"])
-        // Shuffle Songs reads Favorite Songs, then plays from it.
-        let fx = send(&s, .wheel(4), .select)
-        #expect(s.top.screen == .tracks(playlist: Playlist.likedSongsID) && s.top.loading)
-        #expect(fx.contains(.fetchTracks(token: s.top.token, playlist: Playlist.likedSongsID)))
-        send(&s, .tracksLoaded(token: s.top.token, playlist: Playlist.likedSongsID, tracks: Self.favorites))
-        #expect(s.current == TrackRef(playlist: Playlist.likedSongsID, track: "a1") && s.shuffle && s.top.screen == .now)
+        // Shuffle Songs reads all library songs (Songs), then plays from them (change 278).
+        let fx = send(&s, .wheel(5), .select)
+        #expect(s.top.screen == .tracks(playlist: Playlist.songsID) && s.top.loading)
+        #expect(fx.contains(.fetchTracks(token: s.top.token, playlist: Playlist.songsID)))
+        send(&s, .tracksLoaded(token: s.top.token, playlist: Playlist.songsID, tracks: Self.favorites))
+        #expect(s.current == TrackRef(playlist: Playlist.songsID, track: "a1") && s.shuffle && s.top.screen == .now)
     }
 
     @Test func aRelaunchOnAppleMusicKeepsTheLibraryThatTheMainMenuReadsForCovers() {
         var s = appleMenu()
         s.artReads = [:]
-        send(&s, .wheel(3), now: 101)  // Favorite Songs
+        send(&s, .wheel(3), now: 101)  // Albums
         let fx = send(&s, .tick, now: 102)  // the covers move to the row: read the albums list
         guard let token = s.artReads[Playlist.libraryID] else { Issue.record("no library read: \(fx)"); return }
         #expect(fx.contains(.readArtTracks(token: token, playlist: Playlist.libraryID)))
         let covered = Self.songs.map { var t = $0; t.coverID = "c-\($0.id)"; return t }
         send(&s, .artTracksRead(token: token, playlist: Playlist.libraryID, tracks: covered), now: 103)
         #expect(s.isLoaded(.albums) && s.tracks(in: Playlist.libraryID).count == 4 && !s.mainArt.isEmpty)
-        #expect(s.rows(for: Frame(screen: .playlists)).isEmpty && s.playlistCount == 0)
+        #expect(s.rows(for: Frame(screen: .playlists)) == [.playlist(Playlist.likedSongsID)] && s.playlistCount == 0)
     }
 
     @Test func aLibraryRereadUpdatesTheReadAlbumsSoTheScreenMatchesTheQueue() {
         var s = appleMenu()
-        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs))
+        send(&s, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs))
         send(&s, .select, .tracksLoaded(token: 2, playlist: Self.album.id, tracks: [Self.songs[1], Self.songs[0], Self.songs[2]]))
         send(&s, .wheel(1), .select)  // a2 plays in the album
         #expect(s.current == TrackRef(playlist: Self.album.id, track: "a2"))
@@ -124,15 +125,15 @@ import Testing
             Track(id: "m2", title: "m2", artist: "B", duration: 100, album: mix, number: 2),
             Track(id: "m1", title: "m1", artist: "A", duration: 100, album: mix, number: 1),
         ]
-        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: songs))
+        send(&s, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: songs))
         #expect(s.rows(for: s.top) == [.album(mix.id)] && s.albums.map(\.artist) == ["Various Artists"])
         #expect(s.tracks(in: mix.id).map(\.id) == ["m1", "m2"])
-        #expect(s.rows(for: Frame(screen: .playlists)).isEmpty && s.playlistCount == 0)
+        #expect(s.rows(for: Frame(screen: .playlists)) == [.playlist(Playlist.likedSongsID)] && s.playlistCount == 0)
     }
 
     @Test func aStaleAlbumsScreenRereadsTheLibrary() {
         var s = appleMenu()
-        send(&s, .wheel(2), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)
+        send(&s, .wheel(3), .select, .tracksLoaded(token: 1, playlist: Playlist.libraryID, tracks: Self.songs), .menu)
         #expect(send(&s, .select, now: 1000) == [.refreshTracks(playlist: Playlist.libraryID)])
         send(&s, .tracksRefreshed(playlist: Playlist.libraryID, tracks: Array(Self.songs.prefix(2))))
         #expect(s.tracks(in: Self.album.id).map(\.id) == ["a1", "a2"] && s.rows(for: s.top) == [.album(Self.album.id)])

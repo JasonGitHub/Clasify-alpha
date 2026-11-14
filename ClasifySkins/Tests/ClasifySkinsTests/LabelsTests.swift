@@ -36,6 +36,26 @@ func sampleState() -> AppState {
         #expect(Labels.title(.now, in: s) == "Now Playing")
     }
 
+    /// Card BN: Apple Music's library rows, lists and empty messages.
+    @Test func appleMusicLibraryRowsUseTheCardWords() {
+        var s = sampleState()
+        s.words = .appleMusic
+        let artist = "applemusic:artist:1"
+        s.artists = [Playlist(id: artist, name: "The Lowlights", tracks: [])]
+        #expect(Labels.row(.artists, on: .main, in: s).label == "Artists")
+        #expect(Labels.row(.songs, on: .main, in: s).label == "Songs")
+        #expect(Labels.row(.artist(artist), on: .artists, in: s).label == "The Lowlights")
+        #expect(Labels.row(.playlist(Playlist.likedSongsID), on: .playlists, in: s).label == "Favorite Songs")
+        #expect(Labels.title(.artists, in: s) == "Artists")
+        #expect(Labels.title(.tracks(playlist: Playlist.songsID), in: s) == "Songs")
+        #expect(Labels.title(.tracks(playlist: artist), in: s) == "The Lowlights")
+        s.artists = []
+        s.stack.append(Frame(screen: .artists))
+        #expect(Labels.message(for: s.top, in: s)?.title == "No artists")
+        s.stack = [Frame(screen: .main), Frame(screen: .tracks(playlist: Playlist.songsID))]
+        #expect(Labels.message(for: s.top, in: s)?.body == "Add songs to your library in Apple Music. Press MENU to go back.")
+    }
+
     /// CLA-103: the liked list's row and title use the name that the `Library` gives.
     @Test func likedListUsesTheLibraryName() {
         var s = sampleState()
