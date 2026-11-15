@@ -44,7 +44,15 @@ jobs:
           codesign --force --deep --sign - "$app"
           codesign --verify --verbose "$app"
           mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
-          hdiutil create -volname myPod -srcfolder dmg -ov -format UDZO "$DMG"
+          # hdiutil's own size estimate for -srcfolder can be too small ("No space left on
+          # device"). Give the size: the folder plus 50 MB. Try at most twice.
+          size=$(( $(du -sm dmg | cut -f1) + 50 ))
+          for try in 1 2; do
+            rm -f "$DMG"
+            if hdiutil create -volname myPod -srcfolder dmg -size "${size}m" -ov -format UDZO "$DMG"; then break; fi
+            if [ "$try" = 2 ]; then echo "hdiutil create failed twice" >&2; exit 1; fi
+            sleep 10
+          done
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: ${{ env.DMG }}
@@ -85,7 +93,15 @@ jobs:
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app"
           codesign --verify --strict --verbose=2 "$app"
           mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
-          hdiutil create -volname myPod -srcfolder dmg -ov -format UDZO "$DMG"
+          # hdiutil's own size estimate for -srcfolder can be too small ("No space left on
+          # device"). Give the size: the folder plus 50 MB. Try at most twice.
+          size=$(( $(du -sm dmg | cut -f1) + 50 ))
+          for try in 1 2; do
+            rm -f "$DMG"
+            if hdiutil create -volname myPod -srcfolder dmg -size "${size}m" -ov -format UDZO "$DMG"; then break; fi
+            if [ "$try" = 2 ]; then echo "hdiutil create failed twice" >&2; exit 1; fi
+            sleep 10
+          done
           codesign --force --timestamp --sign "$IDENTITY" "$DMG"
       - name: Notarize and staple the DMG
         env:
