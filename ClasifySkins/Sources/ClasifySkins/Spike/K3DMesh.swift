@@ -290,24 +290,23 @@ public struct K3DFlip {
 
     public init() {}
 
-    /// Card BR, change 288: the first launch's arrival, starting now. The screen picture is
-    /// made first and put in the 3D front, as for a flip.
-    @MainActor public static func arrive(at now: Date = .now, screen make: () -> CGImage?) -> K3DFlip {
+    /// Card BR, change 288: the first launch's arrival. The screen picture is made first and put
+    /// in the 3D front, as for a flip; the clock starts after it, or at `now` in tests.
+    @MainActor public static func arrive(at now: Date? = nil, screen make: () -> CGImage?) -> K3DFlip {
         var flip = K3DFlip()
-        let screen = make()
-        if let screen { K3DRenderer.shared?.prepare(screen: screen) }
+        flip.show(screen: make())
         flip.script = .arrive
-        (flip.from, flip.to, flip.screen, flip.start) = (arriveFrom, 0, screen, now)
+        (flip.from, flip.to, flip.start) = (arriveFrom, 0, now ?? .now)
         return flip
     }
 
-    /// Changes 289 and 290: a color spin with a turn of `turn` seconds, starting now. The device
-    /// was black before the change when `fromBlack`.
-    @MainActor public static func spin(turn: Double, fromBlack: Bool, at now: Date = .now, screen make: () -> CGImage?) -> K3DFlip {
+    /// Changes 289 and 290: a color spin with a turn of `turn` seconds. The device was black
+    /// before the change when `fromBlack`. The clock starts after the screen picture is made.
+    @MainActor public static func spin(turn: Double, fromBlack: Bool, at now: Date? = nil, screen make: () -> CGImage?) -> K3DFlip {
         var flip = K3DFlip()
-        flip.script = .spin(turn)
-        (flip.fromBlack, flip.start) = (fromBlack, now)
         flip.show(screen: make())
+        flip.script = .spin(turn)
+        (flip.fromBlack, flip.start) = (fromBlack, now ?? .now)
         return flip
     }
 

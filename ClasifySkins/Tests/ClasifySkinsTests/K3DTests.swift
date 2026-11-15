@@ -231,6 +231,22 @@ import Testing
         #expect(flip.restsOnFront(at: at(turn + 0.31)))
     }
 
+    /// As for a flip, the arrival and the spin start their clock after the screen picture is
+    /// made, so a slow snapshot does not cut their start (Codex on #247).
+    @Test func theArrivalAndTheSpinStartAfterTheSnapshot() {
+        func slow(_ made: inout Date) -> CGImage? {
+            Thread.sleep(forTimeInterval: 0.05)
+            made = .now
+            return nil
+        }
+        var made = Date.distantFuture
+        let arrive = K3DFlip.arrive { slow(&made) }
+        #expect(arrive.start >= made)
+        made = .distantFuture
+        let spin = K3DFlip.spin(turn: K3DFlip.spinPick, fromBlack: false) { slow(&made) }
+        #expect(spin.start >= made)
+    }
+
     /// While it arrives, the 2D device stays hidden until the 3D body has drawn: no flash.
     @Test func theArrivalHidesThe2DDeviceUntilThe3DFrameIsReady() {
         typealias H = K3DHandover<EmptyView, EmptyView>
