@@ -21,6 +21,8 @@ public struct PocketSkin: View {
     @Environment(\.pocketPreview) private var preview
     /// SPIKE (CLA-101): off while the 3D flip draws this shadow itself.
     @Environment(\.pocketDropShadow) private var dropShadow
+    /// Changes 289 and 290: a color spin sets the color, with no fade.
+    @Environment(\.spinBlack) private var spinBlack
 
     public init(state: AppState, send: @escaping @MainActor (Action) -> Void) {
         self.state = state
@@ -40,17 +42,17 @@ public struct PocketSkin: View {
         VStack(spacing: 55.8) {
             PocketScreen(state: state, input: input)
             ClickWheel(
-                input: input, color: state.shownColor, catchesScroll: interactive, movesBar: state.wheelMovesBar,
+                input: input, color: color, catchesScroll: interactive, movesBar: state.wheelMovesBar,
                 glowFrom: glowFrom, fingerFrom: fingerFrom, label: labelGlow, pressed: pressed)
-                .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
+                .animation(colorFade, value: color)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.
         .padding(.top, 25.8)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
             // A new color crossfades in 0.45 s (card AW, changes 150 and 203).
-            Bodies(black: fade ?? (state.shownColor == .black ? 1 : 0), shadow: !preview && dropShadow)
-                .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
+            Bodies(black: fade ?? (color == .black ? 1 : 0), shadow: !preview && dropShadow)
+                .animation(colorFade, value: color)
         }
         // Keys come through a window-level monitor, not SwiftUI focus (CLA-79).
         .background { if interactive && !preview { KeyCatcher { key($0, repeated: $1) } } }
@@ -58,6 +60,11 @@ public struct PocketSkin: View {
         .accessibilityLabel(
             "myPod pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
     }
+
+    /// The device's color: the state's, or a color spin's (changes 289 and 290).
+    private var color: DeviceColor { spinBlack.map { $0 ? .black : .silver } ?? state.shownColor }
+    /// A new color fades in, except during a spin: the spin changes it.
+    private var colorFade: Animation? { spinBlack == nil ? .easeInOut(duration: ColorPick.colorFade) : nil }
 
     /// The center glows on Hello from 13 s (from the start with Reduce Motion), and on the color
     /// pick from the first turn.

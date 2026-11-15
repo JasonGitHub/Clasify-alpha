@@ -64,6 +64,7 @@ struct PocketScreen: View {
     var doorsOnly = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.spinBlack) private var spinBlack  // a color spin sets the color (289, 290)
     /// The last `navSeq` whose cover flight to Now Playing has landed.
     @State private var landedSeq = -1
     /// The last `wholeSeq` whose doors have opened.
@@ -269,7 +270,7 @@ struct PocketScreen: View {
             // Card BL's bezel, the same for both colors, with a fainter highlight on Black.
             RoundedRectangle(cornerRadius: 7.8)
                 .fill(Color(hex: BL.bezel))
-                .shadow(color: .white.opacity(state.shownColor == .black ? 0.18 : 0.7), radius: 0, y: 1)
+                .shadow(color: .white.opacity((spinBlack ?? (state.shownColor == .black)) ? 0.18 : 0.7), radius: 0, y: 1)
         }
         .foregroundStyle(Pocket.ink)
         // .contain, not .combine: the shuffle and repeat buttons on Now Playing must stay
