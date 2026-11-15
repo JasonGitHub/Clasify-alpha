@@ -290,6 +290,7 @@ struct PocketScreen: View {
             if state.offline {
                 Text("OFF").font(.helvetica(9, bold: true)).foregroundStyle(Pocket.offline)
             }
+            if Labels.betaTag(on: top.screen, in: state) { BetaTag() }
             switch Labels.playMark(in: state) {
             case .playing: mark(.play, label: "Playing")
             case .paused: mark(.pause, label: "Paused")
@@ -305,6 +306,23 @@ struct PocketScreen: View {
         .padding(EdgeInsets(top: 1, leading: 9, bottom: 0, trailing: 8))
         .frame(height: Pocket.headerHeight)  // 19 with the line under it, as in the mockup
         .background(LinearGradient.vertical(.white, Color(hex: 0xc9d2db)))
+    }
+
+    /// Card BI v2, change 279: the grey BETA pill, 11 points tall, before the play mark.
+    struct BetaTag: View {
+        var body: some View {
+            Text("BETA")
+                .font(.helvetica(7.6, bold: true))
+                .kerning(0.6)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 3.5)
+                .frame(height: 11)
+                .background(LinearGradient.vertical(Color(hex: 0x8592a0), Color(hex: 0x5d6772)))
+                .overlay(alignment: .top) { Color.white.opacity(0.35).frame(height: 0.5) }  // the inset top light
+                .clipShape(RoundedRectangle(cornerRadius: 3))
+                .fixedSize()
+                .accessibilityLabel("Beta")
+        }
     }
 
     /// A 10 x 11 play or pause mark, glossy blue with a dark blue edge.

@@ -58,7 +58,7 @@ struct PocketAbout: View {
         ZStack(alignment: .top) {
             capybara.offset(y: 18)
             plate.offset(y: 116)
-            PocketRow(text: .init(label: "Version", value: Labels.version), selected: false, scrolls: false)
+            PocketRow(text: .init(label: "Version", value: Labels.aboutVersion(in: state)), selected: false, scrolls: false)
                 .offset(y: 214)
             PocketRow(text: .init(label: "Licenses", opens: true), selected: licenses, scrolls: false)
                 .offset(y: 236.9)

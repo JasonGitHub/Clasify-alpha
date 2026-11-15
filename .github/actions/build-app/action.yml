@@ -13,6 +13,7 @@ runs:
       run: |
         set -o pipefail
         xcodebuild build -project Clasify.xcodeproj -scheme Clasify -configuration Release \
+          CURRENT_PROJECT_VERSION=${{ github.run_number }} \
           -destination 'generic/platform=macOS' -derivedDataPath DerivedData 2>&1 | tee build.log
         # Warnings from librespot objects are OK. Warnings in our own code are not.
         if grep -E '/Clasify/[^ ]*\.swift:[0-9]+:[0-9]+: warning: ' build.log; then echo "Our code has warnings."; exit 1; fi
