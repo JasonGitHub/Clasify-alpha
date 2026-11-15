@@ -29,7 +29,7 @@ func sampleState() -> AppState {
     @Test func titlesFollowTheMockup() {
         let s = sampleState()
         #expect(Labels.title(.login, in: s) == "Log In")  // card AX
-        #expect(Labels.title(.main, in: s) == "Clasify")
+        #expect(Labels.title(.main, in: s) == "myPod")
         #expect(Labels.title(.auth, in: s) == "Log In")
         #expect(Labels.title(.tracks(playlist: "spotify:playlist:a"), in: s) == "Road Trip")
         #expect(Labels.title(.confirm, in: s) == "Log out?")
@@ -216,7 +216,7 @@ func sampleState() -> AppState {
         #expect(Labels.row(.openBrowser, on: .auth, in: s).label == "Open browser again")
         #expect(Labels.row(.tryAgain, on: .loginFailed, in: s).label == "Try again")
         s.restoring = true  // "Signing in…" shows on the whole screen, as before
-        #expect(words(.login) == nil && Labels.title(.login, in: s) == "Clasify")
+        #expect(words(.login) == nil && Labels.title(.login, in: s) == "myPod")
     }
 
     @Test func theSongPanelShowsTheAlbumAndItsSongs() {

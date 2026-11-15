@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Help › How to Use Clasify (Round 14 card BC, change 152, with the BC.1 look, change 196):
+/// Help › How to Use myPod (Round 14 card BC, change 152, with the BC.1 look, change 196):
 /// each wheel action with its mark, how to do it, and its keys. Then Shuffle / Repeat, which
 /// are not on the wheel. It shows words only and sends no actions.
 public struct HowToUse: View {
-    public static let title = "How to Use Clasify"
+    public static let title = "How to Use myPod"
     public static let width: CGFloat = 549
 
     public init() {}

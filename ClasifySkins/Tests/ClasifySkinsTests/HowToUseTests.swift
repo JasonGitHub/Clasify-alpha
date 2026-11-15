@@ -28,7 +28,7 @@ import Testing
             let top = topLine + row * 42
             #expect((top..<(top + 42)).contains { y in (16..<46).contains { x in blue(x, y) } }, "row \(row)")
         }
-        #expect(HowToUse.title == "How to Use Clasify")
+        #expect(HowToUse.title == "How to Use myPod")
         #expect(HowToUse.wheelRows.map(\.action) == ["Turn", "Select", "Back", "Play / Pause", "Previous / Next"])
         #expect(HowToUse.otherRows.map(\.action) == ["Shuffle / Repeat"])
     }
