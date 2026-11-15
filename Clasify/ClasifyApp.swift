@@ -166,9 +166,9 @@ final class AppModel {
             libraries?.service = service
             // The hidden Spotify app does not run while Apple Music is active (CLA-103).
             if service == .appleMusic { player?.quitApp() }
-            // Apple Music does not need the Spotify app. "Found" keeps the Spotify App screen
-            // (card BB) from opening while Apple Music is active.
-            store?.send(.spotifyAppFound(service == .appleMusic || Self.spotifyAppInstalled))
+            // The real check, for both services: Pick Your Music orders its rows from it
+            // (CLA-103). The reducer opens the Spotify App screen (card BB) only on Spotify.
+            store?.send(.spotifyAppFound(Self.spotifyAppInstalled))
         }
         player.send = { [weak store] action in store?.send(action) }
         appleMusic.send = { [weak store] action in store?.send(action) }
@@ -203,9 +203,9 @@ final class AppModel {
             // The queue is .main, so this runs on the main actor.
             MainActor.assumeIsolated { store?.send(.activated) }
         }
-        // Setup shows the Spotify App screen (card BB) only when the app is missing. Apple Music
-        // does not need it: "found" keeps that screen away while Apple Music is active.
-        store.send(.spotifyAppFound(service == .appleMusic || Self.spotifyAppInstalled))
+        // Setup shows the Spotify App screen (card BB) only when the app is missing and Spotify
+        // is the service. Pick Your Music puts Spotify on top only when it is found (CLA-103).
+        store.send(.spotifyAppFound(Self.spotifyAppInstalled))
         store.send(.launch)  // restores the stored login
         // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.

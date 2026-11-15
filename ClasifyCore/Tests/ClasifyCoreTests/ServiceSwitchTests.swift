@@ -189,7 +189,7 @@ import Testing
         var s = mainMenu()
         openSettings(&s)
         send(&s, .select, .menu)
-        send(&s, .spotifyAppFound(true))  // as the app sends on the switch to Apple Music
+        send(&s, .spotifyAppFound(true))  // the Spotify app is on this Mac
         send(&s, .restored(token: s.authAttempt, ok: true))
         openSettings(&s)
         s.top.sel = s.rows(for: s.top).firstIndex(of: .logOut) ?? -1
@@ -199,6 +199,30 @@ import Testing
         let fx = send(&s, .wheel(-1), .select)
         #expect(fx == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
         #expect(s.top.screen == .login && s.restoring)
+    }
+
+    /// CLA-103: Apple Music does not need the Spotify app. With no app, the Spotify App screen
+    /// stays away on Apple Music, and Pick Your Music after a log out has Apple Music on top.
+    @Test func withNoSpotifyAppAppleMusicGoesOnAndLogOutPutsAppleMusicFirst() {
+        var s = afterSetup()
+        s.setupDone = false
+        send(&s, .spotifyAppFound(false), .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(send(&s, .select) == [.setService(.appleMusic), .logIn(token: 2)])
+        send(&s, .spotifyAppFound(false), .authDone(token: 2, ok: true), now: 10)  // the app checks on the switch
+        #expect(s.top.screen == .loggedIn)
+        send(&s, .select)  // "You’re in" goes on: the first read, not the Spotify App screen
+        #expect(s.top.screen == .yourMusic)
+
+        var m = mainMenu()
+        openSettings(&m)
+        send(&m, .select, .menu)  // to Apple Music
+        send(&m, .spotifyAppFound(false), .restored(token: m.authAttempt, ok: true))
+        #expect(m.top.screen == .main && m.service == .appleMusic)  // no Spotify App screen
+        openSettings(&m)
+        m.top.sel = m.rows(for: m.top).firstIndex(of: .logOut) ?? -1
+        #expect(send(&m, .select, .wheel(1), .select) == [.logOut])
+        #expect(m.top.screen == .pickMusic && m.top.sel == 0)
+        #expect(m.rows(for: m.top) == [.pickService(.appleMusic), .pickService(.spotify)])
     }
 
     /// `.libraryWords`: the texts follow the active service's library. A reset keeps them.
