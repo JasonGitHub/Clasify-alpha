@@ -1558,4 +1558,38 @@ import Testing
         let allSet = try render(s, "your-music-all-set", time: 10)
         #expect(headline(allSet) && !allSet.isBlue(85, bar) && check(allSet))
     }
+
+    /// Card BI v2: the warning (233) and the end (234) are split setup screens with two rows,
+    /// the first selected. The small device shows a blue download arrow, or the gray cross.
+    /// The grey BETA pill (279) shows on song lists of a beta only.
+    @Test func theBetaScreensAndTheBetaTag() throws {
+        var s = sampleState()
+        s.beta = BetaBuild(signed: 0)
+        func any(_ shot: Snapshot, x: ClosedRange<Int>, y: ClosedRange<Int>, _ test: (Int, Int, Int) -> Bool) -> Bool {
+            y.contains { py in x.contains { px in let c = shot.rgb(px, py); return test(c.r, c.g, c.b) } }
+        }
+        let firstRow = Self.rowCenter(0) + 77
+        let arrow = { (shot: Snapshot) in any(shot, x: 225...300, y: 60...120) { r, _, b in b > r + 60 && b > 150 } }
+        let headline = { (shot: Snapshot) in any(shot, x: 42...120, y: 60...74) { r, g, b in max(r, g, b) < 100 } }
+        s.stack = [Frame(screen: .main), Frame(screen: .betaSoon)]
+        let soon = try render(s, "beta-soon", time: 10)
+        #expect(headline(soon) && arrow(soon))
+        #expect(soon.isBlue(175, firstRow) && !soon.isBlue(175, firstRow + 23))  // Get New Beta, then Later
+        s.stack = [Frame(screen: .betaEnded)]
+        let ended = try render(s, "beta-ended", time: 10)
+        #expect(headline(ended) && !arrow(ended))
+        #expect(ended.isBlue(175, firstRow) && !ended.isBlue(175, firstRow + 23))  // Get New Beta, then Quit
+        // The pill: grey, right in the title bar, where the play mark is not.
+        let pill = { (shot: Snapshot) in
+            any(shot, x: (Self.screenLeft + 255)...(Self.screenLeft + 292), y: (Self.screenTop + 4)...(Self.screenTop + 14)) { r, g, b in
+                (80...150).contains(r) && b > r && b - r < 40 && g > r
+            }
+        }
+        s.stack = [Frame(screen: .main), Frame(screen: .tracks(playlist: Playlist.likedSongsID))]
+        let songs = try render(s, "beta-tag-songs")
+        #expect(pill(songs))
+        s.beta = nil  // an ad-hoc build
+        let none = try render(s, "beta-tag-none")
+        #expect(!pill(none))
+    }
 }

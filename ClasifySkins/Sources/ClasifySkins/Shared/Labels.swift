@@ -206,6 +206,23 @@ enum Labels {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"
     }
 
+    /// About's version (card BI v2, change 235): "1.0 Beta 209" on a beta, with the bundle's
+    /// build number. "1.0" on an ad-hoc build.
+    static func aboutVersion(in state: AppState, build: String? = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) -> String {
+        guard state.beta != nil else { return version }
+        return [version, "Beta", build].compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// Change 279: the grey BETA pill shows on a beta, in the full-width title bars only: song
+    /// lists, Now Playing and About. Never on the half screens or in setup.
+    static func betaTag(on screen: Screen, in state: AppState) -> Bool {
+        guard state.beta != nil else { return false }
+        switch screen {
+        case .tracks, .now, .about: return true
+        default: return false
+        }
+    }
+
     /// The playing track, for Now Playing and the bottom bar.
     struct NowText: Equatable {
         var title: String

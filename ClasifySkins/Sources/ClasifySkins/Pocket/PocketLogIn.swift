@@ -15,6 +15,8 @@ enum PreviewScreen: Equatable {
     /// The playlist names fill in one by one from time `from`, like an iPod sync (card AY, 141),
     /// at the pace of a read of `songs` songs, which came `late` seconds after the names (change 266).
     case names([String], from: Double, songs: Int?, late: Double?)
+    /// Card BI v2, change 233: a blue download arrow over the word "New beta".
+    case download(word: String)
 
     /// The small device's screen and its sync cable on a setup screen. Nil on other screens.
     static func of(_ screen: Screen, in state: AppState) -> (screen: PreviewScreen, cable: SyncCable.Plug?)? {
@@ -39,6 +41,9 @@ enum PreviewScreen: Equatable {
             let names = state.namesAt > 0 ? state.firstReadNames : []
             return (screen: PreviewScreen.names(names, from: state.namesAt, songs: state.firstReadSongs, late: state.namesLate), cable: SyncCable.Plug.light)
         case .yourMusic: return (screen: PreviewScreen.mark(ok: true, word: "Synced"), cable: SyncCable.Plug.on)
+        // Card BI v2: the new beta (233) and the end (234), with the cable unplugged.
+        case .betaSoon: return (screen: PreviewScreen.download(word: "New beta"), cable: SyncCable.Plug.off)
+        case .betaEnded: return (screen: PreviewScreen.mark(ok: false, word: "Ended"), cable: SyncCable.Plug.off)
         default: return nil
         }
     }
@@ -88,6 +93,7 @@ struct PreviewScreenContent: View {
         let shown: Int = switch screen {
         case .mark(let ok, _): ok ? 2 : 1
         case .names: 3
+        case .download: 4
         default: 0
         }
         ZStack {
@@ -95,6 +101,7 @@ struct PreviewScreenContent: View {
             if case .names(let list, let from, let songs, let late) = screen { names(list, from: from, songs: songs, late: late) }
             mark(ok: false, word: Self.failWord(screen)).opacity(shown == 1 ? 1 : 0)
             mark(ok: true, word: Self.okWord(screen)).opacity(shown == 2 ? 1 : 0)
+            if case .download(let word) = screen { download(word) }
         }
         .animation(.easeInOut(duration: 0.3), value: shown)
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
@@ -148,6 +155,30 @@ struct PreviewScreenContent: View {
     static func okWord(_ screen: PreviewScreen) -> String {
         if case .mark(true, let word) = screen { return word }
         return "Logged in"
+    }
+
+    /// Card BI v2, change 233: a download arrow (#3f8fd8) over its word in #1f6fd1, in the
+    /// same 84 point box and 38 point word as the check and the cross.
+    private func download(_ word: String) -> some View {
+        VStack(spacing: 6) {
+            Path { p in
+                p.move(to: CGPoint(x: 55, y: 22))
+                p.addLine(to: CGPoint(x: 55, y: 72))
+                p.move(to: CGPoint(x: 33, y: 52))
+                p.addLine(to: CGPoint(x: 55, y: 74))
+                p.addLine(to: CGPoint(x: 77, y: 52))
+                p.move(to: CGPoint(x: 28, y: 90))
+                p.addLine(to: CGPoint(x: 82, y: 90))
+            }
+            .stroke(Color(hex: 0x3f8fd8), style: StrokeStyle(lineWidth: 11, lineCap: .round, lineJoin: .round))
+            .frame(width: 110, height: 110)
+            .scaleEffect(84.0 / 110)
+            .frame(width: 84, height: 84)
+            Text(word)
+                .font(.helvetica(38, bold: true))
+                .kerning(-0.5)
+                .foregroundStyle(Color(hex: 0x1f6fd1))
+        }
     }
 
     /// The green check (#34c759) with its word in #248a3d: a green check always means success.

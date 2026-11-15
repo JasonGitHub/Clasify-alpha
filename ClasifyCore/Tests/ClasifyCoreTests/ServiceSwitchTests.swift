@@ -119,7 +119,7 @@ import Testing
         send(&s, .menu)
         #expect(s.top.screen == .pickMusic && s.top.sel == 1)
         #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
-        // A pick of Apple Music: the app then counts the Spotify app as found. The order stays.
+        // A pick of Apple Music, then a later check that finds the app: the order stays.
         #expect(send(&s, .wheel(-1), .select) == [.setService(.appleMusic), .logIn(token: 2)])
         send(&s, .spotifyAppFound(true))
         #expect(s.top.screen == .pickMusic && s.top.sel == 0)
