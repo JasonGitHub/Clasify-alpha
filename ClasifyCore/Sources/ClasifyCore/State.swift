@@ -299,6 +299,10 @@ public struct AppState: Equatable, Sendable {
     /// The Spotify app is on this Mac, as the app last found it. Nil before the first check:
     /// setup then counts it as there, so that a slow check does not stop it.
     public var spotifyApp: Bool?
+    /// Pick Your Music lists Apple Music first, because the Spotify app was not found when the
+    /// screen opened (CLA-103). Set only when the screen opens, so the order stays the same
+    /// while it shows and after MENU back to it. Not saved.
+    public var appleMusicFirst = false
     /// When Hello (card AT) opened, in `Dependencies.now` time. A skin times the hello word,
     /// the center glow and the begin text from it.
     public var helloAt: Double = 0
@@ -835,7 +839,7 @@ public struct AppState: Equatable, Sendable {
         case .spotifyApp: [.getSpotifyApp]
         // Card BM, change 259: Apple Music has "Use Spotify" in place of "Log out".
         case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
-        case .pickMusic: MusicService.allCases.map { .pickService($0) }
+        case .pickMusic: (appleMusicFirst ? [.appleMusic, .spotify] : MusicService.allCases).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
         case .licenses: License.all.indices.map { .license($0) }
         case .about, .now, .hello, .yourMusic, .loggedIn, .license: []

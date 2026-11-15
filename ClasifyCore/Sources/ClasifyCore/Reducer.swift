@@ -380,10 +380,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         signOut(); fx.append(.logOut)
         if s.service == .appleMusic { s.stack = [pickMusic()] }
     }
-    /// Pick Your Music, on the active service's row (card BM, change 257).
+    /// Pick Your Music, on the active service's row (card BM, change 257). When the Spotify app
+    /// is not on this Mac, Apple Music is the top row and is selected (CLA-103).
     func pickMusic() -> Frame {
+        s.appleMusicFirst = s.spotifyApp == false
         var frame = Frame(screen: .pickMusic)
-        frame.sel = MusicService.allCases.firstIndex(of: s.service) ?? 0
+        let row = Row.pickService(s.appleMusicFirst ? .appleMusic : s.service)
+        frame.sel = s.rows(for: frame).firstIndex(of: row) ?? 0
         return frame
     }
     /// Goes straight to the login screen, with no toast (card AX, change 181).

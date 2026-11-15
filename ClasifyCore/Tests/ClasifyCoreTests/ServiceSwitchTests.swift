@@ -89,6 +89,34 @@ import Testing
         #expect(s.top.screen == .loggedIn && s.signedIn)
     }
 
+    /// CLA-103: the row order follows the Spotify app check. Found: Spotify on top and
+    /// selected. Not found: Apple Music on top and selected. The order stays while the screen
+    /// shows, after a pick and after MENU back to it.
+    @Test func pickYourMusicPutsAppleMusicFirstWithNoSpotifyApp() {
+        var found = afterSetup()
+        found.setupDone = false
+        send(&found, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(found.top.screen == .pickMusic && !found.appleMusicFirst && found.top.sel == 0)
+        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+
+        var s = afterSetup()
+        s.setupDone = false
+        send(&s, .spotifyAppFound(false), .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(s.top.screen == .pickMusic && s.appleMusicFirst && s.top.sel == 0)
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        // Spotify is the second row. MENU on its login goes back with the same order.
+        send(&s, .wheel(1), .select)
+        #expect(s.service == .spotify && s.top.screen == .login)
+        send(&s, .menu)
+        #expect(s.top.screen == .pickMusic && s.top.sel == 1)
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        // A pick of Apple Music: the app then counts the Spotify app as found. The order stays.
+        #expect(send(&s, .wheel(-1), .select) == [.setService(.appleMusic), .logIn(token: 2)])
+        send(&s, .spotifyAppFound(true))
+        #expect(s.top.screen == .pickMusic && s.top.sel == 0)
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+    }
+
     /// Change 258: after "Don't Allow", Access is off. MENU does nothing; "Open Settings"
     /// opens System Settings, and "Use Spotify" switches to Spotify (262).
     @Test func accessOffOpensSettingsOrUsesSpotify() {

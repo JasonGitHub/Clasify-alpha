@@ -292,7 +292,8 @@ import Testing
 
     @Test func theSpotifyAppScreenShowsOnlyWhenTheAppIsMissing() {
         var s = onColor()
-        send(&s, .spotifyAppFound(false), .select, .select, .select, .authDone(token: 2, ok: true), .select)
+        // The color, Spotify (the second row with no Spotify app, CLA-103), Log In.
+        send(&s, .spotifyAppFound(false), .select, .wheel(1), .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.stack == [Frame(screen: .spotifyApp)] && s.spotifyApp == false)
         #expect(s.rows(for: s.top) == [.getSpotifyApp])
         #expect(send(&s, .menu, .wheel(1), .spotifyAppFound(false)).isEmpty)  // MENU does nothing, and the check goes on
