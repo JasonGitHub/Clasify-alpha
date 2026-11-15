@@ -12,7 +12,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		C1A500000000000000000003 /* Clasify.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Clasify.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1A500000000000000000003 /* myPod.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = myPod.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -47,7 +47,7 @@
 		C1A500000000000000000007 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C1A500000000000000000003 /* Clasify.app */,
+				C1A500000000000000000003 /* myPod.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -76,7 +76,7 @@
 				C1A500000000000000000014 /* ClasifySkins */,
 			);
 			productName = Clasify;
-			productReference = C1A500000000000000000003 /* Clasify.app */;
+			productReference = C1A500000000000000000003 /* myPod.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -178,16 +178,17 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Clasify;
+				INFOPLIST_KEY_CFBundleDisplayName = myPod;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Clasify shows your playlists and albums and plays your music.";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "myPod shows your playlists and albums and plays your music.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cappyai.mypod;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Clasify;
+				PRODUCT_NAME = myPod;
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/LibrespotBridge/target/universal";
@@ -213,16 +214,17 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = Clasify;
+				INFOPLIST_KEY_CFBundleDisplayName = myPod;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
-				INFOPLIST_KEY_NSAppleMusicUsageDescription = "Clasify shows your playlists and albums and plays your music.";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "myPod shows your playlists and albums and plays your music.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cappyai.mypod;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_MODULE_NAME = Clasify;
+				PRODUCT_NAME = myPod;
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
 				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/LibrespotBridge/target/universal";
