@@ -25,6 +25,12 @@ enum Hello {
         return (points[0], curves)
     }()
 
+    /// Seconds since Hello opened, at `now`. 0 while the device arrives (change 288), so the
+    /// 2D device that fades in after the turn never shows a word written on the old clock.
+    static func elapsed(at now: Double, since helloAt: Double, waiting: Bool) -> Double {
+        waiting ? 0 : max(0, now - helloAt)
+    }
+
     /// The word is drawn at 200 x 80 points (scale 2/3), centered on the 300 x 225 screen.
     static let size = CGSize(width: 200, height: 80)
     static let unit = 2.0 / 3.0
@@ -134,6 +140,9 @@ struct HelloWord: Shape {
 struct PocketHello: View {
     /// When Hello opened, in `Date.timeIntervalSinceReferenceDate` time.
     let helloAt: Double
+    /// The device has not arrived yet (change 288): Hello waits at its start, with nothing
+    /// written, whatever the clock says.
+    var waiting = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// A fixed clock for snapshot tests, in the same time as `helloAt`.
     @Environment(\.animationTime) private var fixedTime
@@ -143,8 +152,8 @@ struct PocketHello: View {
     static let nano: [Color] = ([0x8e5cc6, 0x2d8be0, 0x3fb6c9, 0x5cc24a, 0xf2c230, 0xf28a30, 0xe65c9c] as [UInt32]).map { Color(hex: $0) }
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil || preview)) { context in
-            let t = max(0, (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - helloAt)
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil || preview || waiting)) { context in
+            let t = Hello.elapsed(at: fixedTime ?? context.date.timeIntervalSinceReferenceDate, since: helloAt, waiting: waiting)
             if preview { still } else { screen(at: t) }
         }
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
