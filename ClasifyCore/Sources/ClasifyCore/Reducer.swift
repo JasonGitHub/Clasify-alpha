@@ -571,7 +571,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .select:
             if s.top.screen == .about {
                 // Change 210: a press wakes the capybara, or near the top makes it wave. From
-                // step 3 it opens Licenses (change 213, a later PR).
+                // `aboutLicensesStep` it opens Licenses (change 213; step 2 since card BS).
                 let pose = s.aboutPose(at: now)
                 if pose.pose == .sleep {
                     s.aboutWaveAt = now
