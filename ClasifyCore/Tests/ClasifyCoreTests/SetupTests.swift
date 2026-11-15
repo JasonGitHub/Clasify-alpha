@@ -390,6 +390,7 @@ import Testing
 
 @MainActor @Test func storeSavesTheEndOfSetup() async {
     let saved = FakeSettings()
+    saved.values = ["arrive.done": "true"]  // the device has arrived (change 288)
     // A real clock from 100 s: "Getting your music" holds until the playlist names have shown (CLA-74).
     let start = ContinuousClock.now
     let clock = Dependencies(now: {

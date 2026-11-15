@@ -166,6 +166,51 @@ import Testing
         #expect(flip.flatOpacity(at: t0.addingTimeInterval(10.46)) == 0)
     }
 
+    /// Change 288 must not change the About flip: the same 1.0 s, angles and 0.1 s crossfade,
+    /// at full size and opacity.
+    @Test func theFlipScriptStaysAsBefore() {
+        var flip = K3DFlip()
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        flip.toggle(at: t0, screen: nil)
+        #expect(!flip.arriving && flip.length == 1.0 && K3DFlip.fade == 0.1)
+        #expect(flip.pose(at: t0).angle == 0 && flip.pose(at: t0.addingTimeInterval(1)).angle == 180)
+        for dt in [0.0, 0.3, 0.9] {
+            let look = flip.look(at: t0.addingTimeInterval(dt))
+            #expect(look.scale == 1 && look.opacity == 1)
+        }
+        #expect(!flip.isResting(at: t0.addingTimeInterval(0.99)) && flip.isResting(at: t0.addingTimeInterval(1)))
+    }
+
+    /// Card BR, change 288 (gen.py `g1`): from -120° and 55% size, one ease-out turn to the front
+    /// in 1.6 s, fading in over 0.8 s. It rests 0.4 s, then the 2D device fades in over 0.35 s.
+    @Test func theArrivalFollowsTheSketch() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let flip = K3DFlip.arrive(at: t0) { nil }
+        func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
+        #expect(flip.arriving && !flip.toBack && near(flip.length, 2.35))
+        let e = 1 - pow(0.5, 3.0)  // the ease-out at u = 0.5
+        let angles = [0.0, 0.8, 1.6, 2.2].map { flip.pose(at: at($0)) }
+        #expect(near(angles[0].angle, -120) && near(angles[1].angle, -120 + 120 * e))
+        #expect(near(angles[2].angle, 0) && near(angles[3].angle, 0) && angles.allSatisfy { $0.lift == 0 })
+        let looks = [0.0, 0.4, 0.8, 1.6].map { flip.look(at: at($0)) }
+        #expect(near(looks[0].scale, 0.55) && near(looks[0].opacity, 0) && near(looks[1].opacity, 0.5))
+        #expect(near(looks[2].scale, 0.55 + 0.45 * e) && near(looks[2].opacity, 1))
+        #expect(near(looks[3].scale, 1) && near(looks[3].opacity, 1))
+        #expect(flip.flatOpacity(at: at(1.99)) == 0)  // the turn and the rest show only 3D
+        #expect(near(flip.flatOpacity(at: at(2.175)), 0.5))
+        #expect(flip.flatOpacity(at: at(2.36)) == 1)
+        #expect(!flip.restsOnFront(at: at(2.3)) && flip.restsOnFront(at: at(2.36)))
+    }
+
+    /// While it arrives, the 2D device stays hidden until the 3D body has drawn: no flash.
+    @Test func theArrivalHidesThe2DDeviceUntilThe3DFrameIsReady() {
+        typealias H = K3DHandover<EmptyView, EmptyView>
+        #expect(H.shown(flat: 0, ready: false, hidesUntilReady: true) == 0)
+        #expect(H.shown(flat: 0.4, ready: true, hidesUntilReady: true) == 0.4)
+        #expect(H.shown(flat: 0, ready: false) == 1)  // a flip keeps the 2D device opaque
+    }
+
     /// The shaders compile and link, where the machine has a Metal device.
     @Test func theShadersCompile() throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
