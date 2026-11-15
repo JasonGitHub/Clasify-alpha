@@ -7,7 +7,7 @@ import Testing
     /// The first launch, on the color pick, after the restore found no stored login.
     func onColor() -> AppState {
         var s = AppState()
-        send(&s, .launch, .restored(token: 1, ok: false), .select)
+        send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)  // the app is found
         return s
     }
     /// A library of 100 liked songs: the first read takes the full time (changes 266 and 267).
@@ -284,7 +284,7 @@ import Testing
         #expect(s.top.screen == .yourMusic)
         // The restore ends while the login screen waits for it: setup goes on.
         s = AppState()
-        send(&s, .launch, .select, .select, .select)
+        send(&s, .spotifyAppFound(true), .launch, .select, .select, .select)
         #expect(s.top.screen == .login && s.restoring && s.rows(for: s.top).isEmpty)
         send(&s, .restored(token: 1, ok: true))
         #expect(s.top.screen == .yourMusic && s.navForward)

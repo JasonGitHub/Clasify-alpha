@@ -381,9 +381,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if s.service == .appleMusic { s.stack = [pickMusic()] }
     }
     /// Pick Your Music, on the active service's row (card BM, change 257). When the Spotify app
-    /// is not on this Mac, Apple Music is the top row and is selected (CLA-103).
+    /// was not found (or not checked yet), Apple Music is the top row and is selected (CLA-103).
     func pickMusic() -> Frame {
-        s.appleMusicFirst = s.spotifyApp == false
+        s.appleMusicFirst = s.spotifyApp != true
         var frame = Frame(screen: .pickMusic)
         let row = Row.pickService(s.appleMusicFirst ? .appleMusic : s.service)
         frame.sel = s.rows(for: frame).firstIndex(of: row) ?? 0

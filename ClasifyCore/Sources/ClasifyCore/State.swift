@@ -299,8 +299,8 @@ public struct AppState: Equatable, Sendable {
     /// The Spotify app is on this Mac, as the app last found it. Nil before the first check:
     /// setup then counts it as there, so that a slow check does not stop it.
     public var spotifyApp: Bool?
-    /// Pick Your Music lists Apple Music first, because the Spotify app was not found when the
-    /// screen opened (CLA-103). Set only when the screen opens, so the order stays the same
+    /// Pick Your Music lists Apple Music first, because the Spotify app was not found (or not
+    /// checked yet) when the screen opened (CLA-103). Set only when the screen opens, so the order stays the same
     /// while it shows and after MENU back to it. Not saved.
     public var appleMusicFirst = false
     /// When Hello (card AT) opened, in `Dependencies.now` time. A skin times the hello word,

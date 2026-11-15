@@ -53,7 +53,7 @@ import Testing
     /// No hint during setup, and none before the login.
     @Test func noHintOnSetupScreens() {
         var s = AppState()
-        send(&s, .launch, .restored(token: 1, ok: false), .select)  // the color pick, a list
+        send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)  // the color pick, a list
         #expect(s.top.screen == .color && s.hint == nil)
         send(&s, .select)  // Pick Your Music (card BM)
         #expect(s.top.screen == .pickMusic && s.hint == nil)

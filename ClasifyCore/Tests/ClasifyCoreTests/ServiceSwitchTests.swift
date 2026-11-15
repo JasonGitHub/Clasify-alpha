@@ -77,11 +77,12 @@ import Testing
         s.setupDone = false
         send(&s, .launch, .restored(token: 1, ok: false), .select, .select)  // Hello, the color
         #expect(s.top.screen == .pickMusic)
-        #expect(s.rows(for: s.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+        // No Spotify app check yet: Apple Music is on top and selected (CLA-103).
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
         #expect(s.top.sel == 0)
-        #expect(send(&s, .wheel(1), .select) == [.setService(.appleMusic), .logIn(token: 2)])
+        #expect(send(&s, .select) == [.setService(.appleMusic), .logIn(token: 2)])
         #expect(s.service == .appleMusic && s.top.screen == .pickMusic)
-        #expect(s.top.token == 2 && s.top.sel == 1)
+        #expect(s.top.token == 2 && s.top.sel == 0)
         send(&s, .authDone(token: 2, ok: false))  // the prompt failed: a press asks again
         #expect(s.top.screen == .pickMusic && s.top.token == 0)
         #expect(send(&s, .select) == [.logIn(token: 3)])  // the service is set already
@@ -90,14 +91,22 @@ import Testing
     }
 
     /// CLA-103: the row order follows the Spotify app check. Found: Spotify on top and
-    /// selected. Not found: Apple Music on top and selected. The order stays while the screen
-    /// shows, after a pick and after MENU back to it.
+    /// selected. Not found, or not checked yet: Apple Music on top and selected. The order is
+    /// set when the screen opens, so it stays after a pick and after MENU back to it.
     @Test func pickYourMusicPutsAppleMusicFirstWithNoSpotifyApp() {
         var found = afterSetup()
         found.setupDone = false
         send(&found, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select, .select)
         #expect(found.top.screen == .pickMusic && !found.appleMusicFirst && found.top.sel == 0)
         #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+        send(&found, .spotifyAppFound(false))  // a later report does not move the rows
+        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+
+        var unknown = afterSetup()
+        unknown.setupDone = false; unknown.spotifyApp = nil
+        send(&unknown, .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(unknown.appleMusicFirst && unknown.top.sel == 0)
+        #expect(unknown.rows(for: unknown.top) == [.pickService(.appleMusic), .pickService(.spotify)])
 
         var s = afterSetup()
         s.setupDone = false
@@ -122,7 +131,7 @@ import Testing
     @Test func accessOffOpensSettingsOrUsesSpotify() {
         var s = afterSetup()
         s.setupDone = false
-        send(&s, .launch, .restored(token: 1, ok: false), .select, .select, .wheel(1), .select)
+        send(&s, .launch, .restored(token: 1, ok: false), .select, .select, .select)  // Apple Music is on top
         send(&s, .accessDenied(token: 1))  // an older attempt
         #expect(s.top.screen == .pickMusic)
         #expect(send(&s, .accessDenied(token: 2)) == [])
@@ -180,6 +189,7 @@ import Testing
         var s = mainMenu()
         openSettings(&s)
         send(&s, .select, .menu)
+        send(&s, .spotifyAppFound(true))  // as the app sends on the switch to Apple Music
         send(&s, .restored(token: s.authAttempt, ok: true))
         openSettings(&s)
         s.top.sel = s.rows(for: s.top).firstIndex(of: .logOut) ?? -1
