@@ -32,7 +32,7 @@ struct K3DSpikeSkin: View {
         .onChange(of: store.state.top.screen) { _, screen in
             if screen != .about && !flip.arriving && !flip.isSpinning(at: .now) { flip = K3DFlip() }
         }
-        .onChange(of: ColorCue(screen: store.state.top.screen, black: store.state.shownColor == .black)) { old, new in
+        .onChange(of: ColorCue(top: store.state.top, black: store.state.shownColor == .black)) { old, new in
             colorChanged(from: old, to: new)
         }
         .task { await arrive() }
@@ -60,16 +60,16 @@ struct K3DSpikeSkin: View {
     /// Changes 289 and 290: a new color on the same screen spins the device. During a spin the
     /// 3D screen stays live, and the spin lands on the last color: there is no second spin.
     private func colorChanged(from old: ColorCue, to new: ColorCue) {
-        guard old.black != new.black, old.screen == new.screen else { return }
+        if flip.isSpinning(at: .now) {  // any new row, color or screen shows on the 3D front
+            flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
+            return
+        }
+        guard old.black != new.black, old.top.screen == new.top.screen else { return }
         let turn: Double
-        switch new.screen {
+        switch new.top.screen {
         case .color: turn = K3DFlip.spinPick
         case .settings: turn = K3DFlip.spinSettings
         default: return
-        }
-        if flip.isSpinning(at: .now) {
-            flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
-            return
         }
         guard !reduceMotion, K3DFlip.canDraw, flip.restsOnFront(at: .now) else { return }
         flip = K3DFlip.spin(turn: turn, fromBlack: old.black) { K3DSpike.snapshot(store.state, artwork: artwork) }
@@ -82,8 +82,9 @@ struct K3DSpikeSkin: View {
     }
 }
 
-/// What a color spin starts from: the screen and the device's color (changes 289 and 290).
+/// What a color spin starts from: the screen, its rows, and the device's color (changes 289
+/// and 290). During a spin, any change of it takes a new picture for the 3D front.
 private struct ColorCue: Equatable {
-    let screen: Screen
+    let top: Frame
     let black: Bool
 }
