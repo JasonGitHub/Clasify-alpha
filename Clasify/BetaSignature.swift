@@ -7,8 +7,8 @@ import Security
 /// build has neither, so it is no beta and never ends. A missing or unreadable timestamp
 /// counts as no beta.
 enum BetaSignature {
-    /// "Get New Beta" opens this page (cards BI v2 and BP).
-    static let downloadPage = URL(string: "https://getmypod.app")!
+    /// "Get New Beta" opens this page (cards BI v2 and BP): a page just for the beta.
+    static let downloadPage = URL(string: "https://getmypod.app/beta")!
 
     static func read() -> BetaBuild? {
         var code: SecCode?
