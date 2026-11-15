@@ -4,7 +4,7 @@ import Security
 /// Keeps the Spotify refresh token in the Keychain. Nothing else is stored, and the
 /// access token never comes here.
 enum RefreshTokenStore {
-    private static let service = "app.clasify.Clasify.spotify"
+    private static let service = AppID.bundle + ".spotify"
     private static let account = "refresh-token"
 
     private static var query: [String: Any] {

@@ -6,7 +6,7 @@ import Foundation
 import os
 
 /// TEMP (Apple Music covers, CLA-103): counts only, never a title or an ID.
-private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
+private let timing = Logger(subsystem: AppID.bundle, category: "timing")
 
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
 /// Read-only: nothing here changes the library.

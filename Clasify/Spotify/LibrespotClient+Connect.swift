@@ -145,7 +145,7 @@ private func devicesCallback(
     box.resume(.success(devices))
 }
 
-private let connectLog = Logger(subsystem: "app.clasify.Clasify", category: "connect")
+private let connectLog = Logger(subsystem: AppID.bundle, category: "connect")
 
 /// For calls that nobody waits on. Only the status goes to the log, never the message.
 private func loggedCallback(_ context: UnsafeMutableRawPointer?, _ status: Int32, _ message: UnsafePointer<CChar>?) {

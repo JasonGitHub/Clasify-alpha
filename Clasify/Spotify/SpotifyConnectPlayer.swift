@@ -6,7 +6,7 @@ import SystemConfiguration
 import os
 
 /// Only statuses and step names go to the unified log, never a bridge message or a token.
-private let log = Logger(subsystem: "app.clasify.Clasify", category: "player")
+private let log = Logger(subsystem: AppID.bundle, category: "player")
 
 /// Plays through the Spotify desktop app. Clasify starts and controls it with Spotify Connect
 /// commands through the librespot session. It never uses AppleScript, and it launches Spotify hidden.

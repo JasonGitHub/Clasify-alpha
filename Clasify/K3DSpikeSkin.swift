@@ -3,7 +3,7 @@ import ClasifySkins
 import SwiftUI
 
 /// SPIKE (CLA-101): the skin with the K.3D.7 flip. Shows only when the hidden switch
-/// `spike.k3d` is on (`defaults write app.clasify.Clasify spike.k3d -bool true`, then
+/// `spike.k3d` is on (`defaults write com.cappyai.mypod spike.k3d -bool true`, then
 /// relaunch). The 2D device draws card BL's look. In About, Play/Pause turns the device over
 /// to its steel back and back again. While the 3D body shows, Space or a click on it turns it
 /// back. Leaving About shows the front.
