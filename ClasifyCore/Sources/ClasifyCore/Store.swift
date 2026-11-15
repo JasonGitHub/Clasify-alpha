@@ -144,6 +144,9 @@ public final class Store {
     /// Makes `service` the active one in the player and the library, before any later effect
     /// runs (CLA-103). The app sets it. Then the state gets the library's words.
     @ObservationIgnored public var onSetService: (@MainActor (MusicService) -> Void)?
+    /// Opens the beta download page, and quits the app (card BI v2). The app sets them.
+    @ObservationIgnored public var onGetNewBeta: (@MainActor () -> Void)?
+    @ObservationIgnored public var onQuit: (@MainActor () -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
 
@@ -253,6 +256,8 @@ public final class Store {
             case .getSpotifyApp: onGetSpotifyApp?()
             case .getPremium: onGetPremium?()
             case .openPrivacy: onOpenPrivacy?()
+            case .getNewBeta: onGetNewBeta?()
+            case .quit: onQuit?()
             case .cancelLogIn:
                 let library = self.library
                 Task { await library.cancelLogIn() }
