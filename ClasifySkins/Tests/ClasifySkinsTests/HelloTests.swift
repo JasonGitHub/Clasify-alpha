@@ -57,18 +57,24 @@ import Testing
         #expect(close(p(0.3), 0.12916) && close(p(0.9), 0.87084))  // cubic-bezier(.42, 0, .58, 1)
     }
 
-    /// Card AW: the comet waits on the wheel (change 200), then follows the thumb (change 202); the turn hint after 2 s (change 179);
-    /// after the first turn, the press hint after 3 pulses.
+    /// Card BQ, change 287: the fingertip dot shows the turn (the mock's `fgr` and `fgo`). Card
+    /// AW: the turn hint after 2 s (change 179); after the first turn, the press hint after 3 pulses.
     @Test func theColorPickTeachesTheTurnThenThePress() {
-        // Change 200: 9 o'clock over the top to 3 o'clock in 2.9 s, fading at the ends, then 1 s of rest.
-        let start = ColorPick.waiting(at: 0), top = ColorPick.waiting(at: 1.45), end = ColorPick.waiting(at: 2.9)
-        #expect(close(start?.angle ?? 0, 180) && close(start?.opacity ?? 1, 0) && close(start?.longTail ?? 1, 0))
-        #expect(close(top?.angle ?? 0, 270) && close(top?.opacity ?? 0, 1) && close(top?.longTail ?? 0, 1))
-        #expect(close(end?.angle ?? 0, 360) && close(end?.opacity ?? 1, 0))
-        #expect(ColorPick.waiting(at: 3.4) == nil && ColorPick.waiting(at: -1) == nil && close(ColorPick.waiting(at: 3.9)?.angle ?? 0, 180))
-        // CLA-85 fix: the fade is a smoothstep over the first and last 12% of the sweep.
-        #expect(ColorPick.smoothstep(0) == 0 && ColorPick.smoothstep(0.5) == 0.5 && ColorPick.smoothstep(2) == 1)
-        #expect(close(ColorPick.waiting(at: 0.06 * 2.9)?.opacity ?? 0, 0.5) && close(ColorPick.waiting(at: 0.12 * 2.9)?.opacity ?? 0, 1))
+        func at(_ t: Double) -> (angle: Double, opacity: Double) { ColorPick.finger(at: t) }
+        // Hidden to 0.6 s, at 10 o'clock; faded in by 0.8 s.
+        #expect(close(at(0).angle, -60) && at(0).opacity == 0 && at(0.6).opacity == 0)
+        #expect(at(0.7).opacity > 0 && at(0.7).opacity < 1 && close(at(0.8).opacity, 1) && close(at(0.8).angle, -60))
+        // To 3 o'clock by 2.0 s, back to 10 o'clock by 3.1 s. The ease is symmetric, so each
+        // turn is half way at half time.
+        #expect(close(at(1.4).angle, 15) && close(at(2.0).angle, 90) && close(at(2.55).angle, 15) && close(at(3.1).angle, -60))
+        #expect(at(1.0).angle < -60 + 150 * 0.2)  // slow at the start: under 20% of the turn in the first 17% of the time
+        // Faded out by 3.3 s, then rests to 4.6 s, and the loop starts again.
+        #expect(at(3.2).opacity > 0 && at(3.2).opacity < 1 && at(3.3).opacity == 0 && at(4.5).opacity == 0)
+        #expect(close(at(4.6 + 1.4).angle, 15) && close(at(4.6 + 0.8).opacity, 1))
+        #expect(at(-1).opacity == 0)
+        // cubic-bezier(.45, 0, .55, 1) and CSS ease at a few points.
+        #expect(close(ColorPick.bezier(0.5, 0.45, 0, 0.55, 1), 0.5) && ColorPick.bezier(2, 0.45, 0, 0.55, 1) == 1)
+        #expect(close(ColorPick.bezier(0.5, 0.25, 0.1, 0.25, 1), 0.8024))
         let before = ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102)
         #expect(before.text == "Turn the wheel to try one" && close(before.opacity, 0))
         #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 0, now: 102.4).opacity, 1))

@@ -14,8 +14,9 @@ struct ClickWheel: View {
     /// When the center starts to glow: on Hello (card AT, change 166) and after the first turn
     /// on the color pick (card AW, change 150). Nil: no glow.
     var glowFrom: Double?
-    /// When the waiting comet starts, on the color pick until the first turn (card AW, change 200).
-    var cometFrom: Double?
+    /// When the fingertip dot's loop starts, on the color pick until the first turn (card BQ,
+    /// change 287).
+    var fingerFrom: Double?
     /// The labels that glow for a first-time hint (card BA, change 151), and when they started.
     /// The tour's step 2 lights Previous and Next together (card BA.1, change 199).
     var label: LabelGlow?
@@ -52,7 +53,7 @@ struct ClickWheel: View {
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        movesBar: Bool = false, glowFrom: Double? = nil, cometFrom: Double? = nil, label: LabelGlow? = nil,
+        movesBar: Bool = false, glowFrom: Double? = nil, fingerFrom: Double? = nil, label: LabelGlow? = nil,
         pressed: Zone? = nil
     ) {
         self.input = input
@@ -60,7 +61,7 @@ struct ClickWheel: View {
         self.catchesScroll = catchesScroll
         self.movesBar = movesBar
         self.glowFrom = glowFrom
-        self.cometFrom = cometFrom
+        self.fingerFrom = fingerFrom
         self.label = label
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
     }
@@ -155,18 +156,18 @@ struct ClickWheel: View {
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
             key(.next) { IconView(.next, width: 19.8, height: 10.2) }
             key(.play) { IconView(.playPause, width: 24.6, height: 9.6) }
-            comets
+            finger
             center
         }
         .frame(width: Self.size, height: Self.size)
     }
 
-    /// The color pick's waiting comet until the first color step (change 200). No light follows
-    /// the turn (card AW.1, change 236).
-    @ViewBuilder private var comets: some View {
-        if let cometFrom {
-            WaitingComet(from: cometFrom)
-                .transition(.opacity.animation(.easeOut(duration: ColorPick.waitingOut)))
+    /// The color pick's fingertip dot until the first color step (card BQ, change 287). No light
+    /// follows the turn (card AW.1, change 236).
+    @ViewBuilder private var finger: some View {
+        if let fingerFrom {
+            FingerDot(from: fingerFrom)
+                .transition(.opacity.animation(.easeOut(duration: ColorPick.fingerOut)))
         }
     }
 

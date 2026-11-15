@@ -332,7 +332,7 @@ public struct AppState: Equatable, Sendable {
     /// the center glow and the begin text from it.
     public var helloAt: Double = 0
     /// When the color pick (card AW) opened, and when the wheel first turned on it (0 before
-    /// that). A skin times the waiting comet, the hint and the center glow from them.
+    /// that). A skin times the fingertip dot, the hint and the center glow from them.
     public var colorAt: Double = 0, colorTurnAt: Double = 0
     /// When "You’re in" (card AX, change 175) or "Linked" on the Spotify App screen (card BB,
     /// change 174) moves on by itself. 0 when neither shows.

@@ -17,7 +17,7 @@ public struct PocketSkin: View {
     var fade: Double?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// The small device on a setup screen: no glow, no comet, no keys and no drop shadow.
+    /// The small device on a setup screen: no glow, no fingertip dot, no keys and no drop shadow.
     @Environment(\.pocketPreview) private var preview
     /// SPIKE (CLA-101): off while the 3D flip draws this shadow itself.
     @Environment(\.pocketDropShadow) private var dropShadow
@@ -41,7 +41,7 @@ public struct PocketSkin: View {
             PocketScreen(state: state, input: input)
             ClickWheel(
                 input: input, color: state.shownColor, catchesScroll: interactive, movesBar: state.wheelMovesBar,
-                glowFrom: glowFrom, cometFrom: cometFrom, label: labelGlow, pressed: pressed)
+                glowFrom: glowFrom, fingerFrom: fingerFrom, label: labelGlow, pressed: pressed)
                 .animation(.easeInOut(duration: ColorPick.colorFade), value: state.shownColor)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.
@@ -82,9 +82,9 @@ public struct PocketSkin: View {
         return ClickWheel.LabelGlow(zones: zones, from: state.hintAt)
     }
 
-    /// The waiting comet goes over the wheel on the color pick until the first turn (change
-    /// 200). Not with Reduce Motion.
-    private var cometFrom: Double? {
+    /// The fingertip dot shows the turn on the color pick until the first turn (card BQ, change
+    /// 287). Not with Reduce Motion, as the AW comet before it.
+    private var fingerFrom: Double? {
         guard !preview, !reduceMotion, state.top.screen == .color, state.colorTurnAt == 0 else { return nil }
         return state.colorAt
     }

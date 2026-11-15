@@ -1,14 +1,13 @@
 import ClasifyCore
 import SwiftUI
 
-/// The color pick's times (Round 13, card AW, changes 149, 150, 179, 200, 201 and 203). No light
-/// follows the turn (card AW.1, change 236 removed change 202).
+/// The color pick's times (Round 13, card AW, changes 149, 150, 179 and 203; Round 20, card
+/// BQ, change 287). No light follows the turn (card AW.1, change 236 removed change 202).
 enum ColorPick {
-    /// Change 200: until the first turn, the comet goes 180° clockwise from 9 o'clock over the
-    /// top to 3 o'clock in 2.9 s, then rests 1 s.
-    static let sweep = 2.9, loop = 3.9
-    /// The waiting light fades out in 0.4 s at the first color step.
-    static let waitingOut = 0.4
+    /// Change 287: until the first turn, a fingertip dot shows the turn. It loops every 4.6 s.
+    static let fingerLoop = 4.6
+    /// The fingertip dot fades out in 0.3 s at the first color step, and does not come back.
+    static let fingerOut = 0.3
     /// Change 203: the device color crossfades in 0.45 s, on the device and the small preview.
     static let colorFade = 0.45
     /// "Turn the wheel to try one" fades in 2 s after the pick opens (changes 149 and 179).
@@ -16,22 +15,37 @@ enum ColorPick {
     /// "Then press center button" fades in after 3 pulses of the center glow (change 150).
     static let pressHintAfter = 7.2
 
-    /// The waiting comet `t` seconds after the pick opened: its angle in degrees, clockwise from
-    /// 3 o'clock; its opacity, which fades in and out with a smoothstep over the first and last
-    /// 12% of the sweep; and its long tail, which follows the speed of the sine ease (full at
-    /// 12 o'clock). Nil while it rests.
-    static func waiting(at t: Double) -> (angle: Double, opacity: Double, longTail: Double)? {
-        guard t >= 0 else { return nil }
-        let x = t.truncatingRemainder(dividingBy: loop) / sweep
-        guard x <= 1 else { return nil }
-        let eased = (1 - cos(.pi * x)) / 2
-        return (180 + 180 * eased, smoothstep(min(1, x / 0.12, (1 - x) / 0.12)), sin(.pi * x))
+    /// The fingertip dot `t` seconds after the pick opened (the mock's keyframes `fgr` and
+    /// `fgo`): its angle in degrees, clockwise from 12 o'clock, and its opacity. In each loop it
+    /// is hidden to 0.6 s, fades in by 0.8 s at 10 o'clock (-60°), turns to 3 o'clock (90°) by
+    /// 2.0 s and back to -60° by 3.1 s, and fades out by 3.3 s. The turns ease as
+    /// cubic-bezier(.45, 0, .55, 1); the fades as CSS `ease`, cubic-bezier(.25, .1, .25, 1).
+    static func finger(at t: Double) -> (angle: Double, opacity: Double) {
+        guard t >= 0 else { return (-60, 0) }
+        let x = t.truncatingRemainder(dividingBy: fingerLoop)
+        func turn(_ a: Double, _ b: Double, _ from: Double, _ to: Double) -> Double {
+            a + (b - a) * bezier((x - from) / (to - from), 0.45, 0, 0.55, 1)
+        }
+        func fade(_ from: Double, _ to: Double) -> Double { bezier((x - from) / (to - from), 0.25, 0.1, 0.25, 1) }
+        let angle: Double = x < 0.8 ? -60 : x < 2.0 ? turn(-60, 90, 0.8, 2.0) : x < 3.1 ? turn(90, -60, 2.0, 3.1) : -60
+        let opacity: Double = x < 0.6 ? 0 : x < 0.8 ? fade(0.6, 0.8) : x < 3.1 ? 1 : x < 3.3 ? 1 - fade(3.1, 3.3) : 0
+        return (angle, opacity)
     }
 
-    /// 3f² − 2f³ for f in 0...1.
-    static func smoothstep(_ f: Double) -> Double {
-        let f = min(max(f, 0), 1)
-        return f * f * (3 - 2 * f)
+    /// CSS cubic-bezier(x1, y1, x2, y2) at `x`: finds the curve point with that x by bisection,
+    /// and returns its y.
+    static func bezier(_ x: Double, _ x1: Double, _ y1: Double, _ x2: Double, _ y2: Double) -> Double {
+        if x <= 0 { return 0 }
+        if x >= 1 { return 1 }
+        func curve(_ s: Double, _ a: Double, _ b: Double) -> Double {
+            3 * (1 - s) * (1 - s) * s * a + 3 * (1 - s) * s * s * b + s * s * s
+        }
+        var low = 0.0, high = 1.0
+        for _ in 0..<40 {
+            let mid = (low + high) / 2
+            if curve(mid, x1, x2) < x { low = mid } else { high = mid }
+        }
+        return curve((low + high) / 2, y1, y2)
     }
 
     /// The hint under the rows and its opacity at time `now`: before the first turn, the turn
@@ -129,81 +143,34 @@ struct SetupPreview: View {
     }
 }
 
-/// The comet on the wheel (card AW, change 201), drawn at 3 o'clock and turned into place.
-/// One 60° band, 4.2 pt wide at the head to a point, #6aaef5 along the line from the tail tip
-/// to the head. The long tail is the band with long stops, shown by `longTail`; the short tail
-/// is the same band with short stops, always shown. Under each band a softer copy, 2.5 pt
-/// wider, glows. A dot head #8cc2f8 with a white shine and a #5aa3f0 glow, at radius 105. The
-/// paths never change: a frame changes only the rotation and the opacities.
-struct Comet: View {
-    var longTail: Double
-    nonisolated static let radius: CGFloat = 105
-    static let longStops: [(Double, Double)] = [(0, 0), (0.45, 0.18), (0.8, 0.55), (1, 0.9)]
-    static let shortStops: [(Double, Double)] = [(0.72, 0), (0.9, 0.5), (1, 0.9)]
-
-    var body: some View {
-        let head = CGPoint(x: ClickWheel.size / 2 + Self.radius, y: ClickWheel.size / 2)
-        ZStack {
-            Self.band(Self.longStops).opacity(longTail)
-            Self.band(Self.shortStops)
-            Circle().fill(Color(hex: 0x5aa3f0, opacity: 0.45)).frame(width: 11, height: 11).blur(radius: 2.5)
-                .position(head)
-            Circle().fill(Color(hex: 0x8cc2f8)).frame(width: 5.4, height: 5.4).position(head)
-            Circle().fill(Color.white.opacity(0.85)).frame(width: 2.2, height: 2.2)
-                .position(x: head.x - 0.6, y: head.y - 0.6)
-        }
-        .frame(width: ClickWheel.size, height: ClickWheel.size)
-        .clipShape(Circle().inset(by: ClickWheel.size / 2 - 112))  // the glow stays on the wheel
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    /// The band with its glow. The gradient runs from the tail tip (165.0, 21.6) to the head
-    /// (217.5, 112.5) in the 225 point box.
-    private static func band(_ stops: [(Double, Double)]) -> some View {
-        let size = ClickWheel.size
-        let fill = LinearGradient(
-            stops: stops.map { stop in Gradient.Stop(color: Color(hex: 0x6aaef5, opacity: stop.1), location: stop.0) },
-            startPoint: UnitPoint(x: 165.0 / size, y: 21.6 / size), endPoint: UnitPoint(x: 217.5 / size, y: 112.5 / size))
-        return ZStack {
-            ZStack { Band().fill(fill); Band().stroke(fill, lineWidth: 2.5) }
-                .opacity(0.5)
-                .blur(radius: 2.5)
-            Band().fill(fill)
-        }
-    }
-
-    /// The 60° band behind a clockwise head at 3 o'clock: 4.2 pt wide at the head, to a point.
-    struct Band: Shape {
-        func path(in rect: CGRect) -> Path {
-            let c = CGPoint(x: rect.midX, y: rect.midY), steps = 24
-            func point(_ k: Int, _ side: CGFloat) -> CGPoint {
-                let f = Double(k) / Double(steps), a = -60 * f * .pi / 180
-                let r = Comet.radius + side * 2.1 * (1 - f)
-                return CGPoint(x: c.x + r * cos(a), y: c.y + r * sin(a))
-            }
-            var path = Path()
-            path.move(to: point(0, 1))
-            for k in 1...steps { path.addLine(to: point(k, 1)) }
-            for k in stride(from: steps, through: 0, by: -1) { path.addLine(to: point(k, -1)) }
-            path.closeSubpath()
-            return path
-        }
-    }
-}
-
-/// The waiting comet until the first color step (change 200).
-struct WaitingComet: View {
+/// The fingertip dot on the wheel (card BQ, change 287), as on the launch page: 33 pt round,
+/// CSS `radial-gradient(rgba(90,163,240,.6), rgba(90,163,240,0) 70%)`, its center on a circle
+/// 83 pt from the wheel's center. The same on Silver and Black. It turns about the wheel's
+/// center from `from`, the time the pick opened.
+struct FingerDot: View {
     let from: Double
     @Environment(\.animationTime) private var fixedTime
+    static let size: CGFloat = 33, radius: CGFloat = 83
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
-            let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
-            let light = ColorPick.waiting(at: t)
-            Comet(longTail: light?.longTail ?? 0)
-                .rotationEffect(.degrees(light?.angle ?? 0))
-                .opacity(light?.opacity ?? 0)
+            let finger = ColorPick.finger(at: (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from)
+            // A CSS radial gradient with no size is an ellipse to the farthest corner: on a
+            // square, a circle of half the diagonal.
+            Circle()
+                .fill(RadialGradient(
+                    stops: [
+                        .init(color: Color(hex: 0x5aa3f0, opacity: 0.6), location: 0),
+                        .init(color: Color(hex: 0x5aa3f0, opacity: 0), location: 0.7),
+                    ],
+                    center: .center, startRadius: 0, endRadius: Self.size / 2 * 2.0.squareRoot()))
+                .frame(width: Self.size, height: Self.size)
+                .position(x: ClickWheel.size / 2, y: ClickWheel.size / 2 - Self.radius)
+                .frame(width: ClickWheel.size, height: ClickWheel.size)
+                .rotationEffect(.degrees(finger.angle))
+                .opacity(finger.opacity)
         }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
