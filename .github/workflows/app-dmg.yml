@@ -26,7 +26,7 @@ jobs:
     permissions:
       contents: read
     env:
-      DMG: Clasify-build-${{ github.run_number }}.dmg  # the build number Jason sees
+      DMG: myPod-build-${{ github.run_number }}.dmg  # the build number Jason sees
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
       - name: Cache the Rust build of the bridge
@@ -40,11 +40,11 @@ jobs:
       - uses: ./.github/actions/build-app
       - name: Ad-hoc sign and make the DMG
         run: |
-          app=DerivedData/Build/Products/Release/Clasify.app
+          app=DerivedData/Build/Products/Release/myPod.app
           codesign --force --deep --sign - "$app"
           codesign --verify --verbose "$app"
           mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
-          hdiutil create -volname Clasify -srcfolder dmg -ov -format UDZO "$DMG"
+          hdiutil create -volname myPod -srcfolder dmg -ov -format UDZO "$DMG"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: ${{ env.DMG }}
@@ -59,7 +59,7 @@ jobs:
       contents: read
     env:
       IDENTITY: "Developer ID Application: CAPPYAI LIMITED (6GDHV9227A)"  # not a secret
-      DMG: Clasify-build-${{ github.run_number }}-signed.dmg
+      DMG: myPod-build-${{ github.run_number }}-signed.dmg
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
       - uses: ./.github/actions/build-app  # no cache in the signing job
@@ -81,11 +81,11 @@ jobs:
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
       - name: Sign the app with hardened runtime and make the DMG
         run: |
-          app=DerivedData/Build/Products/Release/Clasify.app
+          app=DerivedData/Build/Products/Release/myPod.app
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "$app"
           codesign --verify --strict --verbose=2 "$app"
           mkdir dmg && cp -R "$app" dmg/ && ln -s /Applications dmg/Applications
-          hdiutil create -volname Clasify -srcfolder dmg -ov -format UDZO "$DMG"
+          hdiutil create -volname myPod -srcfolder dmg -ov -format UDZO "$DMG"
           codesign --force --timestamp --sign "$IDENTITY" "$DMG"
       - name: Notarize and staple the DMG
         env:
