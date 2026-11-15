@@ -39,10 +39,11 @@ struct PocketAbout: View {
     var body: some View {
         let off = state.top.off
         ZStack(alignment: .topLeading) {
+            // CLA-114: only the page's offset slides. The Licenses selection bar comes and goes
+            // at once, so it never fades at the wrong place while the page moves.
             page(licenses: off >= AppState.aboutLicensesStep)
                 .frame(width: Pocket.screenWidth, height: Self.page, alignment: .top)
-                .offset(y: -CGFloat(off) * Self.step)
-                .animation(.easeOut(duration: 0.15), value: off)
+                .animation(.easeOut(duration: 0.15)) { $0.offset(y: -CGFloat(off) * Self.step) }
             scrollBar(off)
         }
         .frame(width: Pocket.screenWidth, height: Pocket.listHeight, alignment: .topLeading)
