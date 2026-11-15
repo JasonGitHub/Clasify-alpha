@@ -303,7 +303,7 @@ struct SyncCable: View {
             .frame(width: 10, height: 6)
     }
 
-    /// The light: a 14 point dash with a soft glow, the same blue as the wheel comet.
+    /// The light: a 14 point dash with a soft glow, the blue of the old wheel comet (card AW).
     private func flow(_ at: @escaping (Double) -> (distance: Double, opacity: Double)) -> some View {
         TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil)) { context in
             let light = at(fixedTime ?? context.date.timeIntervalSinceReferenceDate)

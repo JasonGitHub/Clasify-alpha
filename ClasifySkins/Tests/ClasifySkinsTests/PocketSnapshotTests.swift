@@ -1347,7 +1347,7 @@ import Testing
     }
 
     /// The color pick (card AW): the rows on the left, the small device on the right, the
-    /// waiting comet and the turn hint before the first turn; after it, the new color and the glow.
+    /// fingertip dot and the turn hint before the first turn; after it, the new color and the glow.
     @Test func theColorPickShowsTheSmallDeviceAndTriesTheColorOn() throws {
         var s = AppState()
         s.stack = [Frame(screen: .color)]
@@ -1375,6 +1375,31 @@ import Testing
         // compare it with Black.
         for p in [preview, body] { #expect(silver.rgb(p.x, p.y).g > black.rgb(p.x, p.y).g + 60, "\(p)") }
         #expect(black.isBlue(183, 392) && !hint(black))  // the glow first; the press hint comes at 12.2 s
+    }
+
+    /// Card BQ, change 287: before the first turn, the fingertip dot shows on the wheel, the same
+    /// on Silver and Black. At 0.8 s into its loop it is fully in at 10 o'clock: 83 points from
+    /// the wheel's center (183, 433.5) at -60°. It is hidden at 0.3 s, and gone after a turn.
+    @Test func theColorPickShowsTheFingertipDotUntilTheFirstTurn() throws {
+        let dot = (x: 111, y: 392)
+        // The dot's middle is #5aa3f0 at 60% over the wheel: blue by 90 over red on both colors.
+        // The wheel alone is gray there.
+        func lit(_ shot: Snapshot, _ x: Int, _ y: Int) -> Bool { let c = shot.rgb(x, y); return c.b > c.r + 60 }
+        for color in [DeviceColor.silver, .black] {
+            var s = AppState()
+            s.stack = [Frame(screen: .color)]
+            s.top.sel = color == .black ? 1 : 0  // the pick shows the selected color
+            s.colorAt = 100
+            let shot = try render(s, "color-pick-finger-\(color)", time: 100.8)
+            #expect(lit(shot, dot.x, dot.y), "\(color): \(shot.rgb(dot.x, dot.y))")
+            #expect(!lit(shot, dot.x + 30, dot.y), "\(color): the dot is 33 points wide")
+            #expect(!lit(shot, Int(PocketSkin.size.width) - dot.x, dot.y), "\(color): only one dot")
+            let early = try render(s, "color-pick-finger-early-\(color)", time: 100.3)
+            #expect(!lit(early, dot.x, dot.y), "\(color): hidden at the start of the loop")
+            s.colorTurnAt = 101
+            let turned = try render(s, "color-pick-finger-turned-\(color)", time: 104.6 + 0.8)
+            #expect(!lit(turned, dot.x, dot.y), "\(color): gone after the first turn")
+        }
     }
 
     /// Card BM, changes 257 and 264: Pick Your Music has the two services on the left and the

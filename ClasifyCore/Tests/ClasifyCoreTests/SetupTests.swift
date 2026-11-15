@@ -131,7 +131,7 @@ import Testing
         #expect(s.top.screen == .login && s.rows(for: s.top) == [.logIn])
         send(&s, .menu, .menu)  // back to Pick Your Music, then to the color pick, with Black selected (card AX, change 172)
         #expect(s.top.screen == .color && s.top.sel == 1 && !s.navForward)
-        #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no waiting comet
+        #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no fingertip dot (card BQ)
         send(&s, .reset, .launch, .restored(token: 2, ok: false), .select)  // a reset keeps the settings
         #expect(s.top.screen == .color && s.top.sel == 1)  // the pick starts on the color that is set
     }
@@ -142,7 +142,7 @@ import Testing
         #expect(s.colorAt == 100 && s.colorTurnAt == 0 && s.shownColor == .silver)
         send(&s, .wheel(1), now: 105)
         #expect(s.colorTurnAt == 105 && s.shownColor == .black && s.deviceColor == .silver)
-        send(&s, .wheel(-1), now: 107)  // only the first turn counts
+        send(&s, .wheel(-1), now: 107)  // only the first turn counts: the fingertip dot does not come back (card BQ)
         #expect(s.colorTurnAt == 105 && s.shownColor == .silver)
         send(&s, .wheel(-1), now: 107.5)  // at the top: no color change
         #expect(s.shownColor == .silver)
