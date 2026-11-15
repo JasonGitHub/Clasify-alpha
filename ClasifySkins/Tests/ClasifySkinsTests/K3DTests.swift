@@ -203,6 +203,34 @@ import Testing
         #expect(!flip.restsOnFront(at: at(2.3)) && flip.restsOnFront(at: at(2.36)))
     }
 
+    /// Card BR, changes 289 and 290 (gen.py `spin`): a 0.15 s crossfade to 3D, one 360° turn with
+    /// a quad in-out, the old color until 180°, and a 0.15 s crossfade back.
+    @Test(arguments: [K3DFlip.spinPick, K3DFlip.spinSettings]) func theColorSpinFollowsTheSketch(turn: Double) {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let flip = K3DFlip.spin(turn: turn, fromBlack: false, at: t0) { nil }
+        func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
+        #expect(near(flip.length, turn + 0.3) && !flip.arriving && !flip.toBack)
+        #expect(near(flip.flatOpacity(at: at(0)), 1) && near(flip.flatOpacity(at: at(0.075)), 0.5))
+        #expect(flip.flatOpacity(at: at(0.15 + turn / 2)) == 0)
+        #expect(near(flip.flatOpacity(at: at(turn + 0.225)), 0.5) && flip.flatOpacity(at: at(turn + 0.31)) == 1)
+        #expect(flip.pose(at: at(0.1)).angle == 0)  // no turn while it crossfades
+        #expect(near(flip.pose(at: at(0.15 + turn / 4)).angle, 360 * 0.125))  // quad in: 2u²
+        #expect(near(flip.pose(at: at(0.15 + turn / 2)).angle, 180))
+        #expect(near(flip.pose(at: at(0.15 + 3 * turn / 4)).angle, 360 * 0.875))
+        #expect(flip.pose(at: at(turn + 0.2)).angle == 0 && flip.pose(at: .distantFuture).angle == 0)  // 360° is 0 at rest
+        #expect(flip.pose(at: at(0.15 + turn / 2)).lift == 0)
+        #expect(flip.look(at: at(0.5)).scale == 1 && flip.look(at: at(0.5)).opacity == 1)
+        // The old color to 180°, then the device's color now, even if it changed again.
+        #expect(!flip.black(at: at(0.15 + turn * 0.49), live: true))
+        #expect(flip.black(at: at(0.15 + turn * 0.51), live: true))
+        #expect(flip.blackOverride(at: at(0.05), live: true) == false)
+        #expect(flip.blackOverride(at: at(turn + 0.25), live: true) == true)
+        #expect(flip.blackOverride(at: at(turn + 0.31), live: true) == nil)  // at rest the 2D device shows its own
+        #expect(flip.isSpinning(at: at(turn)) && !flip.isSpinning(at: at(turn + 0.31)))
+        #expect(flip.restsOnFront(at: at(turn + 0.31)))
+    }
+
     /// While it arrives, the 2D device stays hidden until the 3D body has drawn: no flash.
     @Test func theArrivalHidesThe2DDeviceUntilThe3DFrameIsReady() {
         typealias H = K3DHandover<EmptyView, EmptyView>

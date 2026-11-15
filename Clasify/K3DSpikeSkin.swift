@@ -9,6 +9,9 @@ import SwiftUI
 /// Card BR, change 288: at the first launch ever, the device arrives in 3D before Hello. Then
 /// it sends `.arrived`, which the reducer saves, as the 2D device fades in. With Reduce Motion, or with no Metal device,
 /// it sends `.arrived` at once and shows nothing. Input waits in the reducer until then.
+///
+/// Card BR, changes 289 and 290: a color change on Pick Your Color, or on the Settings Color
+/// row, spins the device once in 3D, in place of the color fade. With Reduce Motion it fades.
 struct K3DSpikeSkin: View {
     let store: Store
     let artwork: Artwork
@@ -27,7 +30,10 @@ struct K3DSpikeSkin: View {
             .environment(\.artwork, artwork)
         }
         .onChange(of: store.state.top.screen) { _, screen in
-            if screen != .about && !flip.arriving { flip = K3DFlip() }
+            if screen != .about && !flip.arriving && !flip.isSpinning(at: .now) { flip = K3DFlip() }
+        }
+        .onChange(of: ColorCue(screen: store.state.top.screen, black: store.state.shownColor == .black)) { old, new in
+            colorChanged(from: old, to: new)
         }
         .task { await arrive() }
     }
@@ -51,9 +57,33 @@ struct K3DSpikeSkin: View {
         }
     }
 
+    /// Changes 289 and 290: a new color on the same screen spins the device. During a spin the
+    /// 3D screen stays live, and the spin lands on the last color: there is no second spin.
+    private func colorChanged(from old: ColorCue, to new: ColorCue) {
+        guard old.black != new.black, old.screen == new.screen else { return }
+        let turn: Double
+        switch new.screen {
+        case .color: turn = K3DFlip.spinPick
+        case .settings: turn = K3DFlip.spinSettings
+        default: return
+        }
+        if flip.isSpinning(at: .now) {
+            flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
+            return
+        }
+        guard !reduceMotion, K3DFlip.canDraw, flip.restsOnFront(at: .now) else { return }
+        flip = K3DFlip.spin(turn: turn, fromBlack: old.black) { K3DSpike.snapshot(store.state, artwork: artwork) }
+    }
+
     private func turn() {
-        guard !flip.arriving else { return }  // change 288: no input during the arrival
+        guard !flip.arriving, !flip.isSpinning(at: .now) else { return }  // no flip during an arrival or a spin
         // The 3D front shows the screen as it is now. The snapshot is made before the turn starts.
         flip.turn { K3DSpike.snapshot(store.state, artwork: artwork) }
     }
+}
+
+/// What a color spin starts from: the screen and the device's color (changes 289 and 290).
+private struct ColorCue: Equatable {
+    let screen: Screen
+    let black: Bool
 }

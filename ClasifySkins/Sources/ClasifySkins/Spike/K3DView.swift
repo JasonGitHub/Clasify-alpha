@@ -54,9 +54,11 @@ public struct K3DFlipView<Content: View>: View {
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
             let pose = flip.pose(at: date), look = flip.look(at: date)
-            K3DHandover(flat: flat, ready: ready, hidesUntilReady: flip.arriving, content: content) { shown in
+            let black = flip.black(at: date, live: self.black)  // a spin shows the old color to 180°
+            let flatDevice = content.environment(\.spinBlack, flip.blackOverride(at: date, live: self.black))
+            K3DHandover(flat: flat, ready: ready, hidesUntilReady: flip.arriving, content: flatDevice) { shown in
                 // Never 0, as for `body3D`'s own opacity: a hidden Metal view does not draw.
-                body3D(angle: pose.angle, lift: pose.lift, scale: look.scale, shown: shown)
+                body3D(angle: pose.angle, lift: pose.lift, scale: look.scale, black: black, shown: shown)
                     .opacity(max(look.opacity, 0.001))
             }
         }
@@ -70,7 +72,7 @@ public struct K3DFlipView<Content: View>: View {
     }
 
     /// The 3D body and its shadow, under the 2D device that shows with opacity `shown`.
-    private func body3D(angle: Double, lift: Double, scale: Double, shown: Double) -> some View {
+    private func body3D(angle: Double, lift: Double, scale: Double, black: Bool, shown: Double) -> some View {
         let shows = shown < 1
         let size = PocketSkin.size
         let ready = $ready
@@ -442,5 +444,18 @@ final class K3DLayerView: MTKView {
         let n = near, f = far
         return simd_float4x4(columns: (
             SIMD4(fx, 0, 0, 0), SIMD4(0, fy, 0, 0), SIMD4(-sx, -sy, f / (n - f), -1), SIMD4(0, 0, f * n / (n - f), 0)))
+    }
+}
+
+private struct SpinBlackKey: EnvironmentKey {
+    static let defaultValue: Bool? = nil
+}
+
+extension EnvironmentValues {
+    /// Changes 289 and 290: while a color spin runs, the color the 2D device shows (black or
+    /// not), with no fade. Nil shows the state's color with its usual fade.
+    var spinBlack: Bool? {
+        get { self[SpinBlackKey.self] }
+        set { self[SpinBlackKey.self] = newValue }
     }
 }

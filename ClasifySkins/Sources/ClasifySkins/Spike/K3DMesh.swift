@@ -261,7 +261,9 @@ struct K3DMesh {
 /// 70 pt while it turns; the 3D body and the flat 2D device crossfade in 0.1 s. `arrive` is
 /// card BR's first launch (change 288): from -120° and 55% size, one ease-out turn to the front
 /// in 1.6 s, fading in over the first 0.8 s; it rests 0.4 s, then the 2D device fades in over
-/// 0.35 s. CLA-116 adds the color spin as a third script.
+/// 0.35 s. `spin` is card BR's color change (changes 289 and 290): the device crossfades to 3D
+/// in 0.15 s, turns 360° with a quad in-out, and crossfades back in 0.15 s. It shows the old
+/// color until 180°, then the color the device has now.
 public struct K3DFlip {
     static let turn = 0.82, duration = 1.0, lift = 70.0
     /// The crossfade between the 3D body and the flat 2D device.
@@ -269,13 +271,20 @@ public struct K3DFlip {
     /// Card BR, change 288: the arrival's turn, its rest, and its crossfade to the 2D device.
     public static let arriveTurn = 1.6, arriveHold = 0.4, arriveFade = 0.35, arriveFrom = -120.0, arriveScale = 0.55
 
-    enum Script { case flip, arrive }
+    /// Changes 289 and 290: the color spin's crossfades, and its turn on Pick Your Color and in
+    /// Settings.
+    static let spinFade = 0.15
+    public static let spinPick = 1.4, spinSettings = 0.8
+
+    enum Script: Equatable { case flip, arrive, spin(Double) }
 
     /// The angle the last turn started from and goes to, in degrees: 0 is the front, 180 the back.
     private(set) var from = 0.0, to = 0.0
     /// When the last turn started.
     private(set) var start = Date.distantPast
     private(set) var script = Script.flip
+    /// The spin's old color (changes 289 and 290).
+    private(set) var fromBlack = false
     /// A live picture of the device for the 3D front's screen, taken when the turn started.
     public private(set) var screen: CGImage?
 
@@ -292,11 +301,51 @@ public struct K3DFlip {
         return flip
     }
 
+    /// Changes 289 and 290: a color spin with a turn of `turn` seconds, starting now. The device
+    /// was black before the change when `fromBlack`.
+    @MainActor public static func spin(turn: Double, fromBlack: Bool, at now: Date = .now, screen make: () -> CGImage?) -> K3DFlip {
+        var flip = K3DFlip()
+        flip.script = .spin(turn)
+        (flip.fromBlack, flip.start) = (fromBlack, now)
+        flip.show(screen: make())
+        return flip
+    }
+
+    /// Puts a new picture in the 3D front's screen: during a spin the screen stays live.
+    @MainActor public mutating func show(screen: CGImage?) {
+        if let screen { K3DRenderer.shared?.prepare(screen: screen) }
+        self.screen = screen
+    }
+
+    /// A color spin runs now. A color change during it lands at its end, with no second spin.
+    public func isSpinning(at now: Date) -> Bool {
+        if case .spin = script { return !isResting(at: now) }
+        return false
+    }
+
+    /// The 3D body is black: during a spin, the old color until 180°, then `live`.
+    func black(at now: Date, live: Bool) -> Bool {
+        guard case .spin(let turn) = script else { return live }
+        return now.timeIntervalSince(start) - Self.spinFade < turn / 2 ? fromBlack : live
+    }
+
+    /// The color the 2D device must show while a spin runs, or nil to show its own (with its
+    /// fade). The 2D device shows only in the crossfades, so it changes with the 3D body.
+    func blackOverride(at now: Date, live: Bool) -> Bool? {
+        isSpinning(at: now) ? black(at: now, live: live) : nil
+    }
+
     /// The 3D view can draw on this Mac. Without it there is no arrival (change 288).
     @MainActor public static var canDraw: Bool { K3DRenderer.shared != nil }
 
     /// How long the script runs, from its start to the 2D device at full opacity.
-    public var length: Double { script == .arrive ? Self.arriveTurn + Self.arriveHold + Self.arriveFade : Self.duration }
+    public var length: Double {
+        switch script {
+        case .flip: Self.duration
+        case .arrive: Self.arriveTurn + Self.arriveHold + Self.arriveFade
+        case .spin(let turn): turn + 2 * Self.spinFade
+        }
+    }
 
     /// The back shows, or the device turns to it.
     public var toBack: Bool { to > 90 }
@@ -336,6 +385,9 @@ public struct K3DFlip {
     public func flatOpacity(at now: Date) -> Double {
         let t = now.timeIntervalSince(start)
         if script == .arrive { return min(1, max(0, (t - Self.arriveTurn - Self.arriveHold) / Self.arriveFade)) }
+        if case .spin(let turn) = script {
+            return t < Self.spinFade ? 1 - max(0, t) / Self.spinFade : min(1, max(0, (t - Self.spinFade - turn) / Self.spinFade))
+        }
         if !toBack { return min(1, max(0, (t - (Self.duration - Self.fade)) / Self.fade)) }
         return from == 0 ? min(1, max(0, 1 - t / Self.fade)) : 0
     }
@@ -353,6 +405,11 @@ public struct K3DFlip {
         if script == .arrive {
             return (from + (to - from) * Self.easeOut(min(1, max(0, t / Self.arriveTurn))), 0)
         }
+        if case .spin(let turn) = script {
+            // 360° is the front again: the pose at rest is 0, so a later flip starts from 0.
+            let u = min(1, max(0, (t - Self.spinFade) / turn))
+            return ((360 * Self.quad(u)).truncatingRemainder(dividingBy: 360), 0)
+        }
         if t >= Self.duration { return (to, 0) }
         let angle: Double
         if t < Self.turn {
@@ -366,6 +423,8 @@ public struct K3DFlip {
     }
 
     static func ease(_ p: Double) -> Double { p < 0.5 ? 4 * p * p * p : 1 - pow(-2 * p + 2, 3) / 2 }
+    /// gen.py `ez`: quad in-out.
+    static func quad(_ p: Double) -> Double { p < 0.5 ? 2 * p * p : 1 - pow(-2 * p + 2, 2) / 2 }
     /// gen.py `eo`: 1 − (1 − p)³.
     static func easeOut(_ p: Double) -> Double { 1 - pow(1 - p, 3) }
 }
