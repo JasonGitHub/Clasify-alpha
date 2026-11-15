@@ -65,8 +65,10 @@ enum Hello {
     /// How much of look `look` (0 = T2 to 3 = T5) is written at loop time `t`, from 0 to 1,
     /// with ease-in-out.
     static func written(look: Int, at t: Double) -> Double {
-        ease((t - (Double(look) * slot + 0.2)) / write)
+        ease((t - (Double(look) * slot + lead)) / write)
     }
+    /// The wait before a look starts writing.
+    static let lead = 0.2
 
     /// The opacity of look `look` at loop time `t`. T2 to T4 hold 0.6 s after writing and fade in
     /// 0.4 s. T5 stays to 19.0 s and fades by 19.4 s.
