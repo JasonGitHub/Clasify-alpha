@@ -15,7 +15,15 @@ import SwiftUI
 struct K3DSpikeSkin: View {
     let store: Store
     let artwork: Artwork
-    @State private var flip = K3DFlip()
+    @State private var flip: K3DFlip
+
+    /// Change 288: at the first launch, the very first frame already waits for the arrival, so
+    /// the 2D device does not flash before the turn.
+    init(store: Store, artwork: Artwork) {
+        self.store = store
+        self.artwork = artwork
+        _flip = State(initialValue: store.state.arrived ? K3DFlip() : .waiting)
+    }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -53,6 +61,7 @@ struct K3DSpikeSkin: View {
             try? await Task.sleep(for: .seconds(K3DFlip.arriveFade))
             flip = K3DFlip()  // at rest on the front, as before
         } else {
+            flip = K3DFlip()  // Reduce Motion or no Metal: the 2D device shows at once
             store.send(.arrived)
         }
     }
