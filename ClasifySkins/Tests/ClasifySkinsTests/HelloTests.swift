@@ -83,4 +83,15 @@ import Testing
         #expect(close(ColorPick.hint(openedAt: 100, turnedAt: 104, now: 111.6).opacity, 1))
         #expect(Hello.pulse(-1) == 0 && close(Hello.pulse(0.4), 1) && close(Hello.pulse(1.6), 0.55))
     }
+
+    /// Change 288: until the device has arrived, Hello stays at its start with nothing written,
+    /// at any clock. Then it runs from `helloAt` (Jason, build 233: a whole word flashed).
+    @Test func helloWaitsForTheArrival() {
+        for now in [100.0, 101.9, 102.05, 102.3, 150] {
+            let t = Hello.elapsed(at: now, since: 100, waiting: true)
+            #expect(t == 0 && close(Hello.written(look: 0, at: t), 0), "at \(now)")
+        }
+        #expect(close(Hello.elapsed(at: 102.3, since: 100, waiting: false), 2.3))
+        #expect(Hello.elapsed(at: 99, since: 100, waiting: false) == 0)
+    }
 }
