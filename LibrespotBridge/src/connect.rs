@@ -34,7 +34,7 @@ pub const LSB_OPTION_SHUFFLE: u32 = 0;
 pub const LSB_OPTION_REPEAT_CONTEXT: u32 = 1;
 pub const LSB_OPTION_REPEAT_TRACK: u32 = 2;
 
-const DEVICE_NAME: &str = "Clasify";
+const DEVICE_NAME: &str = "myPod";
 
 /// The longest wait for one Connect network call (CLA-88). librespot's HTTP client has no
 /// time limit. After a network change, a request on a dead connection can wait for minutes,

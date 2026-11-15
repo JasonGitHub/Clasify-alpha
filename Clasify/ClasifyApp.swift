@@ -10,7 +10,7 @@ struct PlainWindowApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        WindowGroup("Clasify", id: DeviceWindow.id) {
+        WindowGroup("myPod", id: DeviceWindow.id) {
             AppContent(model: model)
                 .padding(DeviceWindow.margin)
                 .containerBackground(.clear, for: .window)

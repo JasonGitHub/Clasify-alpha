@@ -2,7 +2,7 @@ import ClasifyCore
 import Foundation
 
 /// The words and numbers that skins show. It only formats state. The reducer holds all logic.
-/// The strings come from the mockup, with "Clasify" for its old name.
+/// The strings come from the mockup, with "myPod" for its old names (card BP).
 enum Labels {
     /// A first-time hint's tip (card BA, change 195): the words, the wheel mark drawn in them
     /// as on the wheel, the words after it, and the words for VoiceOver.
@@ -20,8 +20,8 @@ enum Labels {
 
     static func title(_ screen: Screen, in state: AppState) -> String {
         switch screen {
-        case .login where state.restoring: "Clasify"
-        case .main: "Clasify"
+        case .login where state.restoring: "myPod"
+        case .main: "myPod"  // card BP, change 283
         case .login, .auth, .loginFailed, .loggedIn, .premium, .accessOff: "Log In"  // cards AX, BM
         case .playlists: "Playlists"
         case .albums: "Albums"
@@ -203,7 +203,7 @@ enum Labels {
 
     /// The app's version, or the mockup's when the bundle has none, as in tests.
     static var version: String {
-        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
     }
 
     /// About's version (card BI v2, change 235): "1.0 Beta 209" on a beta, with the bundle's

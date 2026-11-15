@@ -1295,7 +1295,7 @@ mod connect_tests {
             active_device_id: "mac".to_owned(),
             ..Default::default()
         };
-        for (id, name) in [("me", "Clasify"), ("phone", "Phone"), ("mac", "Mac")] {
+        for (id, name) in [("me", "myPod"), ("phone", "Phone"), ("mac", "Mac")] {
             cluster.device.insert(id.to_owned(), device(id, name));
         }
         let found = devices(&cluster, "me");

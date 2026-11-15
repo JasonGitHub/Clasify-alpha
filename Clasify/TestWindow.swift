@@ -113,7 +113,7 @@ private struct TestPanel: View {
         case .premium: return state.premiumFound ? "Premium." : "\(state.words.needPlan). \(state.words.needPlanLine)"
         case .accessOff: return "Access is off. Turn it on in System Settings."
         case .now: return "Select switches the wheel between volume and scrub."
-        case .about: return "Clasify test build"
+        case .about: return "myPod test build"
         case .hello: return "Press Select to begin."
         case .spotifyApp: return state.spotifyApp == true ? "Linked." : "We also need the Spotify app on this Mac."
         default: return nil
@@ -122,7 +122,7 @@ private struct TestPanel: View {
 
     private func title(_ screen: Screen) -> String {
         switch screen {
-        case .login, .main: "Clasify"
+        case .login, .main: "myPod"
         case .auth, .loginFailed, .loggedIn, .premium, .accessOff: "Log In"
         case .pickMusic: "Pick Your Music"
         case .playlists: "Playlists"

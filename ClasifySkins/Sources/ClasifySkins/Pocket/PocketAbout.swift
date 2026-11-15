@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The About screen, card BF (About J1, Jason 23:05 JST 11-10, changes 207, 208, 211 and 212):
 /// one page that scrolls 5 wheel steps of 22.9 pt. The headphone capybara on its ground shadow,
-/// "Clasify", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version and
+/// "myPod", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version and
 /// Licenses rows, then the legal text. The points are from the top of the 321.5 pt page.
 /// The capybara waves, thinks, drinks boba and sleeps as `AppState.aboutPose(at:)` says, and
 /// the tagline's glint runs with each wave (changes 209, 210). Card BF.1 (J1.3, changes 214-216)
@@ -27,7 +27,7 @@ struct PocketAbout: View {
         Bundle.module.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
     }
 
-    /// The steel of "Clasify", and of the other lines (change 209).
+    /// The steel of "myPod", and of the other lines (change 209).
     static let nameSteel = steel([0x7d8892, 0x5a646e, 0x262c33, 0x3c444d, 0x8f99a3])
     static let lineSteel = steel([0x9aa4ae, 0x76808a, 0x46505a, 0x5a646e, 0xa7b1bb])
 
@@ -134,19 +134,19 @@ struct PocketAbout: View {
         return curve((low + high) / 2, y1, y2)
     }
 
-    /// Change 214-216: "Clasify" 20 bold in its 23 pt line, then 37 pt down "Made with ♥ by
+    /// Change 214-216: "myPod" 20 bold in its 23 pt line, then 37 pt down "Made with ♥ by
     /// CappyAI" and 56 pt down the tagline, both 14 regular in 16 pt lines. The steel has a white
     /// line under it and a faint dark line over it.
     private var plate: some View {
         ZStack(alignment: .top) {
-            Self.engraved(Text("Clasify").font(.helvetica(20, bold: true)), height: 23, Self.nameSteel)
+            Self.engraved(Text("myPod").font(.helvetica(20, bold: true)), height: 23, Self.nameSteel)
             signature.offset(y: 37)
             tagline.offset(y: 56)
         }
         .shadow(color: .white.opacity(0.9), radius: 0, y: 1)
         .shadow(color: .black.opacity(0.18), radius: 0, y: -0.5)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Clasify. Made with love by CappyAI. AI-native craftsmanship.")
+        .accessibilityLabel("myPod. Made with love by CappyAI. AI-native craftsmanship.")
     }
 
     /// "Made with ♥ by CappyAI" in steel. The glint sweeps the whole line as one, from the start
@@ -205,7 +205,7 @@ struct PocketAbout: View {
     private var legal: some View {
         VStack(spacing: 0) {
             ForEach(["© 2026 CappyAI Ltd. All rights reserved.", "Spotify is a trademark of Spotify AB.",
-                     "Clasify is not affiliated with Spotify."], id: \.self) { line in
+                     "myPod is not affiliated with Spotify."], id: \.self) { line in
                 Self.engraved(Text(line).font(.helvetica(10)), height: 14, Self.lineSteel)
             }
         }

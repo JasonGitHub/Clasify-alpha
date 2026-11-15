@@ -58,7 +58,7 @@ public struct PocketSkin: View {
         .background { if interactive && !preview { KeyCatcher { key($0, repeated: $1) } } }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
-            "Clasify pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
+            "myPod pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")
     }
 
     /// The center glows on Hello from 13 s (from the start with Reduce Motion), and on the color
