@@ -21,8 +21,6 @@ enum Pocket {
         let xHeight = NSFont(name: "HelveticaNeue-Bold", size: 10.5)?.xHeight ?? 5.5
         return (1 + 15.79) / 2 / 16 * 11 + xHeight / 2
     }()
-    /// The dark bezel around the screen of the Silver body (card BH, change 239).
-    static let bezel = Color(hex: 0x2a2c2e)
     /// The title bar's play and pause marks: glossy blue with a thin dark blue edge.
     static var markGloss: LinearGradient { .vertical(Color(hex: 0x9fd0f5), Color(hex: 0x3f8fd8)) }
     static let markEdge = Color(hex: 0x3a7ab8)
@@ -66,8 +64,6 @@ struct PocketScreen: View {
     var doorsOnly = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// SPIKE (CLA-101): BL only with the hidden switch.
-    @Environment(\.pocketLook) private var look
     /// The last `navSeq` whose cover flight to Now Playing has landed.
     @State private var landedSeq = -1
     /// The last `wholeSeq` whose doors have opened.
@@ -270,10 +266,9 @@ struct PocketScreen: View {
         // highlight under it.
         .padding(EdgeInsets(top: 6.6, leading: 6.6, bottom: 7.8, trailing: 6.6))
         .background {
-            // Near black on the black device (round 8, card Z), with a fainter highlight. BL uses
-            // its own bezel for both colors.
+            // Card BL's bezel, the same for both colors, with a fainter highlight on Black.
             RoundedRectangle(cornerRadius: 7.8)
-                .fill(look == .bl ? Color(hex: BL.bezel) : state.shownColor == .black ? Color(hex: 0x050505) : Pocket.bezel)
+                .fill(Color(hex: BL.bezel))
                 .shadow(color: .white.opacity(state.shownColor == .black ? 0.18 : 0.7), radius: 0, y: 1)
         }
         .foregroundStyle(Pocket.ink)

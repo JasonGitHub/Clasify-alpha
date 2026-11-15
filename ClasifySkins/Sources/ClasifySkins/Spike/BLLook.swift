@@ -1,23 +1,5 @@
 import SwiftUI
 
-/// SPIKE (CLA-101, K.3D spike 2): which Classic look the 2D device draws. BH is the look of
-/// 1.0. BL (card BL, Round 17, changes 250-255) shows only with the hidden switch `spike.k3d`.
-public enum PocketLook: Sendable {
-    case bh, bl
-}
-
-private struct PocketLookKey: EnvironmentKey {
-    static let defaultValue = PocketLook.bh
-}
-
-extension EnvironmentValues {
-    /// The Classic look. The app sets `.bl` only when the switch `spike.k3d` is on.
-    public var pocketLook: PocketLook {
-        get { self[PocketLookKey.self] }
-        set { self[PocketLookKey.self] = newValue }
-    }
-}
-
 private struct PocketDropShadowKey: EnvironmentKey {
     static let defaultValue = true
 }
@@ -96,8 +78,9 @@ enum BL {
         ], center: .center, startRadius: 0, endRadius: radius)
     }
 
-    /// `lab`: the wheel's labels at rest. Silver #8c939b (as BH), Black #ededee.
-    static func label(black: Bool) -> UInt32 { black ? 0xededee : 0x8c939b }
+    /// `lab`: the wheel's labels at rest, the K.3D.8 values (Jason OK 20:32 JST 11-15): Silver
+    /// #8d939a, Black #ededed.
+    static func label(black: Bool) -> UInt32 { black ? 0xededed : 0x8d939a }
 
     /// `wsh`: Silver has a 1 point ring inside the edge, black 10%, and a 0.5 point ring outside
     /// it, black 15%. Black has none.

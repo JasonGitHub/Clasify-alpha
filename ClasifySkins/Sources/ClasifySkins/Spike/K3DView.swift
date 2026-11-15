@@ -3,13 +3,8 @@ import MetalKit
 import SwiftUI
 import simd
 
-/// SPIKE (CLA-101): the About screen's K.3D.7 flip in true 3D, behind the hidden UserDefaults
-/// switch `spike.k3d` (default off). Only the app reads the switch. Remove the Spike folder,
-/// the three k3d PNGs and the app's K3DSpikeSkin to take the spike out.
+/// CLA-101: the About screen's K.3D.8 flip in true 3D. It is on in every build.
 public enum K3DSpike {
-    /// The hidden switch: `defaults write com.cappyai.mypod spike.k3d -bool true`.
-    public static let key = "spike.k3d"
-
     /// The device as it shows now, at 2x, with its covers, for the 3D front's screen.
     @MainActor public static func snapshot(_ state: AppState, artwork: Artwork = .none) -> CGImage? {
         let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false).environment(\.artwork, artwork))

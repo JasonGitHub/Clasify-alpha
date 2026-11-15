@@ -5,7 +5,7 @@ import Testing
 
 @testable import ClasifySkins
 
-/// SPIKE (CLA-101, K.3D spike 2): card BL's 2D look, drawn only with the hidden switch. The
+/// Card BL's 2D look, the device's look in every build (CLA-101). The
 /// expected colors come from `design-review/round17/bl/v3/k8.json`, BL v3 (Silver as in v2). Points are in device
 /// points, read at 2x.
 @Suite @MainActor struct BLTests {
@@ -31,10 +31,10 @@ import Testing
         }
     }
 
-    func render(_ color: DeviceColor, _ name: String, look: PocketLook = .bl) throws -> Shot {
+    func render(_ color: DeviceColor, _ name: String) throws -> Shot {
         var state = AppState()
         state.deviceColor = color
-        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false).environment(\.pocketLook, look))
+        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false))
         renderer.scale = 2
         let bitmap = NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
         if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
@@ -85,7 +85,7 @@ import Testing
     @Test func blBlack() throws {
         let shot = try render(.black, "bl-black")
         // 47% down: #5c5d61 (40%) to #55565a (49%) is #565759, with the 2.5% side shade
-        // #545559. BH is #656467 here.
+        // #545559.
         let middle = shot.mean(Self.x, 290)
         #expect(near(middle, try reference(0x545559)), "body \(middle)")
         // 52.5 pt from the wheel's center (47% of its radius), between the hole and rim shades.
@@ -94,19 +94,8 @@ import Testing
         // The center's middle: #393a3c at 50%, inside the edge shade.
         let center = shot.pixel(Self.x * 2, Self.centerY * 2)
         #expect(near(center, try reference(0x393a3c)), "center \(center)")
-        // BL's bezel is #2a2c2e on Black too, not BH's near black #050505.
+        // BL's bezel is #2a2c2e on Black too.
         let bezel = shot.pixel(30 * 2, 120 * 2)
         #expect(near(bezel, try reference(0x2a2c2e)), "bezel \(bezel)")
-    }
-
-    /// With no switch the look stays BH: the black body is still #656467 there.
-    @Test func bhStaysTheDefault() throws {
-        var state = AppState()
-        state.deviceColor = .black
-        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false))
-        renderer.scale = 2
-        let shot = Shot(bitmap: NSBitmapImageRep(cgImage: try #require(renderer.cgImage)))
-        let middle = shot.mean(Self.x, 290)
-        #expect(near(middle, try reference(0x656467)), "body \(middle)")
     }
 }

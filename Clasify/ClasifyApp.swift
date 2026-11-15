@@ -109,11 +109,8 @@ struct AppContent: View {
         if model.showsTestWindow || model.store == nil {
             TestWindow(store: model.store)
                 .background(Color(nsColor: .windowBackgroundColor))
-        } else if let store = model.store, K3DSpikeSkin.isOn {
-            K3DSpikeSkin(store: store, artwork: model.artwork.artwork)  // SPIKE (CLA-101), hidden switch
         } else if let store = model.store {
-            PocketSkin(state: store.state) { store.send($0) }
-                .environment(\.artwork, model.artwork.artwork)
+            K3DSpikeSkin(store: store, artwork: model.artwork.artwork)
         }
     }
 }
