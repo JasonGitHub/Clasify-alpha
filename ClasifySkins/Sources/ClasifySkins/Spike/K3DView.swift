@@ -7,7 +7,7 @@ import simd
 /// switch `spike.k3d` (default off). Only the app reads the switch. Remove the Spike folder,
 /// the three k3d PNGs and the app's K3DSpikeSkin to take the spike out.
 public enum K3DSpike {
-    /// The hidden switch: `defaults write app.clasify.Clasify spike.k3d -bool true`.
+    /// The hidden switch: `defaults write com.cappyai.mypod spike.k3d -bool true`.
     public static let key = "spike.k3d"
 
     /// The device as it shows now, at 2x, with its covers, for the 3D front's screen.

@@ -7,7 +7,7 @@ import os
 
 /// TEMP (CLA-103, build 202: Next and Previous do nothing in Shuffle Songs): one line per press,
 /// counts and flags only, no titles, no IDs.
-private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
+private let timing = Logger(subsystem: AppID.bundle, category: "timing")
 
 /// Plays Apple Music inside Clasify with MusicKit's `ApplicationMusicPlayer` (CLA-103). No
 /// other app opens: the spike (CLA-102, build 164) showed no Music.app window and no Dock icon.

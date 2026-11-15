@@ -4,7 +4,7 @@ import Network
 import os
 
 /// Only kinds and times go to the log, never a token or a username.
-private let log = Logger(subsystem: "app.clasify.Clasify", category: "session")
+private let log = Logger(subsystem: AppID.bundle, category: "session")
 
 /// Keeps the librespot session alive. librespot does not reconnect after a dropped
 /// connection (sleep, a network change), so this checks every 5 s and after each wake.

@@ -7,7 +7,7 @@ import os
 
 /// TEMP (cover blink, 2026-11-05): how covers load and how the playing track changes. Only
 /// states and times, never an ID or a name. Remove once the cause of the blink is known.
-private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
+private let timing = Logger(subsystem: AppID.bundle, category: "timing")
 
 /// Loads album covers from Spotify's image CDN and Apple's image server (`CoverURL`), and Apple
 /// Music library covers from iTunesLibrary (`AppleMusicArt`), for the skins. It keeps them in memory only:

@@ -4,11 +4,11 @@ import LibrespotBridge
 import os
 
 /// Only the status and the URI go to the unified log, never a bridge message.
-private let log = Logger(subsystem: "app.clasify.Clasify", category: "library")
+private let log = Logger(subsystem: AppID.bundle, category: "library")
 /// How long each login and library step takes, in ms. Only the step name, the time and a
 /// count go to the log: never a token, a username or a playlist name.
-/// Read it with `log stream --predicate 'subsystem == "app.clasify.Clasify" && category == "timing"'`.
-private let timing = Logger(subsystem: "app.clasify.Clasify", category: "timing")
+/// Read it with `log stream --predicate 'subsystem == "com.cappyai.mypod" && category == "timing"'`.
+private let timing = Logger(subsystem: AppID.bundle, category: "timing")
 
 /// Runs one step and logs its time.
 @MainActor

@@ -186,7 +186,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = app.clasify.Clasify;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cappyai.mypod;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
@@ -221,7 +221,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = app.clasify.Clasify;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cappyai.mypod;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
 				GCC_TREAT_WARNINGS_AS_ERRORS = YES;
