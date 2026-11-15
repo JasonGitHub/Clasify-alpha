@@ -53,6 +53,16 @@ import Testing
         #expect(s.top.screen == .betaSoon)
     }
 
+    /// No first-time hint draws over the warning: the MENU hint waits for a list.
+    @Test func noHintShowsOverTheWarning() {
+        var s = mainMenu()
+        s.hintsDone.remove(.menu)
+        send(&s, .betaBuild(beta), now: day27)
+        #expect(s.top.screen == .betaSoon && s.hint == nil)
+        send(&s, .wheel(1), now: day27)
+        #expect(s.hint == nil)
+    }
+
     /// The warning waits while a list loads: the load ends only on its own frame.
     @Test func theWarningWaitsForALoad() {
         var s = mainMenu()

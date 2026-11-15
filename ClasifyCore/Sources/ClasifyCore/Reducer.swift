@@ -1209,7 +1209,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         func fits(_ hint: Hint) -> Bool {
             guard s.setupDone, s.signedIn, s.stack.first?.screen == .main, !s.hintsDone.contains(hint) else { return false }
             switch hint {
-            case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error
+            // Not over the beta warning (card BI v2): its own rows say what to do.
+            case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error && s.top.screen != .betaSoon
             // On Now Playing, only while a song plays and that row shows the time bar: the tip
             // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()
