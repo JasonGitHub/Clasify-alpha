@@ -191,6 +191,9 @@ final class AppModel {
                 NSWorkspace.shared.open(url)
             }
         }
+        // Card BI v2: "Get New Beta" opens the download page; "Quit" on the ended beta quits.
+        store.onGetNewBeta = { NSWorkspace.shared.open(BetaSignature.downloadPage) }
+        store.onQuit = { NSApplication.shared.terminate(nil) }
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] force in await keeper?.reconnect(force: force) ?? false }
@@ -206,6 +209,7 @@ final class AppModel {
         // Setup shows the Spotify App screen (card BB) only when the app is missing. Apple Music
         // does not need it: "found" keeps that screen away while Apple Music is active.
         store.send(.spotifyAppFound(service == .appleMusic || Self.spotifyAppInstalled))
+        store.send(.betaBuild(BetaSignature.read()))  // card BI v2: before the login, so an ended beta shows only its end
         store.send(.launch)  // restores the stored login
         // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
@@ -241,7 +245,11 @@ final class AppModel {
                 let namesDone = state.namesHold > 0 && now >= state.namesHold
                 // A first-time hint's tip shows, or the hint ends (card BA, BA.1).
                 let hintDue = state.hintDue > 0 && now >= state.hintDue
-                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue { store?.send(.tick) }
+                // A beta's warning on day 27, or its end on day 30 (card BI v2).
+                let betaDue = state.betaDue > 0 && now >= state.betaDue
+                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue {
+                    store?.send(.tick)
+                }
                 // When the browser login works (change 170) or the Spotify app is found (174),
                 // Clasify comes to the front.
                 // Not for "You’re all set": the library read may take long, and the person may work elsewhere.

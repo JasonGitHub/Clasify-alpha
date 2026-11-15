@@ -96,6 +96,32 @@ func sampleState() -> AppState {
         #expect(words == Labels.SetupWords(headline: "Not subscribed", line: "To play music, we need Apple Music."))
     }
 
+    /// Card BI v2: the beta screens' words (233, 234), the tag (279) and About's version (235).
+    @Test func betaScreensUseTheCardWords() throws {
+        var s = sampleState()
+        let end = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 12, day: 14, hour: 12)))
+        s.beta = BetaBuild(signed: end.timeIntervalSinceReferenceDate - 30 * BetaBuild.day)
+        #expect(Labels.title(.betaSoon, in: s) == "Beta" && Labels.title(.betaEnded, in: s) == "Beta")
+        #expect(Labels.message(for: Frame(screen: .betaSoon), in: s) == nil)  // its rows show
+        #expect(Labels.setupWords(for: Frame(screen: .betaSoon), in: s)
+            == .init(headline: "Time for a fresh beta", line: "Get it any time before 14 Dec."))
+        #expect(Labels.setupWords(for: Frame(screen: .betaEnded), in: s)
+            == .init(headline: "This beta has ended", line: "Get the new beta to keep listening."))
+        #expect(Labels.row(.getNewBeta, on: .betaSoon, in: s) == .init(label: "Get New Beta"))
+        #expect(Labels.row(.later, on: .betaSoon, in: s) == .init(label: "Later"))
+        #expect(Labels.row(.quit, on: .betaEnded, in: s) == .init(label: "Quit"))
+        #expect(Labels.aboutVersion(in: s, build: "209") == "\(Labels.version) Beta 209")
+        for screen in [Screen.tracks(playlist: Playlist.likedSongsID), .now, .about] {
+            #expect(Labels.betaTag(on: screen, in: s))
+        }
+        for screen in [Screen.main, .playlists, .albums, .artists, .settings, .betaSoon, .betaEnded, .login] {
+            #expect(!Labels.betaTag(on: screen, in: s))
+        }
+        s.beta = nil  // an ad-hoc build
+        #expect(Labels.aboutVersion(in: s, build: "209") == Labels.version)
+        #expect(!Labels.betaTag(on: .now, in: s))
+    }
+
     /// Round 13 setup: the titles, the color rows, and the words that show until each screen is drawn.
     @Test func setupScreensUseTheBoardWords() {
         let s = sampleState()
