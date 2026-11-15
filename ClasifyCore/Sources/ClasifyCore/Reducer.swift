@@ -29,8 +29,9 @@ public enum Action: Equatable, Sendable {
     /// The app started. It tries to log in again with the stored login. Before the first
     /// launch setup ends, it shows Hello (card AT) first.
     case launch
-    /// The app looked for the Spotify app on this Mac: at launch, and every 3 s while the
-    /// `spotifyApp` screen (card BB) shows. When it is found there, setup goes on.
+    /// The app looked for the Spotify app on this Mac: at launch, on a service switch, and every
+    /// 3 s while the `spotifyApp` screen (card BB) shows. When it is found there, setup goes on.
+    /// The screen opens only on Spotify; Pick Your Music orders its rows from it on both.
     case spotifyAppFound(Bool)
     /// A track read is this far: `done` of `total` items have their details, on `albums`
     /// albums. The first library read (card AY, changes 141 and 188) counts up with it.
@@ -338,10 +339,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         s.namesHold = shown
         return true
     }
-    /// The next setup step after the login: the Spotify app screen if the app is missing,
-    /// else the first library read, else the main menu.
+    /// The next setup step after the login: the Spotify app screen if Spotify needs the app and
+    /// it is missing, else the first library read, else the main menu. Apple Music does not need it.
     func setupNext() {
-        if s.spotifyApp == false { s.stack = [Frame(screen: .spotifyApp)]; return }
+        if s.spotifyApp == false && s.service == .spotify { s.stack = [Frame(screen: .spotifyApp)]; return }
         guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
@@ -386,10 +387,13 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         signOut(); fx.append(.logOut)
         if s.service == .appleMusic { s.stack = [pickMusic()] }
     }
-    /// Pick Your Music, on the active service's row (card BM, change 257).
+    /// Pick Your Music, on the active service's row (card BM, change 257). When the Spotify app
+    /// was not found (or not checked yet), Apple Music is the top row and is selected (CLA-103).
     func pickMusic() -> Frame {
+        s.appleMusicFirst = s.spotifyApp != true
         var frame = Frame(screen: .pickMusic)
-        frame.sel = MusicService.allCases.firstIndex(of: s.service) ?? 0
+        let row = Row.pickService(s.appleMusicFirst ? .appleMusic : s.service)
+        frame.sel = s.rows(for: frame).firstIndex(of: row) ?? 0
         return frame
     }
     /// Goes straight to the login screen, with no toast (card AX, change 181).
@@ -986,7 +990,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 // Card BB, change 174: "Linked" shows for a beat, then Clasify goes on.
                 if found && was != true { s.beatUntil = now + AppState.beatTime }
                 if !found { s.beatUntil = 0 }
-            } else if !found && s.signedIn && s.setupDone {
+            } else if !found && s.signedIn && s.setupDone && s.service == .spotify {
                 // Change 131: the app went away while Clasify was open (a play found it gone).
                 // The screen opens over this one, and closes back to it when the app is found.
                 if s.top.screen == .loggedIn {  // over "You’re in", it takes its place: then on to the main menu

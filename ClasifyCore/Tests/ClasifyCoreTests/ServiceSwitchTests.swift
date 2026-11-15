@@ -77,11 +77,12 @@ import Testing
         s.setupDone = false
         send(&s, .launch, .restored(token: 1, ok: false), .select, .select)  // Hello, the color
         #expect(s.top.screen == .pickMusic)
-        #expect(s.rows(for: s.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+        // No Spotify app check yet: Apple Music is on top and selected (CLA-103).
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
         #expect(s.top.sel == 0)
-        #expect(send(&s, .wheel(1), .select) == [.setService(.appleMusic), .logIn(token: 2)])
+        #expect(send(&s, .select) == [.setService(.appleMusic), .logIn(token: 2)])
         #expect(s.service == .appleMusic && s.top.screen == .pickMusic)
-        #expect(s.top.token == 2 && s.top.sel == 1)
+        #expect(s.top.token == 2 && s.top.sel == 0)
         send(&s, .authDone(token: 2, ok: false))  // the prompt failed: a press asks again
         #expect(s.top.screen == .pickMusic && s.top.token == 0)
         #expect(send(&s, .select) == [.logIn(token: 3)])  // the service is set already
@@ -89,12 +90,48 @@ import Testing
         #expect(s.top.screen == .loggedIn && s.signedIn)
     }
 
+    /// CLA-103: the row order follows the Spotify app check. Found: Spotify on top and
+    /// selected. Not found, or not checked yet: Apple Music on top and selected. The order is
+    /// set when the screen opens, so it stays after a pick and after MENU back to it.
+    @Test func pickYourMusicPutsAppleMusicFirstWithNoSpotifyApp() {
+        var found = afterSetup()
+        found.setupDone = false
+        send(&found, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(found.top.screen == .pickMusic && !found.appleMusicFirst && found.top.sel == 0)
+        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+        send(&found, .spotifyAppFound(false))  // a later report does not move the rows
+        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+
+        var unknown = afterSetup()
+        unknown.setupDone = false; unknown.spotifyApp = nil
+        send(&unknown, .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(unknown.appleMusicFirst && unknown.top.sel == 0)
+        #expect(unknown.rows(for: unknown.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+
+        var s = afterSetup()
+        s.setupDone = false
+        send(&s, .spotifyAppFound(false), .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(s.top.screen == .pickMusic && s.appleMusicFirst && s.top.sel == 0)
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        // Spotify is the second row. MENU on its login goes back with the same order.
+        send(&s, .wheel(1), .select)
+        #expect(s.service == .spotify && s.top.screen == .login)
+        send(&s, .menu)
+        #expect(s.top.screen == .pickMusic && s.top.sel == 1)
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        // A pick of Apple Music, then a later check that finds the app: the order stays.
+        #expect(send(&s, .wheel(-1), .select) == [.setService(.appleMusic), .logIn(token: 2)])
+        send(&s, .spotifyAppFound(true))
+        #expect(s.top.screen == .pickMusic && s.top.sel == 0)
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+    }
+
     /// Change 258: after "Don't Allow", Access is off. MENU does nothing; "Open Settings"
     /// opens System Settings, and "Use Spotify" switches to Spotify (262).
     @Test func accessOffOpensSettingsOrUsesSpotify() {
         var s = afterSetup()
         s.setupDone = false
-        send(&s, .launch, .restored(token: 1, ok: false), .select, .select, .wheel(1), .select)
+        send(&s, .launch, .restored(token: 1, ok: false), .select, .select, .select)  // Apple Music is on top
         send(&s, .accessDenied(token: 1))  // an older attempt
         #expect(s.top.screen == .pickMusic)
         #expect(send(&s, .accessDenied(token: 2)) == [])
@@ -152,6 +189,7 @@ import Testing
         var s = mainMenu()
         openSettings(&s)
         send(&s, .select, .menu)
+        send(&s, .spotifyAppFound(true))  // the Spotify app is on this Mac
         send(&s, .restored(token: s.authAttempt, ok: true))
         openSettings(&s)
         s.top.sel = s.rows(for: s.top).firstIndex(of: .logOut) ?? -1
@@ -161,6 +199,30 @@ import Testing
         let fx = send(&s, .wheel(-1), .select)
         #expect(fx == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
         #expect(s.top.screen == .login && s.restoring)
+    }
+
+    /// CLA-103: Apple Music does not need the Spotify app. With no app, the Spotify App screen
+    /// stays away on Apple Music, and Pick Your Music after a log out has Apple Music on top.
+    @Test func withNoSpotifyAppAppleMusicGoesOnAndLogOutPutsAppleMusicFirst() {
+        var s = afterSetup()
+        s.setupDone = false
+        send(&s, .spotifyAppFound(false), .launch, .restored(token: 1, ok: false), .select, .select)
+        #expect(send(&s, .select) == [.setService(.appleMusic), .logIn(token: 2)])
+        send(&s, .spotifyAppFound(false), .authDone(token: 2, ok: true), now: 10)  // the app checks on the switch
+        #expect(s.top.screen == .loggedIn)
+        send(&s, .select)  // "You’re in" goes on: the first read, not the Spotify App screen
+        #expect(s.top.screen == .yourMusic)
+
+        var m = mainMenu()
+        openSettings(&m)
+        send(&m, .select, .menu)  // to Apple Music
+        send(&m, .spotifyAppFound(false), .restored(token: m.authAttempt, ok: true))
+        #expect(m.top.screen == .main && m.service == .appleMusic)  // no Spotify App screen
+        openSettings(&m)
+        m.top.sel = m.rows(for: m.top).firstIndex(of: .logOut) ?? -1
+        #expect(send(&m, .select, .wheel(1), .select) == [.logOut])
+        #expect(m.top.screen == .pickMusic && m.top.sel == 0)
+        #expect(m.rows(for: m.top) == [.pickService(.appleMusic), .pickService(.spotify)])
     }
 
     /// `.libraryWords`: the texts follow the active service's library. A reset keeps them.

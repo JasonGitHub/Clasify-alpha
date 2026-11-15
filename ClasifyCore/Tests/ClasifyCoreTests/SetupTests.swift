@@ -7,7 +7,7 @@ import Testing
     /// The first launch, on the color pick, after the restore found no stored login.
     func onColor() -> AppState {
         var s = AppState()
-        send(&s, .launch, .restored(token: 1, ok: false), .select)
+        send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)  // the app is found
         return s
     }
     /// A library of 100 liked songs: the first read takes the full time (changes 266 and 267).
@@ -284,7 +284,7 @@ import Testing
         #expect(s.top.screen == .yourMusic)
         // The restore ends while the login screen waits for it: setup goes on.
         s = AppState()
-        send(&s, .launch, .select, .select, .select)
+        send(&s, .spotifyAppFound(true), .launch, .select, .select, .select)
         #expect(s.top.screen == .login && s.restoring && s.rows(for: s.top).isEmpty)
         send(&s, .restored(token: 1, ok: true))
         #expect(s.top.screen == .yourMusic && s.navForward)
@@ -292,7 +292,8 @@ import Testing
 
     @Test func theSpotifyAppScreenShowsOnlyWhenTheAppIsMissing() {
         var s = onColor()
-        send(&s, .spotifyAppFound(false), .select, .select, .select, .authDone(token: 2, ok: true), .select)
+        // The color, Spotify (the second row with no Spotify app, CLA-103), Log In.
+        send(&s, .spotifyAppFound(false), .select, .wheel(1), .select, .select, .authDone(token: 2, ok: true), .select)
         #expect(s.stack == [Frame(screen: .spotifyApp)] && s.spotifyApp == false)
         #expect(s.rows(for: s.top) == [.getSpotifyApp])
         #expect(send(&s, .menu, .wheel(1), .spotifyAppFound(false)).isEmpty)  // MENU does nothing, and the check goes on
