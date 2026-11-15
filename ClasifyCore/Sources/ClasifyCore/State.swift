@@ -519,9 +519,10 @@ public struct AppState: Equatable, Sendable {
     public var service = MusicService.spotify
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
     public var aboutAt: Double = 0
-    /// About is one page that scrolls 5 wheel steps (card BF, change 207). Its step is the
-    /// frame's `off`. From step 3 the Licenses row is selected (change 211).
-    public static let aboutSteps = 5, aboutLicensesStep = 3
+    /// About is one page that scrolls 3 wheel steps (card BS, changes 294 and 295; was 5 in
+    /// card BF). Its step is the frame's `off`. Each stop ends on a whole row. From step 2 the
+    /// Licenses row is selected, and a press opens Licenses.
+    public static let aboutSteps = 3, aboutLicensesStep = 2
     /// When the capybara's last wave started: 0.35 s after About opens, and on a press or a
     /// wake (change 210). The tagline's glint starts with it (change 209).
     public var aboutWaveAt: Double = 0

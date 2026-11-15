@@ -129,9 +129,10 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.deviceColor == .black)  // a saved setting: a reset keeps it
     }
 
-    /// Card BF, change 207: About is one page of 5 wheel steps, one step a turn. It opens at the
-    /// top, and the scroll bar shows from 0.3 s to 1.8 s, then for 1.5 s after each step.
-    @Test func aboutScrollsFiveStepsOneATurn() {
+    /// Card BF, change 207, and card BS, change 294: About is one page of 3 wheel steps, one step
+    /// a turn. It opens at the top, and the scroll bar shows from 0.3 s to 1.8 s, then for 1.5 s
+    /// after each step.
+    @Test func aboutScrollsThreeStepsOneATurn() {
         var s = mainMenu()
         send(&s, .wheel(5), .select, .wheel(7))  // Settings, on the About row
         #expect(s.rows(for: s.top)[s.top.sel] == .about)
@@ -140,13 +141,14 @@ func playing(_ i: Int = 0) -> AppState {
         var old = s
         send(&s, .wheel(3), now: 1010)
         #expect(s.top.off == 1 && s.scrollUntil == 1011.5 && wheelMoved(from: old, to: s))  // a fast turn moves one step
+        #expect(AppState.aboutSteps == 3 && AppState.aboutLicensesStep == 2)
         for _ in 0..<6 { send(&s, .wheel(1)) }
         #expect(s.top.off == AppState.aboutSteps)  // the end of the page
         old = s
         send(&s, .wheel(1), now: 1020)
-        #expect(s.top.off == 5 && s.scrollUntil < 1020 && !wheelMoved(from: old, to: s))  // no bar, no click
+        #expect(s.top.off == 3 && s.scrollUntil < 1020 && !wheelMoved(from: old, to: s))  // no bar, no click
         send(&s, .wheel(-1))
-        #expect(s.top.off == 4)
+        #expect(s.top.off == 2)
         send(&s, .menu)
         #expect(s.top.screen == .settings)
         send(&s, .select)
@@ -207,7 +209,7 @@ func playing(_ i: Int = 0) -> AppState {
     }
 
     /// A press waves near the top, wakes a sleeping capybara anywhere, and does nothing while
-    /// it waves or, from step 3, here (Licenses opens in a later PR).
+    /// it waves. From step 2 a press opens Licenses (card BS).
     @Test func anAboutPressWavesOrWakes() {
         var s = openAbout()
         send(&s, .select, now: 1000.2)  // before the open wave: it waves now
@@ -216,8 +218,10 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.aboutWaveAt == 1000.2)
         send(&s, .select, now: 1003)
         #expect(s.aboutWaveAt == 1003)
-        send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1005)
+        send(&s, .wheel(1), .wheel(1), now: 1005)
         #expect(s.top.off == AppState.aboutLicensesStep)
+        send(&s, .wheel(-1), .select, now: 1005.5)  // step 1: no Licenses, it waves
+        #expect(s.top.screen == .about && s.aboutWaveAt == 1005.5)
         send(&s, .menu, .select, .select, now: 1006)  // About opens again at the top, and it waves
         #expect(s.top.screen == .about && s.aboutWaveAt == 1006)
         send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1010)
@@ -225,11 +229,11 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.aboutWaveAt == 1040 && s.top.screen == .about)
     }
 
-    /// Change 213: from step 3 a press opens the Licenses list, one row a license. Back on About,
-    /// the idle clock starts again from the pose it left, and About keeps its step.
-    @Test func anAboutPressFromStep3OpensLicenses() {
+    /// Change 213: from step 2 (card BS) a press opens the Licenses list, one row a license. Back
+    /// on About, the idle clock starts again from the pose it left, and About keeps its step.
+    @Test func anAboutPressFromStep2OpensLicenses() {
         var s = openAbout()
-        send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1006)  // thinking since 1005.35
+        send(&s, .wheel(1), .wheel(1), now: 1006)  // thinking since 1005.35
         send(&s, .select, now: 1007)
         #expect(s.top.screen == .licenses && s.top.sel == 0)
         #expect(s.rows(for: s.top) == License.all.indices.map { .license($0) })
@@ -242,10 +246,10 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.aboutPose(at: 1106.5).pose == .stand && s.aboutPose(at: 1120).pose == .sleep)
     }
 
-    /// A press at step 3 while it waves opens Licenses. Back on About it stands, not waves.
+    /// A press at step 2 while it waves opens Licenses. Back on About it stands, not waves.
     @Test func licensesOpenedDuringTheWaveComeBackToStand() {
         var s = openAbout()
-        send(&s, .wheel(1), .wheel(1), .wheel(1), .select, now: 1000.6)  // waving
+        send(&s, .wheel(1), .wheel(1), .select, now: 1000.6)  // waving
         #expect(s.top.screen == .licenses && s.aboutIdleHold.pose == .stand)
         send(&s, .menu, now: 1010)
         #expect(s.aboutPose(at: 1010.5).pose == .stand && s.aboutPose(at: 1014).pose == .think)
@@ -255,7 +259,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// more, up to the step where its last line is on the screen's last line.
     @Test func aLicenseTextScrollsToItsLastLine() {
         var s = openAbout()
-        send(&s, .wheel(1), .wheel(1), .wheel(1), .select, now: 1010)
+        send(&s, .wheel(1), .wheel(1), .select, now: 1010)
         send(&s, .wheel(1), .select, now: 1011)
         #expect(s.top.screen == .license(1))
         let last = AppState.licenseSteps(1)

@@ -1049,11 +1049,12 @@ import Testing
         }
     }
 
-    /// About, card BF: one page that scrolls 5 steps of 22.9 pt. At the top the capybara, then
-    /// the steel name and lines with the red heart. From step 3 the Licenses row is selected, and
-    /// at step 5 the legal text shows.
+    /// About, card BF: one page with the capybara at the top, then the steel name and lines with
+    /// the red heart. Card BS: 3 steps, each ending on a whole row in the 206 pt view. Step 1
+    /// shows Version whole, step 2 the selected Licenses row whole, step 3 the legal text whole.
     @Test func aboutScrollsOnePageWithTheCapybaraAndLicensesRow() throws {
         #expect(PocketAbout.poses.count == AboutPose.allCases.count)  // the art is bundled
+        #expect(PocketAbout.stops == [0, 30.9, 53.8, 115.5] && PocketAbout.stops.count == AppState.aboutSteps + 1)
         var s = sampleState()
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
         let top = Self.listTop, left = Self.screenLeft, x = left + 150
@@ -1067,15 +1068,21 @@ import Testing
             (top + 153...top + 169).contains { y in let c = first.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
         }
         #expect(!red.isEmpty)
-        // Step 2: the Licenses row shows at 191.1 pt but is not selected.
+        // Step 1: the page moved up 30.9 pt. The Version row, at 183.1 to 206 pt, is whole: its
+        // ink shows, and nothing is selected.
+        s.stack[2].off = 1
+        let one = try render(s, "about-1")
+        #expect((left + 9..<left + 60).contains { x in (top + 188...top + 201).contains { one.isDark(x, $0) } })
+        #expect(!one.isBlue(x, top + 194))
+        // Step 2: up 53.8 pt. The Licenses row, at 183.1 to 206 pt, is whole and selected.
         s.stack[2].off = 2
-        #expect(!(try render(s, "about-2")).isBlue(x, top + 200))
-        // Step 3: the page moved up 68.7 pt and the Licenses row, now at 168.2 pt, is selected.
+        let two = try render(s, "about-2")
+        #expect(two.isBlue(x, top + 185) && two.isBlue(x, top + 204))
+        // Step 3: up 115.5 pt. Licenses is at 121.4 pt, and the legal text, at 154.5 to 196.5 pt,
+        // is ink on the glass.
         s.stack[2].off = 3
-        #expect((try render(s, "about-3")).isBlue(x, top + 179))
-        // Step 5: the legal text, at 155.5 pt, is ink on the glass.
-        s.stack[2].off = 5
-        let last = try render(s, "about-5")
+        let last = try render(s, "about-3")
+        #expect(last.isBlue(x, top + 132))
         let legal = (left + 60..<left + 240).filter { x in (top + 158...top + 195).contains { last.isDark(x, $0) } }
         #expect(legal.count > 10)
     }

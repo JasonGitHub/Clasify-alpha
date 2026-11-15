@@ -3,7 +3,7 @@ import ClasifyCore
 import SwiftUI
 
 /// The About screen, card BF (About J1, Jason 23:05 JST 11-10, changes 207, 208, 211 and 212):
-/// one page that scrolls 5 wheel steps of 22.9 pt. The headphone capybara on its ground shadow,
+/// one page that scrolls 3 wheel steps (card BS, changes 294 and 295). The headphone capybara on its ground shadow,
 /// "myPod", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version and
 /// Licenses rows, then the legal text. The points are from the top of the 321.5 pt page.
 /// The capybara waves, thinks, drinks boba and sleeps as `AppState.aboutPose(at:)` says, and
@@ -16,7 +16,13 @@ struct PocketAbout: View {
     /// A fixed clock for snapshot tests, in the same time as `AppState.aboutAt`.
     @Environment(\.animationTime) private var fixedTime
 
-    static let step: CGFloat = 22.9, page: CGFloat = 321.5
+    static let page: CGFloat = 321.5
+    /// Card BS: the page's offset at each wheel step, so each stop ends on a whole row in the
+    /// 206 pt view. 1: Version whole. 2: Licenses whole, selected. 3: the end, the legal text whole.
+    static let stops: [CGFloat] = [0, 30.9, 53.8, 115.5]
+
+    /// The page's offset at step `off`.
+    static func stop(_ off: Int) -> CGFloat { stops[min(max(off, 0), stops.count - 1)] }
     /// The capybara's poses, each 440 px square. A pose is missing only if the package was built
     /// without its art.
     @MainActor static let poses: [AboutPose: NSImage] = Dictionary(uniqueKeysWithValues: AboutPose.allCases.compactMap { pose in
@@ -43,7 +49,7 @@ struct PocketAbout: View {
             // at once, so it never fades at the wrong place while the page moves.
             page(licenses: off >= AppState.aboutLicensesStep)
                 .frame(width: Pocket.screenWidth, height: Self.page, alignment: .top)
-                .animation(.easeOut(duration: 0.15)) { $0.offset(y: -CGFloat(off) * Self.step) }
+                .animation(.easeOut(duration: 0.15)) { $0.offset(y: -Self.stop(off)) }
             scrollBar(off)
         }
         .frame(width: Pocket.screenWidth, height: Pocket.listHeight, alignment: .topLeading)
@@ -228,7 +234,7 @@ struct PocketAbout: View {
             let track = geo.size.height
             Capsule().fill(Color(hex: 0x5d6772))
                 .frame(height: track * 0.641)
-                .offset(y: track * 0.359 * CGFloat(off) / CGFloat(AppState.aboutSteps))
+                .offset(y: track * 0.359 * Self.stop(off) / Self.stops[Self.stops.count - 1])  // card BS: with the page
                 .animation(.easeOut(duration: 0.15), value: off)
         }
         .frame(width: 3)
