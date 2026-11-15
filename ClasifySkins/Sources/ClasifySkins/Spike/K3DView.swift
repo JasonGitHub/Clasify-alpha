@@ -5,9 +5,11 @@ import simd
 
 /// CLA-101: the About screen's K.3D.8 flip in true 3D. It is on in every build.
 public enum K3DSpike {
-    /// The device as it shows now, at 2x, with its covers, for the 3D front's screen.
-    @MainActor public static func snapshot(_ state: AppState, artwork: Artwork = .none) -> CGImage? {
-        let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false).environment(\.artwork, artwork))
+    /// The device as it shows now, at 2x, with its covers, for the 3D front's screen. `time`
+    /// pins the skin's loops to one frame; nil draws them as they are now.
+    @MainActor public static func snapshot(_ state: AppState, artwork: Artwork = .none, time: Double? = nil) -> CGImage? {
+        let skin = PocketSkin(state: state, interactive: false).environment(\.artwork, artwork).environment(\.animationTime, time)
+        let renderer = ImageRenderer(content: skin)
         renderer.scale = 2
         return renderer.cgImage
     }

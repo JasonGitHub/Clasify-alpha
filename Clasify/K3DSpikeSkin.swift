@@ -38,7 +38,10 @@ struct K3DSpikeSkin: View {
     private func arrive() async {
         guard !store.state.arrived else { return }
         if !reduceMotion && K3DFlip.canDraw {
-            flip = K3DFlip.arrive { K3DSpike.snapshot(store.state, artwork: artwork) }
+            // Hello's clock is pinned to its start: a slow launch must not show a half-written word.
+            let state = store.state
+            let time = state.top.screen == .hello ? state.helloAt : nil
+            flip = K3DFlip.arrive { K3DSpike.snapshot(state, artwork: artwork, time: time) }
             try? await Task.sleep(for: .seconds(K3DFlip.arriveTurn + K3DFlip.arriveHold))
             store.send(.arrived)
             try? await Task.sleep(for: .seconds(K3DFlip.arriveFade))

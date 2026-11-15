@@ -48,6 +48,17 @@ import Testing
         #expect(s.top.sel != before.top.sel)  // after the landing the wheel works
     }
 
+    /// Dropped input does not count for the tour or the hints either (Codex on #245).
+    @Test func inputDuringTheTurnSkipsNoTourStep() {
+        var s = mainMenu()
+        s.tourOn = true
+        s.hintsDone = []
+        s.arrived = false
+        let before = s
+        for action: Action in [.play, .next, .prev, .menu, .select, .wheel(1)] { send(&s, action) }
+        #expect(s == before)
+    }
+
     /// Other actions, such as a login result, still arrive during the turn.
     @Test func otherActionsGoOnDuringTheTurn() {
         var s = firstLaunch()

@@ -509,13 +509,6 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         }
     }
     func apply() {
-        // Change 288: while the device arrives, the wheel, the buttons and the keys do nothing.
-        if !s.arrived {
-            switch action {
-            case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: return
-            default: break
-            }
-        }
         // Change 234: the ended beta takes only the wheel and its rows.
         if s.top.screen == .betaEnded {
             switch action {
@@ -1107,6 +1100,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let before = (s.stack.count, s.top.screen, s.top.loading)
     let playHintDone = s.hintsDone.contains(.playPause)
     let tourShown = s.hint?.isTour == true && s.hintTip ? s.hint : nil  // its words showed
+    // Change 288: while the device arrives, the wheel, the buttons and the keys do nothing,
+    // and the tour and hints do not see them either.
+    if !s.arrived {
+        switch action {
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: return []
+        default: break
+        }
+    }
     let wasOverPanel = s.nowOverPanel
     let wasSignedIn = s.signedIn
     let rowBefore = s.halfRow
