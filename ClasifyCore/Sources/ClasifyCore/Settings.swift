@@ -26,6 +26,9 @@ public struct Settings: Equatable, Sendable {
     public var tourHides: [Hint: Int] = [:]
     /// The beta whose warning showed, by its signing time (card BI v2, change 233).
     public var betaWarned: Double?
+    /// The device arrived once, at the first launch ever (card BR, change 288). True by default;
+    /// a store with no saved value gives false, so a new Mac sees the arrival once.
+    public var arrived = true
 
     public init() {}
 
@@ -43,6 +46,7 @@ public struct Settings: Equatable, Sendable {
         static let tourOn = "hints.tour"
         static let tourHides = "hints.hides"
         static let betaWarned = "beta.warned"
+        static let arrived = "arrive.done"
     }
 
     /// The saved settings. A missing or unknown value gives the default.
@@ -67,6 +71,7 @@ public struct Settings: Equatable, Sendable {
             }
         }
         betaWarned = store.string(forKey: Key.betaWarned).flatMap { Double($0) }
+        arrived = store.string(forKey: Key.arrived).flatMap { Bool($0) } ?? false
     }
 
     public func save(to store: some SettingsStore) {
@@ -82,6 +87,7 @@ public struct Settings: Equatable, Sendable {
         store.set(String(tourOn), forKey: Key.tourOn)
         store.set(tourHides.map { "\($0.key.rawValue):\($0.value)" }.sorted().joined(separator: ","), forKey: Key.tourHides)
         store.set(betaWarned.map { String($0) }, forKey: Key.betaWarned)
+        store.set(String(arrived), forKey: Key.arrived)
     }
 }
 
@@ -106,6 +112,7 @@ extension AppState {
             v.hintsDone = hintsDone
             (v.tourOn, v.tourHides) = (tourOn, tourHides)
             v.betaWarned = betaWarned
+            v.arrived = arrived
             return v
         }
         set {
@@ -117,6 +124,7 @@ extension AppState {
             hintsDone = newValue.hintsDone
             (tourOn, tourHides) = (newValue.tourOn, newValue.tourHides)
             betaWarned = newValue.betaWarned
+            arrived = newValue.arrived
         }
     }
 }

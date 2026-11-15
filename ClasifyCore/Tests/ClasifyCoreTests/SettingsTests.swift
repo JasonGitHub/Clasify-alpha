@@ -10,7 +10,9 @@ final class FakeSettings: SettingsStore {
 }
 
 @Test func settingsLoadTheDefaultsWhenNothingIsSaved() {
-    #expect(Settings(from: FakeSettings()) == Settings())
+    var fresh = Settings()
+    fresh.arrived = false  // a new Mac has not seen the arrival (change 288)
+    #expect(Settings(from: FakeSettings()) == fresh)
     #expect(Settings() == AppState().settings)
 }
 
@@ -28,20 +30,22 @@ final class FakeSettings: SettingsStore {
         "settings.shuffle": "true", "settings.repeat": "One",
         "settings.albumArt": "Now Playing", "settings.deviceColor": "Black", "settings.clicker": "false",
         "settings.nowPlayingBar": "true", "settings.service": "Apple Music", "setup.done": "true", "hints.done": "menu",
-        "hints.tour": "true", "hints.hides": "tour.next:1,tour.play:2",
+        "hints.tour": "true", "hints.hides": "tour.next:1,tour.play:2", "arrive.done": "true",
     ])
     #expect(Settings(from: store) == saved)
     store.values = [
         "settings.shuffle": "yes", "settings.repeat": "Twice", "settings.albumArt": "On", "settings.deviceColor": "Gold",
         "settings.clicker": "1", "settings.service": "Tidal", "setup.done": "yes", "hints.done": "later",
-        "hints.tour": "yes", "hints.hides": "later:2,tour.play:x",
+        "hints.tour": "yes", "hints.hides": "later:2,tour.play:x", "arrive.done": "yes",
     ]
-    #expect(Settings(from: store) == Settings())  // unknown values give the defaults
+    var defaults = Settings()
+    defaults.arrived = false
+    #expect(Settings(from: store) == defaults)  // unknown values give the defaults
 }
 
 @MainActor @Test func storeLoadsSettingsAtLaunchAndSavesThemWhenTheyChange() {
     let saved = FakeSettings()
-    saved.values = ["settings.albumArt": "Off", "settings.clicker": "false", "settings.repeat": "One"]
+    saved.values = ["settings.albumArt": "Off", "settings.clicker": "false", "settings.repeat": "One", "arrive.done": "true"]
     let player = FakePlayer()
     let store = Store(player: player, library: FakeLibrary(), state: mainMenu(), env: Dependencies(now: { 0 }, random: { _ in 0 }), settings: saved)
     #expect(store.state.albumArt == .off && !store.state.clicker && !store.state.shuffle && store.state.repeatMode == .one)
@@ -55,4 +59,18 @@ final class FakeSettings: SettingsStore {
     store.send(.reset)  // the saved settings stay
     #expect(store.state.shuffle && store.state.albumArt == .off)
     #expect(Settings(from: saved) == store.state.settings)
+}
+
+/// Change 288: the arrival shows once ever. Its own key, so a new setup does not show it again.
+@MainActor @Test func storeSavesTheArrivalAndKeepsItThroughAReset() {
+    let saved = FakeSettings()
+    saved.values = ["setup.done": "true"]  // an install from before change 288
+    let store = Store(player: FakePlayer(), library: FakeLibrary(), state: mainMenu(), env: Dependencies(now: { 0 }, random: { _ in 0 }), settings: saved)
+    #expect(!store.state.arrived)  // it sees the arrival once
+    store.send(.arrived)
+    #expect(saved.values["arrive.done"] == "true")
+    saved.values["setup.done"] = nil
+    #expect(Settings(from: saved).arrived)  // deleting setup.done alone does not show it again
+    store.send(.reset)
+    #expect(store.state.arrived && saved.values["arrive.done"] == "true")
 }

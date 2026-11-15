@@ -80,6 +80,9 @@ public enum Action: Equatable, Sendable {
     case accessDenied(token: Int)
     /// The app read its own signature at launch (card BI v2): a beta, or nil for an ad-hoc build.
     case betaBuild(BetaBuild?)
+    /// The skin's first-launch arrival ended, or did not run (card BR, change 288). Hello starts
+    /// from now. A second one does nothing.
+    case arrived
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -506,10 +509,17 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         }
     }
     func apply() {
+        // Change 288: while the device arrives, the wheel, the buttons and the keys do nothing.
+        if !s.arrived {
+            switch action {
+            case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: return
+            default: break
+            }
+        }
         // Change 234: the ended beta takes only the wheel and its rows.
         if s.top.screen == .betaEnded {
             switch action {
-            case .wheel, .select, .tick, .batteryChanged, .betaBuild: break
+            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .arrived: break
             default: return
             }
         }
@@ -1076,6 +1086,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Forget the stored login too, so that a later .launch does not restore it. The login
             // screen says "Log in again", and after the login the main menu opens (change 181).
             if s.signedIn { signOut(); s.sessionEnded = true; fx.append(.logOut) }
+
+        case .arrived:
+            guard !s.arrived else { return }
+            s.arrived = true
+            if s.top.screen == .hello { s.helloAt = now }  // Hello starts as the device lands
 
         case .reset:
             stop()

@@ -51,14 +51,16 @@ public struct K3DFlipView<Content: View>: View {
         TimelineView(.animation(paused: resting)) { context in
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
-            let pose = flip.pose(at: date)
-            K3DHandover(flat: flat, ready: ready, content: content) { shown in
-                body3D(angle: pose.angle, lift: pose.lift, shown: shown)
+            let pose = flip.pose(at: date), look = flip.look(at: date)
+            K3DHandover(flat: flat, ready: ready, hidesUntilReady: flip.arriving, content: content) { shown in
+                // Never 0, as for `body3D`'s own opacity: a hidden Metal view does not draw.
+                body3D(angle: pose.angle, lift: pose.lift, scale: look.scale, shown: shown)
+                    .opacity(max(look.opacity, 0.001))
             }
         }
         .task(id: flip.start) {
             // When the turn ends, run the body again so the timeline pauses.
-            let left = K3DFlip.duration - Date.now.timeIntervalSince(flip.start)
+            let left = flip.length - Date.now.timeIntervalSince(flip.start)
             guard left > 0 else { return }
             try? await Task.sleep(for: .seconds(left + 0.05))
             settled += 1
@@ -66,7 +68,7 @@ public struct K3DFlipView<Content: View>: View {
     }
 
     /// The 3D body and its shadow, under the 2D device that shows with opacity `shown`.
-    private func body3D(angle: Double, lift: Double, shown: Double) -> some View {
+    private func body3D(angle: Double, lift: Double, scale: Double, shown: Double) -> some View {
         let shows = shown < 1
         let size = PocketSkin.size
         let ready = $ready
@@ -75,9 +77,9 @@ public struct K3DFlipView<Content: View>: View {
             // (`shows`). Then the 2D device's own shadow is off (`K3DHandover`), so one shadow
             // shows at any time, with no step where they hand over (shadow option 1, Jason 17:30
             // JST 11-14). At rest on the front, the 2D device draws its own.
-            if shows { K3DShadow(angle: angle, lift: lift, black: black) }
+            if shows { K3DShadow(angle: angle, lift: lift, black: black).scaleEffect(scale) }
             K3DMetalView(
-                angle: angle, lift: lift, black: black, screen: flip.screen,
+                angle: angle, lift: lift, scale: scale, black: black, screen: flip.screen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
                 onFirstFrame: { ready.wrappedValue = true })
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
@@ -101,18 +103,23 @@ public struct K3DFlipView<Content: View>: View {
 /// picture: without the compositing group, SwiftUI fades each of its layers on its own, so
 /// the body and bezel show through the screen and labels and the whole device dims to grey
 /// mid-fade (build 166). The 3D body stays mounted behind it; `body3D` gets the opacity the
-/// 2D device shows with. Until the 3D body is `ready`, the 2D device stays opaque.
+/// 2D device shows with. Until the 3D body is `ready`, the 2D device stays opaque, except while
+/// the device arrives: then neither shows until the 3D body has drawn (change 288).
 struct K3DHandover<Flat: View, Body3D: View>: View {
     let flat: Double
     let ready: Bool
+    /// The arrival (change 288): until the 3D body is ready, nothing shows, not the 2D device.
+    var hidesUntilReady = false
     let content: Flat
     @ViewBuilder let body3D: (Double) -> Body3D
 
     /// The 2D device's opacity: `flat`, or 1 while the 3D body has no frame to show.
-    static func shown(flat: Double, ready: Bool) -> Double { ready ? flat : 1 }
+    static func shown(flat: Double, ready: Bool, hidesUntilReady: Bool = false) -> Double {
+        ready ? flat : hidesUntilReady ? 0 : 1
+    }
 
     var body: some View {
-        let shown = Self.shown(flat: flat, ready: ready)
+        let shown = Self.shown(flat: flat, ready: ready, hidesUntilReady: hidesUntilReady)
         content
             // While the 3D body shows, it draws the one shadow: the 2D device's own is off.
             .environment(\.pocketDropShadow, shown >= 1)
@@ -126,6 +133,8 @@ struct K3DHandover<Flat: View, Body3D: View>: View {
 /// The Metal view, drawn on demand: SwiftUI's timeline asks for each frame.
 struct K3DMetalView: NSViewRepresentable {
     let angle: Double, lift: Double
+    /// The body's size on screen about the device's center: 1, or less while it arrives.
+    var scale = 1.0
     let black: Bool
     let screen: CGImage?
     /// The device's center in the view, in points from the top left.
@@ -140,7 +149,7 @@ struct K3DMetalView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: K3DLayerView, context: Context) {
-        let pose = K3DPose(angle: angle, lift: lift, black: black)
+        let pose = K3DPose(angle: angle, lift: lift, black: black, scale: scale)
         // Draw only when the picture changes: the view stays mounted while the device rests.
         guard pose != view.pose || screen !== view.screen || center != view.deviceCenter || !view.drewOnce else { return }
         view.pose = pose
@@ -154,6 +163,9 @@ struct K3DMetalView: NSViewRepresentable {
 struct K3DPose: Equatable {
     var angle = 0.0, lift = 0.0
     var black = false
+    /// The size on screen about the device's center (change 288). It scales the projection only,
+    /// so the light on the body does not change.
+    var scale = 1.0
 }
 
 final class K3DLayerView: MTKView {
@@ -351,7 +363,7 @@ final class K3DLayerView: MTKView {
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
         var uniforms = Uniforms(
             mv: Self.modelView(angle: pose.angle, lift: pose.lift),
-            pr: Self.projection(size: size, center: center), blk: pose.black ? 1 : 0)
+            pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
         // As the mock: only front faces draw. Metal's clip space has y up, as WebGL's, so the
@@ -420,10 +432,10 @@ final class K3DLayerView: MTKView {
     /// A perspective with the mock's camera, scaled so the flat front (34 pt nearer than the
     /// center) shows at 1 pt per pt, the size of the 2D device. The lens shifts so the device's
     /// center falls on `center`, which is not the view's center. Metal's depth runs 0 to 1.
-    static func projection(size: CGSize, center: CGPoint) -> simd_float4x4 {
+    static func projection(size: CGSize, center: CGPoint, scale: Double = 1) -> simd_float4x4 {
         let w = Float(max(size.width, 1)), h = Float(max(size.height, 1))
         let d0 = distance - Float(K3DMesh.depth / 2)
-        let fx = 2 * d0 / w, fy = 2 * d0 / h
+        let fx = 2 * d0 / w * Float(scale), fy = 2 * d0 / h * Float(scale)  // scales about the lens shift: the device's center
         let sx = (Float(center.x) - w / 2) / (w / 2), sy = -(Float(center.y) - h / 2) / (h / 2)
         let n = near, f = far
         return simd_float4x4(columns: (
