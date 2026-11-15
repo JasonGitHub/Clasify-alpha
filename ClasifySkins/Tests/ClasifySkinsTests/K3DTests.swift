@@ -247,6 +247,18 @@ import Testing
         #expect(spin.start >= made)
     }
 
+    /// Change 288 (Jason, build 237: the 2D device flashed before the turn): before the
+    /// arrival starts, the first frame shows nothing, at any clock.
+    @Test func theFirstFrameWaitsForTheArrival() {
+        let flip = K3DFlip.waiting
+        #expect(flip.arriving && !flip.restsOnFront(at: .now))
+        for date in [Date.now, .now.addingTimeInterval(5), .distantPast] {
+            #expect(flip.flatOpacity(at: date) == 0 && flip.look(at: date).opacity == 0)
+        }
+        #expect(K3DHandover<EmptyView, EmptyView>.shown(flat: flip.flatOpacity(at: .now), ready: false, hidesUntilReady: true) == 0)
+        #expect(K3DHandover<EmptyView, EmptyView>.shown(flat: flip.flatOpacity(at: .now), ready: true, hidesUntilReady: true) == 0)
+    }
+
     /// While it arrives, the 2D device stays hidden until the 3D body has drawn: no flash.
     @Test func theArrivalHidesThe2DDeviceUntilThe3DFrameIsReady() {
         typealias H = K3DHandover<EmptyView, EmptyView>

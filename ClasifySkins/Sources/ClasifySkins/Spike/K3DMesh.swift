@@ -290,6 +290,15 @@ public struct K3DFlip {
 
     public init() {}
 
+    /// Change 288: the first frames before the arrival starts. Nothing shows, neither the 2D
+    /// device nor the 3D body: its clock has not started, so it sits before the turn.
+    public static var waiting: K3DFlip {
+        var flip = K3DFlip()
+        flip.script = .arrive
+        (flip.from, flip.to, flip.start) = (arriveFrom, 0, .distantFuture)
+        return flip
+    }
+
     /// Card BR, change 288: the first launch's arrival. The screen picture is made first and put
     /// in the 3D front, as for a flip; the clock starts after it, or at `now` in tests.
     @MainActor public static func arrive(at now: Date? = nil, screen make: () -> CGImage?) -> K3DFlip {
