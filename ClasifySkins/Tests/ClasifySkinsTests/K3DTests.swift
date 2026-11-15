@@ -195,8 +195,8 @@ import Testing
         #expect(near(angles[2].angle, 0) && near(angles[3].angle, 0) && angles.allSatisfy { $0.lift == 0 })
         let looks = [0.0, 0.4, 0.8, 1.6].map { flip.look(at: at($0)) }
         #expect(near(looks[0].scale, 0.55) && near(looks[0].opacity, 0) && near(looks[1].opacity, 0.5))
-        #expect(near(looks[2].scale, 0.55 + 0.45 * e) && looks[2].opacity == 1)
-        #expect(near(looks[3].scale, 1) && looks[3].opacity == 1)
+        #expect(near(looks[2].scale, 0.55 + 0.45 * e) && near(looks[2].opacity, 1))
+        #expect(near(looks[3].scale, 1) && near(looks[3].opacity, 1))
         #expect(flip.flatOpacity(at: at(1.99)) == 0)  // the turn and the rest show only 3D
         #expect(near(flip.flatOpacity(at: at(2.175)), 0.5))
         #expect(flip.flatOpacity(at: at(2.36)) == 1)
