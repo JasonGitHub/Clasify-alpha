@@ -53,6 +53,19 @@ import Testing
         #expect(s.top.screen == .betaSoon)
     }
 
+    /// The warning waits while a list loads: the load ends only on its own frame.
+    @Test func theWarningWaitsForALoad() {
+        var s = mainMenu()
+        send(&s, .wheel(1), .select, now: day27)  // Playlists opens and loads
+        #expect(s.top.loading)
+        send(&s, .betaBuild(beta), .tick, now: day27)
+        #expect(s.top.loading && s.top.screen != .betaSoon && s.betaDue == beta.endsAt)
+        s.top.loading = false
+        #expect(s.betaDue == beta.warnsAt)
+        send(&s, .tick, now: day27)
+        #expect(s.top.screen == .betaSoon)
+    }
+
     /// A new beta warns again: the warning is kept by the build's signing time.
     @Test func aNewBetaWarnsAgain() {
         var s = mainMenu()

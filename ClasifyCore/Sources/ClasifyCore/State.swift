@@ -641,9 +641,10 @@ public struct AppState: Equatable, Sendable {
     /// Cover Flow's song panel shows the bar inside its bottom edge (change 112).
     public var showsPanelBar: Bool { nowPlayingBar && current != nil }
 
-    /// The warning (change 233) may open now: on the main screens, signed in, after setup.
+    /// The warning (change 233) may open now: on the main screens, signed in, after setup. It
+    /// waits while a list loads, because a load ends only on its own frame.
     var canWarnBeta: Bool {
-        signedIn && stack.first?.screen == .main && top.screen != .spotifyApp && top.screen != .betaSoon
+        signedIn && stack.first?.screen == .main && !top.loading && top.screen != .spotifyApp && top.screen != .betaSoon
     }
 
     /// When `.tick` must next look at the beta: the warning, or the end. 0 when nothing is due.
