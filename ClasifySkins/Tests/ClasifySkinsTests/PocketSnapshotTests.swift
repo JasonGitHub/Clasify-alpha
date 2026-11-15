@@ -958,8 +958,8 @@ import Testing
         let x = Int(PocketSkin.size.width) / 2  // the wheel's center
         let up = try render(AppState(), "wheel")
         let down = try render(AppState(), "wheel-pressed", pressed: .center)
-        let ring = up.rgb(x, wheelTop + 60), white = try reference(0xf6fafb)
-        #expect(near(ring, white), "ring \(ring)")  // the flat light wheel (card BH)
+        let ring = up.rgb(x, wheelTop + 60), white = try reference(0xf9fbfc)
+        #expect(near(ring, white), "ring \(ring)")  // the light wheel (card BL)
         // Dark at the top, as if pressed in. Pressed, the whole button gets darker.
         #expect(up.rgb(x, nearTop).b < up.rgb(x, nearBottom).b)
         for y in [nearTop, middle, nearBottom] { #expect(down.rgb(x, y).b < up.rgb(x, y).b, "silver y \(y)") }
@@ -970,7 +970,7 @@ import Testing
         for y in [nearTop, middle, nearBottom] { #expect(blackDown.rgb(x, y).b < blackUp.rgb(x, y).b, "black y \(y)") }
     }
 
-    /// Round 8 card Z: the black device has a dark body, a near black bezel and a dark gray
+    /// Card BL v3: the black device has a charcoal body, the #2a2c2e bezel and a near black
     /// wheel with a dark center. The screen does not change.
     @Test func blackDeviceColorsTheBodyBezelAndWheel() throws {
         var s = AppState()
@@ -978,61 +978,13 @@ import Testing
         let shot = try render(s, "black")
         let wheelTop: Int = 321, x = Int(PocketSkin.size.width) / 2
         let middle: Int = wheelTop + 112
-        let ring = shot.rgb(x, wheelTop + 60), wheel = try reference(0x222223)
+        let ring = shot.rgb(x, wheelTop + 60), wheel = try reference(0x202123)
         #expect(near(ring, wheel), "ring \(ring)")
-        let bezel = shot.rgb(29, Self.screenTop + 60), want = try reference(0x050505)  // left of the screen
+        let bezel = shot.rgb(29, Self.screenTop + 60), want = try reference(0x2a2c2e)  // left of the screen
         #expect(near(bezel, want), "bezel \(bezel)")
         #expect(shot.isDark(10, 300))  // the body, beside the screen
         #expect(shot.rgb(x, middle - 30).b < shot.rgb(x, middle + 30).b)  // the center: dark at the top
         #expect(shot.isLight(100, Self.screenTop + 60))  // the screen's glass stays light
-    }
-
-    /// Card BH (CLA-95): the Classic Silver and Black aluminium. The base color shows between the
-    /// screen and the wheel, the side shades darken the edges, and the bottom roll gets darker to
-    /// the edge with no light hairline.
-    @Test func classicBodyFollowsCardBH() throws {
-        var s = AppState()
-        let silver = try render(s, "body-silver")
-        s.deviceColor = .black
-        let black = try render(s, "body-black")
-        let y = 290, x = Int(PocketSkin.size.width) / 2  // 47% down, between the screen and the wheel
-        func mean(_ shot: Snapshot, _ x: Int, _ y: Int) -> (r: Int, g: Int, b: Int) {
-            var sum = (r: 0, g: 0, b: 0)
-            for dy in -4...4 { for dx in -4...4 { let c = shot.rgb(x + dx, y + dy); sum.r += c.r; sum.g += c.g; sum.b += c.b } }
-            return (sum.r / 81, sum.g / 81, sum.b / 81)
-        }
-        let silverBase = try reference(0xdbdbdb), blackBase = try reference(0x656467)
-        #expect(near(mean(silver, x, y), silverBase), "silver \(mean(silver, x, y))")
-        #expect(near(mean(black, x, y), blackBase), "black \(mean(black, x, y))")
-        let bottom = Int(PocketSkin.size.height) - 1
-        for (name, shot) in [("silver", silver), ("black", black)] {
-            let middle = mean(shot, x, y).g
-            #expect(shot.rgb(4, y).g < middle - 8, "\(name) left side")
-            #expect(shot.rgb(Int(PocketSkin.size.width) - 5, y).g < middle - 8, "\(name) right side")
-            for row in (bottom - 18)...bottom {
-                #expect(shot.rgb(x, row).g < middle - 20, "\(name) row \(row): no light line at the bottom")
-            }
-        }
-    }
-
-    /// Card BH, change 240: the Silver wheel has no ring line around it, and its center button
-    /// has no rim, idle or pressed. Black keeps its ring.
-    @Test func silverHasNoWheelRingOrCenterRim() throws {
-        let wheelTop: Int = 321, x = Int(PocketSkin.size.width) / 2
-        let rimRow: Int = wheelTop + 112 + 40  // the center button's bottom edge (radius 40.8)
-        func mean(_ shot: Snapshot, _ y: Int) -> Int { (-4...4).map { shot.rgb(x + $0, y).g }.reduce(0, +) / 9 }
-        let up = try render(AppState(), "wheel-no-ring")
-        let down = try render(AppState(), "wheel-no-ring-pressed", pressed: .center)
-        // The point row above the wheel, where the ring was, is as light as the body above it.
-        #expect(mean(up, wheelTop - 1) > mean(up, wheelTop - 5) - 10, "silver ring \(mean(up, wheelTop - 1))")
-        for (name, shot) in [("idle", up), ("pressed", down)] {
-            let edge = mean(shot, rimRow), inside = mean(shot, rimRow - 3)
-            #expect(edge > inside - 12, "silver \(name) rim: edge \(edge), inside \(inside)")
-        }
-        var s = AppState()
-        s.deviceColor = .black
-        let black = try render(s, "wheel-black-ring")
-        #expect(mean(black, wheelTop - 1) < mean(black, wheelTop - 5) - 10, "black ring \(mean(black, wheelTop - 1))")
     }
 
     /// CLA-94: in the window's margins, no shadow reaches the top 5 pt, but the shadow still

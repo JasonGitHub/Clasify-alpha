@@ -50,9 +50,6 @@ struct ClickWheel: View {
         }
     }
 
-    /// SPIKE (CLA-101): BL only with the hidden switch.
-    @Environment(\.pocketLook) private var look
-
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
         movesBar: Bool = false, glowFrom: Double? = nil, cometFrom: Double? = nil, label: LabelGlow? = nil,
@@ -146,22 +143,14 @@ struct ClickWheel: View {
     /// The wheel, its labels, the lights and the center.
     private var face: some View {
         ZStack(alignment: .topLeading) {
-            // Flat, as in the photo (card BH, `wheelBg` and `wheelShadow`). Black has a faint 1
-            // point ring around it and a faint white line under it. Silver has no ring (change 240).
-            if look == .bl {
-                Circle()
-                    .fill(BL.wheel(black: black))
-                    .overlay { Circle().fill(BL.wheelShade(black: black, radius: Self.size / 2)) }
-                    .overlay { Circle().strokeBorder(Color.black.opacity(BL.wheelInnerRing(black: black)), lineWidth: 1) }
-                    .background { Circle().fill(Color.black.opacity(BL.wheelRing(black: black))).padding(-0.5) }
-                    .frame(width: Self.size, height: Self.size)
-            } else {
-                Circle()
-                    .fill(Color(hex: black ? 0x222223 : 0xf6fafb))
-                    .background { if black { Circle().fill(Color.white.opacity(0.08)).offset(y: 1).blur(radius: 0.5) } }
-                    .background { if black { Circle().fill(Color.black.opacity(0.3)).padding(-1) } }
-                    .frame(width: Self.size, height: Self.size)
-            }
+            // Card BL v3: Silver has a light gradient and thin rings; Black is flat #202123. Both
+            // have a soft shade at the hole and the rim.
+            Circle()
+                .fill(BL.wheel(black: black))
+                .overlay { Circle().fill(BL.wheelShade(black: black, radius: Self.size / 2)) }
+                .overlay { Circle().strokeBorder(Color.black.opacity(BL.wheelInnerRing(black: black)), lineWidth: 1) }
+                .background { Circle().fill(Color.black.opacity(BL.wheelRing(black: black))).padding(-0.5) }
+                .frame(width: Self.size, height: Self.size)
             key(.menu) { Text("MENU").font(.helvetica(14, weight: .medium)).tracking(0.7) }
             key(.prev) { IconView(.prev, width: 19.8, height: 10.2) }
             key(.next) { IconView(.next, width: 19.8, height: 10.2) }
@@ -190,19 +179,15 @@ struct ClickWheel: View {
                 GlowingLabel(from: glow.from, label: label())
             } else {
                 label()
-                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : (look == .bl ? BL.label(black: black) : black ? 0xf4f4f5 : 0x8c939b)))
+                    .foregroundStyle(Color(hex: hovered == zone || pressed == zone ? (black ? 0xbdbdbd : 0x6c7076) : BL.label(black: black)))
             }
         }
         .frame(width: rect.width, height: rect.height)
         .offset(x: rect.minX, y: rect.minY)
     }
 
-    @ViewBuilder private var center: some View {
-        if look == .bl { blCenter } else { bhCenter }
-    }
-
-    /// SPIKE (CLA-101): card BL's flat center, its thin ring and its top line.
-    private var blCenter: some View {
+    /// Card BL's flat center, its thin ring and its top line.
+    private var center: some View {
         Circle()
             .fill(LinearGradient(stops: BL.center(black: black, down: pressed == .center), startPoint: .top, endPoint: .bottom))
             .overlay { Circle().fill(BL.centerShade(black: black, radius: Self.centerRadius)) }
@@ -211,41 +196,6 @@ struct ClickWheel: View {
                     .clipShape(Circle())
             }
             .background { Circle().fill(Color.black.opacity(BL.centerRing(black: black))).padding(-0.5) }
-            .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
-            .background { if let glowFrom { CenterGlow(from: glowFrom, radius: Self.centerRadius) } }
-            .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)
-    }
-
-    private var bhCenter: some View {
-        // Pressed in, as in the photo (card BH, `ctrBg` and `ctrShadow`): dark at the top, with
-        // a thin rim and a faint inner shadow. Pressed, it gets a little darker.
-        let down = pressed == .center
-        let stops: [Gradient.Stop] = switch (black, down) {
-        case (false, false): [
-            .init(color: Color(hex: 0xb5b5b5), location: 0), .init(color: Color(hex: 0xcfcfcf), location: 0.5),
-            .init(color: Color(hex: 0xe4e4e4), location: 1),
-        ]
-        case (false, true): [  // `ctrDown`: darker than the idle stops everywhere
-            .init(color: Color(hex: 0xa7a7a7), location: 0), .init(color: Color(hex: 0xbebebe), location: 0.5),
-            .init(color: Color(hex: 0xd2d2d2), location: 1),
-        ]
-        case (true, false): [
-            .init(color: Color(hex: 0x2a2a2b), location: 0), .init(color: Color(hex: 0x3d3d3f), location: 0.45),
-            .init(color: Color(hex: 0x636265), location: 1),
-        ]
-        case (true, true): [  // `ctrDown`: the idle stops, about 15% darker
-            .init(color: Color(hex: 0x232324), location: 0), .init(color: Color(hex: 0x343436), location: 0.45),
-            .init(color: Color(hex: 0x545356), location: 1),
-        ]
-        }
-        return Circle()
-            .fill(LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom))
-            .overlay {
-                Circle().stroke(Color.black.opacity(black ? 0.35 : 0.12), lineWidth: 2).blur(radius: 1).offset(y: 1)
-                    .clipShape(Circle())
-            }
-            // `ctrShadow`: Black has a 0.5 point rim. Silver has none (change 240).
-            .overlay { if black { Circle().strokeBorder(Color.black.opacity(0.4), lineWidth: 0.5) } }
             .frame(width: Self.centerRadius * 2, height: Self.centerRadius * 2)
             .background { if let glowFrom { CenterGlow(from: glowFrom, radius: Self.centerRadius) } }
             .offset(x: Self.size / 2 - Self.centerRadius, y: Self.size / 2 - Self.centerRadius)

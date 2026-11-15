@@ -6,7 +6,7 @@ import Testing
 
 @testable import ClasifySkins
 
-/// SPIKE (CLA-101, K.3D spike 2): at the end of a turn to the front, the K.3D.8 body at rest
+/// CLA-101: at the end of a turn to the front, the K.3D.8 body at rest
 /// crossfades to card BL's 2D device in 0.1 s. The two must look the same there, or the fade
 /// shows a jump. Points are in device points, read at 2x.
 ///
@@ -63,7 +63,7 @@ import Testing
     }
 
     func flat(_ state: AppState, _ name: String) throws -> Pixels {
-        try pixels(PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl), name)
+        try pixels(PocketSkin(state: state, interactive: false), name)
     }
 
     func rest(_ renderer: K3DRenderer, _ state: AppState, _ name: String) throws -> Pixels {
@@ -146,7 +146,7 @@ import Testing
         let flat = try flat(state, "bl-\(name)-2d")
         let body3D = try restImage(renderer, state)
         let rest = try pixels(body3D, "k3d8-rest-\(name)")
-        let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
+        let device = PocketSkin(state: state, interactive: false)
         let half = try pixels(K3DHandover(flat: 0.5, ready: true, content: device) { _ in body3D }, "k3d8-fade-half-\(name)")
         let perLayer = try pixels(device.opacity(0.5).background { body3D }, "k3d8-fade-per-layer-\(name)")
         var worst = 0
@@ -173,7 +173,7 @@ import Testing
         let name = color == .black ? "black" : "silver"
         let ground = Color(.sRGB, red: 0.9, green: 0.9, blue: 0.9)
         let margin = EdgeInsets(top: 5, leading: 60, bottom: 90, trailing: 60)
-        let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
+        let device = PocketSkin(state: state, interactive: false)
         let own = try pixels(device.padding(margin).background(ground), "shadow-2d-\(name)")
         let spike = try pixels(
             ZStack {
@@ -216,7 +216,7 @@ import Testing
         #expect(K3DHandover<EmptyView, EmptyView>.shown(flat: 0.5, ready: true) == 0.5)
         let state = AppState()
         let flat = try flat(state, "bl-silver-2d")
-        let device = PocketSkin(state: state, interactive: false).environment(\.pocketLook, .bl)
+        let device = PocketSkin(state: state, interactive: false)
         let waiting = try pixels(K3DHandover(flat: 0.2, ready: false, content: device) { _ in Color.red }, "k3d8-fade-waiting")
         for (x, y) in [(183, 150), (183, 290), (183, 381), (60, 450)] {
             let a = flat.mean(x, y), b = waiting.mean(x, y)
