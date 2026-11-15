@@ -260,16 +260,19 @@ struct K3DMesh {
 /// turns 180° in 0.82 s with a 2.5% overshoot, settles by 1.0 s, and is pushed back by up to
 /// 70 pt while it turns; the 3D body and the flat 2D device crossfade in 0.1 s. `arrive` is
 /// card BR's first launch (change 288): from -120° and 55% size, one ease-out turn to the front
-/// in 1.6 s, fading in over the first 0.8 s; it rests 0.4 s, then the 2D device fades in over
-/// 0.35 s. `spin` is card BR's color change (changes 289 and 290): the device crossfades to 3D
+/// in 1.6 s, fading in over the first 0.8 s; then the 2D device fades in over 0.35 s while
+/// Hello writes (Jason, 23:05 JST 11-15: no rest, so Hello comes sooner). `spin` is card BR's color change (changes 289 and 290): the device crossfades to 3D
 /// in 0.15 s, turns 360° with a quad in-out, and crossfades back in 0.15 s. It shows the old
 /// color until 180°, then the color the device has now.
 public struct K3DFlip {
     static let turn = 0.82, duration = 1.0, lift = 70.0
     /// The crossfade between the 3D body and the flat 2D device.
     static let fade = 0.1
-    /// Card BR, change 288: the arrival's turn, its rest, and its crossfade to the 2D device.
-    public static let arriveTurn = 1.6, arriveHold = 0.4, arriveFade = 0.35, arriveFrom = -120.0, arriveScale = 0.55
+    /// Card BR, change 288: the arrival's turn and its crossfade to the 2D device.
+    public static let arriveTurn = 1.6, arriveFade = 0.35, arriveFrom = -120.0, arriveScale = 0.55
+    /// When the skin sends `.arrived`, before the turn ends: Hello's wait before its first
+    /// stroke, so the first stroke lands on the turn's last frame.
+    public static let arriveHelloLead = Hello.lead
 
     /// Changes 289 and 290: the color spin's crossfades, and its turn on Pick Your Color and in
     /// Settings.
@@ -350,7 +353,7 @@ public struct K3DFlip {
     public var length: Double {
         switch script {
         case .flip: Self.duration
-        case .arrive: Self.arriveTurn + Self.arriveHold + Self.arriveFade
+        case .arrive: Self.arriveTurn + Self.arriveFade
         case .spin(let turn): turn + 2 * Self.spinFade
         }
     }
@@ -392,7 +395,7 @@ public struct K3DFlip {
     /// arrival crossfades in its last 0.35 s.
     public func flatOpacity(at now: Date) -> Double {
         let t = now.timeIntervalSince(start)
-        if script == .arrive { return min(1, max(0, (t - Self.arriveTurn - Self.arriveHold) / Self.arriveFade)) }
+        if script == .arrive { return min(1, max(0, (t - Self.arriveTurn) / Self.arriveFade)) }
         if case .spin(let turn) = script {
             return t < Self.spinFade ? 1 - max(0, t) / Self.spinFade : min(1, max(0, (t - Self.spinFade - turn) / Self.spinFade))
         }

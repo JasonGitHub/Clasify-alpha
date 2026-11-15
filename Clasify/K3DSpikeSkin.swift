@@ -47,8 +47,9 @@ struct K3DSpikeSkin: View {
     }
 
     /// Change 288: the arrival, once ever. The 3D front shows the screen as it is at the start,
-    /// Hello's first frame. Hello waits in the reducer, so `.arrived` goes as the 2D device
-    /// starts to fade in: the live 2D device then starts Hello on the same frame.
+    /// Hello's first frame, with nothing written. Hello waits until `.arrived`, which goes 0.2 s
+    /// (Hello's own wait) before the turn ends: so the first stroke lands as the turn ends and
+    /// the 2D device starts to fade in. Nothing is written before that.
     private func arrive() async {
         guard !store.state.arrived else { return }
         if !reduceMotion && K3DFlip.canDraw {
@@ -56,9 +57,9 @@ struct K3DSpikeSkin: View {
             let state = store.state
             let time = state.top.screen == .hello ? state.helloAt : nil
             flip = K3DFlip.arrive { K3DSpike.snapshot(state, artwork: artwork, time: time) }
-            try? await Task.sleep(for: .seconds(K3DFlip.arriveTurn + K3DFlip.arriveHold))
+            try? await Task.sleep(for: .seconds(K3DFlip.arriveTurn - K3DFlip.arriveHelloLead))
             store.send(.arrived)
-            try? await Task.sleep(for: .seconds(K3DFlip.arriveFade))
+            try? await Task.sleep(for: .seconds(K3DFlip.arriveHelloLead + K3DFlip.arriveFade))
             flip = K3DFlip()  // at rest on the front, as before
         } else {
             flip = K3DFlip()  // Reduce Motion or no Metal: the 2D device shows at once

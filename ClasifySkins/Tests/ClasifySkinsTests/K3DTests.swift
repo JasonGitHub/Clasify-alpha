@@ -182,25 +182,32 @@ import Testing
     }
 
     /// Card BR, change 288 (gen.py `g1`): from -120° and 55% size, one ease-out turn to the front
-    /// in 1.6 s, fading in over 0.8 s. It rests 0.4 s, then the 2D device fades in over 0.35 s.
+    /// in 1.6 s, fading in over 0.8 s. Then the 2D device fades in over 0.35 s, with no rest.
     @Test func theArrivalFollowsTheSketch() {
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         let flip = K3DFlip.arrive(at: t0) { nil }
         func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
         func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
-        #expect(flip.arriving && !flip.toBack && near(flip.length, 2.35))
+        #expect(flip.arriving && !flip.toBack && near(flip.length, 1.95))
         let e = 1 - pow(0.5, 3.0)  // the ease-out at u = 0.5
-        let angles = [0.0, 0.8, 1.6, 2.2].map { flip.pose(at: at($0)) }
+        let angles = [0.0, 0.8, 1.6, 1.8].map { flip.pose(at: at($0)) }
         #expect(near(angles[0].angle, -120) && near(angles[1].angle, -120 + 120 * e))
         #expect(near(angles[2].angle, 0) && near(angles[3].angle, 0) && angles.allSatisfy { $0.lift == 0 })
         let looks = [0.0, 0.4, 0.8, 1.6].map { flip.look(at: at($0)) }
         #expect(near(looks[0].scale, 0.55) && near(looks[0].opacity, 0) && near(looks[1].opacity, 0.5))
         #expect(near(looks[2].scale, 0.55 + 0.45 * e) && near(looks[2].opacity, 1))
         #expect(near(looks[3].scale, 1) && near(looks[3].opacity, 1))
-        #expect(flip.flatOpacity(at: at(1.99)) == 0)  // the turn and the rest show only 3D
-        #expect(near(flip.flatOpacity(at: at(2.175)), 0.5))
-        #expect(flip.flatOpacity(at: at(2.36)) == 1)
-        #expect(!flip.restsOnFront(at: at(2.3)) && flip.restsOnFront(at: at(2.36)))
+        #expect(flip.flatOpacity(at: at(1.59)) == 0)  // the turn shows only 3D
+        #expect(near(flip.flatOpacity(at: at(1.775)), 0.5))
+        #expect(flip.flatOpacity(at: at(1.96)) == 1)
+        #expect(!flip.restsOnFront(at: at(1.9)) && flip.restsOnFront(at: at(1.96)))
+        // `.arrived` goes 0.2 s before the turn ends. Hello writes nothing for 0.2 s, so its first
+        // stroke starts as the 2D device starts to fade in, never on the 3D screen before.
+        let sent = K3DFlip.arriveTurn - K3DFlip.arriveHelloLead
+        #expect(near(sent, 1.4))
+        #expect(Hello.written(look: 0, at: Hello.elapsed(at: 1.59, since: sent, waiting: false)) < 1e-6)
+        #expect(Hello.written(look: 0, at: Hello.elapsed(at: 1.7, since: sent, waiting: false)) > 0)
+        #expect(Hello.written(look: 0, at: Hello.elapsed(at: 1.39, since: 0, waiting: true)) < 1e-6)
     }
 
     /// Card BR, changes 289 and 290 (gen.py `spin`): a 0.15 s crossfade to 3D, one 360° turn with
