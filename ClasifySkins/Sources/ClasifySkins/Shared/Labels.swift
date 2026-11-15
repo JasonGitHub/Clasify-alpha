@@ -40,6 +40,7 @@ enum Labels {
         case .pickMusic: "Pick Your Music"  // card BM, change 257
         case .spotifyApp: "Spotify App"
         case .yourMusic: "Your Music"
+        case .betaSoon, .betaEnded: "Beta"  // card BI v2, changes 233 and 234
         }
     }
 
@@ -106,6 +107,10 @@ enum Labels {
         case .pickService(let service): return RowText(label: service.rawValue)
         case .openPrivacy: return RowText(label: "Open Settings")
         case .useSpotify: return RowText(label: "Use Spotify")
+        // Card BI v2: no chevrons.
+        case .getNewBeta: return RowText(label: "Get New Beta")
+        case .later: return RowText(label: "Later")
+        case .quit: return RowText(label: "Quit")
         }
     }
 
@@ -174,8 +179,20 @@ enum Labels {
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
         case .yourMusic: SetupWords(headline: "You’re all set", line: ready)
+        // Card BI v2: one friendly warning (change 233), and the end (234). No countdown.
+        case .betaSoon: SetupWords(headline: "Time for a fresh beta", line: "Get it any time before \(betaEnd(state.beta)).")
+        case .betaEnded: SetupWords(headline: "This beta has ended", line: "Get the new beta to keep listening.")
         default: nil
         }
+    }
+
+    /// The beta's last day, as "14 Dec" (card BI v2, change 233). Empty for an ad-hoc build.
+    static func betaEnd(_ beta: BetaBuild?) -> String {
+        guard let beta else { return "" }
+        let format = DateFormatter()
+        format.locale = Locale(identifier: "en_US_POSIX")
+        format.dateFormat = "d MMM"
+        return format.string(from: Date(timeIntervalSinceReferenceDate: beta.endsAt))
     }
 
     /// The line at the bottom of Pick Your Music (card BM, change 257), as on Pick Your Color.

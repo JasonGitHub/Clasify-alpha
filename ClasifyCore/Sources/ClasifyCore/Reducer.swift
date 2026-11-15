@@ -77,6 +77,8 @@ public enum Action: Equatable, Sendable {
     /// The login or restore with this token found no access to the library: the user did
     /// not allow it in the macOS prompt (Apple Music, card BM, change 258).
     case accessDenied(token: Int)
+    /// The app read its own signature at launch (card BI v2): a beta, or nil for an ad-hoc build.
+    case betaBuild(BetaBuild?)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -125,6 +127,10 @@ public enum Effect: Equatable, Sendable {
     case setService(MusicService)
     /// Open the Mac's privacy settings for Apple Music (card BM, change 258).
     case openPrivacy
+    /// Open the beta download page in the browser (card BI v2).
+    case getNewBeta
+    /// Quit the app, from the ended beta (card BI v2, change 234).
+    case quit
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -480,7 +486,29 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if mode != s.repeatMode { s.repeatMode = mode; fx.append(.setRepeat(mode)) }
     }
 
+    /// Card BI v2: the warning once on day 27 (change 233), over the screen that shows; on day
+    /// 30 the beta ends (234). The ended screen replaces everything, and nothing plays.
+    func checkBeta() {
+        guard let beta = s.beta else { return }
+        if now >= beta.endsAt {
+            guard s.top.screen != .betaEnded else { return }
+            stop()
+            if s.hint != nil { endHint(done: false) }
+            s.beatUntil = 0; s.toast = ""; s.toastUntil = 0
+            s.stack = [Frame(screen: .betaEnded)]
+        } else if now >= beta.warnsAt && s.betaWarned != beta.signed && s.canWarnBeta {
+            s.betaWarned = beta.signed
+            s.stack.append(Frame(screen: .betaSoon))
+        }
+    }
     func apply() {
+        // Change 234: the ended beta takes only the wheel and its rows.
+        if s.top.screen == .betaEnded {
+            switch action {
+            case .wheel, .select, .tick, .batteryChanged, .betaBuild: break
+            default: return
+            }
+        }
         switch action {
         case .wheel(let d):
             if s.top.screen == .now {
@@ -667,6 +695,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                     fx.append(.logIn(token: s.authAttempt))
                 }
             case .openPrivacy: fx.append(.openPrivacy)
+            case .getNewBeta:  // the warning closes; the ended screen stays
+                fx.append(.getNewBeta)
+                if s.top.screen == .betaSoon { s.stack.removeLast() }
+            case .later: s.stack.removeLast()
+            case .quit: fx.append(.quit)
             case .useSpotify: switchService(to: .spotify)  // change 262
             case .about:
                 // Card BF: it opens at the top. The scroll bar shows from 0.3 s for 1.5 s.
@@ -757,6 +790,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             if s.overlayUntil > 0 && now > s.overlayUntil { s.overlayUntil = 0; s.nowMode = .volume }
             if s.scrollUntil > 0 && now > s.scrollUntil { s.scrollUntil = 0 }
             if s.letterUntil > 0 && now > s.letterUntil { s.letterUntil = 0 }
+            checkBeta()
 
         case .position(let t, let gen):
             // Soon after a seek, a position far from the target is from an earlier seek.
@@ -1017,6 +1051,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .batteryChanged(let battery):
             s.battery = battery
 
+        case .betaBuild(let beta):
+            s.beta = beta
+            checkBeta()
+
         case .libraryWords(let words):
             s.words = words
 
@@ -1040,11 +1078,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             let (tok, gen, auth, art) = (s.tok, s.playGen, s.authAttempt, s.artTok)  // keep counters so callbacks from before the reset stay stale
             let nav = (s.navSeq, s.wholeSeq)  // keep the screen's identity, so the skin does not slide the reset screen in
             let settings = s.settings  // saved settings stay
-            let (battery, spotifyApp) = (s.battery, s.spotifyApp)  // the Mac, which a reset does not change
+            let (battery, spotifyApp, beta) = (s.battery, s.spotifyApp, s.beta)  // the Mac and the build, which a reset does not change
             let words = s.words  // the active service's library, which a reset does not change
             s = AppState()
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
-            s.battery = battery; s.spotifyApp = spotifyApp; s.words = words
+            s.battery = battery; s.spotifyApp = spotifyApp; s.beta = beta; s.words = words
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
@@ -1171,7 +1209,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         func fits(_ hint: Hint) -> Bool {
             guard s.setupDone, s.signedIn, s.stack.first?.screen == .main, !s.hintsDone.contains(hint) else { return false }
             switch hint {
-            case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error
+            // Not over the beta warning (card BI v2): its own rows say what to do.
+            case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error && s.top.screen != .betaSoon
             // On Now Playing, only while a song plays and that row shows the time bar: the tip
             // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()

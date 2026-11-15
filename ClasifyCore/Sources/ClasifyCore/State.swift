@@ -143,12 +143,14 @@ public enum Screen: Equatable, Sendable {
     case licenses, license(Int)
     /// The library's artists (Apple Music, card BN). An artist's songs show on `tracks`.
     case artists
+    /// Card BI v2: the one warning on day 27 of a beta (change 233), and its end on day 30 (234).
+    case betaSoon, betaEnded
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -211,6 +213,23 @@ public enum Row: Equatable, Sendable {
     case color(DeviceColor)
     /// A row of the Licenses list: license `License.all[i]` (card BF, change 213).
     case license(Int)
+    /// Card BI v2: the beta screens' rows. "Get New Beta" opens the download page, "Later"
+    /// closes the warning, and "Quit" quits the app (changes 233 and 234).
+    case getNewBeta, later, quit
+}
+
+/// A beta build (card BI v2, CLA-96): a Developer ID signed build. It warns once on day 27 and
+/// ends on day 30 after it was signed. Ad-hoc builds are not betas and never end.
+public struct BetaBuild: Equatable, Sendable {
+    /// When the build was signed, in `Dependencies.now` time.
+    public var signed: Double
+    public init(signed: Double) { self.signed = signed }
+
+    public static let day = 86_400.0
+    /// Change 233: the one warning, 3 days before the end.
+    public var warnsAt: Double { signed + 27 * Self.day }
+    /// Change 234: the beta ends.
+    public var endsAt: Double { signed + 30 * Self.day }
 }
 
 /// The playing track, by ID, so a library reload that reorders things can't point it elsewhere.
@@ -299,6 +318,12 @@ public struct AppState: Equatable, Sendable {
     /// The Spotify app is on this Mac, as the app last found it. Nil before the first check:
     /// setup then counts it as there, so that a slow check does not stop it.
     public var spotifyApp: Bool?
+    /// This build is a beta (card BI v2), as the app read it from its signature. Nil for an
+    /// ad-hoc build: it shows no BETA tag and never ends.
+    public var beta: BetaBuild?
+    /// The signing time of the beta whose warning showed (change 233: once). Saved with the
+    /// settings, so a new beta warns again.
+    public var betaWarned: Double?
     /// When Hello (card AT) opened, in `Dependencies.now` time. A skin times the hello word,
     /// the center glow and the begin text from it.
     public var helloAt: Double = 0
@@ -616,6 +641,19 @@ public struct AppState: Equatable, Sendable {
     /// Cover Flow's song panel shows the bar inside its bottom edge (change 112).
     public var showsPanelBar: Bool { nowPlayingBar && current != nil }
 
+    /// The warning (change 233) may open now: on the main screens, signed in, after setup. It
+    /// waits while a list loads, because a load ends only on its own frame.
+    var canWarnBeta: Bool {
+        signedIn && stack.first?.screen == .main && !top.loading && top.screen != .spotifyApp && top.screen != .betaSoon
+    }
+
+    /// When `.tick` must next look at the beta: the warning, or the end. 0 when nothing is due.
+    /// Like every deadline that `.tick` ends, the app's ticker must check it.
+    public var betaDue: Double {
+        guard let beta, top.screen != .betaEnded else { return 0 }
+        return betaWarned != beta.signed && canWarnBeta ? beta.warnsAt : beta.endsAt
+    }
+
     /// The Cover Flow frame, while Cover Flow or its song panel shows. Its `sel` is the album
     /// in the middle, also while the panel shows the album's songs.
     public var coverFlowFrame: Frame? {
@@ -837,6 +875,8 @@ public struct AppState: Equatable, Sendable {
         case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
         case .pickMusic: MusicService.allCases.map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
+        case .betaSoon: [.getNewBeta, .later]
+        case .betaEnded: [.getNewBeta, .quit]
         case .licenses: License.all.indices.map { .license($0) }
         case .about, .now, .hello, .yourMusic, .loggedIn, .license: []
         }
