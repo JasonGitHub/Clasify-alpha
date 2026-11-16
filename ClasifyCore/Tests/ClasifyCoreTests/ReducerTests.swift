@@ -1167,7 +1167,7 @@ func playing(_ i: Int = 0) -> AppState {
     @Test func launchRestoresTheStoredLogin() {
         var s = afterSetup()
         #expect(send(&s, .launch) == [.restoreSession(token: 1)])
-        #expect(s.restoring && s.rows(for: s.top) == [])
+        #expect(s.restoring && s.stack == [Frame(screen: .main)] && !s.signedIn)  // CLA-120: the main menu at once
         send(&s, .restored(token: 1, ok: true))
         #expect(s.stack == [Frame(screen: .main)] && s.signedIn && !s.restoring && s.toast == "")
         #expect(send(&s, .launch) == [])  // already signed in
@@ -1180,10 +1180,11 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.rows(for: s.top) == [.logIn])
     }
 
-    @Test func noLoginWhileRestoring() {
+    @Test func noReadWhileRestoring() {
         var s = afterSetup()
+        // CLA-120: the main menu shows, and a list opens in its loading state with no read yet.
         #expect(send(&s, .launch, .wheel(1), .select, .menu) == [.restoreSession(token: 1)])
-        #expect(s.stack == [Frame(screen: .login)] && s.restoring)
+        #expect(s.stack.map(\.screen) == [.main] && s.restoring)  // back on the main menu, Playlists still selected
         send(&s, .reset, .restored(token: 1, ok: true))  // from before the reset
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn)
     }

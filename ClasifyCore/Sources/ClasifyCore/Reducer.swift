@@ -204,6 +204,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         if !s.heldToast.isEmpty { toast(s.heldToast); s.heldToast = "" }
     }
     func fetch(_ screen: Screen) {
+        // CLA-120: on the main menu at a launch, before the stored login is back, a list waits
+        // in its loading state. Its read starts when the login is back (`.restored`).
+        if !s.signedIn && s.restoring { return }
         let key = s.readKey(screen)  // Albums and Cover Flow read `albumsList`, an album itself
         if screen == .yourMusic { s.readDone = 0; s.readTotal = 0; s.readAlbums = 0; s.namesHold = 0; s.firstReadSongs = nil; s.firstReadSongsAt = 0 }  // each first read, or retry, counts from 0
         if screen == .artists { return fx.append(.fetchArtists(token: s.tok)) }
@@ -387,6 +390,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// Signs out and forgets the login. Apple Music goes back to Pick Your Music, because
     /// Clasify cannot sign out the Mac's Apple account (card BM, change 263).
     func logOut() {
+        // CLA-120: Log out can come while the stored login is checked at launch: its late
+        // result is stale then.
+        if s.restoring { s.restoring = false; s.authAttempt += 1 }
         signOut(); fx.append(.logOut)
         if s.service == .appleMusic { s.stack = [pickMusic()] }
     }
@@ -974,6 +980,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .launch:
             guard !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
             if !s.setupDone { s.stack = [Frame(screen: .hello)]; s.helloAt = now }
+            // CLA-120: after setup, the app opens on the main menu at once, with no slide, and
+            // the stored login is checked behind it. Its failures show their screens as before.
+            // With the Spotify app missing, the login screen stays: the restore goes on to it.
+            if s.setupDone && !(s.spotifyApp == false && s.service == .spotify) { s.stack = [Frame(screen: .main)] }
             s.authAttempt += 1; s.restoring = true
             fx.append(.restoreSession(token: s.authAttempt))
 
@@ -1007,8 +1017,20 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .restored(let token, let ok):
             guard s.restoring, s.authAttempt == token else { return }  // from before a reset
             s.restoring = false
-            guard ok else { return }
+            // CLA-120: the main menu showed while the stored login was checked. With none, the
+            // login screen shows, as before.
+            let onMain = !s.signedIn && s.setupDone && s.stack.first?.screen == .main
+            guard ok else {
+                if onMain { s.stack = [Frame(screen: .login)] }
+                return
+            }
             s.signedIn = true; fx.append(.prefetch)
+            if onMain && s.top.loading {  // a list opened meanwhile: its read starts now
+                s.tok += 1
+                if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }
+                s.top.token = s.tok
+                fetch(s.top.screen)
+            }
             // During setup, Hello and the color pick stay. The login screen goes on, and so does
             // Access is off after access was turned on (card BM, 258).
             if s.top.screen == .login || s.top.screen == .accessOff { setupNext() }
@@ -1162,9 +1184,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         default: s.top.screen == .main ? s.albumsList : nil  // Playlists picks a playlist soon
         }
         // Read when the covers move to a list or the app comes back online, not on each
-        // tick, so a failed read is tried again only when the row is selected again.
-        if let id = artList, opened || s.artRow != artBefore.0 || (wasOffline && !s.offline),
-            !s.loadedTracks.contains(id), !s.offline, s.artReads[id] == nil {
+        // tick, so a failed read is tried again only when the row is selected again. CLA-120:
+        // the main menu at launch shows before the stored login is back: its read waits for it.
+        let signsIn = !wasSignedIn && s.signedIn
+        if let id = artList, opened || s.artRow != artBefore.0 || (wasOffline && !s.offline) || signsIn,
+            s.signedIn, !s.loadedTracks.contains(id), !s.offline, s.artReads[id] == nil {
             s.artTok += 1; s.artReads[id] = s.artTok
             fx.append(.readArtTracks(token: s.artTok, playlist: id))
         }

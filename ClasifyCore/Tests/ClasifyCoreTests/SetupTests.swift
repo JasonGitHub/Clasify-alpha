@@ -362,7 +362,7 @@ import Testing
     @Test func aLaterLaunchSkipsSetupAndChecksTheSpotifyApp() {
         var s = afterSetup()
         send(&s, .spotifyAppFound(true), .launch)
-        #expect(s.stack == [Frame(screen: .login)] && s.helloAt == 0)
+        #expect(s.stack == [Frame(screen: .main)] && s.helloAt == 0)  // CLA-120: the main menu at once
         send(&s, .restored(token: 1, ok: true))
         #expect(s.stack == [Frame(screen: .main)])
         s = afterSetup()
