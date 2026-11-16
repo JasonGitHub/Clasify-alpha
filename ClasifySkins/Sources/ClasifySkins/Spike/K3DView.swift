@@ -245,8 +245,24 @@ final class K3DLayerView: MTKView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        if K3DRenderer.shared?.draw(in: self) == true { drewOnce = true }
+        guard let renderer = K3DRenderer.shared else { return }
+        if renderer.draw(in: self) { drewOnce = true }
+        // CLA-105: apart before the prints are bound, the parts show plain. Draw again once
+        // they are, as the device may rest and SwiftUI then asks for no new frame.
+        if pose.ex > 0, !renderer.printsReady, !waitsForPrints {
+            waitsForPrints = true
+            let task = renderer.preparePrints()
+            Task { [weak self] in
+                await task.value
+                guard let self else { return }
+                self.waitsForPrints = false
+                if renderer.printsReady { self.needsDisplay = true }
+            }
+        }
     }
+
+    /// A redraw waits for the prints.
+    private var waitsForPrints = false
 
     /// The renderer calls this when a frame drawn while `firstFrame` was set is on screen.
     func firstFrameShown() {
@@ -693,6 +709,15 @@ final class K3DLayerView: MTKView {
         }
         printsTask = task
         return task
+    }
+
+    /// CLA-105 D: the first frame with the parts apart costs time (the parts' shader path). One
+    /// small frame off screen, at the start of the press-and-hold, takes that cost before the
+    /// device opens. It does not count as apart, so it releases nothing.
+    func warmApart() {
+        let was = wasApart
+        _ = image(K3DPose(angle: 305, tilt: 20, ex: 0.1), screen: nil, size: CGSize(width: 64, height: 64), scale: 1)
+        wasApart = was
     }
 
     /// Frees the printed textures: the device is closed again.

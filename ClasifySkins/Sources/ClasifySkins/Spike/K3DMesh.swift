@@ -528,6 +528,23 @@ public struct K3DFlip {
         return flip
     }
 
+    /// CLA-105: the apart script runs: input waits (the trial's `busy`).
+    public func apartRuns(at now: Date) -> Bool { script == .apart && !isResting(at: now) }
+
+    /// CLA-105: the parts are apart, or the apart script runs.
+    public func isApart(at now: Date) -> Bool { exTo > 0 || apartRuns(at: now) }
+
+    /// CLA-105 D: the press-and-hold on the back started: the prints are drawn now and the
+    /// parts' first frame is drawn off screen, so the device opens with no wait.
+    @MainActor public static func prepareApart() {
+        guard let renderer = K3DRenderer.shared else { return }
+        renderer.preparePrints()
+        renderer.warmApart()
+    }
+
+    /// CLA-105 D: the hold was let go before it opened the device, or About was left.
+    @MainActor public static func releaseApart() { K3DRenderer.shared?.releasePrints() }
+
     /// The apart script opens the device (else it closes it).
     var opens: Bool { exTo > ex0 }
 

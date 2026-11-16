@@ -19,15 +19,28 @@ public struct K3DShowroom: Equatable {
     public static let slop = 4.0
     /// Change 297: the nudge comes 1.4 s after About first opens.
     public static let nudgeDelay = 1.4
+    /// CLA-105 D (the showroom trial, bt/show/index.html): a press with no move held 1.2 s on
+    /// the back takes the device apart. Apart, a drag turns it 0.6° per point and tilts it 0.3°
+    /// per point up to 35° each way; a click with no move puts it together.
+    public static let holdTime = 1.2, apartTiltPerPoint = 0.3, apartMaxTilt = 35.0
 
     /// The angle at the press, and the side the device was nearest then.
     public let angle0: Double, side0: Double
+    /// CLA-105 D: the tilt at the press, and whether the device was apart.
+    public let tilt0: Double, apart: Bool
     /// The drag went past `slop` at some time: the release is not a click.
     public private(set) var moved = false
 
     public init(flip: K3DFlip, at now: Date) {
         angle0 = flip.angle(at: now)
         side0 = (angle0 / 180).rounded() * 180
+        tilt0 = flip.tilt(at: now)
+        apart = flip.isApart(at: now)
+    }
+
+    /// CLA-105 D: a press on the device resting on its back, closed, may become the hold.
+    public static func canHold(flip: K3DFlip, at now: Date) -> Bool {
+        flip.toBack && flip.isResting(at: now) && !flip.isApart(at: now)
     }
 
     /// The `about.turn` flag (UserDefaults string): missing or "drag" turns the device with a
@@ -47,6 +60,10 @@ public struct K3DShowroom: Equatable {
     /// The pose while the drag holds the device: the drag `translation`, in points.
     public mutating func changed(_ translation: CGSize, flip: K3DFlip) -> K3DFlip {
         if abs(translation.width) + abs(translation.height) > Self.slop { moved = true }
+        if apart {
+            let tilt = min(Self.apartMaxTilt, max(-Self.apartMaxTilt, tilt0 + translation.height * Self.apartTiltPerPoint))
+            return flip.held(angle: angle0 + translation.width * Self.perPoint, tilt: tilt)
+        }
         let tilt = min(Self.maxTilt, max(-Self.maxTilt, translation.height * Self.tiltPerPoint))
         return flip.held(angle: angle0 + translation.width * Self.perPoint, tilt: tilt)
     }
@@ -62,6 +79,8 @@ public struct K3DShowroom: Equatable {
 
     /// The release: the turn that starts now.
     public func ended(flip: K3DFlip, reduceMotion: Bool, at now: Date) -> K3DFlip {
+        // CLA-105 D: apart, a click puts the device together; a drag leaves it where it is.
+        if apart { return moved ? flip : flip.apart(at: now) }
         let go = target(angle: flip.angle(at: now))
         if reduceMotion { return flip.swap(to: go.side, at: now) }
         return flip.go(to: go.side, time: go.time, soft: go.soft, at: now)
