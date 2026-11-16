@@ -67,6 +67,22 @@ import Testing
         #expect(s.stack == [Frame(screen: .login)])
     }
 
+    /// Settings > Service before the stored login is back: the switch starts its own restore, so
+    /// the old service's late result is stale (CTO on #254).
+    @Test func aServiceSwitchWhileRestoringDropsTheOldRestore() {
+        var s = afterSetup()
+        send(&s, .spotifyAppFound(true), .launch)
+        s.top.sel = s.rows(for: s.top).firstIndex(of: .settings) ?? -1
+        send(&s, .select, .select)  // Settings, then the Service row: Apple Music
+        #expect(send(&s, .menu) == [.setService(.appleMusic), .restoreSession(token: 2)])
+        #expect(s.service == .appleMusic && s.top.screen == .login && s.restoring && s.authAttempt == 2)
+        // The old Spotify restore answers late: dropped, for each of its results.
+        #expect(send(&s, .restored(token: 1, ok: true), .notPremium(token: 1), .accessDenied(token: 1)).isEmpty)
+        #expect(s.top.screen == .login && !s.signedIn && s.restoring)
+        send(&s, .restored(token: 2, ok: true))
+        #expect(s.stack.map(\.screen) == [.main] && s.signedIn && s.service == .appleMusic)
+    }
+
     /// The first launch ever still opens on Hello.
     @Test func theFirstLaunchStillOpensOnHello() {
         var s = AppState()
