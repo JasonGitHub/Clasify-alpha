@@ -301,6 +301,16 @@ final class K3DLayerView: MTKView {
     nonisolated static let exFade = 0.05
     /// The 2D picture's sampler: nearest when magnified, so at 0° each pixel is the picture's own.
     private let flatSampler: any MTLSamplerState
+    /// CLA-105 B3: the parts' printed textures (`K3DPrints`: tl, tp, tq). Drawn off the main
+    /// actor when the device starts to come apart (`preparePrints`); until they are ready the
+    /// parts show their plain colors. About 70 MB with mipmaps, so they are released when the
+    /// device is closed again.
+    private var prints: [any MTLTexture]?
+    private var printsTask: Task<Void, Never>?
+    /// Whether a frame with the parts apart was drawn since the device was last closed.
+    private var wasApart = false
+    /// Whether the printed textures are bound to the take-apart frames.
+    var printsReady: Bool { prints != nil }
     /// The front texture's bytes as bundled, read once: a turn's new screen goes into a copy.
     private let frontBytes: [UInt8]
 
@@ -313,6 +323,8 @@ final class K3DLayerView: MTKView {
         var pass: Float = 0
         /// CLA-119: 1 when the front shows the 2D layer.
         var flat: Float = 0
+        /// CLA-105 B3: 1 when the printed textures are bound; 0 draws each part's plain color.
+        var prints: Float = 0
     }
 
     /// CLA-105: closed, only the closed device draws, in one pass with back faces culled, as
@@ -473,9 +485,12 @@ final class K3DLayerView: MTKView {
 
     /// An RGBA texture with the bytes as they are (unorm, not sRGB), with mipmaps for the color,
     /// as the mock's power-of-two copies have.
-    private static func texture(_ device: any MTLDevice, _ queue: any MTLCommandQueue, _ bytes: [UInt8]?) -> (any MTLTexture)? {
+    private static func texture(
+        _ device: any MTLDevice, _ queue: any MTLCommandQueue, _ bytes: [UInt8]?,
+        width: Int = K3DTextures.width, height: Int = K3DTextures.height
+    ) -> (any MTLTexture)? {
         guard let bytes else { return nil }
-        let w = K3DTextures.width, h = K3DTextures.height
+        let w = width, h = height
         guard bytes.count == w * h * 4 else { return nil }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: true)
         descriptor.usage = [.shaderRead, .renderTarget]  // render target: so the blit can make the mipmaps
@@ -486,7 +501,7 @@ final class K3DLayerView: MTKView {
 
     /// Puts the bytes in level 0 and makes the smaller levels from them.
     private static func fill(_ texture: any MTLTexture, _ bytes: [UInt8], _ queue: any MTLCommandQueue) {
-        let w = K3DTextures.width, h = K3DTextures.height
+        let w = texture.width, h = texture.height
         texture.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: bytes, bytesPerRow: w * 4)
         guard let buffer = queue.makeCommandBuffer(), let blit = buffer.makeBlitCommandEncoder() else { return }
         blit.generateMipmaps(for: texture)
@@ -664,6 +679,58 @@ final class K3DLayerView: MTKView {
         return targets
     }
 
+    /// Starts drawing the printed textures off the main actor, if they are not ready or on the
+    /// way. Call it when a take-apart may start (the press-and-hold, or About opening); the first
+    /// apart frame calls it too. The task ends when they are bound.
+    @discardableResult func preparePrints() -> Task<Void, Never> {
+        if let printsTask { return printsTask }
+        let task = Task { [weak self] in
+            let bytes = await Task.detached(priority: .userInitiated) { K3DPrints.all() }.value
+            guard !Task.isCancelled, let self, let bytes else { return }
+            self.prints = self.printTextures(bytes)
+        }
+        printsTask = task
+        return task
+    }
+
+    /// Frees the printed textures: the device is closed again.
+    func releasePrints() {
+        printsTask?.cancel()
+        printsTask = nil
+        prints = nil
+    }
+
+    /// Draws the printed textures now, on the caller's thread. For the tests' design frames.
+    func makePrintsNow() {
+        guard prints == nil, let bytes = K3DPrints.all() else { return }
+        printsTask?.cancel()
+        printsTask = Task {}
+        prints = printTextures(bytes)
+    }
+
+    private func printTextures(_ bytes: K3DPrints.Bytes) -> [any MTLTexture]? {
+        let label = Self.texture(device, queue, bytes.label, width: K3DPrints.labelSize, height: K3DPrints.labelSize)
+        let board = Self.texture(device, queue, bytes.board, width: K3DPrints.boardSize.w, height: K3DPrints.boardSize.h)
+        let parts = Self.texture(device, queue, bytes.parts, width: K3DPrints.partsSize, height: K3DPrints.partsSize)
+        guard let label, let board, let parts else { return nil }
+        return [label, board, parts]
+    }
+
+    /// The prints for this frame: apart, they are bound once ready (and asked for if not on the
+    /// way); closed again after a take-apart, they are released.
+    private func printsFor(ex: Double) -> [any MTLTexture]? {
+        if ex > 0 {
+            wasApart = true
+            if prints == nil { preparePrints() }
+            return prints
+        }
+        if wasApart {
+            wasApart = false
+            releasePrints()
+        }
+        return nil
+    }
+
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
         var uniforms = Uniforms(
             mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt),
@@ -673,6 +740,8 @@ final class K3DLayerView: MTKView {
         // body is the old color, and shows the old color's picture. It fades as the parts move apart.
         let layer = self.layer(pose)
         uniforms.flat = layer?.weight ?? 0
+        let prints = printsFor(ex: pose.ex)
+        uniforms.prints = prints == nil ? 0 : 1
         let passes = Self.passes(ex: uniforms.ex)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
@@ -690,6 +759,8 @@ final class K3DLayerView: MTKView {
         encoder.setFragmentSamplerState(nearest, index: 1)
         encoder.setFragmentTexture(layer?.texture ?? flat, index: 3)
         encoder.setFragmentSamplerState(flatSampler, index: 2)
+        // Closed, no part reads the prints: the front texture stands in for them.
+        for index in 0..<3 { encoder.setFragmentTexture(prints?[index] ?? front, index: 4 + index) }
         let count = passes.all ? indexCount : closedIndexCount
         encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
         if passes.glass {

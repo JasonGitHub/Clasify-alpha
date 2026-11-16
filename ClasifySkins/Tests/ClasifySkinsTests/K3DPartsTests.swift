@@ -126,6 +126,7 @@ struct K3DPartsTests {
 
     func frame(_ pose: K3DPose, _ name: String) throws -> [UInt8] {
         let renderer = try #require(K3DRenderer.shared)
+        if pose.ex > 0 { renderer.makePrintsNow() }  // the design frames show the prints
         let bytes = try #require(renderer.image(pose, screen: nil, size: size, scale: 2))
         save(bytes, name)
         return bytes
@@ -172,6 +173,7 @@ struct K3DPartsTests {
             let shot = try #require(K3DSpike.snapshot(state))
             for (ex, name) in [(0.5, "half"), (1.0, "full")] {
                 let pose = K3DPose(angle: 305, tilt: 20, ex: ex, black: black)
+                renderer.makePrintsNow()
                 let bytes = try #require(renderer.image(pose, screen: shot, size: size, scale: 2))
                 save(bytes, "k3d-apart-305-\(name)-\(black ? "black" : "silver")-about")
                 #expect(width(bytes, row: 300) > 100)
@@ -191,5 +193,25 @@ struct K3DPartsTests {
         }
         guard let image, let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else { return }
         try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-\(name).png"))
+    }
+
+    /// CLA-105 B3: the first apart frame does not wait for the prints. They are drawn off the
+    /// main actor, bound when ready, and released when the device is closed again. Its own
+    /// renderer, so other tests' frames do not close it in between.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theFirstApartFrameDoesNotWaitForThePrints() async throws {
+        let renderer = try #require(K3DRenderer())
+        let clock = ContinuousClock()
+        let start = clock.now
+        _ = try #require(renderer.image(K3DPose(angle: 305, tilt: 20, ex: 0.1), screen: nil, size: size, scale: 2))
+        let first = clock.now - start
+        #expect(!renderer.printsReady, "the first frame does not draw the prints itself")
+        await renderer.preparePrints().value
+        let ready = clock.now - start
+        #expect(renderer.printsReady)
+        _ = try #require(renderer.image(K3DPose(angle: 305, tilt: 20, ex: 0.2), screen: nil, size: size, scale: 2))
+        #expect(renderer.printsReady)
+        _ = try #require(renderer.image(K3DPose(), screen: nil, size: size, scale: 2))
+        #expect(!renderer.printsReady, "closed again: the prints are released")
+        print("CLA-105 B3: first apart frame \(first), prints ready after \(ready)")
     }
 }
