@@ -245,8 +245,24 @@ final class K3DLayerView: MTKView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        if K3DRenderer.shared?.draw(in: self) == true { drewOnce = true }
+        guard let renderer = K3DRenderer.shared else { return }
+        if renderer.draw(in: self) { drewOnce = true }
+        // CLA-105: apart before the prints are bound, the parts show plain. Draw again once
+        // they are, as the device may rest and SwiftUI then asks for no new frame.
+        if pose.ex > 0, !renderer.printsReady, !waitsForPrints {
+            waitsForPrints = true
+            let task = renderer.preparePrints()
+            Task { [weak self] in
+                await task.value
+                guard let self else { return }
+                self.waitsForPrints = false
+                if renderer.printsReady { self.needsDisplay = true }
+            }
+        }
     }
+
+    /// A redraw waits for the prints.
+    private var waitsForPrints = false
 
     /// The renderer calls this when a frame drawn while `firstFrame` was set is on screen.
     func firstFrameShown() {
@@ -695,6 +711,28 @@ final class K3DLayerView: MTKView {
         return task
     }
 
+    /// CLA-105 D: the first frame with the parts apart costs time (the parts' shader path). One
+    /// small frame off screen, at the start of the press-and-hold, takes that cost before the
+    /// device opens. It does not count as apart, so it releases nothing. It is committed and not
+    /// waited for, so the press goes on at once; once per renderer is enough.
+    func warmApart() {
+        guard !warmed else { return }
+        let was = wasApart
+        defer { wasApart = was }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 64, height: 64, mipmapped: false)
+        descriptor.usage = .renderTarget
+        descriptor.storageMode = .private
+        guard let target = device.makeTexture(descriptor: descriptor), let buffer = queue.makeCommandBuffer(),
+              render(buffer, pose: K3DPose(angle: 305, tilt: 20, ex: 0.1), size: CGSize(width: 64, height: 64),
+                     center: CGPoint(x: 32, y: 32), pixelScale: 1, into: target)
+        else { return }
+        buffer.commit()
+        warmed = true
+    }
+
+    /// The warm-up frame was sent.
+    private(set) var warmed = false
+
     /// Frees the printed textures: the device is closed again.
     func releasePrints() {
         printsTask?.cancel()
@@ -710,7 +748,14 @@ final class K3DLayerView: MTKView {
         prints = printTextures(bytes)
     }
 
+    /// The main actor's time for the last bind: the level-0 copies and the mipmap commands (the
+    /// GPU makes the mipmaps after it). The tests print it to the CI log.
+    private(set) var printsBindTime: Duration?
+
     private func printTextures(_ bytes: K3DPrints.Bytes) -> [any MTLTexture]? {
+        let clock = ContinuousClock()
+        let start = clock.now
+        defer { printsBindTime = clock.now - start }
         let label = Self.texture(device, queue, bytes.label, width: K3DPrints.labelSize, height: K3DPrints.labelSize)
         let board = Self.texture(device, queue, bytes.board, width: K3DPrints.boardSize.w, height: K3DPrints.boardSize.h)
         let parts = Self.texture(device, queue, bytes.parts, width: K3DPrints.partsSize, height: K3DPrints.partsSize)

@@ -23,6 +23,10 @@ import SwiftUI
 /// The first time About opens, the device nudges once. The UserDefaults string `about.turn`
 /// says how: missing or "drag", a plain drag; "option", an Option-drag (a plain drag moves the
 /// window); "off" or any other value, build 224's About.
+///
+/// CLA-105 D, change 308 (the showroom trial): on the back, a press held 1.2 s with no move
+/// takes the device apart. Apart, a drag turns and tilts it, and a click puts it together and
+/// turns it to the front. While it opens or closes, input waits.
 struct K3DSpikeSkin: View {
     let store: Store
     let artwork: Artwork
@@ -40,6 +44,10 @@ struct K3DSpikeSkin: View {
     @State private var drag: K3DShowroom?
     /// The Option key is down: in the "option" mode, the case takes the drag only then.
     @State private var optionDown = false
+    /// CLA-105 D: the press-and-hold on the back that takes the device apart.
+    @State private var hold: Task<Void, Never>?
+    /// The hold opened the device: the rest of this press does nothing.
+    @State private var holdOpened = false
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -61,6 +69,7 @@ struct K3DSpikeSkin: View {
                 // Change 301: while the device is not at rest on the front, MENU turns it to the
                 // front and Play/Pause turns it over. Other input does nothing.
                 if showroom, drag != nil || !flip.restsOnFront(at: .now) {
+                    if flip.isApart(at: .now) { return }  // CLA-105 D: apart, the keys do nothing
                     if case .play = action, drag == nil {
                         turn()
                     } else if case .menu = action, drag == nil,
@@ -84,6 +93,8 @@ struct K3DSpikeSkin: View {
             if screen != .about && !flip.arriving && !flip.isSpinning(at: .now) {
                 flip = K3DFlip()
                 drag = nil
+                endHold()
+                K3DFlip.releaseApart()
             }
         }
         .onChange(of: ColorCue(top: store.state.top, black: store.state.shownColor == .black)) { old, new in
@@ -169,7 +180,7 @@ struct K3DSpikeSkin: View {
     /// and the wheel keep their jobs. During a drag and on the back it is the whole device.
     private var handle: some View {
         let size = PocketSkin.size
-        let whole = drag != nil || flip.toBack
+        let whole = drag != nil || flip.toBack || flip.isApart(at: .now)
         let shape = whole ? Path(CGRect(origin: .zero, size: size)) : K3DShowroom.casePath
         return Color.clear
             .frame(width: size.width, height: size.height)
@@ -186,6 +197,8 @@ struct K3DSpikeSkin: View {
     /// stops where it is at the press.
     private func dragged(_ translation: CGSize) {
         let now = Date.now
+        if holdOpened || (self.drag == nil && flip.apartRuns(at: now)) { return }
+        if self.drag == nil, K3DShowroom.canHold(flip: flip, at: now) { startHold() }
         var drag = self.drag ?? K3DShowroom(flip: flip, at: now)
         if self.drag == nil, !flip.isResting(at: now) {
             flip = flip.held(angle: flip.angle(at: now), tilt: flip.tilt(at: now))
@@ -194,12 +207,40 @@ struct K3DSpikeSkin: View {
             // The 3D front shows the screen as it is now: the picture is made before the turn.
             if flip.restsOnFront(at: now) { flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork)) }
             flip = drag.changed(translation, flip: flip)
+            if hold != nil, !drag.apart { endHold(release: true) }  // a move is not a hold
         }
         self.drag = drag
     }
 
+    /// CLA-105 D: the hold starts. The prints and the parts' first frame are made now, so the
+    /// device opens with no wait. After 1.2 s with no move, the device opens.
+    private func startHold() {
+        K3DFlip.prepareApart()
+        hold = Task { @MainActor in
+            do { try await Task.sleep(for: .seconds(K3DShowroom.holdTime)) } catch { return }
+            hold = nil
+            guard let drag, !drag.moved, showroom else { return }
+            self.drag = nil
+            holdOpened = true
+            flip = flip.apart(at: .now)
+        }
+    }
+
+    /// Stops a hold that has not opened the device. `release`: it frees the prints too.
+    private func endHold(release: Bool = false) {
+        guard let task = hold else { return }
+        task.cancel()
+        hold = nil
+        if release, !flip.isApart(at: .now) { K3DFlip.releaseApart() }
+    }
+
     /// Changes 304 and 305: a click turns the device over; a drag goes on or comes back.
     private func released() {
+        if holdOpened {
+            holdOpened = false
+            return
+        }
+        endHold(release: true)
         guard let drag else { return }
         self.drag = nil
         if !drag.moved, flip.restsOnFront(at: .now) { flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork)) }
@@ -209,7 +250,7 @@ struct K3DSpikeSkin: View {
     /// Change 304: a click on the 3D body where the handle is not (the screen or the wheel during
     /// a turn to the front) turns it over too.
     private func click() {
-        guard drag == nil else { return }
+        guard drag == nil, !flip.apartRuns(at: .now) else { return }
         flip = K3DShowroom(flip: flip, at: .now).ended(flip: flip, reduceMotion: reduceMotion, at: .now)
     }
 
