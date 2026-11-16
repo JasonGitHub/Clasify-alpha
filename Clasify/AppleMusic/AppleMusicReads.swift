@@ -3,10 +3,6 @@
 import ClasifyCore
 import Foundation
 @preconcurrency import MusicKit
-import os
-
-/// TEMP (Apple Music covers, CLA-103): counts only, never a title or an ID.
-private let timing = Logger(subsystem: AppID.bundle, category: "timing")
 
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
 /// Read-only: nothing here changes the library.
@@ -121,7 +117,6 @@ enum AppleMusicReads {
     /// Artists shows them), with every batch read, that have a song in the library albums.
     /// nil when a read fails.
     static func artists() async -> [ClasifyCore.Playlist]? {
-        let start = ContinuousClock.now
         guard var batch = try? await MusicLibraryRequest<MusicKit.Artist>().response().items else { return nil }
         var all = Array(batch)
         while batch.hasNextBatch {
@@ -138,12 +133,6 @@ enum AppleMusicReads {
             ClasifyCore.Playlist(id: AppleMusicID.artistPrefix + $0.id.rawValue, name: $0.name, tracks: [])
         }
         artistNames = Dictionary(list.map { ($0.id, $0.name) }) { first, _ in first }
-        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
-        timing.notice("""
-            apple artists (TEMP): artists from the request \(all.count, privacy: .public), \
-            artists shown \(list.count, privacy: .public), \
-            songs \(albums.reduce(0) { $0 + $1.songs.count }, privacy: .public), ms \(ms, privacy: .public)
-            """)
         return list
     }
 
@@ -183,11 +172,10 @@ enum AppleMusicReads {
     }
 
     /// The album list with every batch read (nil when that read fails), then each album's
-    /// songs, at most 4 reads at a time. An album whose read fails is left out, and the TEMP
-    /// line counts it, so one bad album never loses the list. Not checked on a Mac: the speed
-    /// with many albums (one read per album).
+    /// songs, at most 4 reads at a time. An album whose read fails is left out, so one bad
+    /// album never loses the list. Not checked on a Mac: the speed with many albums (one read
+    /// per album).
     private static func readLibrary() async -> [LibraryAlbum]? {
-        let start = ContinuousClock.now
         guard var batch = try? await MusicLibraryRequest<MusicKit.Album>().response().items else { return nil }
         let reads = AlbumReads()
         reads.albums = Array(batch)
@@ -208,18 +196,6 @@ enum AppleMusicReads {
             let key = ClasifyCore.Album(id: AppleMusicID.albumPrefix + album.id.rawValue, name: album.title, artist: album.artistName)
             albums.append((key, inOrder(songs)))
         }
-        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
-        let empty = albums.filter { $0.songs.isEmpty }.count
-        let itl = await AppleMusicArt.shared.counts()
-        timing.notice("""
-            apple library (TEMP): albums \(albums.count, privacy: .public), with 0 songs \(empty, privacy: .public), \
-            album songs \(albums.reduce(0) { $0 + $1.songs.count }, privacy: .public), \
-            album reads failed \(reads.albums.count - albums.count, privacy: .public), ms \(ms, privacy: .public); \
-            itunes library: albums \(itl.map { "\($0.albums)" } ?? "none", privacy: .public), \
-            songs \(itl.map { "\($0.songs)" } ?? "none", privacy: .public), \
-            purchased \(itl.map { "\($0.purchased)" } ?? "none", privacy: .public), \
-            cloud \(itl.map { "\($0.cloud)" } ?? "none", privacy: .public)
-            """)
         return albums
     }
 
@@ -256,7 +232,6 @@ enum AppleMusicReads {
     /// usable cover: opaque `LibraryCover` IDs that `ArtworkLoader` reads in memory.
     private static func libraryCovers(_ songs: [Song]) async -> [MusicItemID: Cover] {
         guard !songs.isEmpty else { return [:] }
-        let start = ContinuousClock.now
         let keys = songs.map { (id: $0.id.rawValue, key: LibraryKey.of(title: $0.title, artist: $0.artistName, album: $0.albumTitle)) }
         let match = await AppleMusicArt.shared.match(keys)
         var covers: [MusicItemID: Cover] = [:]
@@ -265,11 +240,6 @@ enum AppleMusicReads {
             covers[song.id] = Cover(
                 small: LibraryCover.coverID(persistentID: pid, side: 300), large: LibraryCover.coverID(persistentID: pid, side: 640))
         }
-        let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
-        timing.notice("""
-            apple covers (TEMP): asked \(songs.count, privacy: .public), matched by id \(match.byID, privacy: .public), \
-            by name \(match.byName, privacy: .public), with image \(covers.count, privacy: .public), ms \(ms, privacy: .public)
-            """)
         return covers
     }
 

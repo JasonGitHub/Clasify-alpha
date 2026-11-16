@@ -3,11 +3,6 @@ import Foundation
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
 // only on the main actor.
 @preconcurrency import MusicKit
-import os
-
-/// TEMP (CLA-103, build 202: Next and Previous do nothing in Shuffle Songs): one line per press,
-/// counts and flags only, no titles, no IDs.
-private let timing = Logger(subsystem: AppID.bundle, category: "timing")
 
 /// Plays Apple Music inside Clasify with MusicKit's `ApplicationMusicPlayer` (CLA-103). No
 /// other app opens: the spike (CLA-102, build 164) showed no Music.app window and no Dock icon.
@@ -68,12 +63,6 @@ final class AppleMusicPlayer: Player {
             guard id == loadID else { return }
             let list = tracks?.map { (id: AppleMusicID.song($0.id), keys: Self.keys($0)) } ?? []
             let start = QueueMatch.start(of: trackID, keys: Self.keys(song), in: list)
-            let kind = context.map { Self.kind($0) } ?? "none"
-            timing.notice("""
-                apple load (TEMP): context \(kind, privacy: .public), tracks \(tracks.map { "\($0.count)" } ?? "nil", privacy: .public), \
-                start found \(start.map { $0.byID ? "yes (row id)" : "yes (key)" } ?? "no", privacy: .public), \
-                song id same \(AppleMusicID.song(song.id) == trackID ? "yes" : "no", privacy: .public)
-                """)
             if let tracks, let start {
                 player.queue = ApplicationMusicPlayer.Queue(for: tracks, startingAt: tracks[start.index])
                 queued = QueueMatch(list)
@@ -153,52 +142,16 @@ final class AppleMusicPlayer: Player {
 
     func next(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(true); pendingSeek = nil; return logSkip(true, "loading yes") }  // the load runs it
-        guard hasQueue else { return logSkip(true, "no queue") }
-        Task { await skip(true) }  // the next poll reports the new track
+        if loading { pendingSkips.append(true); pendingSeek = nil; return }  // the load runs it
+        guard hasQueue else { return }
+        Task { _ = try? await player.skipToNextEntry() }  // the next poll reports the new track
     }
 
     func prev(generation: Int) {
         self.generation = generation
-        if loading { pendingSkips.append(false); pendingSeek = nil; return logSkip(false, "loading yes") }  // the load runs it
-        guard hasQueue else { return logSkip(false, "no queue") }
-        Task { await skip(false) }
-    }
-
-    /// The same skip as before, with a TEMP log line around it. Errors are still dropped.
-    private func skip(_ forward: Bool) async {
-        let before = currentIndex()
-        var threw = "no"
-        do {
-            if forward { _ = try await player.skipToNextEntry() } else { _ = try await player.skipToPreviousEntry() }
-        } catch {
-            threw = "\((error as NSError).domain) \((error as NSError).code)"
-        }
-        try? await Task.sleep(for: .milliseconds(600))
-        let resolved = player.queue.currentEntry.flatMap(storeID) != nil
-        logSkip(forward, "loading no, threw \(threw), entries \(player.queue.entries.count), index \(before) -> \(currentIndex()), "
-            + "resolved \(resolved ? "yes" : "no") (\(matchKind(player.queue.currentEntry))), status \(player.state.playbackStatus)")
-    }
-
-    /// TEMP: whether the entry's item is a song, and which key kind finds it in the queue.
-    private func matchKind(_ entry: ApplicationMusicPlayer.Queue.Entry?) -> String {
-        guard let entry else { return "no entry" }
-        let byName = entry.subtitle.flatMap { queued.id(title: entry.title, artist: $0) } != nil ? "title" : "none"
-        guard case .song(let song) = entry.item else { return "song no, entry \(byName)" }
-        let keys = Self.keys(song), none = "\u{1F}"  // a title and artist that match nothing
-        if queued.id(for: SongKeys(ids: keys.ids, title: none, artist: none)) != nil { return "song yes, id" }
-        if queued.id(for: SongKeys(ids: [], isrc: keys.isrc, title: none, artist: none)) != nil { return "song yes, isrc" }
-        return queued.id(for: keys) != nil ? "song yes, title" : "song yes, none, entry \(byName)"
-    }
-
-    /// TEMP: the current entry's place in the queue, or "none".
-    private func currentIndex() -> String {
-        guard let current = player.queue.currentEntry else { return "none" }
-        return player.queue.entries.firstIndex { $0.id == current.id }.map { "\($0)" } ?? "not in entries"
-    }
-
-    private func logSkip(_ forward: Bool, _ details: String) {
-        timing.notice("apple skip (TEMP): \(forward ? "next" : "prev", privacy: .public), shuffle \(self.shuffle ? "on" : "off", privacy: .public), \(details, privacy: .public)")
+        if loading { pendingSkips.append(false); pendingSeek = nil; return }  // the load runs it
+        guard hasQueue else { return }
+        Task { _ = try? await player.skipToPreviousEntry() }
     }
 
     func setShuffle(_ on: Bool) {
@@ -277,14 +230,6 @@ final class AppleMusicPlayer: Player {
 
     /// The keys that can name one song: its MusicKit ID, its catalog ID, its ISRC, and last its
     /// title with its artist.
-    /// TEMP: the kind of a play context, for the "apple load" line.
-    private static func kind(_ context: String) -> String {
-        if context == ClasifyCore.Playlist.likedSongsID { return "liked" }
-        if context == ClasifyCore.Playlist.songsID { return "songs" }
-        if ClasifyCore.Playlist.isArtistID(context) { return "artist" }
-        return ClasifyCore.Album.isID(context) ? "album" : "playlist"
-    }
-
     private static func keys(_ song: Song) -> SongKeys {
         SongKeys(
             ids: [song.id.rawValue] + (AppleMusicReads.catalogID(song).map { [$0] } ?? []),

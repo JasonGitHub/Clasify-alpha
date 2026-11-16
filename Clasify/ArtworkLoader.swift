@@ -162,7 +162,7 @@ final class ArtworkLoader {
         guard !loading.contains(coverID) else { return }
         let library = LibraryCover.parse(coverID)
         let url = library == nil ? CoverURL.url(for: coverID) : nil
-        guard library != nil || url != nil else { return logRefused(coverID) }
+        guard library != nil || url != nil else { return }
         if let failed = failedAt[coverID], ContinuousClock.now - failed < .seconds(30) { return }
         loading.insert(coverID)
         let start = ContinuousClock.now
@@ -186,16 +186,6 @@ final class ArtworkLoader {
                 timing.notice("cover: failed after \(Self.ms(since: start), privacy: .public) ms")
             }
         }
-    }
-
-    /// TEMP (build 183): the first Apple Music cover address that `CoverURL` refuses, once per
-    /// launch, as its scheme and host only.
-    private var refusedLogged = false
-    private func logRefused(_ coverID: String) {
-        guard !refusedLogged, !(coverID.count == 40 && coverID.allSatisfy(\.isHexDigit)) else { return }
-        refusedLogged = true
-        let parts = URLComponents(string: coverID)
-        timing.notice("cover refused: scheme \(parts?.scheme ?? "none", privacy: .public) host \(parts?.host ?? "none", privacy: .public)")
     }
 
     /// TEMP: logs each change of the playing track that the ticker sees, and its cover state.
