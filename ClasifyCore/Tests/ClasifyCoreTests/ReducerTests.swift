@@ -1184,7 +1184,7 @@ func playing(_ i: Int = 0) -> AppState {
         var s = afterSetup()
         // CLA-120: the main menu shows, and a list opens in its loading state with no read yet.
         #expect(send(&s, .launch, .wheel(1), .select, .menu) == [.restoreSession(token: 1)])
-        #expect(s.stack == [Frame(screen: .main)] && s.restoring)
+        #expect(s.stack.map(\.screen) == [.main] && s.restoring)  // back on the main menu, Playlists still selected
         send(&s, .reset, .restored(token: 1, ok: true))  // from before the reset
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn)
     }
