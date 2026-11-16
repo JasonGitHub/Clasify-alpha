@@ -53,6 +53,8 @@ struct K3DSpikeSkin: View {
     @State private var room = EdgeInsets()
     /// This skin's own window.
     @State private var window = WindowRoom.WindowRef()
+    /// CLA-119: the last change that input sent and `colorChanged` already handled.
+    @State private var handledCue: ColorCue?
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -89,7 +91,17 @@ struct K3DSpikeSkin: View {
                 if case .play = action, store.state.top.screen == .about, !flip.arriving {
                     turn()
                 } else {
+                    // CLA-119 (build 269: the centre black, or white, as a color spin started): a
+                    // color step starts its spin in this same update. Started later, in
+                    // `.onChange`, the step showed one frame first, and PocketSkin's 0.45 s
+                    // color fade began; SwiftUI kept adding that fade over the spin's old color,
+                    // so the 2D colors overshot past it for the spin's first frames.
+                    let before = cue
                     store.send(action)
+                    if cue != before {
+                        colorChanged(from: before, to: cue)
+                        handledCue = cue
+                    }
                 }
             }
             .environment(\.artwork, artwork)
@@ -109,7 +121,12 @@ struct K3DSpikeSkin: View {
                 K3DFlip.releaseApart()
             }
         }
-        .onChange(of: ColorCue(top: store.state.top, black: store.state.shownColor == .black)) { old, new in
+        .onChange(of: cue) { old, new in
+            // Input's own changes were handled as they were sent. Other changes come here.
+            if new == handledCue {
+                handledCue = nil
+                return
+            }
             colorChanged(from: old, to: new)
         }
         .task { await arrive() }
@@ -186,6 +203,9 @@ struct K3DSpikeSkin: View {
             turn: turn, fromBlack: old.black, screen: { K3DSpike.snapshot(state, artwork: artwork, wheel: wheel) },
             old: { K3DSpike.snapshot(state, artwork: artwork, wheel: wheel, black: old.black) })
     }
+
+    /// The screen, its row and the device's color, for `colorChanged`.
+    private var cue: ColorCue { ColorCue(top: store.state.top, black: store.state.shownColor == .black) }
 
     /// CLA-118: the About showroom is on.
     private var showroom: Bool {
