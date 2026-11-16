@@ -123,15 +123,7 @@ struct ClickWheel: View {
     private var live: Bool { catchesScroll && !preview }
 
     var body: some View {
-        face
-            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
-            .contentShape(Circle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
-            .onContinuousHover { phase in
-                if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
-            }
-            .onChange(of: hovered) { _, zone in if live { WheelLook.live.hovered = zone } }
-            .onChange(of: pressed) { _, zone in if live { WheelLook.live.pressed = zone } }
+        tracked
             .accessibilityElement()
             .accessibilityLabel("Click wheel")
             .accessibilityAdjustableAction { direction in
@@ -146,6 +138,24 @@ struct ClickWheel: View {
             .accessibilityAction(named: "Play or pause") { input(.play) }
             .accessibilityAction(named: "Next track") { input(.next) }
             .accessibilityAction(named: "Previous track") { input(.prev) }
+    }
+
+    /// The face with its input: scroll, drag, clicks and the pointer.
+    private var handled: some View {
+        face
+            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
+            .contentShape(Circle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
+            }
+    }
+
+    /// CLA-119: `handled`, and the key under the pointer and the pressed key go to `WheelLook.live`.
+    private var tracked: some View {
+        handled
+            .onChange(of: hovered) { (_: Zone?, zone: Zone?) in if live { WheelLook.live.hovered = zone } }
+            .onChange(of: pressed) { (_: Zone?, zone: Zone?) in if live { WheelLook.live.pressed = zone } }
     }
 
     /// The wheel, its labels, the lights and the center.
