@@ -323,7 +323,13 @@ public struct K3DFlip {
     static let shortTurn = 1.0, shortFrom = -60.0, shortScale = 0.8, shortFadeIn = 0.25, shortFade = 0.15
     static let shortHurry = 4.0
 
-    enum Script: Equatable { case flip, arrive, arriveShort, spin(Double) }
+    /// Card BT row 2 (CLA-118): the About showroom. `held` is a drag in progress, `go` a turn
+    /// of `go` seconds (`soft`: the turn-over landing, 306), `nudge` the first-time nudge (297),
+    /// `swap` the Reduce Motion side change (302).
+    enum Script: Equatable { case flip, arrive, arriveShort, spin(Double), held, go(Double, soft: Bool), nudge, swap }
+    /// Card BT row 2: a turn-over, the return of a short drag, the nudge, the Reduce Motion swap.
+    public static let turnOver = 0.8, dragReturn = 0.4, nudgeTime = 0.9, swapTime = 0.2
+    static let overshoot = 3.0, nudgeAngle = 16.0
 
     /// The angle the last turn started from and goes to, in degrees: 0 is the front, 180 the back.
     private(set) var from = 0.0, to = 0.0
@@ -334,6 +340,10 @@ public struct K3DFlip {
     private(set) var fromBlack = false
     /// A live picture of the device for the 3D front's screen, taken when the turn started.
     public private(set) var screen: CGImage?
+    /// Card BT row 2: the tilt (pitch, degrees) the script starts from, which levels out; and
+    /// whether it starts from the front at rest, where the 2D device shows.
+    private(set) var tilt0 = 0.0
+    private(set) var fromRest = false
     /// Change 303: when input hurried the short arrival, and the script time it had then.
     private(set) var hurriedAt: Date?
     private(set) var hurriedFrom = 0.0
@@ -411,6 +421,69 @@ public struct K3DFlip {
         return flip
     }
 
+    /// Card BT row 2: a drag in progress holds the device at `angle` and `tilt` (change 307),
+    /// with no clock. The screen picture stays.
+    public func held(angle: Double, tilt: Double) -> K3DFlip {
+        var flip = self
+        flip.script = .held
+        (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (angle, angle, .now, tilt, nil)
+        flip.fromRest = false
+        return flip
+    }
+
+    /// Card BT row 2: a turn from where the device is now to the side `to` (a multiple of 180°)
+    /// in `time` seconds. `soft` is the turn-over's landing (306): ease-out to 3° past the side
+    /// over 75 % of the time, then back with a quad in-out. Otherwise one ease-out (the return
+    /// of a short drag). The tilt levels out in the first half. Both angles shift by whole turns
+    /// so the device ends at 0 or 180.
+    public func go(to side: Double, time: Double, soft: Bool, at now: Date) -> K3DFlip {
+        var flip = self
+        let current = pose(at: now).angle, tilt = self.tilt(at: now)
+        let shift = 360 * (side / 360).rounded(.down)
+        flip.fromRest = restsOnFront(at: now)
+        flip.script = .go(time, soft: soft)
+        (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (current - shift, side - shift, now, tilt, nil)
+        return flip
+    }
+
+    /// Change 297: the first-time nudge, 16° and back on a quad in-out in 0.9 s, from the side the
+    /// device rests on.
+    public func nudge(at now: Date) -> K3DFlip {
+        var flip = self
+        let side = flip.toBack ? 180.0 : 0
+        flip.fromRest = restsOnFront(at: now)
+        flip.script = .nudge
+        (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (side, side, now, 0, nil)
+        return flip
+    }
+
+    /// Change 302, Reduce Motion: no turn. The 3D body fades out in 0.1 s and fades in on the
+    /// other side `to` in 0.1 s.
+    public func swap(to side: Double, at now: Date) -> K3DFlip {
+        var flip = self
+        let current = pose(at: now).angle
+        let shift = 360 * (side / 360).rounded(.down)
+        flip.fromRest = restsOnFront(at: now)
+        flip.script = .swap
+        (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (current - shift, side - shift, now, 0, nil)
+        return flip
+    }
+
+    /// The angle the device shows at `now`, in degrees.
+    public func angle(at now: Date) -> Double { pose(at: now).angle }
+
+    /// Change 307: the tilt (pitch, degrees) at `now`. A drag holds it; a turn from a drag
+    /// levels it out in the first half of the turn (trial: `tl0 (1 − eo(2u))`).
+    public func tilt(at now: Date) -> Double {
+        switch script {
+        case .held: return tilt0
+        case .go(let time, _):
+            let u = time > 0 ? min(1, max(0, elapsed(at: now) / time)) : 1
+            return tilt0 * (1 - Self.easeOut(min(1, 2 * u)))
+        default: return 0
+        }
+    }
+
     /// Puts a new picture in the 3D front's screen: during a spin the screen stays live.
     @MainActor public mutating func show(screen: CGImage?) {
         if let screen { K3DRenderer.shared?.prepare(screen: screen) }
@@ -445,11 +518,18 @@ public struct K3DFlip {
         case .arrive: Self.arriveTurn + Self.arriveFade
         case .arriveShort: Self.shortTurn
         case .spin(let turn): turn + 2 * Self.spinFade
+        case .held: 0
+        case .go(let time, _): time
+        case .nudge: Self.nudgeTime
+        case .swap: Self.swapTime
         }
     }
 
     /// The back shows, or the device turns to it.
-    public var toBack: Bool { to > 90 }
+    public var toBack: Bool {
+        let a = to.truncatingRemainder(dividingBy: 360), n = a < 0 ? a + 360 : a
+        return n > 90 && n < 270
+    }
 
     /// Starts a turn to the other side, from where the device is now.
     public mutating func toggle(at now: Date, screen: CGImage?) {
@@ -459,6 +539,8 @@ public struct K3DFlip {
         start = now
         script = .flip
         hurriedAt = nil
+        tilt0 = 0
+        fromRest = false
         if toBack { self.screen = screen }
     }
 
@@ -472,10 +554,10 @@ public struct K3DFlip {
     }
 
     /// No turn runs: the device rests on one side.
-    func isResting(at now: Date) -> Bool { elapsed(at: now) >= length }
+    public func isResting(at now: Date) -> Bool { elapsed(at: now) >= length }
 
     /// The front shows flat, with no turn running: the 2D skin can show.
-    public func restsOnFront(at now: Date) -> Bool { !toBack && isResting(at: now) }
+    public func restsOnFront(at now: Date) -> Bool { script != .held && !toBack && isResting(at: now) }
 
     /// An arrival runs: the 2D device must not show before the 3D body has drawn.
     public var arriving: Bool { script == .arrive || script == .arriveShort }
@@ -491,6 +573,16 @@ public struct K3DFlip {
         if case .spin(let turn) = script {
             return t < Self.spinFade ? 1 - max(0, t) / Self.spinFade : min(1, max(0, (t - Self.spinFade - turn) / Self.spinFade))
         }
+        switch script {
+        case .held: return 0
+        case .go, .nudge, .swap:
+            // Card BT row 2: out in the first 0.1 s from the resting front, in at the end on the front.
+            let gap = script == .swap ? Self.swapTime / 2 : 0
+            let fadeIn = toBack ? 0 : (t - gap - (length - gap - Self.fade)) / Self.fade
+            let out = fromRest ? 1 - t / Self.fade : 0
+            return min(1, max(0, max(fadeIn, out)))
+        default: break
+        }
         if !toBack { return min(1, max(0, (t - (Self.duration - Self.fade)) / Self.fade)) }
         return from == 0 ? min(1, max(0, 1 - t / Self.fade)) : 0
     }
@@ -499,6 +591,10 @@ public struct K3DFlip {
     /// 0.55 + 0.45 e, alpha min(1, 2u), with e the ease-out of u over 1.6 s). The short arrival
     /// (cold.py `arr`): scale 0.8 + 0.2 e over 1.0 s, alpha min(1, t / 0.25 s).
     func look(at now: Date) -> (scale: Double, opacity: Double) {
+        if script == .swap {
+            let t = min(Self.swapTime, max(0, elapsed(at: now)))
+            return (1, min(1, abs(1 - 2 * t / Self.swapTime)))
+        }
         if script == .arriveShort {
             let t = elapsed(at: now), e = Self.easeOut(min(1, max(0, t / Self.shortTurn)))
             return (Self.shortScale + (1 - Self.shortScale) * e, min(1, max(0, t / Self.shortFadeIn)))
@@ -515,6 +611,21 @@ public struct K3DFlip {
         }
         if script == .arriveShort {
             return (from + (to - from) * Self.easeOut(min(1, max(0, t / Self.shortTurn))), 0)
+        }
+        switch script {
+        case .held: return (from, 0)
+        case .go(let time, let soft):
+            let u = time > 0 ? min(1, max(0, t / time)) : 1
+            guard soft else { return (from + (to - from) * Self.easeOut(u), 0) }
+            let over = Self.overshoot * (to < from ? -1 : 1)
+            if u < 0.75 { return (from + (to + over - from) * Self.easeOut(u / 0.75), 0) }
+            return (to + over * (1 - Self.quad((u - 0.75) / 0.25)), 0)
+        case .nudge:
+            // At rest exactly on the side, so a later flip starts from the resting front.
+            guard t < Self.nudgeTime else { return (to, 0) }
+            return (to + Self.nudgeAngle * sin(.pi * Self.quad(max(0, t / Self.nudgeTime))), 0)
+        case .swap: return (t < Self.swapTime / 2 ? from : to, 0)
+        default: break
         }
         if case .spin(let turn) = script {
             // 360° is the front again: the pose at rest is 0, so a later flip starts from 0.

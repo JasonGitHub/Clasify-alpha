@@ -53,14 +53,14 @@ public struct K3DFlipView<Content: View>: View {
         TimelineView(.animation(paused: resting)) { context in
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
-            let pose = flip.pose(at: date), look = flip.look(at: date)
+            let pose = flip.pose(at: date), look = flip.look(at: date), tilt = flip.tilt(at: date)
             let black = flip.black(at: date, live: self.black)  // a spin shows the old color to 180°
             let flatDevice = content.environment(\.spinBlack, flip.blackOverride(at: date, live: self.black))
             K3DHandover(
                 flat: flat, ready: ready, hidesUntilReady: flip.arriving, keepsInput: flip.takesInput(at: date), content: flatDevice
             ) { shown in
                 // Never 0, as for `body3D`'s own opacity: a hidden Metal view does not draw.
-                body3D(angle: pose.angle, lift: pose.lift, scale: look.scale, black: black, shown: shown)
+                body3D(angle: pose.angle, lift: pose.lift, tilt: tilt, scale: look.scale, black: black, shown: shown)
                     .opacity(max(look.opacity, 0.001))
             }
         }
@@ -75,7 +75,7 @@ public struct K3DFlipView<Content: View>: View {
     }
 
     /// The 3D body and its shadow, under the 2D device that shows with opacity `shown`.
-    private func body3D(angle: Double, lift: Double, scale: Double, black: Bool, shown: Double) -> some View {
+    private func body3D(angle: Double, lift: Double, tilt: Double, scale: Double, black: Bool, shown: Double) -> some View {
         let shows = shown < 1
         let size = PocketSkin.size
         let ready = $ready
@@ -86,7 +86,7 @@ public struct K3DFlipView<Content: View>: View {
             // JST 11-14). At rest on the front, the 2D device draws its own.
             if shows { K3DShadow(angle: angle, lift: lift, black: black).scaleEffect(scale) }
             K3DMetalView(
-                angle: angle, lift: lift, scale: scale, black: black, screen: flip.screen,
+                angle: angle, lift: lift, tilt: tilt, scale: scale, black: black, screen: flip.screen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
                 onFirstFrame: { ready.wrappedValue = true })
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
@@ -143,6 +143,8 @@ struct K3DHandover<Flat: View, Body3D: View>: View {
 /// The Metal view, drawn on demand: SwiftUI's timeline asks for each frame.
 struct K3DMetalView: NSViewRepresentable {
     let angle: Double, lift: Double
+    /// Change 307: the tilt toward the viewer while the About drag holds the device, in degrees.
+    var tilt = 0.0
     /// The body's size on screen about the device's center: 1, or less while it arrives.
     var scale = 1.0
     let black: Bool
@@ -159,7 +161,7 @@ struct K3DMetalView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: K3DLayerView, context: Context) {
-        let pose = K3DPose(angle: angle, lift: lift, black: black, scale: scale)
+        let pose = K3DPose(angle: angle, lift: lift, tilt: tilt, black: black, scale: scale)
         // Draw only when the picture changes: the view stays mounted while the device rests.
         guard pose != view.pose || screen !== view.screen || center != view.deviceCenter || !view.drewOnce else { return }
         view.pose = pose
@@ -172,6 +174,8 @@ struct K3DMetalView: NSViewRepresentable {
 /// What the renderer draws: the turn, the push back, and the color.
 struct K3DPose: Equatable {
     var angle = 0.0, lift = 0.0
+    /// Change 307: the pitch, in degrees (k3d_src3.js `tilt`).
+    var tilt = 0.0
     var black = false
     /// The size on screen about the device's center (change 288). It scales the projection only,
     /// so the light on the body does not change.
@@ -383,7 +387,7 @@ final class K3DLayerView: MTKView {
 
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
         var uniforms = Uniforms(
-            mv: Self.modelView(angle: pose.angle, lift: pose.lift),
+            mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt),
             pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0,
             steel: Self.steelShows(angle: pose.angle))
         encoder.setRenderPipelineState(pipeline)
@@ -444,11 +448,14 @@ final class K3DLayerView: MTKView {
         return out
     }
 
-    /// The mock's M = Translate(0, 0, -2600 - lift) * RotY(angle), with no tilt.
-    static func modelView(angle: Double, lift: Double) -> simd_float4x4 {
+    /// The mock's M = Translate(0, 0, -2600 - lift) * RotX(tilt) * RotY(angle) (k3d_src3.js
+    /// `draw`). The tilt is 0 except while the About drag holds the device (change 307).
+    static func modelView(angle: Double, lift: Double, tilt: Double = 0) -> simd_float4x4 {
         let a = Float(angle * .pi / 180), ca = cos(a), sa = sin(a)
+        let b = Float(tilt * .pi / 180), cb = cos(b), sb = sin(b)
         return simd_float4x4(columns: (
-            SIMD4(ca, 0, -sa, 0), SIMD4(0, 1, 0, 0), SIMD4(sa, 0, ca, 0), SIMD4(0, 0, -distance - Float(lift), 1)))
+            SIMD4(ca, sb * sa, -cb * sa, 0), SIMD4(0, cb, sb, 0), SIMD4(sa, -sb * ca, cb * ca, 0),
+            SIMD4(0, 0, -distance - Float(lift), 1)))
     }
 
     /// A perspective with the mock's camera, scaled so the flat front (34 pt nearer than the
