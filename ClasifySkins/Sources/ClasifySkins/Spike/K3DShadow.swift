@@ -72,13 +72,15 @@ struct K3DShadow: View {
     /// CLA-119: the closed body's real outline on screen at a pose, in the 2D device's frame: the
     /// hull of the mesh's shell and plate points through the renderer's camera. The body is
     /// convex, so this is its silhouette.
+    /// The renderer's mesh is read, so the mesh is not built twice; with no renderer there is no
+    /// 3D body, and the cut is the section hull.
     static func cut(angle: Double, lift: Double, tilt: Double = 0) -> Path {
-        polygon(hull(outerPoints.map { projectBody($0, angle: angle, lift: lift, tilt: tilt) }))
+        guard let points = K3DRenderer.shared?.outerPoints else { return outline(angle: angle, lift: lift, tilt: tilt, drop: 0) }
+        return polygon(hull(points.map { projectBody($0, angle: angle, lift: lift, tilt: tilt) }))
     }
 
     /// The closed mesh's shell and plate points (parts 0 and 1), in the body's points, each once.
-    static let outerPoints: [SIMD3<Double>] = {
-        let mesh = K3DMesh()
+    nonisolated static func outerPoints(_ mesh: K3DMesh) -> [SIMD3<Double>] {
         var seen = Set<SIMD3<Int>>(), out: [SIMD3<Double>] = []
         for i in 0..<mesh.closedVertexCount {
             let e = i * K3DMesh.stride
@@ -87,7 +89,7 @@ struct K3DShadow: View {
             if seen.insert(SIMD3(Int((p.x * 4).rounded()), Int((p.y * 4).rounded()), Int((p.z * 4).rounded()))).inserted { out.append(p) }
         }
         return out
-    }()
+    }
 
     static func polygon(_ hull: [CGPoint]) -> Path {
         Path { path in

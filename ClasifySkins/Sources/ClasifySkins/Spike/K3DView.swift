@@ -243,6 +243,8 @@ final class K3DLayerView: MTKView {
     private let glassPipeline: any MTLRenderPipelineState
     private let glassDepth: any MTLDepthStencilState
     private let vertices: any MTLBuffer, indices: any MTLBuffer
+    /// CLA-119: the closed body's outer points, for the shadow's cut (`K3DShadow.cut`).
+    let outerPoints: [SIMD3<Double>]
     private let closedIndexCount: Int, indexCount: Int
     private let front: any MTLTexture, back: any MTLTexture, steel: any MTLTexture
     private let linear: any MTLSamplerState, nearest: any MTLSamplerState
@@ -289,6 +291,7 @@ final class K3DLayerView: MTKView {
         self.glassPipeline = glassPipeline
         self.glassDepth = glassDepth
         self.vertices = vertices
+        outerPoints = K3DShadow.outerPoints(mesh)
         self.indices = indices
         closedIndexCount = mesh.closedIndexCount
         indexCount = mesh.indices.count
