@@ -3,71 +3,84 @@ import Testing
 
 @testable import ClasifySkins
 
-/// CLA-105 PR C: the take-apart script, as mock K.3D.8 `explode` (k3d_src3.js line 647).
+/// CLA-105 PR C: the take-apart script, as the showroom trial Jason approved
+/// (design-review/round20/bt/show/index.html `open` and `close`, with mock K.3D.8 `explode`).
 struct K3DApartScriptTests {
     let t0 = Date(timeIntervalSinceReferenceDate: 1000)
     func at(_ s: Double) -> Date { t0.addingTimeInterval(s) }
 
-    /// From the front: the parts move apart on a cubic in-out over 1.6 s, and the device turns to
-    /// -55° and tilts to 20° on a quad in-out over the first 1 / 1.8 of the time.
-    @Test func openingFromTheFrontTurnsAndTilts() {
-        let flip = K3DFlip().apart(at: t0)
-        #expect(flip.ex(at: at(0)) == 0 && flip.angle(at: at(0)) == 0 && flip.tilt(at: at(0)) == 0)
-        #expect(abs(flip.ex(at: at(0.8)) - 0.5) < 1e-9)
-        #expect(abs(flip.ex(at: at(0.4)) - K3DFlip.ease(0.25)) < 1e-9)
-        let turned = K3DFlip.apartTime / K3DFlip.apartTurnRate
-        #expect(abs(flip.angle(at: at(turned)) + 55) < 1e-9 && abs(flip.tilt(at: at(turned)) - 20) < 1e-9)
-        #expect(abs(flip.angle(at: at(turned / 2)) + 27.5) < 1e-9)
-        #expect(flip.ex(at: at(1.6)) == 1 && flip.angle(at: at(1.6)) == -55 && flip.tilt(at: at(1.6)) == 20)
-        #expect(flip.isResting(at: at(1.6)) && !flip.isResting(at: at(1.59)))
+    /// The device resting on the back, as the take-apart starts there.
+    var onBack: K3DFlip {
+        var flip = K3DFlip()
+        flip.toggle(at: t0.addingTimeInterval(-5), screen: nil)
+        return flip
     }
 
-    /// Apart, only the 3D parts show: no 2D device, and the device does not rest on the front.
+    /// Opening: a turn from 180° to 305° and a tilt to 20° in 0.7 s (quad in-out), with the
+    /// parts closed; then the parts move apart in 1.6 s (cubic in-out) at 305°.
+    @Test func openingTurnsThenMovesTheParts() {
+        let flip = onBack.apart(at: t0)
+        #expect(flip.angle(at: at(0)) == 180 && flip.tilt(at: at(0)) == 0 && flip.ex(at: at(0)) == 0)
+        #expect(abs(flip.angle(at: at(0.35)) - 242.5) < 1e-9 && abs(flip.tilt(at: at(0.35)) - 10) < 1e-9)
+        #expect(flip.ex(at: at(0.35)) == 0 && flip.ex(at: at(0.7)) == 0)
+        #expect(flip.angle(at: at(0.7)) == 305 && flip.tilt(at: at(0.7)) == 20)
+        #expect(abs(flip.ex(at: at(1.5)) - 0.5) < 1e-9 && flip.angle(at: at(1.5)) == 305)
+        #expect(abs(flip.ex(at: at(1.1)) - K3DFlip.ease(0.25)) < 1e-9)
+        #expect(flip.ex(at: at(2.3)) == 1 && flip.angle(at: at(2.3)) == 305 && flip.tilt(at: at(2.3)) == 20)
+        #expect(flip.isResting(at: at(2.3)) && !flip.isResting(at: at(2.29)))
+    }
+
+    /// The opening starts from the angle now as 0° to 360°: from -180° it is the same turn.
+    @Test func openingStartsFromTheAngleAsZeroTo360() {
+        let flip = onBack.held(angle: -180, tilt: 0).apart(at: t0)
+        #expect(flip.angle(at: at(0)) == 180 && flip.angle(at: at(0.7)) == 305)
+    }
+
+    /// While it opens and apart, only the 3D parts show: no 2D device, not at rest on the front.
     @Test func apartTheTwoDDeviceDoesNotShow() {
-        let flip = K3DFlip().apart(at: t0)
-        #expect(flip.restsOnFront(at: at(-1)) == false)
-        for s in [0.01, 0.5, 1.6, 10] {
+        let flip = onBack.apart(at: t0)
+        for s in [0.0, 0.35, 0.7, 1.5, 2.3, 10] {
             #expect(flip.flatOpacity(at: at(s)) == 0, "at \(s) s")
             #expect(!flip.restsOnFront(at: at(s)), "at \(s) s")
         }
     }
 
-    /// Closing keeps the angle and the tilt; closed at -55° it still does not rest on the front.
-    @Test func closingKeepsTheAngleAndTilt() {
-        let open = K3DFlip().apart(at: t0)
-        let close = open.apart(at: at(2))
-        #expect(close.ex(at: at(2)) == 1 && close.ex(at: at(3.6)) == 0)
-        #expect(abs(close.ex(at: at(2.8)) - 0.5) < 1e-9)
-        for s in [2.0, 2.5, 3.6] {
-            #expect(close.angle(at: at(s)) == -55 && close.tilt(at: at(s)) == 20, "at \(s) s")
+    /// Closing: the parts move together in 1.6 s where the device is (after a look-around drag),
+    /// then it turns to the front by the short way and levels out in 0.6 s. Only then it rests on
+    /// the front and the 2D device shows.
+    @Test func closingMovesThePartsThenTurnsToTheFront() {
+        let open = onBack.apart(at: t0)
+        let looked = open.held(angle: 400, tilt: 30)  // a drag while apart: 400° is 40°
+        let close = looked.apart(at: at(5))
+        #expect(close.ex(at: at(5)) == 1 && abs(close.ex(at: at(5.8)) - 0.5) < 1e-9 && close.ex(at: at(6.6)) == 0)
+        for s in [5.0, 5.8, 6.6] {
+            #expect(close.angle(at: at(s)) == 40 && close.tilt(at: at(s)) == 30, "at \(s) s")
+            #expect(close.flatOpacity(at: at(s)) == 0 && !close.restsOnFront(at: at(s)), "at \(s) s")
         }
-        #expect(!close.restsOnFront(at: at(3.6)))
-        #expect(close.flatOpacity(at: at(3.6)) == 0)
+        #expect(abs(close.angle(at: at(6.9)) - 20) < 1e-9 && abs(close.tilt(at: at(6.9)) - 15) < 1e-9)
+        #expect(!close.restsOnFront(at: at(7.19)))
+        #expect(close.angle(at: at(7.2)) == 0 && close.tilt(at: at(7.2)) == 0)
+        #expect(close.restsOnFront(at: at(7.2)) && close.flatOpacity(at: at(7.2)) == 1)
     }
 
-    /// Less than half apart, it opens again; more than half, it closes (mock `exv > .5`).
-    @Test func halfwayDecidesTheWay() {
-        let open = K3DFlip().apart(at: t0)
-        let early = open.apart(at: at(0.5))  // ex below 0.5: opens on from where it is
-        #expect(early.ex(at: at(0.5)) == open.ex(at: at(0.5)) && early.ex(at: at(2.1)) == 1)
-        let late = open.apart(at: at(1.0))  // ex above 0.5: closes
-        #expect(late.ex(at: at(2.6)) == 0)
+    /// The short way: from 305° the turn to the front goes through 330°, as -55° to 0°.
+    @Test func closingTurnsTheShortWay() {
+        let close = onBack.apart(at: t0).apart(at: at(3))
+        #expect(close.angle(at: at(4.6)) == -55 && abs(close.angle(at: at(4.9)) + 27.5) < 1e-9)
+        #expect(close.angle(at: at(5.2)) == 0)
     }
 
-    /// From the back, the angle stays; the tilt still comes to 20°.
-    @Test func openingFromTheBackKeepsTheAngle() {
-        var flip = K3DFlip()
-        flip.toggle(at: t0, screen: nil)
-        let apart = flip.apart(at: at(2))
-        #expect(apart.angle(at: at(3.6)) == 180 && apart.tilt(at: at(3.6)) == 20 && apart.ex(at: at(3.6)) == 1)
+    /// Input while the script runs changes nothing (the trial's `busy`).
+    @Test func theScriptRunsToItsEnd() {
+        let open = onBack.apart(at: t0)
+        let pressed = open.apart(at: at(1))
+        #expect(pressed.ex(at: at(3)) == 1 && pressed.angle(at: at(3)) == 305 && pressed.ends == open.ends)
+        #expect(open.apart(at: at(2.3)).ex(at: at(4)) < 1)  // ended: the next press closes
     }
 
-    /// A turn of the open device keeps it open.
-    @Test func aTurnKeepsTheDeviceOpen() {
-        let open = K3DFlip().apart(at: t0)
-        let held = open.held(angle: 200, tilt: 10)
-        #expect(held.ex(at: at(3)) == 1 && held.flatOpacity(at: at(3)) == 0)
-        let back = held.go(to: 180, time: 0.8, soft: true, at: at(3))
-        #expect(back.ex(at: at(5)) == 1)
+    /// A drag of the open device keeps it open.
+    @Test func aDragKeepsTheDeviceOpen() {
+        let held = onBack.apart(at: t0).held(angle: 200, tilt: 10)
+        #expect(held.ex(at: at(3)) == 1 && held.flatOpacity(at: at(3)) == 0 && !held.restsOnFront(at: at(3)))
     }
 }

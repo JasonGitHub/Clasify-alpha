@@ -348,11 +348,13 @@ public struct K3DFlip {
     /// Card BT row 2: a turn-over, the return of a short drag, the nudge, the Reduce Motion swap.
     public static let turnOver = 0.8, dragReturn = 0.4, nudgeTime = 0.9, swapTime = 0.2
     static let overshoot = 3.0, nudgeAngle = 16.0
-    /// CLA-105 Take apart (change 308; mock K.3D.8 `explode`): the parts move apart or together
-    /// in 1.6 s on a cubic in-out. Opening near the front, the device turns to -55° (305°) and
-    /// tilts to 20° on a quad in-out over the first 1 / 1.8 of the time.
-    public static let apartTime = 1.6
-    static let apartAngle = -55.0, apartTilt = 20.0, apartTurnRate = 1.8
+    /// CLA-105 Take apart (change 308; the showroom trial Jason approved, bt/show/index.html
+    /// `open` and `close`): opening, the device turns to 305° and tilts to 20° in 0.7 s on a
+    /// quad in-out, then the parts move apart in 1.6 s on a cubic in-out (mock K.3D.8
+    /// `explode`). Closing, the parts move together in 1.6 s where the device is, then it turns
+    /// to the front by the short way and levels out in 0.6 s.
+    public static let apartTurn = 0.7, apartTime = 1.6, closeTurn = 0.6
+    static let apartAngle = 305.0, apartTilt = 20.0
 
     /// The angle the last turn started from and goes to, in degrees: 0 is the front, 180 the back.
     private(set) var from = 0.0, to = 0.0
@@ -506,33 +508,42 @@ public struct K3DFlip {
         return flip
     }
 
-    /// CLA-105: takes the device apart, or puts it together if it is more than half apart, from
-    /// where it is now (mock `explode`). Opening within 10° of the front turns it to -55°, and
-    /// with less than 5° of tilt tilts it to 20°. Closing keeps the angle and the tilt.
+    /// CLA-105: takes the device apart if it is closed, or puts it together if it is apart.
+    /// Nothing happens while the apart script runs (the trial's `busy`). Opening starts from the
+    /// angle now, as 0° to 360°; closing turns from the angle now, as -180° to 180°, so the turn
+    /// to the front is the short way.
     public func apart(at now: Date) -> K3DFlip {
+        if script == .apart && !isResting(at: now) { return self }
         var flip = self
-        let current = pose(at: now).angle, tilt = self.tilt(at: now), ex = self.ex(at: now)
-        let open = ex <= 0.5
+        let current = pose(at: now).angle, tilt = self.tilt(at: now)
+        let opens = exTo == 0
+        let turn = (current.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
         flip.fromRest = restsOnFront(at: now)
         flip.script = .apart
-        (flip.from, flip.start, flip.tilt0, flip.hurriedAt) = (current, now, tilt, nil)
-        flip.to = open && abs(current) < 10 ? Self.apartAngle : current
-        flip.tiltTo = open && abs(tilt) < 5 ? Self.apartTilt : tilt
-        (flip.ex0, flip.exTo) = (ex, open ? 1 : 0)
+        (flip.start, flip.tilt0, flip.hurriedAt) = (now, tilt, nil)
+        (flip.from, flip.to) = opens ? (turn, Self.apartAngle) : (turn > 180 ? turn - 360 : turn, 0)
+        flip.tiltTo = opens ? Self.apartTilt : 0
+        (flip.ex0, flip.exTo) = opens ? (0, 1) : (1, 0)
         flip.oldScreen = nil
         return flip
     }
 
+    /// The apart script opens the device (else it closes it).
+    var opens: Bool { exTo > ex0 }
+
     /// CLA-105: how far apart the parts are at `now`: 0 closed, 1 apart.
     public func ex(at now: Date) -> Double {
         guard script == .apart else { return exTo }
-        let q = min(1, max(0, elapsed(at: now) / Self.apartTime))
-        return ex0 + (exTo - ex0) * Self.ease(q)
+        let t = elapsed(at: now) - (opens ? Self.apartTurn : 0)
+        return ex0 + (exTo - ex0) * Self.ease(min(1, max(0, t / Self.apartTime)))
     }
 
-    /// The share of the apart script's turn and tilt done at `now` (mock `eg`).
+    /// The share of the apart script's turn and tilt done at `now`: before the parts move when
+    /// it opens, after they close when it closes.
     func apartTurn(at now: Date) -> Double {
-        Self.quad(min(1, max(0, elapsed(at: now) / Self.apartTime * Self.apartTurnRate)))
+        let t = elapsed(at: now)
+        let u = opens ? t / Self.apartTurn : (t - Self.apartTime) / Self.closeTurn
+        return Self.quad(min(1, max(0, u)))
     }
 
     /// The angle the device shows at `now`, in degrees.
@@ -602,7 +613,7 @@ public struct K3DFlip {
         case .go(let time, _): time
         case .nudge: Self.nudgeTime
         case .swap: Self.swapTime
-        case .apart: Self.apartTime
+        case .apart: Self.apartTime + (opens ? Self.apartTurn : Self.closeTurn)
         }
     }
 
