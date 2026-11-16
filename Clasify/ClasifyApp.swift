@@ -15,6 +15,7 @@ struct PlainWindowApp: App {
                 .padding(DeviceWindow.margin)
                 .containerBackground(.clear, for: .window)
                 .gesture(WindowDragGesture())
+                .background(WindowShadowOff())
         }
         .windowStyle(.plain)
         .windowResizability(.contentSize)
