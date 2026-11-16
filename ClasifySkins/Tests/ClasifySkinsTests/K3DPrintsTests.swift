@@ -54,8 +54,9 @@ import Testing
         save(bytes, w, h, "board")
         for (name, x0) in [("wheel side", 0), ("chip side", w / 2)] {
             var text = 0, keepOut = 0
-            for y in stride(from: 0, to: h, by: 4) {
-                for x in stride(from: x0, to: x0 + w / 2, by: 4) {
+            // Every 2nd pixel: the texture is half the mock's size.
+            for y in stride(from: 0, to: h, by: 2) {
+                for x in stride(from: x0, to: x0 + w / 2, by: 2) {
                     let i = (y * w + x) * 4
                     if bytes[i] > 128 { text += 1 }
                     if bytes[i + 2] > 128 { keepOut += 1 }
