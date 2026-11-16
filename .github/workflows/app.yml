@@ -42,6 +42,7 @@ jobs:
           name: skin-snapshots
           path: ${{ runner.temp }}/snapshots
           if-no-files-found: ignore
+          retention-days: 3
       - name: Build the app with zero warnings
         run: |
           set -o pipefail
