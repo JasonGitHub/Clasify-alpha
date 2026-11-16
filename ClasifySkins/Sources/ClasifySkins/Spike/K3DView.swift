@@ -140,7 +140,10 @@ public struct K3DFlipView<Content: View>: View {
             // (`shows`). Then the 2D device's own shadow is off (`K3DHandover`), so one shadow
             // shows at any time, with no step where they hand over (shadow option 1, Jason 17:30
             // JST 11-14). At rest on the front, the 2D device draws its own.
-            if shows { K3DShadow(angle: angle, lift: lift, tilt: tilt, black: black).scaleEffect(scale) }
+            // CLA-105 (Jason OK 17:54 JST 11-16): the shadow is the closed body's, so it fades out
+            // as the device opens and back in as it closes. Open, there is none, as in the mock.
+            let fade = K3DShadow.fade(ex: ex)
+            if shows && fade > 0 { K3DShadow(angle: angle, lift: lift, tilt: tilt, black: black).scaleEffect(scale).opacity(fade) }
             K3DMetalView(
                 angle: angle, lift: lift, tilt: tilt, ex: ex, scale: scale, black: black, screen: flip.screen, oldScreen: flip.oldScreen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),

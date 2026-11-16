@@ -23,6 +23,15 @@ struct K3DShadow: View {
     /// How far inside the body's outline the cut runs, in points. The body hides the shadow there.
     static let cutInset: CGFloat = 1.5
 
+    /// CLA-105 (Jason's take-apart picture, 17:45 JST 11-16: a sharp line in the desktop between
+    /// the parts): the shadow and its cut are the closed body's, so between the spread parts the
+    /// cut showed as a clear hole with a shadow rim. The shadow's opacity for a take-apart `ex`:
+    /// 1 when closed (exactly today's shadow), smoothly to 0 at `ex` 0.15, and 0 when open, as in
+    /// the mock's take-apart. The close runs it back.
+    static func fade(ex: Double) -> Double {
+        1 - K3DRenderer.smooth(ex / 0.15)
+    }
+
     /// Room round the device, so the shadow and its cut have the whole area to draw on.
     static let room: CGFloat = 120
 
