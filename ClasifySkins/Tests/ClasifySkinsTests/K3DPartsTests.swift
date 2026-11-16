@@ -1,4 +1,5 @@
 import AppKit
+import ClasifyCore
 import Foundation
 import Metal
 import Testing
@@ -59,6 +60,28 @@ struct K3DPartsTests {
         var got: [Int: Int] = [:]
         for i in 0..<mesh.vertexCount { got[Int(value(i, 11)), default: 0] += 1 }
         #expect(got == want)
+    }
+
+    /// #264 design check: the screen module's face (part 4, material 3) reads the picture at the
+    /// closed front's uv (the mock's `uvOf`, and `pu = vuv`), so its LCD picture is the closed
+    /// device's size. The picture's rect (the front texture's pixels 66 to 666 and 65 to 515)
+    /// lies inside the module's face, so no picture pixel falls outside the module.
+    @Test func theModuleShowsThePictureAtTheClosedSize() {
+        var worst = 0.0, n = 0
+        var lo = (x: Double.infinity, y: Double.infinity), hi = (x: -Double.infinity, y: -Double.infinity)
+        for i in 0..<mesh.vertexCount where value(i, 12) == 4 && value(i, 11) == 3 {
+            let x = value(i, 0), y = value(i, 1)
+            let du = abs(value(i, 6) - (x / 366 + 0.5)), dv = abs(value(i, 7) - (0.5 - y / 613))
+            worst = max(worst, du, dv)
+            lo = (min(lo.x, x), min(lo.y, y))
+            hi = (max(hi.x, x), max(hi.y, y))
+            n += 1
+        }
+        #expect(n > 0)
+        #expect(worst < 1e-4, "uv off by \(worst)")
+        let picture = (x0: 66.0 / 2 - 183, x1: 666.0 / 2 - 183, y0: 306.5 - 515.0 / 2, y1: 306.5 - 65.0 / 2)
+        #expect(lo.x <= picture.x0 && hi.x >= picture.x1, "module x \(lo.x)...\(hi.x), picture \(picture.x0)...\(picture.x1)")
+        #expect(lo.y <= picture.y0 && hi.y >= picture.y1, "module y \(lo.y)...\(hi.y), picture \(picture.y0)...\(picture.y1)")
     }
 
     /// Nothing new draws on the closed device: everything after it is a Take apart material (above
@@ -136,6 +159,24 @@ struct K3DPartsTests {
             }
         }
         _ = try frame(K3DPose(angle: 180, ex: 1), "k3d-apart-back")
+    }
+
+    /// The open pose with the About screen, as the mock's frames show it, for a 1:1 design check:
+    /// `pocket-k3d-apart-305-{half,full}-{silver,black}-about.png`.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func apartWithTheAboutScreen() throws {
+        let renderer = try #require(K3DRenderer.shared)
+        for black in [false, true] {
+            var state = AppState()
+            state.deviceColor = black ? .black : .silver
+            state.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
+            let shot = try #require(K3DSpike.snapshot(state))
+            for (ex, name) in [(0.5, "half"), (1.0, "full")] {
+                let pose = K3DPose(angle: 305, tilt: 20, ex: ex, black: black)
+                let bytes = try #require(renderer.image(pose, screen: shot, size: size, scale: 2))
+                save(bytes, "k3d-apart-305-\(name)-\(black ? "black" : "silver")-about")
+                #expect(width(bytes, row: 300) > 100)
+            }
+        }
     }
 
     func save(_ bytes: [UInt8], _ name: String) {
