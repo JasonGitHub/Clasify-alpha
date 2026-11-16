@@ -78,4 +78,12 @@ import Testing
         #expect(text > 500 && stamp > 50, "text \(text), stamp \(stamp)")
         #expect(tick == 0, "no pen tick")
     }
+
+    /// The time to draw all three, for the log (they are drawn off the main actor).
+    @Test func theDrawingTimeIsLogged() throws {
+        let clock = ContinuousClock()
+        let start = clock.now
+        _ = try #require(K3DPrints.all())
+        print("CLA-105 B3: K3DPrints.all() took \(clock.now - start)")
+    }
 }

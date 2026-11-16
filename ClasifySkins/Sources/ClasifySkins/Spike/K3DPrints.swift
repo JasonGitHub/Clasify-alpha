@@ -11,9 +11,21 @@ import Foundation
 ///   right. Blue marks where no loose part may sit under the text.
 /// - `parts` (`tq`, 2048 x 2048): the drive board's print, the shell floor's etched text, the
 ///   shield's stamped text (red), and three strips: frame, wheel back, plate back.
-/// They are made only when the device first comes apart, and kept in memory only.
+/// They are made off the main actor when the device starts to come apart, kept in memory
+/// only, and released when it is closed again (`K3DRenderer.preparePrints`).
 enum K3DPrints {
     static let labelSize = 1024, boardSize = (w: 4096, h: 2048), partsSize = 2048
+
+    /// The three textures' bytes. Plain arrays, so they are made off the main actor.
+    struct Bytes: Sendable {
+        let label: [UInt8], board: [UInt8], parts: [UInt8]
+    }
+
+    /// All three, or nil if a canvas cannot be made.
+    static func all() -> Bytes? {
+        guard let label = label(), let board = board(), let parts = parts() else { return nil }
+        return Bytes(label: label, board: board, parts: parts)
+    }
 
     static func label() -> [UInt8]? {
         guard let x = Canvas(width: labelSize, height: labelSize) else { return nil }

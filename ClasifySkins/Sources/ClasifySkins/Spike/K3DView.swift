@@ -301,9 +301,16 @@ final class K3DLayerView: MTKView {
     nonisolated static let exFade = 0.05
     /// The 2D picture's sampler: nearest when magnified, so at 0° each pixel is the picture's own.
     private let flatSampler: any MTLSamplerState
-    /// CLA-105 B3: the parts' printed textures (`K3DPrints`: tl, tp, tq), made when the device
-    /// first comes apart. Kept in memory only.
+    /// CLA-105 B3: the parts' printed textures (`K3DPrints`: tl, tp, tq). Drawn off the main
+    /// actor when the device starts to come apart (`preparePrints`); until they are ready the
+    /// parts show their plain colors. About 70 MB with mipmaps, so they are released when the
+    /// device is closed again.
     private var prints: [any MTLTexture]?
+    private var printsTask: Task<Void, Never>?
+    /// Whether a frame with the parts apart was drawn since the device was last closed.
+    private var wasApart = false
+    /// Whether the printed textures are bound to the take-apart frames.
+    var printsReady: Bool { prints != nil }
     /// The front texture's bytes as bundled, read once: a turn's new screen goes into a copy.
     private let frontBytes: [UInt8]
 
@@ -672,17 +679,56 @@ final class K3DLayerView: MTKView {
         return targets
     }
 
-    /// The three printed textures, made on first use.
-    private func printTextures() -> [any MTLTexture]? {
-        if let prints { return prints }
-        let made = [
-            Self.texture(device, queue, K3DPrints.label(), width: K3DPrints.labelSize, height: K3DPrints.labelSize),
-            Self.texture(device, queue, K3DPrints.board(), width: K3DPrints.boardSize.w, height: K3DPrints.boardSize.h),
-            Self.texture(device, queue, K3DPrints.parts(), width: K3DPrints.partsSize, height: K3DPrints.partsSize),
-        ].compactMap { $0 }
-        guard made.count == 3 else { return nil }
-        prints = made
-        return made
+    /// Starts drawing the printed textures off the main actor, if they are not ready or on the
+    /// way. Call it when a take-apart may start (the press-and-hold, or About opening); the first
+    /// apart frame calls it too. The task ends when they are bound.
+    @discardableResult func preparePrints() -> Task<Void, Never> {
+        if let printsTask { return printsTask }
+        let task = Task { [weak self] in
+            let bytes = await Task.detached(priority: .userInitiated) { K3DPrints.all() }.value
+            guard !Task.isCancelled, let self, let bytes else { return }
+            self.prints = self.printTextures(bytes)
+        }
+        printsTask = task
+        return task
+    }
+
+    /// Frees the printed textures: the device is closed again.
+    func releasePrints() {
+        printsTask?.cancel()
+        printsTask = nil
+        prints = nil
+    }
+
+    /// Draws the printed textures now, on the caller's thread. For the tests' design frames.
+    func makePrintsNow() {
+        guard prints == nil, let bytes = K3DPrints.all() else { return }
+        printsTask?.cancel()
+        printsTask = Task {}
+        prints = printTextures(bytes)
+    }
+
+    private func printTextures(_ bytes: K3DPrints.Bytes) -> [any MTLTexture]? {
+        let label = Self.texture(device, queue, bytes.label, width: K3DPrints.labelSize, height: K3DPrints.labelSize)
+        let board = Self.texture(device, queue, bytes.board, width: K3DPrints.boardSize.w, height: K3DPrints.boardSize.h)
+        let parts = Self.texture(device, queue, bytes.parts, width: K3DPrints.partsSize, height: K3DPrints.partsSize)
+        guard let label, let board, let parts else { return nil }
+        return [label, board, parts]
+    }
+
+    /// The prints for this frame: apart, they are bound once ready (and asked for if not on the
+    /// way); closed again after a take-apart, they are released.
+    private func printsFor(ex: Double) -> [any MTLTexture]? {
+        if ex > 0 {
+            wasApart = true
+            if prints == nil { preparePrints() }
+            return prints
+        }
+        if wasApart {
+            wasApart = false
+            releasePrints()
+        }
+        return nil
     }
 
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
@@ -694,7 +740,7 @@ final class K3DLayerView: MTKView {
         // body is the old color, and shows the old color's picture. It fades as the parts move apart.
         let layer = self.layer(pose)
         uniforms.flat = layer?.weight ?? 0
-        let prints = pose.ex > 0 ? printTextures() : nil
+        let prints = printsFor(ex: pose.ex)
         uniforms.prints = prints == nil ? 0 : 1
         let passes = Self.passes(ex: uniforms.ex)
         encoder.setRenderPipelineState(pipeline)
