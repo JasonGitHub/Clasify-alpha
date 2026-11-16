@@ -109,6 +109,12 @@ import simd
         #expect(abs(front.angle(at: t0.addingTimeInterval(0.6)) - 3) < 1e-9)
         #expect(front.restsOnFront(at: t0.addingTimeInterval(0.8)))
         #expect(K3DShowroom.front(flip: K3DFlip(), reduceMotion: false, at: t0) == nil)
+        // Early in a turn to the back (77° after 0.1 s), MENU goes back to the front.
+        let away = K3DFlip().go(to: 180, time: K3DFlip.turnOver, soft: true, at: t0)
+        let t = t0.addingTimeInterval(0.1)
+        #expect(away.angle(at: t) < 90)
+        let back = try #require(K3DShowroom.front(flip: away, reduceMotion: false, at: t))
+        #expect(!back.toBack && back.angle(at: t.addingTimeInterval(0.8)) == 0)
     }
 
     /// Change 302: with Reduce Motion the side changes with a 0.2 s crossfade, and no turn.

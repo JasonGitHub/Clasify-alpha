@@ -71,9 +71,9 @@ public struct K3DShowroom: Equatable {
     /// device is not on the back.
     public static func front(flip: K3DFlip, reduceMotion: Bool, at now: Date) -> K3DFlip? {
         guard flip.toBack else { return nil }
-        let side = (flip.angle(at: now) / 180).rounded() * 180
-        // The nearest front: the side before or after the back the device is on.
-        let to = side + (flip.angle(at: now) < side ? -180 : 180)
+        // The nearest front, a multiple of 360°. Early in a turn to the back the nearest side is
+        // still the front, so the target is not "the nearest side + 180°".
+        let to = (flip.angle(at: now) / 360).rounded() * 360
         if reduceMotion { return flip.swap(to: to, at: now) }
         return flip.go(to: to, time: K3DFlip.turnOver, soft: true, at: now)
     }
