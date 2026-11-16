@@ -57,16 +57,17 @@ public struct K3DFlipView<Content: View>: View {
             let black = flip.black(at: date, live: self.black)  // a spin shows the old color to 180°
             let flatDevice = content.environment(\.spinBlack, flip.blackOverride(at: date, live: self.black))
             K3DHandover(
-                flat: flat, ready: ready, hidesUntilReady: flip.arriving, keepsInput: flip.isSpinning(at: date), content: flatDevice
+                flat: flat, ready: ready, hidesUntilReady: flip.arriving, keepsInput: flip.takesInput(at: date), content: flatDevice
             ) { shown in
                 // Never 0, as for `body3D`'s own opacity: a hidden Metal view does not draw.
                 body3D(angle: pose.angle, lift: pose.lift, scale: look.scale, black: black, shown: shown)
                     .opacity(max(look.opacity, 0.001))
             }
         }
-        .task(id: flip.start) {
-            // When the turn ends, run the body again so the timeline pauses.
-            let left = flip.length - Date.now.timeIntervalSince(flip.start)
+        .task(id: flip.ends) {
+            // When the turn ends, run the body again so the timeline pauses. A hurried short
+            // arrival (change 303) ends sooner, so its end starts a new wait.
+            let left = flip.ends.timeIntervalSinceNow
             guard left > 0 else { return }
             try? await Task.sleep(for: .seconds(left + 0.05))
             settled += 1
@@ -116,8 +117,8 @@ struct K3DHandover<Flat: View, Body3D: View>: View {
     let ready: Bool
     /// The arrival (change 288): until the 3D body is ready, nothing shows, not the 2D device.
     var hidesUntilReady = false
-    /// A color spin (changes 289 and 290): the hidden 2D device still takes the wheel's clicks
-    /// and drags. 0.001, not 0: a view at opacity 0 takes no clicks.
+    /// A color spin (changes 289 and 290) or the short arrival (change 303): the hidden 2D
+    /// device still takes the wheel's clicks and drags. 0.001, not 0: a view at opacity 0 takes no clicks.
     var keepsInput = false
     let content: Flat
     @ViewBuilder let body3D: (Double) -> Body3D
