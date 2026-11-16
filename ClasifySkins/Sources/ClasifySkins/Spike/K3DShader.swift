@@ -231,9 +231,64 @@ enum K3DShader {
 
     // Take apart: the parts' inner faces and the inside of the device (materials 11 to 45), plain
     // colors lit by the physical light. The mock's `vm>10.5` block. `glass` is 1 in the window's
-    // clear middle. The fine detail and the prints are not ported yet: those faces show their
-    // plain color.
-    float3 inner(float id, float3 n, float3 v, float3 r, float3 vp, float3 vo, float3x3 M, float pt, float blk, float ex, float glass) {
+    // clear middle. CLA-105 B2: the mock's "real materials" detail (k3d_src3.js, Jason 23:04 JST
+    // 11-13 and later): flex traces, the board's parts and white print, the drive's metal, shadows
+    // where parts lie on each other, and the edge light. The printed textures (tl, tp, tq) come
+    // in B3: until then their places show the plain material.
+    float rIn(float2 o, float x0, float x1, float y0, float y1) { return min(min(o.x - x0, x1 - o.x), min(o.y - y0, y1 - o.y)); }
+    float sdQ(float2 p, float2 a, float2 b) { float2 d = abs(p - (a + b) * 0.5) - abs(b - a) * 0.5; return max(d.x, d.y); }
+    // The mock's `bxf`: a printed outline box.
+    float printBox(float2 o, float x0, float x1, float y0, float y1) { return ss(0.5, 0.15, abs(rIn(o, x0, x1, y0, y1))); }
+    float hash2(float2 p, float2 k, float m) { return fract(sin(dot(p, k)) * m); }
+    // The shell's flat ribbon (the mock's `dB`): its distance, square corners.
+    float ribbon(float2 o) {
+        float d = min(sdQ(o, float2(-158.0, 223.0), float2(-119.0, 223.0)), sdQ(o, float2(-12.0, 10.0), float2(173.0, 10.0)));
+        d = min(d, sdQ(o, float2(-119.0, 262.0), float2(-119.0, 179.0)));
+        d = min(d, sdQ(o, float2(-119.0, 179.0), float2(-39.0, 179.0)));
+        d = min(d, sdQ(o, float2(-39.0, 179.0), float2(-39.0, 151.0)));
+        d = min(d, sdQ(o, float2(-39.0, 151.0), float2(131.0, 151.0)));
+        d = min(d, sdQ(o, float2(131.0, 129.0), float2(131.0, 180.0)));
+        d = min(d, sdQ(o, float2(-12.0, 129.0), float2(131.0, 129.0)));
+        return min(d, sdQ(o, float2(-12.0, 129.0), float2(-12.0, 10.0)));
+    }
+    // The logic board's front: fine traces, small parts, pads and white print (Jason 13:27 and
+    // 13:54 JST 11-14). `fr0` is 1 on its front face.
+    float3 boardDetail(float3 c, float2 o, float2 w, float rho, float fr0) {
+        float clr = min(step(56.0, rho) + step(0.5, 1.0 - fr0), 1.0);  // the center disc on the front stays clean
+        float2 tf = fract(o / float2(26.0, 19.0));
+        float th = hash2(floor(o / float2(26.0, 19.0)), float2(41.3, 17.7), 9173.3);
+        float trA = step(abs(tf.y - 0.5), 0.035) * step(0.1, tf.x) * step(tf.x, 0.5 + 0.4 * th);
+        float trB = step(abs(tf.x - 0.5 - 0.4 * th), 0.03) * step(tf.y, 0.5) * step(0.12, tf.y);
+        c = mix(c, c + float3(0.045, 0.05, 0.045), min(step(th, 0.55) * (trA + trB), 1.0) * clr);
+        float2 sf = fract(o / float2(7.0, 5.0));
+        float s1 = hash2(floor(o / float2(7.0, 5.0)), float2(27.17, 91.3), 5831.7);
+        float s2 = hash2(floor(o / float2(42.0, 25.0)), float2(3.1, 7.7), 311.7);
+        float sk = step(s2, 0.50) * step(s1, mix(0.26, 0.12, fr0)) * step(0.15, sf.x) * step(sf.x, 0.25 + 0.6 * s1 / 0.26) * step(abs(sf.y - 0.5), 0.11);
+        c = mix(c, float3(0.70, 0.72, 0.70), 0.62 * sk * clr);
+        float2 pf = fract(o / float2(9.0, 7.0)) - 0.5;
+        float ph = hash2(floor(o / float2(9.0, 7.0)), float2(71.9, 33.1), 2713.9);
+        float zin = fr0 * step(rho, 100.0);
+        float zR = step(96.0, o.x) * step(-190.0, o.y) * step(o.y, -70.0);
+        float zL = step(o.x, -96.0) * step(o.y, -170.0) * step(-230.0, o.y);
+        float zd = fr0 * max(zR, zL);
+        c += float3(0.012, 0.015, 0.012) * zd;
+        float pp = step(mix(mix(0.87, 0.955, zin), 0.72, zd), ph) * step(abs(pf.x), 0.28) * step(abs(pf.y), 0.20);
+        float3 body = ph > 0.94 ? float3(0.42, 0.33, 0.22) : float3(0.13, 0.13, 0.14);
+        c = mix(c, mix(body, float3(0.80, 0.80, 0.78), step(0.17, abs(pf.x))), pp * clr);
+        if (fr0 < 0.5) return c;
+        float pr = max(max(printBox(o, -157.0, -99.0, -66.0, -18.0), printBox(o, -158.0, -122.0, -165.0, -103.0)), printBox(o, 22.0, 45.0, -62.0, -36.0));
+        pr = max(pr, max(max(printBox(o, 40.0, 104.0, -251.0, -231.0), printBox(o, 98.0, 138.0, -278.0, -267.0)), printBox(o, -60.0, -22.0, -207.0, -176.0)));
+        pr = max(pr, max(max(printBox(o, 110.0, 138.0, -208.5, -192.5), printBox(o, 110.0, 138.0, -244.5, -228.5)), printBox(o, 100.0, 156.0, -66.0, -16.0)));
+        pr *= step(3.6, abs(max(rho - 104.0, w.y - 97.0)));
+        c = mix(c, float3(0.76, 0.78, 0.76), 0.74 * pr);  // the printed labels' text (tp) comes in B3
+        float2 vq = o / 6.5, vf = fract(vq) - 0.5;
+        float vh = hash2(floor(vq), float2(17.1, 61.7), 7741.3);
+        float vreg = step(abs(o.x + 57.0), 32.0) * step(abs(o.y + 86.0), 22.0);
+        float vd = length(vf - 0.3 * (float2(vh, fract(vh * 7.0)) - 0.5));
+        return mix(c, float3(0.78, 0.80, 0.78), step(mix(0.90, 0.45, vreg), vh) * ss(0.20, 0.14, vd) * clr);
+    }
+
+    float3 inner(float id, float3 n, float3 v, float3 r, float3 vp, float3 vo, float3 von, float3x3 M, float pt, float blk, float ex, float glass) {
         float g = pow(clamp(physE(n, vp, vo, M), 0.0, 2.0), 0.4545);
         float2 o = vo.xy, w = o - float2(0.0, -127.0);
         float rho = length(w);
@@ -311,18 +366,118 @@ enum K3DShader {
             c = mix(c, float3(0.52, 0.33, 0.12), step(o.y, 62.0) * step(abs(o.x), 60.0));
         }
         // Metals reflect the room; the inside is darker until the parts are well apart.
-        float mt = 0.0, sh = 1.0;
+        float fz = step(0.9, abs(von.z)), fr0 = step(0.0, von.z), nh = max(dot(n, h), 0.0);
+        float mt = 0.0, ed = 99.0, sh = 1.0;
         if (id == 12.0 || id == 17.0 || id == 27.0 || id == 32.0 || id == 33.0 || id == 34.0 || id == 40.0) mt = 1.0;
         else if (id == 30.0 || id == 31.0) mt = 0.55;
+        // CLA-105 B2: the mock's real materials.
+        if (id == 16.0 && pt < 0.5) c = float3(0.84, 0.66, 0.24);
+        if (pt < 0.5 && id == 16.0 && o.x > 79.0 && o.y > 195.0)
+            c = float3(0.80, 0.46, 0.13) * (0.90 + 0.10 * step(0.5, fract(o.x * 0.9))) * (0.94 + 0.06 * step(0.5, fract(o.y * 0.45)));
+        if (pt < 0.5 && id == 12.0 && o.x > 83.0 && o.y > 213.0) {  // the jack and hold block: brushed steel, a round sleeve, screw heads
+            float bs = fract(sin(floor(o.x * 9.0) * 12.9898) * 43758.5453);
+            c *= (0.80 + 0.10 * bs) * (0.86 + 0.30 * ss(214.0, 284.0, o.y));
+            if (o.y > 264.0 && o.x > 118.0 && o.x < 136.0 && fz > 0.5) c *= 0.55 + 0.75 * pow(sin(3.14159 * (o.x - 118.0) / 18.0), 1.5);
+            float ds = min(length(o - float2(93.0, 275.0)), length(o - float2(143.0, 275.0)));
+            if (ds < 3.5) c *= 0.78 + 0.22 * ss(1.5, 3.4, ds); else c *= 1.0 - 0.25 * (1.0 - ss(3.5, 4.6, ds));
+        }
+        if (id == 16.0 && pt > 3.5 && pt < 4.5 && o.y < 24.0 && o.y > 5.0 && o.x > -66.0 && o.x < 84.0) c = float3(0.46, 0.63, 0.86);
+        if (id == 37.0) c += float3(0.16) * step(0.965, hash2(floor(o * 1.7), float2(39.3, 11.1), 4375.5));
+        if (id == 16.0 || id == 18.0 || id == 26.0 || id == 37.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
+        if (id == 35.0) c += 0.15 * pow(nh, 8.0) + 0.05 * ss(-0.3, 0.8, r.y);
+        if (id == 16.0 || id == 18.0) c += float3(0.14, 0.11, 0.06) * pow(nh, 10.0);
+        if (id == 26.0) c += 0.06 * pow(nh, 6.0);
+        if (id == 13.0 && fz > 0.5) {  // the board: gold pads and small parts
+            float2 cf = fract(o / 11.0) - 0.5;
+            float hs = hash2(floor(o / 11.0), float2(12.9898, 78.233), 43758.5453);
+            c = mix(c, mix(float3(0.80, 0.63, 0.28), float3(0.74, 0.76, 0.74), step(8.5, pt)), step(0.93, hs) * ss(0.15, 0.10, length(cf)));
+            float cp = step(hs, 0.045 * (1.0 - 0.7 * step(8.5, pt) * fr0 * step(rho, 100.0))) * step(abs(cf.x), 0.30) * step(abs(cf.y), 0.15);
+            c = mix(c, mix(float3(0.50, 0.41, 0.30), float3(0.78, 0.78, 0.76), step(0.19, abs(cf.x))), cp);
+            c += 0.035 * ss(-0.4, 0.8, r.y);
+        }
+        if (id == 13.0 && pt > 8.5 && fz > 0.5) c = boardDetail(c, o, w, rho, fr0);
+        if (id == 12.0 && pt > 6.5 && pt < 7.5) {  // the drive: fine brushing and a pressed ring
+            c *= 0.93 + 0.05 * sin(o.y * 8.3) + 0.03 * sin(o.y * 21.7 + o.x * 0.02);
+            float rb = length(o - float2(0.0, 34.0));
+            c *= 1.0 + 0.10 * ss(1.4, 0.0, abs(rb - 57.0)) * step(0.9, von.z) - 0.06 * ss(1.4, 0.0, abs(rb - 59.6)) * step(0.9, von.z);
+        }
+        if (id == 32.0 && fz > 0.5) ed = rIn(o, -158.0, 158.0, 40.0, 284.0);
+        if (id == 40.0) {  // the drive's back: screw holes and a pressed edge
+            float2 sq = float2(abs(o.x) - 144.0, abs(o.y + 80.0) - 196.0);
+            float sl = length(sq);
+            if (sl < 5.2) {
+                c = mix(c * 0.50, float3(0.80, 0.81, 0.83), ss(4.4, 3.7, sl));
+                c *= 1.0 - 0.55 * step(min(abs(sq.x), abs(sq.y)), 0.55) * step(sl, 2.7);
+            }
+            float2 d = abs(o - float2(0.0, -80.0)) - float2(146.0, 198.0);
+            float2 gd = d.x > d.y ? float2(sign(o.x), 0.0) : float2(0.0, sign(o.y + 80.0));
+            c *= 1.0 + 0.10 * ss(1.6, 0.0, abs(max(d.x, d.y) + 8.0)) * dot(gd, float2(-0.4, 0.9));
+            ed = rIn(o, -156.0, 156.0, -288.0, 128.0);
+        }
+        if (id == 27.0 && fz > 0.5) {  // the LCD's back: its edge and a pressed step
+            float2 d = abs(o - float2(0.0, 161.5)) - float2(150.0, 112.0);
+            ed = -(length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 4.0);
+            float2 e2 = abs(o - float2(0.0, 161.5)) - float2(136.0, 98.0);
+            float2 gd = e2.x > e2.y ? float2(sign(o.x), 0.0) : float2(0.0, sign(o.y - 161.5));
+            c *= 1.0 + 0.09 * ss(1.6, 0.0, abs(max(e2.x, e2.y))) * dot(gd, float2(-0.4, 0.9));
+        }
+        if (id == 35.0 && fz > 0.5) ed = rIn(o, -156.0, 80.0, 164.0, 256.0);
+        if (id == 13.0 && fz > 0.5) {  // the board: its edge, and the shadows of the parts on it
+            if (pt > 6.5 && pt < 7.5) {
+                ed = rIn(o, -140.0, 140.0, -272.0, -66.0);
+                sh *= mix(0.58, 1.0, ss(0.0, 6.0, -rIn(o, -60.0, 40.0, -200.0, -120.0))) * mix(0.58, 1.0, ss(0.0, 6.0, -rIn(o, 64.0, 124.0, -150.0, -90.0)));
+            } else {
+                ed = rIn(o, -162.0, 162.0, -290.0, -14.0);
+                if (fr0 > 0.5) {
+                    float2 a = abs(w);
+                    float ds = min(max(a.x, a.y), min(max(abs(a.x - 78.0), a.y), max(a.x, abs(a.y - 78.0)))) - 17.0;
+                    sh *= mix(0.55, 1.0, ss(0.0, 5.0, ds));
+                    sh *= mix(0.58, 1.0, ss(0.0, 6.0, -rIn(o, -150.0, -118.0, -262.0, -230.0))) * mix(0.55, 1.0, ss(0.0, 8.0, -rIn(o, -166.0, -146.0, -96.0, -58.0)));
+                    // The brown glue ring round the wheel's switches, and its pale edge.
+                    float dT = max(rho - 104.0, w.y - 97.0), an = atan2(w.y, w.x);
+                    float bi = 2.9 + 0.45 * sin(an * 7.0) + 0.25 * sin(an * 23.0 + 1.7) - abs(dT);
+                    float3 glue = float3(0.31, 0.165, 0.07) * (1.0 + 0.16 * sin(an * 61.0) * sin(rho * 3.1)) * mix(0.72, 1.0, ss(0.0, 0.9, bi));
+                    c = mix(c, glue, 0.9 * ss(0.0, 0.8, bi) * step(-286.0, o.y));
+                    c = mix(c, float3(0.70, 0.72, 0.70), 0.5 * ss(0.55, 0.2, abs(max(rho - 110.5, w.y - 103.0))) * step(-286.0, o.y));
+                } else {
+                    sh *= mix(0.58, 1.0, ss(0.0, 7.0, -rIn(o, -135.0, -99.0, -202.0, -164.0))) * mix(0.58, 1.0, ss(0.0, 7.0, -rIn(o, 5.0, 56.0, -202.0, -142.0)));
+                    sh *= mix(0.58, 1.0, ss(0.0, 7.0, -rIn(o, 93.0, 148.0, -202.0, -145.0))) * mix(0.6, 1.0, ss(0.0, 7.0, -rIn(o, -52.0, 52.0, -296.0, -252.0)));
+                }
+            }
+        }
+        if (id == 39.0) {
+            float2 a = abs(w);
+            float ds = min(max(a.x, a.y), min(max(abs(a.x - 78.0), a.y), max(a.x, abs(a.y - 78.0)))) - 17.0;
+            sh *= mix(0.85, 1.0, ss(0.0, 5.0, ds));
+        }
         if (id == 31.0) sh *= 0.80;
+        if (id == 34.0 && fz > 0.5) {  // the shell floor: shadows of the battery and the jack block
+            float2 d = abs(o) - float2(147.0, 270.5);
+            float sb = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 30.0;
+            sh *= mix(0.60, 1.0, ss(0.0, 24.0, -sb));
+            sh *= mix(0.50, 1.0, ss(0.0, 16.0, -rIn(o, -156.0, 80.0, 164.0, 256.0))) * mix(0.55, 1.0, ss(0.0, 11.0, -rIn(o, 84.0, 150.0, 214.0, 284.0)));
+            sh *= mix(0.70, 1.0, ss(0.0, 5.0, -rIn(o, 104.0, 146.0, 180.0, 214.0)));
+        }
+        if (id == 34.0 && fz > 0.5 && fr0 > 0.5) {  // the shell's wide flat ribbon (Jason 00:18 JST 11-14); its print (tl) comes in B3
+            float dB = ribbon(o);
+            sh *= mix(0.70, 1.0, ss(10.3, 14.0, dB));
+            float cbw = ss(10.5, 9.7, dB);
+            c = mix(c, float3(1.30, 0.74, 0.20) * (0.88 + 0.12 * ss(0.4, 1.4, abs(dB - 7.6))), cbw);
+            mt *= 1.0 - cbw;
+        }
+        if (id == 21.0) {
+            float2 d = abs(o) - float2(149.0, 272.5);
+            sh *= mix(0.72, 1.0, ss(0.0, 16.0, -(length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 34.0)));
+        }
         if (id != 22.0 && id != 23.0) sh *= mix(0.62, 1.0, ss(0.06, 0.75, ex));
+        float eg = fz * ss(1.4, 0.0, ed) * (0.14 + 0.16 * mt);
         float brl = fract(sin(floor(o.x * 3.0) * 12.9898) * 43758.5453);
         float sr = 0.46 + 0.30 * ss(-0.7, 0.7, r.y) + 0.42 * pow(max(dot(r, normalize(float3(-0.45, 0.5, 0.75))), 0.0), 5.0)
             + 0.10 * ss(0.2, 0.95, dot(r, normalize(float3(0.7, 0.1, 0.7))));
         float mm = 0.60 * mt;
         if (id == 34.0) { sr = mix(sr, 0.50 + 0.75 * studio(r, vp), 0.7); mm = 0.85; }
         if (id == 12.0 && pt > 6.5 && pt < 7.5) { sr = mix(sr, 0.50 + 0.75 * studio(r, vp), 0.65); mm = 0.82; }
-        return c * mix(float3(g), float3(sr * 1.18), mm) * (1.0 + 0.045 * mt * (brl - 0.5)) * sh;
+        return c * mix(float3(g), float3(sr * 1.18), mm) * (1.0 + 0.045 * mt * (brl - 0.5)) * sh * (1.0 + eg);
     }
 
     // The front parts (material 3) as lit at the pose: `front`, then the window apart, the gap
@@ -436,7 +591,7 @@ enum K3DShader {
         float fr = pow(1.0 - max(dot(n, v), 0.0), 3.0);
         float3 col;
         if (vm > 10.5) {  // Take apart: the parts' inner faces
-            col = inner(floor(vm + 0.5), n, v, r, in.vp, in.vo, M, pt, u.blk, u.ex, glass);
+            col = inner(floor(vm + 0.5), n, v, r, in.vp, in.vo, in.von, M, pt, u.blk, u.ex, glass);
         } else if (vm > 9.5) {  // dark: the window's cut edge and the board inside
             col = float3(0.09, 0.095, 0.10) * (0.7 + 0.4 * dif);
             if (u.ex > 0.0 && pt > 1.5 && pt < 2.5)  // apart: the window's cut edge is clear plastic
