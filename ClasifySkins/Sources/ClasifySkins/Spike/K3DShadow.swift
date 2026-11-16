@@ -10,17 +10,25 @@ import SwiftUI
 ///
 /// The black copy itself never shows: everything inside the body's outline is cut away. The
 /// body covers that area anyway.
+///
+/// CLA-119 (build 249: a light line just outside the 3D device): the cut is `cutInset` inside
+/// the body's outline, and it tilts with the body (change 307). A cut exactly on the edge left
+/// a thin ring where neither the body's soft edge nor the shadow covered the desktop.
 struct K3DShadow: View {
     let angle: Double, lift: Double
+    var tilt = 0.0
     let black: Bool
+
+    /// How far inside the body's outline the cut runs, in points. The body hides the shadow there.
+    static let cutInset: CGFloat = 1.5
 
     /// Room round the device, so the shadow and its cut have the whole area to draw on.
     static let room: CGFloat = 120
 
     var body: some View {
         let size = PocketSkin.size, r = Self.room
-        let copy = Self.outline(angle: angle, lift: lift, drop: PocketSkin.shadowDrop)
-        let cut = Self.outline(angle: angle, lift: lift, drop: 0)
+        let copy = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: PocketSkin.shadowDrop)
+        let cut = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: 0, inset: Self.cutInset)
         copy.offsetBy(dx: r, dy: r)
             .fill(Color.black)
             .shadow(color: PocketSkin.shadowColor(black ? 1 : 0), radius: 20, y: 20)
@@ -40,17 +48,18 @@ struct K3DShadow: View {
     /// from the top left), with its top `drop` points lower. It is the hull of three sections of
     /// the body: the flat front, the end of the straight aluminium wall (70% of the depth back),
     /// and the flat back, which the steel curves in to by 14 pt. Each section is the 2D body's
-    /// own rounded rectangle, projected with the renderer's camera.
-    static func outline(angle: Double, lift: Double, drop: CGFloat) -> Path {
+    /// own rounded rectangle, projected with the renderer's camera. `inset` moves every section
+    /// that many points in.
+    static func outline(angle: Double, lift: Double, tilt: Double = 0, drop: CGFloat, inset: CGFloat = 0) -> Path {
         let size = PocketSkin.size
         let t = K3DMesh.depth
         let sections: [(z: Double, inset: CGFloat)] = [(t / 2, 0), (t / 2 - 0.7 * t, 0), (-t / 2, 14)]
         var points: [CGPoint] = []
         for section in sections {
-            let rect = CGRect(x: section.inset, y: section.inset + drop,
-                              width: size.width - 2 * section.inset, height: size.height - drop - 2 * section.inset)
-            for p in Self.points(RoundedRectangle(cornerRadius: max(34 - section.inset, 0)).path(in: rect)) {
-                points.append(project(p, z: section.z, angle: angle, lift: lift))
+            let i = section.inset + inset
+            let rect = CGRect(x: i, y: i + drop, width: size.width - 2 * i, height: size.height - drop - 2 * i)
+            for p in Self.points(RoundedRectangle(cornerRadius: max(34 - i, 0)).path(in: rect)) {
+                points.append(project(p, z: section.z, angle: angle, lift: lift, tilt: tilt))
             }
         }
         return Path { path in
@@ -63,16 +72,19 @@ struct K3DShadow: View {
     }
 
     /// A point of the 2D frame, at depth `z` in the body (the front is +34), on screen. The
-    /// renderer's camera: the body turns about its vertical axis, is pushed back by `lift`, and
-    /// the eye is 2600 pt from its center. The flat front at rest shows at 1 pt per pt.
-    static func project(_ p: CGPoint, z: Double, angle: Double, lift: Double) -> CGPoint {
+    /// renderer's camera (`K3DRenderer.modelView`): the body turns about its vertical axis,
+    /// tilts about its horizontal axis, is pushed back by `lift`, and the eye is 2600 pt from
+    /// its center. The flat front at rest shows at 1 pt per pt.
+    static func project(_ p: CGPoint, z: Double, angle: Double, lift: Double, tilt: Double = 0) -> CGPoint {
         let size = PocketSkin.size
         let x = Double(p.x) - size.width / 2, y = size.height / 2 - Double(p.y)
-        let a = angle * .pi / 180
+        let a = angle * .pi / 180, b = tilt * .pi / 180
         let xe = cos(a) * x + sin(a) * z
-        let ze = -sin(a) * x + cos(a) * z - Double(K3DRenderer.distance) - lift
+        let z1 = -sin(a) * x + cos(a) * z
+        let ye = cos(b) * y - sin(b) * z1
+        let ze = sin(b) * y + cos(b) * z1 - Double(K3DRenderer.distance) - lift
         let s = (Double(K3DRenderer.distance) - K3DMesh.depth / 2) / -ze
-        return CGPoint(x: size.width / 2 + xe * s, y: size.height / 2 - y * s)
+        return CGPoint(x: size.width / 2 + xe * s, y: size.height / 2 - ye * s)
     }
 
     /// The path's points, with its curves cut into lines of at most 0.01 pt error.

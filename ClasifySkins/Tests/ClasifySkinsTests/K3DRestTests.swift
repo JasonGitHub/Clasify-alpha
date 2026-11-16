@@ -194,6 +194,42 @@ import Testing
         #expect(bare.mean(243, 300).g > 200, "inside the body: \(bare.mean(243, 300))")
     }
 
+    /// CLA-119 (build 249: a light line just outside the 3D device): the shadow's cut lies
+    /// inside the 3D body at every pose, so no pixel between the body's edge and the shadow
+    /// shows the desktop. Every pixel the cut covers must be fully opaque in the 3D frame.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [
+        (0.0, 0.0, 0.0), (8.0, 0.0, 6.0), (30.0, 0.0, -6.0), (90.0, 70.0, 0.0), (135.0, 40.0, 3.0), (180.0, 0.0, 0.0), (250.0, 20.0, -4.0),
+    ])
+    func theShadowCutStaysUnderTheBody(_ pose: (angle: Double, lift: Double, tilt: Double)) throws {
+        let renderer = try #require(K3DRenderer.shared)
+        let size = PocketSkin.size, w = Int(size.width) * 2, h = Int(size.height) * 2
+        let bytes = try #require(renderer.image(
+            K3DPose(angle: pose.angle, lift: pose.lift, tilt: pose.tilt), screen: nil, size: size, scale: 2))
+        // The cut, filled with no antialiasing at 2x, rows from the top.
+        var mask = [UInt8](repeating: 0, count: w * h)
+        let cut = K3DShadow.outline(angle: pose.angle, lift: pose.lift, tilt: pose.tilt, drop: 0, inset: K3DShadow.cutInset)
+        mask.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+            context.setShouldAntialias(false)
+            context.translateBy(x: 0, y: CGFloat(h))
+            context.scaleBy(x: 2, y: -2)
+            context.addPath(cut.cgPath)
+            context.setFillColor(gray: 1, alpha: 1)
+            context.fillPath()
+        }
+        var covered = 0, gaps: [(Int, Int)] = []
+        for y in 0..<h {
+            for x in 0..<w where mask[y * w + x] > 127 {
+                covered += 1
+                if bytes[(y * w + x) * 4 + 3] < 255 { gaps.append((x, y)) }
+            }
+        }
+        #expect(covered > 1000, "the cut covers \(covered) pixels")
+        #expect(gaps.isEmpty, "\(pose): \(gaps.count) pixels under the cut are not opaque, first \(gaps.prefix(5))")
+    }
+
     /// Metal calls the first frame's presented handler on its own queue. Build 168 crashed
     /// there: the handler was main-actor code, and Swift stops the app when such code runs off
     /// the main queue. Called from another queue, the handler must not stop the app, and the
