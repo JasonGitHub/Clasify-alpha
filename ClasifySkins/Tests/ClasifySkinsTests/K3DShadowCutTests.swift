@@ -98,7 +98,11 @@ import Testing
     ])
     func theCutStaysInsideATiltedBody(_ pose: (angle: Double, tilt: Double)) throws {
         let renderer = try #require(K3DRenderer.shared)
-        let size = PocketSkin.size, w = Int(size.width), h = Int(size.height)
+        // A tilted or turned body reaches past the 2D device's frame: draw it with room round it,
+        // centred, and move the cut by the same room.
+        let pad = 120, device = PocketSkin.size
+        let size = CGSize(width: device.width + CGFloat(2 * pad), height: device.height + CGFloat(2 * pad))
+        let w = Int(size.width), h = Int(size.height)
         let bytes = try #require(renderer.image(K3DPose(angle: pose.angle, tilt: pose.tilt), screen: nil, size: size, scale: 1))
         var x0 = w, x1 = -1, y0 = h, y1 = -1
         for y in 0..<h {
@@ -106,7 +110,8 @@ import Testing
                 x0 = min(x0, x); x1 = max(x1, x); y0 = min(y0, y); y1 = max(y1, y)
             }
         }
-        let cut = K3DShadow.cut(angle: pose.angle, lift: 0, tilt: pose.tilt).boundingRect
+        #expect(x0 > 0 && y0 > 0 && x1 < w - 1 && y1 < h - 1, "the body fits the picture")
+        let cut = K3DShadow.cut(angle: pose.angle, lift: 0, tilt: pose.tilt).boundingRect.offsetBy(dx: CGFloat(pad), dy: CGFloat(pad))
         #expect(cut.minX >= CGFloat(x0) - 2 && cut.maxX <= CGFloat(x1 + 1) + 2 && cut.minY >= CGFloat(y0) - 2 && cut.maxY <= CGFloat(y1 + 1) + 2,
                 "angle \(pose.angle), tilt \(pose.tilt): body \(x0)...\(x1 + 1) x \(y0)...\(y1 + 1), cut \(cut)")
     }
