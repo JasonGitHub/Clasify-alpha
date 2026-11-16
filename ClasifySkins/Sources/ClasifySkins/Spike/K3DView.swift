@@ -32,6 +32,15 @@ public enum K3DSpike {
     var hovered: ClickWheel.Zone?
     var pressed: ClickWheel.Zone?
     public init() {}
+
+    /// CLA-119 (build 258: the centre button grey for the whole color spin): the live look with
+    /// no key pressed. A color spin starts on the centre button's press, and the 2D device lets
+    /// it go a moment later, so the spin's 3D front shows the key let go. The hover stays.
+    public static var released: WheelLook {
+        let look = WheelLook()
+        look.hovered = live.hovered
+        return look
+    }
 }
 
 /// CLA-119 (build 258: the top of the turned device cut off): the room the window gets round
