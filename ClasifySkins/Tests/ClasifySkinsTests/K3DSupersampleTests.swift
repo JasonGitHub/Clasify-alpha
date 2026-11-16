@@ -1,4 +1,5 @@
 import AppKit
+import ClasifyCore
 import Foundation
 import Metal
 import Testing
@@ -84,6 +85,24 @@ import simd
                 let bytes = try #require(renderer.image(p, screen: nil, size: canvas, scale: 2))
                 #expect(bytes.contains { $0 != 0 })
                 save(bytes, canvas, "k3d-app-\(black ? "black" : "silver")-\(name)")
+            }
+        }
+    }
+
+    /// CLA-123, K.3D.10 design check (About thread): Silver and Black at back 180, 150 and 205,
+    /// side 110 and front 35 and 55, and the 2D-3D handover at 0, 1, 2 and 3° with the live
+    /// screen and the 2D layer, as the mock's canvas, 520 x 720 points at 2x.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theK3D10Pictures() throws {
+        let renderer = try #require(K3DRenderer.shared)
+        let canvas = CGSize(width: 520, height: 720)
+        for black in [false, true] {
+            var state = AppState()
+            state.deviceColor = black ? .black : .silver
+            let shot = try #require(K3DSpike.snapshot(state))
+            for angle in [180.0, 150, 205, 110, 35, 55, 0, 1, 2, 3] {
+                let bytes = try #require(renderer.image(K3DPose(angle: angle, black: black), screen: shot, size: canvas, scale: 2))
+                #expect(bytes.contains { $0 != 0 })
+                save(bytes, canvas, "k3d10-\(black ? "black" : "silver")-\(Int(angle))")
             }
         }
     }

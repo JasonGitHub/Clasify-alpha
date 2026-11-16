@@ -4,7 +4,8 @@ import Foundation
 import ImageIO
 
 /// SPIKE (CLA-101): the K.3D.7 textures from the About thread's frozen folder, bundled as they
-/// are, 732 x 1226 px (2 per pt): `front-ids.png`, `back-etch.png` and `steel.png`.
+/// are, 732 x 1226 px (2 per pt): `front-ids.png` and `back-etch.png`. CLA-123 (K.3D.10): the
+/// steel no longer reads `steel.png`, so it is gone.
 ///
 /// The front's alpha is a material id, not a transparency: 255 wheel, 253 aluminium, 251 LCD,
 /// 250 bezel ink, 249 center button. The shader matches it within 0.0018, so the bytes are read
@@ -14,7 +15,7 @@ enum K3DTextures {
     /// The LCD (id 251) in the front texture, in px: 600 x 450 from (66, 65).
     static let lcd = (x: 66..<666, y: 65..<515)
 
-    enum Name: String { case front = "k3d-front", back = "k3d-back", steel = "k3d-steel" }
+    enum Name: String { case front = "k3d-front", back = "k3d-back" }
 
     /// The PNG's RGBA bytes, row by row from the top, as stored: straight alpha, no color
     /// matching. Nil when the file is missing or not 8-bit RGBA with straight alpha.

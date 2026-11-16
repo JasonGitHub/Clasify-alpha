@@ -111,7 +111,7 @@ enum K3DShader {
     // The frozen light (UC): a lamp fixed in the room, 350 pt left, 800 pt up and 1000 pt out from
     // the front face (z = 34), and the room as a bright ceiling and a darker floor.
     constant float3 lamp = float3(-350.0, 800.0, 34.0 + 1000.0 - 2600.0);
-    constant float uKey = 1.08, uCeil = 0.5, uFloor = 0.2, uGs = 0.75, uGa = 0.035, uVa = 0.35;
+    constant float uKey = 1.08, uCeil = 0.5, uFloor = 0.2, uGs = 0.75, uGa = 0.035, uVa = 0.7;
     constant float3 uTint = float3(0.995, 0.997, 1.0);
     constant float2 wheelUV = float2(366.0 / 732.0, 867.0 / 1226.0);
 
@@ -139,7 +139,23 @@ enum K3DShader {
         return ss(e, -e, k);
     }
 
-    // The room the mirror steel reflects, fixed to the camera, with a little parallax.
+    // CLA-123, K.3D.10 (Jason 22:07 JST 11-16): room F, the room the outer steel (side and back)
+    // reflects, fixed to the camera, with a little parallax. The K.3D.9 room with the horizon
+    // a little higher and the softbox nearer the middle, softer at its edge. `studio` below stays the
+    // K.3D.8 room for the take-apart parts, which do not change.
+    float studioF(float3 r, float3 p) {
+        float2 q = r.xy + p.xy / 1400.0;
+        float L = 0.15 + 0.10 * ss(-0.2, 1.0, q.y) + 0.03 * sin(q.x * 3.1 + q.y * 1.7);
+        float hz = -0.155 + 0.04 * q.x;
+        L = mix(L, 0.09, ss(0.0, 0.03, q.y - hz) * ss(0.16, 0.03, q.y - hz));
+        float fl = ss(0.012, -0.012, q.y - hz);
+        L = mix(L, 0.50 + 0.30 * ss(hz - 0.7, hz - 0.05, q.y), fl);
+        L = mix(L, 1.0, rbox(q, float2(-0.20, 0.37), float2(0.20, 0.14), 0.05, 0.03));
+        L = mix(L, 0.80, rbox(q, float2(0.78, 0.15), float2(0.08, 0.55), 0.04, 0.06));
+        return clamp(L, 0.04, 1.0);
+    }
+
+    // The K.3D.8 room, for the take-apart parts' metals.
     float studio(float3 r, float3 p) {
         float2 q = r.xy + p.xy / 1400.0;
         float L = 0.15 + 0.10 * ss(-0.2, 1.0, q.y) + 0.03 * sin(q.x * 3.1 + q.y * 1.7);
@@ -594,7 +610,7 @@ enum K3DShader {
 
     fragment float4 k3dFragment(K3DVarying in [[stage_in]], constant K3DUniforms& u [[buffer(0)]],
                                 texture2d<float> tf [[texture(0)]], texture2d<float> tb [[texture(1)]],
-                                texture2d<float> ts [[texture(2)]], sampler sm [[sampler(0)]],
+                                sampler sm [[sampler(0)]],
                                 sampler sn [[sampler(1)]], texture2d<float> t2 [[texture(3)]], sampler sf [[sampler(2)]],
                                 texture2d<float> tl [[texture(4)]], texture2d<float> tp [[texture(5)]], texture2d<float> tq [[texture(6)]],
                                 bool ff [[front_facing]]) {
@@ -655,11 +671,8 @@ enum K3DShader {
                 col = mix(col, float3(0.78, 0.86, 0.84) * pow(clamp(physE(n, in.vp, in.vo, M), 0.0, 2.0), 0.4545), ss(0.0, 0.25, u.ex));
         } else if (vm < 0.5) {  // the plate's hole walls: aluminium
             col = matte(physE(n, in.vp, in.vo, M));
-        } else if (vm < 1.5) {  // mirror steel, lifted so the dark room does not read as rubber
-            float3 s = mix(ts.sample(sm, in.vuv2).rgb, ts.sample(sm, in.vuv).rgb, in.vwt);
-            s = 0.22 + 0.78 * s;
-            col = mix(s * (0.80 + 0.26 * env(r)), float3(studio(r, in.vp)), 0.84) + 0.18 * pow(max(0.0, 1.0 - abs(dot(n, v))), 6.0);
-            col = 0.42 + 0.58 * col;
+        } else if (vm < 1.5) {  // mirror steel: K.3D.10, the same mirror as the back, so the room runs round the corner
+            col = mix(float3(0.8), float3(studioF(r, in.vp)) * float3(0.985, 0.99, 1.0), 0.92);
         } else if (vm < 2.5) {  // the seam: the shadow in the gap
             col = float3(0.16);
             if (u.ex > 0.0) col = mix(col, float3(0.70 + 0.18 * ss(-0.6, 0.7, r.y)), ss(0.0, 0.12, u.ex));  // apart: the shell rim is plain steel
@@ -691,11 +704,9 @@ enum K3DShader {
                 col = saturate(mix(col, f2.rgb + (col - rest), f2.a));
             }
         } else {  // the back: mirror steel with a frosted etch
-            float e = env(r);
             float4 t = tb.sample(sm, in.vuv);
-            float3 s = 0.22 + 0.78 * ts.sample(sm, in.vuv).rgb;
-            float m = studio(r, in.vp);
-            float3 st = mix(s * (0.82 + 0.2 * e), float3(m) * float3(0.985, 0.99, 1.0), 0.92);
+            float m = studioF(r, in.vp);  // K.3D.10: a plain .8 takes the 8% the steel picture had
+            float3 st = mix(float3(0.8), float3(m) * float3(0.985, 0.99, 1.0), 0.92);
             float lum = dot(t.rgb, float3(0.3, 0.59, 0.11));
             float sat = max(t.r, max(t.g, t.b)) - min(t.r, min(t.g, t.b));
             float tone = mix(0.80, 0.30 + 0.52 * ss(0.12, 0.45, lum), ss(0.06, 0.2, sat) * (1.0 - step(2.2, t.r / max(t.g, 0.05))));
