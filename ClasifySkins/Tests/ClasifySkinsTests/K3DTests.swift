@@ -111,11 +111,13 @@ import Testing
     }
 
     /// Counts, two vertices and some indices, checked against the mock's own code run in Node,
-    /// with the Take apart parts and the hidden screen module left out.
+    /// with the Take apart parts and the hidden screen module left out: the closed device, which
+    /// comes first in the mesh.
     @Test func theMeshMatchesTheMock() {
         let mesh = K3DMesh()
-        #expect(mesh.vertexCount == 8542)
-        #expect(mesh.indices.count == 47040)
+        #expect(mesh.closedVertexCount == 8542)
+        #expect(mesh.closedIndexCount == 47040)
+        #expect(mesh.indices[..<mesh.closedIndexCount].allSatisfy { Int($0) < mesh.closedVertexCount })
         #expect(mesh.indices.allSatisfy { Int($0) < mesh.vertexCount })
         let want: [Int: [Float]] = [
             1234: [173.96415, -288.08357, 30.092016, 0.36168544, -0.24167049, 0.90043268, 0.97531189, 0.96995689, 0.97531189, 0.96995689, 1, 3, 1],

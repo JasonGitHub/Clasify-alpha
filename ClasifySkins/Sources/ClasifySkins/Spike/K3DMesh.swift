@@ -10,8 +10,10 @@ import Foundation
 /// part (1). Materials: 0 hole wall, 1 steel, 2 seam, 3 front, 4 back face, 10 dark. Parts: 0 shell,
 /// 1 front plate, 2 window, 3 wheel, 5 center button.
 ///
-/// Not ported: everything only Take apart shows (materials above 10 and parts 6 to 8, which the
-/// mock hides when assembled), and the screen module (part 4), which the opaque window hides.
+/// CLA-105: Take apart's parts are in the mesh too (`K3DParts.swift`): the screen module (part 4),
+/// the frame (6), the drive (7), the foam pad (8), the logic board (9), the inner skins and the
+/// inside of the shell. They come after the closed device's vertices and indices, so the closed
+/// device draws the first `closedIndexCount` indices, exactly as before.
 struct K3DMesh {
     static let width = 366.0, height = 613.0, depth = 68.0, radius = 34.0
     /// Floats per vertex.
@@ -22,7 +24,10 @@ struct K3DMesh {
     private(set) var vertices: [Float] = []
     private(set) var indices: [UInt32] = []
     /// The part new vertices belong to.
-    private var part = 0
+    var part = 0
+    /// The closed device: its vertices and indices come first. The rest only Take apart shows
+    /// (in the mock: materials above 10.5, hidden while assembled, and the screen module).
+    private(set) var closedVertexCount = 0, closedIndexCount = 0
 
     var vertexCount: Int { vertices.count / Self.stride }
 
@@ -123,6 +128,10 @@ struct K3DMesh {
         cap(rings[0], z: t / 2, nz: 1, material: 3, mirror: false)  // the front face
         part = 0
         cap(rings[rings.count - 1], z: -t / 2, nz: -1, material: 4, mirror: true)  // the back face
+        // CLA-105: the triangles so far, and the plate's last ring and the shell's first: the
+        // inner skins are made from them.
+        let capped = indices.count
+        let plateRim = rings[ringParts.lastIndex(of: 1) ?? 0], shellRim = rings[ringParts.firstIndex(of: 0) ?? 0]
 
         // The parts. The face's height at a point, for the top of the plate's hole walls.
         func drop(_ inset: Double) -> Double {
@@ -169,9 +178,16 @@ struct K3DMesh {
         band(button, top: { _, _ in zw - 0.05 }, bottom: zw - 3, material: 3, inward: false)
         part = 0  // the dark board inside, seen through no gap at rest
         disc(Self.roundedRect(0, 0, w / 2 - 6, h / 2 - 6, 30, step: 8), z: t / 2 - 14, material: 10, center: (0, 0))
+
+        closedVertexCount = vertexCount
+        closedIndexCount = indices.count
+        addParts(capped: capped, plateRim: plateRim, shellRim: shellRim)
     }
 
-    private mutating func vertex(
+    /// Adds triangles by their vertex indices.
+    mutating func triangles(_ ids: [UInt32]) { indices += ids }
+
+    mutating func vertex(
         _ p: (Double, Double, Double), _ n: (Double, Double, Double), _ uv: (Double, Double), _ material: Int,
         uv2: (Double, Double)? = nil, weight: Double = 1
     ) -> UInt32 {
@@ -181,7 +197,7 @@ struct K3DMesh {
         return index
     }
 
-    private func uvOf(_ x: Double, _ y: Double) -> (Double, Double) {
+    func uvOf(_ x: Double, _ y: Double) -> (Double, Double) {
         ((x + Self.width / 2) / Self.width, (Self.height / 2 - y) / Self.height)
     }
 
@@ -201,14 +217,14 @@ struct K3DMesh {
     }
 
     /// A flat face that looks to the front, a fan from its center.
-    private mutating func disc(_ outline: [SIMD4<Double>], z: Double, material: Int, center: (Double, Double)) {
+    mutating func disc(_ outline: [SIMD4<Double>], z: Double, material: Int, center: (Double, Double)) {
         let c = vertex((center.0, center.1, z), (0, 0, 1), uvOf(center.0, center.1), material)
         let ids = outline.map { vertex(($0.x, $0.y, z), (0, 0, 1), uvOf($0.x, $0.y), material) }
         for i in ids.indices { indices += [c, ids[i], ids[(i + 1) % ids.count]] }
     }
 
     /// A straight wall along an outline, drawn with both windings so it shows from either side.
-    private mutating func band(
+    mutating func band(
         _ outline: [SIMD4<Double>], top: (Double, Double) -> Double, bottom: Double, material: Int, inward: Bool
     ) {
         let s = inward ? -1.0 : 1.0
