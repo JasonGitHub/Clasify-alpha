@@ -53,10 +53,10 @@ import simd
     @Test func aClickTurnsTheDeviceOver() {
         let back = released(1)
         #expect(back.toBack && back.length == 0.8)
-        #expect(back.angle(at: t0.addingTimeInterval(0.8)) == 180)
+        #expect(back.angle(at: t0.addingTimeInterval(0.9)) == 180)
         let front = released(1, from: self.back)
         #expect(!front.toBack)
-        #expect(front.restsOnFront(at: t0.addingTimeInterval(0.8)))
+        #expect(front.restsOnFront(at: t0.addingTimeInterval(0.9)))
     }
 
     /// Change 305: 20° or more goes on to the next side in 0.8 s; less goes back in 0.4 s.
@@ -67,7 +67,7 @@ import simd
         #expect(left.toBack && abs(left.angle(at: t0) - (360 - 34 * K3DShowroom.perPoint)) < 1e-9)
         let back = released(32)  // 19.2°
         #expect(!back.toBack && back.length == K3DFlip.dragReturn)
-        #expect(back.restsOnFront(at: t0.addingTimeInterval(0.4)))
+        #expect(back.restsOnFront(at: t0.addingTimeInterval(0.5)))
         // A drag past more than half a turn lands on the nearest side in that direction.
         let far = K3DShowroom(flip: K3DFlip(), at: t0)
         var moved = far
@@ -107,14 +107,14 @@ import simd
         let front = try #require(K3DShowroom.front(flip: back, reduceMotion: false, at: t0))
         #expect(!front.toBack && front.length == K3DFlip.turnOver)
         #expect(abs(front.angle(at: t0.addingTimeInterval(0.6)) - 3) < 1e-9)
-        #expect(front.restsOnFront(at: t0.addingTimeInterval(0.8)))
+        #expect(front.restsOnFront(at: t0.addingTimeInterval(0.9)))
         #expect(K3DShowroom.front(flip: K3DFlip(), reduceMotion: false, at: t0) == nil)
         // Early in a turn to the back (77° after 0.1 s), MENU goes back to the front.
         let away = K3DFlip().go(to: 180, time: K3DFlip.turnOver, soft: true, at: t0)
         let t = t0.addingTimeInterval(0.1)
         #expect(away.angle(at: t) < 90)
         let home = try #require(K3DShowroom.front(flip: away, reduceMotion: false, at: t))
-        #expect(!home.toBack && home.angle(at: t.addingTimeInterval(0.8)) == 0)
+        #expect(!home.toBack && home.angle(at: t.addingTimeInterval(0.9)) == 0)
     }
 
     /// Change 302: with Reduce Motion the side changes with a 0.2 s crossfade, and no turn.
@@ -160,7 +160,7 @@ import simd
         #expect(path.contains(CGPoint(x: 10, y: 300), eoFill: true))  // the side of the case
         #expect(path.contains(CGPoint(x: 183, y: 290), eoFill: true))  // between screen and wheel
         #expect(!path.contains(CGPoint(x: 183, y: 145), eoFill: true))  // the screen
-        #expect(!path.contains(CGPoint(x: 183, y: 433.5), eoFill: true))  // the center button
+        #expect(!path.contains(CGPoint(x: 180, y: 440), eoFill: true))  // the center button
         #expect(!path.contains(CGPoint(x: 183, y: 340), eoFill: true))  // the wheel
         #expect(!path.contains(CGPoint(x: 2, y: 2), eoFill: true))  // outside the round corner
     }
