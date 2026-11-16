@@ -9,7 +9,7 @@ import Testing
 
 /// CLA-119, #263 design check: a black line on the 3D body's right and bottom edge from 1°.
 /// The cause: `K3DShadow`'s hidden black copy (the section hull) is wider than the mesh's real
-/// outline, and its mask keeps a band 1.5 pt outside the outline. The copy is now cut to it.
+/// outline, and its mask keeps a band 1.5 pt outside the outline. Now only its shadow draws.
 @Suite @MainActor struct K3DRimTests {
     nonisolated static var hasMetal: Bool { MTLCreateSystemDefaultDevice() != nil }
 
