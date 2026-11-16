@@ -7,14 +7,14 @@ import Foundation
 /// company's names or marks). Each is RGBA bytes, row 0 at the top, as the mock's canvas.
 /// - `label` (the mock's `tl`, 1024 x 1024): the drive label, the battery print, three chip
 ///   tops and the ribbon print.
-/// - `board` (`tp`, 4096 x 2048): the logic board's white print, wheel side left, chip side
+/// - `board` (`tp`, 2048 x 1024, half the mock's 4096 x 2048): the logic board's white print, wheel side left, chip side
 ///   right. Blue marks where no loose part may sit under the text.
 /// - `parts` (`tq`, 2048 x 2048): the drive board's print, the shell floor's etched text, the
 ///   shield's stamped text (red), and three strips: frame, wheel back, plate back.
 /// They are made off the main actor when the device starts to come apart, kept in memory
 /// only, and released when it is closed again (`K3DRenderer.preparePrints`).
 enum K3DPrints {
-    static let labelSize = 1024, boardSize = (w: 4096, h: 2048), partsSize = 2048
+    static let labelSize = 1024, boardSize = (w: 2048, h: 1024), partsSize = 2048
 
     /// The three textures' bytes. Plain arrays, so they are made off the main actor.
     struct Bytes: Sendable {
@@ -178,8 +178,9 @@ enum K3DPrints {
     static func board() -> [UInt8]? {
         guard let x = Canvas(width: boardSize.w, height: boardSize.h) else { return nil }
         x.fill("#000000")
-        x.fillRect(0, 0, 4096, 2048)
-        let sx = 2048.0 / 324, sy = 2048.0 / 276
+        x.fillRect(0, 0, Double(boardSize.w), Double(boardSize.h))
+        // Half the mock's 4096 x 2048: 3.2 px per pt, still above the 2 px per pt on screen.
+        let half = Double(boardSize.w / 2), sx = half / 324, sy = Double(boardSize.h) / 276
         // The wheel side, in board points (x, -y).
         x.setTransform(sx, sy, 162 * sx, -14 * sy)
         var items: [Item] = [at(800, 8.2, "CAPPYAI", -145, -92), at(600, 4.3, "\u{00a9}2026  CP-2168-04", -145, -99.5)]
@@ -204,7 +205,7 @@ enum K3DPrints {
         x.stroke("#ffffff")
         x.strokeRect(-157.5, 106, 26, 6.5)
         // The chip side, as seen from the back (X = -x).
-        x.setTransform(sx, sy, 2048 + 162 * sx, -14 * sy)
+        x.setTransform(sx, sy, half + 162 * sx, -14 * sy)
         items = [at(800, 7.4, "CAPPYAI", -152, -25), at(600, 3.7, "CP-2168-04  SIDE B", 78, -22)]
         for (t, px, py) in [("U1", -148.0, -143.2), ("U2", -56, -140.2), ("U3", 99, -162.2), ("U4", -46, -72.2), ("U5", 36, -171.2)] {
             items.append(at(600, 3.7, t, px, py))
