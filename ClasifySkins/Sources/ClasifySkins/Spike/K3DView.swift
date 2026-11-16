@@ -735,7 +735,14 @@ final class K3DLayerView: MTKView {
         prints = printTextures(bytes)
     }
 
+    /// The main actor's time for the last bind: the level-0 copies and the mipmap commands (the
+    /// GPU makes the mipmaps after it). The tests print it to the CI log.
+    private(set) var printsBindTime: Duration?
+
     private func printTextures(_ bytes: K3DPrints.Bytes) -> [any MTLTexture]? {
+        let clock = ContinuousClock()
+        let start = clock.now
+        defer { printsBindTime = clock.now - start }
         let label = Self.texture(device, queue, bytes.label, width: K3DPrints.labelSize, height: K3DPrints.labelSize)
         let board = Self.texture(device, queue, bytes.board, width: K3DPrints.boardSize.w, height: K3DPrints.boardSize.h)
         let parts = Self.texture(device, queue, bytes.parts, width: K3DPrints.partsSize, height: K3DPrints.partsSize)
