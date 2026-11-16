@@ -19,6 +19,9 @@ struct K3DShadow: View {
     let angle: Double, lift: Double
     var tilt = 0.0
     let black: Bool
+    /// CLA-119: the poses of the frames just before this one (`trail(_:at:)`). The cut is
+    /// never wider than any of them.
+    var trail: [Trail] = []
 
     /// How far inside the body's outline the cut runs, in points. The body hides the shadow there.
     static let cutInset: CGFloat = 1.5
@@ -32,13 +35,51 @@ struct K3DShadow: View {
         1 - K3DRenderer.smooth(ex / 0.15)
     }
 
+    /// A pose of an earlier frame, with its size on screen relative to this frame's.
+    struct Trail: Equatable {
+        var angle: Double, lift: Double, tilt = 0.0
+        var scale = 1.0
+    }
+
+    /// CLA-119 (build 275, 60 fps: still a 24-32 px gap beside the body as it gets wider, none
+    /// as it gets narrower): the Metal frame still shows up to about one frame after this cut.
+    /// So the cut is also kept inside the body of the two frames before (one more for a dropped
+    /// frame): a body that is late still covers the cut's edge. Where the body gets narrower,
+    /// the cut is this frame's, as before; the shadow under the wider body is hidden by it.
+    /// Only while the body is fully opaque: under a fading body (the arrivals) the shadow would
+    /// show through, so the cut stays this frame's alone there, as before.
+    static func trail(_ flip: K3DFlip, at date: Date) -> [Trail] {
+        let look = flip.look(at: date)
+        guard look.opacity >= 1 else { return [] }
+        return [1.0, 2.0].map { frames in
+            let then = date.addingTimeInterval(-frames / 60)
+            let pose = flip.pose(at: then)
+            return Trail(angle: pose.angle, lift: pose.lift, tilt: flip.tilt(at: then), scale: flip.look(at: then).scale / look.scale)
+        }
+    }
+
+    /// The cut at a pose, inside the cuts of `trail` too. A trail pose that is this pose (at
+    /// rest, or a drag that holds still) changes nothing: the cut is exactly the pose's own.
+    static func cut(angle: Double, lift: Double, tilt: Double = 0, trail: [Trail]) -> Path {
+        let size = PocketSkin.size
+        return trail.reduce(cut(angle: angle, lift: lift, tilt: tilt)) { path, then in
+            if then == Trail(angle: angle, lift: lift, tilt: tilt) { return path }
+            // The shadow is scaled about the device's center with this frame's size.
+            let other = cut(angle: then.angle, lift: then.lift, tilt: then.tilt).applying(
+                CGAffineTransform(translationX: size.width / 2, y: size.height / 2)
+                    .scaledBy(x: then.scale, y: then.scale)
+                    .translatedBy(x: -size.width / 2, y: -size.height / 2))
+            return path.intersection(other)
+        }
+    }
+
     /// Room round the device, so the shadow and its cut have the whole area to draw on.
     static let room: CGFloat = 120
 
     var body: some View {
         let size = PocketSkin.size, r = Self.room
         let copy = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: PocketSkin.shadowDrop)
-        let cut = Self.cut(angle: angle, lift: lift, tilt: tilt).offsetBy(dx: r, dy: r)
+        let cut = Self.cut(angle: angle, lift: lift, tilt: tilt, trail: trail).offsetBy(dx: r, dy: r)
         // CLA-119 (#263 frames: a black line on the right and bottom edge): the copy is the
         // section hull, up to about 1 pt wider than the mesh's real outline, and the band below
         // shows 1.5 pt outside the outline. So the copy itself is drawn out of the frame, and
