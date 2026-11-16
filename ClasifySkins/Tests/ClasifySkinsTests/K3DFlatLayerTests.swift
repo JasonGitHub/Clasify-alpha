@@ -87,6 +87,17 @@ import Testing
         #expect(changed > 20, "\(changed) MENU pixels changed")
     }
 
+    /// CLA-119: a color spin's picture shows the centre button let go (the press that started
+    /// the spin lets go a moment later), and keeps the key under the pointer.
+    @Test func theReleasedLookHasNoPressedKey() {
+        let live = WheelLook.live
+        let (hovered, pressed) = (live.hovered, live.pressed)
+        defer { (live.hovered, live.pressed) = (hovered, pressed) }
+        (live.hovered, live.pressed) = (.center, .center)
+        let look = WheelLook.released
+        #expect(look.pressed == nil && look.hovered == .center && look !== live)
+    }
+
     func save(_ bytes: [UInt8], _ w: Int, _ h: Int, _ name: String, alpha: Bool) {
         guard let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"] else { return }
         var copy = bytes
