@@ -55,6 +55,18 @@ import Testing
         #expect(s.stack == [Frame(screen: .spotifyApp)])
     }
 
+    /// Settings > Log out works before the stored login is back. Its late result is stale then
+    /// (Codex on #254).
+    @Test func aLogOutWhileRestoringDropsTheLateRestore() {
+        var s = afterSetup()
+        send(&s, .spotifyAppFound(true), .launch, .wheel(5), .select, .wheel(8), .select, .wheel(1), .select)
+        #expect(s.stack == [Frame(screen: .login)] && !s.restoring)
+        #expect(send(&s, .restored(token: 1, ok: true)).isEmpty)
+        #expect(s.stack == [Frame(screen: .login)] && !s.signedIn)
+        send(&s, .notPremium(token: 1))  // nor a late Premium result
+        #expect(s.stack == [Frame(screen: .login)])
+    }
+
     /// The first launch ever still opens on Hello.
     @Test func theFirstLaunchStillOpensOnHello() {
         var s = AppState()

@@ -390,6 +390,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// Signs out and forgets the login. Apple Music goes back to Pick Your Music, because
     /// Clasify cannot sign out the Mac's Apple account (card BM, change 263).
     func logOut() {
+        // CLA-120: Log out can come while the stored login is checked at launch: its late
+        // result is stale then.
+        if s.restoring { s.restoring = false; s.authAttempt += 1 }
         signOut(); fx.append(.logOut)
         if s.service == .appleMusic { s.stack = [pickMusic()] }
     }
