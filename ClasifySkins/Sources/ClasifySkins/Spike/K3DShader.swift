@@ -5,7 +5,7 @@
 /// 11-14). Mesh and textures are the same as K.3D.7. The math is `k3d_src3.js` (`data-edge="parts"`, the
 /// physical light, `uPhys` 1) for the assembled device, line by line, with its uniforms fixed
 /// at the frozen values (`UC` in the mock). Not ported, as the folder's README says: the old
-/// light (`uPhys` 0), the 2D layer (`u2d`, `t2`), the other edge options, and everything only
+/// light (`uPhys` 0), the 2D layer (`u2d`, `t2`), the other edge options, and
 /// everything only Take apart draws (ported from CLA-105, below). The LCD parallax (`lcdUV`) is
 /// part of the frozen look and is ported (the README's correction, 23:20 JST 11-13).
 ///
