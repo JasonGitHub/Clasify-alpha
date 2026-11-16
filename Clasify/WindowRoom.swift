@@ -1,4 +1,5 @@
 import AppKit
+import ClasifySkins
 import SwiftUI
 
 /// CLA-119 (build 258: the top of the turned device cut off): while the 3D body may show, the
