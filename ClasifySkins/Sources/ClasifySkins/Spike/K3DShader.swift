@@ -16,9 +16,6 @@
 ///   the mock's `tm`. The material id (alpha) is read from level 0 with nearest filtering, like
 ///   the mock's `tf`.
 /// - Back faces are culled as in the mock while the device is closed.
-/// - CLA-119: the side's mirror steel and the seam fade in with the turn (`steel`, 0 near the
-///   front, 1 from 15°). Below that they show the body's color as the flat front has it, so the
-///   swap from the 2D device shows no bright line round the edge.
 ///
 /// CLA-105 (Take apart, change 308), PR B: `ex` (0 closed, 1 apart) moves each part along the
 /// device's own z, and the shader draws the parts: their inner faces (materials 11 to 45, the
@@ -38,7 +35,7 @@ enum K3DShader {
     #include <metal_stdlib>
     using namespace metal;
 
-    struct K3DUniforms { float4x4 mv; float4x4 pr; float blk; float steel; float ex; float pass; };
+    struct K3DUniforms { float4x4 mv; float4x4 pr; float blk; float ex; float pass; };
 
     constant float apart[10] = { \(K3DShader.apart.map { "\($0)" }.joined(separator: ", ")) };
 
@@ -136,15 +133,6 @@ enum K3DShader {
 
     // Matte metal in the physical light: the tint, 58% reflective, back to sRGB.
     float3 matte(float E) { return pow(pow(uTint, float3(2.2)) * 0.58 * E, float3(0.4545)); }
-
-    // CLA-119: the body's color at a point of the side as the flat front shows it there, in the
-    // light of the front's own normal: aluminium, or K.3D.8 Black's charcoal plate (no grain).
-    float3 bodyEdge(float3 vp, float3 vo, float3x3 M, float blk) {
-        float3 col = matte(physE(normalize(M * float3(0.0, 0.0, 1.0)), vp, vo, M));
-        if (blk < 0.5) return col;
-        float L = dot(col, float3(0.333));
-        return float3(0.285, 0.290, 0.303) * pow(L / 0.80, 1.7) * (0.86 + 0.30 * ss(-300.0, 300.0, vo.y));
-    }
 
     // The LCD sits 4 pt under the clear window: at an angle its picture shifts against the bezel.
     float2 lcdUV(float3 n, float3 vp, float3x3 M, float2 uv) {
@@ -364,9 +352,8 @@ enum K3DShader {
             s = 0.22 + 0.78 * s;
             col = mix(s * (0.80 + 0.26 * env(r)), float3(studio(r, in.vp)), 0.84) + 0.18 * pow(max(0.0, 1.0 - abs(dot(n, v))), 6.0);
             col = 0.42 + 0.58 * col;
-            col = mix(bodyEdge(in.vp, in.vo, M, u.blk), col, u.steel);  // CLA-119: no bright edge near the front
         } else if (vm < 2.5) {  // the seam: the shadow in the gap
-            col = mix(bodyEdge(in.vp, in.vo, M, u.blk), float3(0.16), u.steel);
+            col = float3(0.16);
             if (u.ex > 0.0) col = mix(col, float3(0.70 + 0.18 * ss(-0.6, 0.7, r.y)), ss(0.0, 0.12, u.ex));  // apart: the shell rim is plain steel
         } else if (vm < 3.5) {  // the front parts
             float3 t = tf.sample(sm, in.vuv).rgb;
