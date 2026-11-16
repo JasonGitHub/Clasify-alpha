@@ -51,6 +51,15 @@ public enum K3DSpike {
 /// (`K3DRoomTests` checks every pose). At rest on the front the window has no extra room.
 public enum K3DRoom {
     public static let extra = EdgeInsets(top: 200, leading: 190, bottom: 110, trailing: 190)
+
+    /// CLA-119 (build 269): `room` with its top cut to the space between the window's top and the
+    /// top of the screen's visible area (AppKit points, y up), never below 0. macOS moves a window
+    /// whose top passes that line down, and the device would jump.
+    public static func fit(_ room: EdgeInsets, windowTop: CGFloat, visibleTop: CGFloat) -> EdgeInsets {
+        var fit = room
+        fit.top = min(room.top, max(0, visibleTop - windowTop))
+        return fit
+    }
 }
 
 /// Shows `content`, the 2D device, while the front rests flat. While the device turns or shows

@@ -2,20 +2,33 @@ import AppKit
 import SwiftUI
 
 /// CLA-119 (build 258: the top of the turned device cut off): while the 3D body may show, the
-/// device window gets `K3DRoom.extra` round today's margins, so the body is never cut at the
+/// device window gets `K3DRoom.extra` round today's margins (its top cut by `fit`), so the body is never cut at the
 /// window's edge. At rest on the front the window is as before, so the device still reaches the
 /// menu bar (CLA-94).
 ///
 /// The skin pads its content by `room`. In the same update this hook moves the window's edges out
 /// (or in) by the change, so the device stays at the same point on the screen, and the window is
-/// already the size SwiftUI asks for. A window set with `setFrame` may go past the menu bar or
-/// the screen's edge: its clear area passes clicks through to the apps behind it, as the margins do.
+/// already the size SwiftUI asks for. The window's clear area passes clicks through to the apps
+/// behind it, as the margins do.
 struct WindowRoom: NSViewRepresentable {
     let room: EdgeInsets
 
     func makeCoordinator() -> Coordinator { Coordinator(room: room) }
 
     func makeNSView(context: Context) -> NSView { Hook() }
+
+    /// The device window, for `fit`.
+    @MainActor static weak var window: NSWindow?
+
+    /// CLA-119 (build 269: the device jumped down when a spin started after a move up): macOS
+    /// keeps a window's top under the menu bar, and moves a taller window down. So the top room is
+    /// only the room up to the top of the screen's visible area: nothing could show above it.
+    /// The sides and the bottom keep their room (macOS does not move a window for them). Read once
+    /// as the 3D body starts; the shrink takes the same room away, so the device comes back exactly.
+    @MainActor static func fit(_ room: EdgeInsets) -> EdgeInsets {
+        // No window or screen: no top room, so macOS has nothing to move.
+        K3DRoom.fit(room, windowTop: window?.frame.maxY ?? 0, visibleTop: window?.screen?.visibleFrame.maxY ?? -.infinity)
+    }
 
     func updateNSView(_ view: NSView, context: Context) {
         let old = context.coordinator.room
@@ -43,6 +56,11 @@ struct WindowRoom: NSViewRepresentable {
     }
 
     final class Hook: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let window { WindowRoom.window = window }
+        }
+
         /// Clicks go through to the device and the window drag.
         override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
