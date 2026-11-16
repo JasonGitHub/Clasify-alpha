@@ -43,4 +43,17 @@ import Testing
             }
         }
     }
+
+    /// CLA-119 (build 269): the top room is only the space up to the screen's visible top, so
+    /// macOS never moves the grown window. The sides and the bottom keep their room.
+    @Test func theTopRoomFitsUnderTheMenuBar() {
+        let room = K3DRoom.extra
+        #expect(K3DRoom.fit(room, windowTop: 500, visibleTop: 1000) == room)  // far from the top
+        #expect(K3DRoom.fit(room, windowTop: 971, visibleTop: 1000).top == 29)
+        #expect(K3DRoom.fit(room, windowTop: 1000, visibleTop: 1000).top == 0)  // at the menu bar
+        #expect(K3DRoom.fit(room, windowTop: 1010, visibleTop: 1000).top == 0)
+        #expect(K3DRoom.fit(room, windowTop: 0, visibleTop: -.infinity).top == 0)  // no screen
+        let fit = K3DRoom.fit(room, windowTop: 990, visibleTop: 1000)
+        #expect(fit.leading == room.leading && fit.trailing == room.trailing && fit.bottom == room.bottom)
+    }
 }
