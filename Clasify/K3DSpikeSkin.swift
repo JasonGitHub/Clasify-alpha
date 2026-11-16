@@ -23,19 +23,7 @@ struct K3DSpikeSkin: View {
     @State private var flip: K3DFlip
 
     /// CLA-117: the cold-start arrival, read once at launch.
-    enum Cold: Equatable {
-        case short, full, off
-
-        init(_ value: String?) {
-            switch value {
-            case nil, "short": self = .short
-            case "full": self = .full
-            default: self = .off
-            }
-        }
-    }
-
-    static let cold = Cold(UserDefaults.standard.string(forKey: "arrive.cold"))
+    static let cold = K3DArrival.Cold(UserDefaults.standard.string(forKey: "arrive.cold"))
     /// This launch's arrival has started, or was skipped. A window opened later shows at once.
     @MainActor private static var launched = false
 
@@ -76,54 +64,45 @@ struct K3DSpikeSkin: View {
     /// The first launch ever has its arrival with Hello (change 288). A later launch has the
     /// cold-start trial (CLA-117), once per launch.
     private func arrive() async {
-        let first = !Self.launched
+        let arrival = K3DArrival.pick(
+            arrived: store.state.arrived, launched: Self.launched, cold: Self.cold, canTurn: !reduceMotion && K3DFlip.canDraw)
         Self.launched = true
-        guard !store.state.arrived else { return await arriveFirst() }
-        guard first, Self.cold != .off else {
-            if flip.arriving { flip = K3DFlip() }  // never stay waiting
-            return
-        }
-        await arriveCold()
-    }
-
-    /// CLA-117: the arrival at a later launch, on the screen the app opens on, with no Hello.
-    private func arriveCold() async {
-        guard !reduceMotion && K3DFlip.canDraw else {
-            flip = K3DFlip()  // Reduce Motion or no Metal: the 2D device shows at once
-            return
-        }
         let state = store.state
-        if Self.cold == .short {
+        switch arrival {
+        case .first:
+            await arriveFirst(state)
+        case .short:
             flip = K3DFlip.arriveShort { K3DSpike.snapshot(state, artwork: artwork) }
-            // Input can hurry the turn: wait for its end as it is now.
+            // Input can hurry the turn (CLA-117): check its end often, so the device is at rest
+            // as soon as it lands.
             while flip.arriving, flip.ends > .now {
-                do { try await Task.sleep(for: .seconds(flip.ends.timeIntervalSinceNow)) } catch { break }
+                do { try await Task.sleep(for: .seconds(min(0.05, flip.ends.timeIntervalSinceNow))) } catch { break }
             }
-        } else {
+            flip = K3DFlip()  // at rest on the front
+        case .full:
+            // CLA-117: change 288 on the screen the app opens on, with no Hello.
             flip = K3DFlip.arrive { K3DSpike.snapshot(state, artwork: artwork) }
             try? await Task.sleep(for: .seconds(K3DFlip.arriveTurn + K3DFlip.arriveFade))
+            flip = K3DFlip()
+        case .still:
+            // Reduce Motion, no Metal, a window opened again, or "off": the 2D device shows at once.
+            flip = K3DFlip()
+            if !state.arrived { store.send(.arrived) }
         }
-        flip = K3DFlip()  // at rest on the front
     }
 
     /// Change 288: the arrival, once ever. The 3D front shows the screen as it is at the start,
     /// Hello's first frame, with nothing written. Hello waits until `.arrived`, which goes 0.2 s
     /// (Hello's own wait) before the turn ends: so the first stroke lands as the turn ends and
     /// the 2D device starts to fade in. Nothing is written before that.
-    private func arriveFirst() async {
-        if !reduceMotion && K3DFlip.canDraw {
-            // Hello's clock is pinned to its start: a slow launch must not show a half-written word.
-            let state = store.state
-            let time = state.top.screen == .hello ? state.helloAt : nil
-            flip = K3DFlip.arrive { K3DSpike.snapshot(state, artwork: artwork, time: time) }
-            try? await Task.sleep(for: .seconds(K3DFlip.arriveTurn - K3DFlip.arriveHelloLead))
-            store.send(.arrived)
-            try? await Task.sleep(for: .seconds(K3DFlip.arriveHelloLead + K3DFlip.arriveFade))
-            flip = K3DFlip()  // at rest on the front, as before
-        } else {
-            flip = K3DFlip()  // Reduce Motion or no Metal: the 2D device shows at once
-            store.send(.arrived)
-        }
+    private func arriveFirst(_ state: AppState) async {
+        // Hello's clock is pinned to its start: a slow launch must not show a half-written word.
+        let time = state.top.screen == .hello ? state.helloAt : nil
+        flip = K3DFlip.arrive { K3DSpike.snapshot(state, artwork: artwork, time: time) }
+        try? await Task.sleep(for: .seconds(K3DFlip.arriveTurn - K3DFlip.arriveHelloLead))
+        store.send(.arrived)
+        try? await Task.sleep(for: .seconds(K3DFlip.arriveHelloLead + K3DFlip.arriveFade))
+        flip = K3DFlip()  // at rest on the front, as before
     }
 
     /// Changes 289 and 290: a new color on the same screen spins the device. During a spin the

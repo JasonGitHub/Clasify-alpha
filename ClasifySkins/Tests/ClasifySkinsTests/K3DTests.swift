@@ -254,6 +254,25 @@ import Testing
         #expect(near(arrive.ends.timeIntervalSince(t0), 1.95))
     }
 
+    /// CLA-117: which arrival a window plays, for each case.
+    @Test func eachLaunchPicksItsArrival() {
+        typealias A = K3DArrival
+        #expect(A.Cold(nil) == .short && A.Cold("short") == .short && A.Cold("full") == .full)
+        #expect(A.Cold("off") == .off && A.Cold("Full") == .off && A.Cold("") == .off)
+        for cold in [A.Cold.short, .full, .off] {
+            // The first launch ever is 288 with Hello, whatever the setting.
+            #expect(A.pick(arrived: false, launched: false, cold: cold, canTurn: true) == .first)
+            #expect(A.pick(arrived: false, launched: true, cold: cold, canTurn: true) == .first)
+            #expect(A.pick(arrived: false, launched: false, cold: cold, canTurn: false) == .still)
+            // A window opened again in the same launch, or no motion: no turn.
+            #expect(A.pick(arrived: true, launched: true, cold: cold, canTurn: true) == .still)
+            #expect(A.pick(arrived: true, launched: false, cold: cold, canTurn: false) == .still)
+        }
+        #expect(A.pick(arrived: true, launched: false, cold: .short, canTurn: true) == .short)
+        #expect(A.pick(arrived: true, launched: false, cold: .full, canTurn: true) == .full)
+        #expect(A.pick(arrived: true, launched: false, cold: .off, canTurn: true) == .still)
+    }
+
     /// CLA-117 "full" and change 288: input waits until the turn lands.
     @Test func theFullArrivalHoldsInputUntilItLands() {
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)

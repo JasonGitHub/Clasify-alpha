@@ -256,6 +256,42 @@ struct K3DMesh {
     }
 }
 
+/// Which arrival a new device window plays (card BR, changes 288 and 303; CLA-117).
+public enum K3DArrival: Equatable, Sendable {
+    /// The first launch ever: change 288 with Hello. The skin sends `.arrived` from it.
+    case first
+    /// A later launch, as `arrive.cold` says: change 303, or change 288 with no Hello.
+    case short, full
+    /// No turn: the 2D device shows at once.
+    case still
+
+    /// The UserDefaults string `arrive.cold`, read at launch: missing or "short" is change 303,
+    /// "full" is change 288, any other value is no arrival.
+    public enum Cold: Equatable, Sendable {
+        case short, full, off
+
+        public init(_ value: String?) {
+            switch value {
+            case nil, "short": self = .short
+            case "full": self = .full
+            default: self = .off
+            }
+        }
+    }
+
+    /// The arrival for a window: `arrived` is the saved first-launch flag, `launched` that this
+    /// launch already had its arrival, `canTurn` that motion is on and Metal can draw.
+    public static func pick(arrived: Bool, launched: Bool, cold: Cold, canTurn: Bool) -> K3DArrival {
+        if !arrived { return canTurn ? .first : .still }  // the skin still sends `.arrived` at once
+        guard !launched, canTurn else { return .still }
+        switch cold {
+        case .short: return .short
+        case .full: return .full
+        case .off: return .still
+        }
+    }
+}
+
 /// A turn of the 3D device, as a script. `flip` is the mock's `flip()` (CLA-101): the device
 /// turns 180° in 0.82 s with a 2.5% overshoot, settles by 1.0 s, and is pushed back by up to
 /// 70 pt while it turns; the 3D body and the flat 2D device crossfade in 0.1 s. `arrive` is
