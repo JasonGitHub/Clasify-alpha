@@ -93,7 +93,7 @@ extension K3DMesh {
     /// (1 pt, material 34).
     private mutating func skin(part skinPart: Int, capped: Int, depth: Double, material: Int) -> [UInt32: UInt32] {
         var twin: [UInt32: UInt32] = [:]
-        for t in stride(from: 0, to: capped, by: 3) {
+        for t in Swift.stride(from: 0, to: capped, by: 3) {
             let tri = [indices[t], indices[t + 1], indices[t + 2]]
             guard tri.allSatisfy({ Int(float($0, 12)) == skinPart }) else { continue }
             for i in tri where twin[i] == nil {
