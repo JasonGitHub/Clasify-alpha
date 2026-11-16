@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import Testing
 
@@ -60,53 +59,53 @@ import Testing
         #expect(fit.leading == room.leading && fit.trailing == room.trailing && fit.bottom == room.bottom)
     }
 
-    /// CLA-122: a window that records the calls `K3DRoom.resize` makes.
-    final class Recorder: NSWindow {
-        var calls: [String] = []
-        override func disableScreenUpdatesUntilFlush() {
-            calls.append("hold")
-            super.disableScreenUpdatesUntilFlush()
+    /// The device's top left on the screen (AppKit: y up), for a window frame and the room the
+    /// content has, as `K3DRoomAnchor` places the content in the window less the margin.
+    func device(window: CGRect, room: EdgeInsets, split: CGPoint) -> CGPoint {
+        let m = Self.margin, device = PocketSkin.size
+        let bounds = CGRect(x: 0, y: 0, width: window.width - m.leading - m.trailing, height: window.height - m.top - m.bottom)
+        let size = CGSize(width: device.width + room.leading + room.trailing, height: device.height + room.top + room.bottom)
+        let origin = K3DRoomAnchor.origin(in: bounds, size: size, fraction: split)
+        return CGPoint(x: window.minX + m.leading + origin.x + room.leading, y: window.maxY - m.top - origin.y - room.top)
+    }
+
+    /// CLA-122 (build 279: the device 45 pt too high for one frame as an About drag started):
+    /// the device stays at the same point on the screen whichever of the window and the content
+    /// has its new size, as the room comes and as it goes, with the full room and with a top cut
+    /// under the menu bar.
+    @Test func theDeviceStaysWhileTheWindowAndTheContentChangeApart() {
+        let m = Self.margin, device = PocketSkin.size
+        let small = CGRect(x: 300, y: 200, width: device.width + m.leading + m.trailing, height: device.height + m.top + m.bottom)
+        for visibleTop in [small.maxY + 400, small.maxY + 45, small.maxY] {
+            let room = K3DRoom.fit(K3DRoom.extra, windowTop: small.maxY, visibleTop: visibleTop)
+            let big = CGRect(
+                x: small.minX - room.leading, y: small.minY - room.bottom,
+                width: small.width + room.leading + room.trailing, height: small.height + room.top + room.bottom)
+            let split = K3DRoomAnchor.Fraction()
+            split.set(room)
+            split.set(EdgeInsets())  // the room going keeps the split
+            let at = device(window: small, room: EdgeInsets(), split: split.point)
+            for window in [small, big] {
+                for content in [EdgeInsets(), room] {
+                    let now = device(window: window, room: content, split: split.point)
+                    #expect(abs(now.x - at.x) < 0.001 && abs(now.y - at.y) < 0.001, "top room \(room.top)")
+                }
+            }
         }
-        override func setFrame(_ frameRect: NSRect, display flag: Bool) {
-            calls.append("frame")
-            super.setFrame(frameRect, display: flag)
-        }
     }
 
-    func recorder() -> Recorder {
-        _ = NSApplication.shared
-        let window = Recorder(
-            contentRect: NSRect(x: 300, y: 300, width: 400, height: 700), styleMask: .borderless, backing: .buffered, defer: true)
-        window.calls = []
-        return window
-    }
-
-    /// CLA-122 (build 279): the screen holds the old picture before the window's frame changes,
-    /// when the room comes (a turn starts) and when it goes (the device rests on the front).
-    @Test func theScreenHoldsBeforeTheWindowGrowsOrShrinks() {
-        let room = K3DRoom.fit(K3DRoom.extra, windowTop: 1000, visibleTop: 1300)
-        let grow = recorder()
-        K3DRoom.resize(grow, from: EdgeInsets(), to: room)
-        #expect(grow.calls == ["hold", "frame"])
-        #expect(grow.frame == NSRect(x: 110, y: 190, width: 780, height: 1010))
-
-        let shrink = recorder()
-        shrink.setFrame(NSRect(x: 110, y: 190, width: 780, height: 1010), display: false)
-        shrink.calls = []
-        K3DRoom.resize(shrink, from: room, to: EdgeInsets())
-        #expect(shrink.calls == ["hold", "frame"])
-        #expect(shrink.frame == NSRect(x: 300, y: 300, width: 400, height: 700))
-    }
-
-    /// The device stays at the same point on the screen: each edge moves by its room.
-    @Test func theFrameMovesEachEdgeByItsRoom() {
-        let old = NSRect(x: 300, y: 300, width: 400, height: 700)
-        let cut = EdgeInsets(top: 45, leading: 190, bottom: 110, trailing: 190)
-        let new = K3DRoom.frame(old, from: EdgeInsets(), to: cut)
-        #expect(new.maxY == old.maxY + 45)
-        #expect(new.minY == old.minY - 110)
-        #expect(new.minX == old.minX - 190)
-        #expect(new.maxX == old.maxX + 190)
-        #expect(K3DRoom.frame(new, from: cut, to: EdgeInsets()) == old)
+    /// The old centring moved the device 45 pt up for the frame with the new window and the old
+    /// content, as Jason's clip showed.
+    @Test func centringMovedTheDevice45Points() {
+        let m = Self.margin, device = PocketSkin.size, room = K3DRoom.extra
+        let small = CGRect(x: 300, y: 200, width: device.width + m.leading + m.trailing, height: device.height + m.top + m.bottom)
+        let big = CGRect(
+            x: small.minX - room.leading, y: small.minY - room.bottom,
+            width: small.width + room.leading + room.trailing, height: small.height + room.top + room.bottom)
+        let centre = CGPoint(x: 0.5, y: 0.5)
+        let before = device(window: small, room: EdgeInsets(), split: centre)
+        let jump = device(window: big, room: EdgeInsets(), split: centre)
+        #expect(jump.y - before.y == 45)  // up, in AppKit's y
+        #expect(jump.x == before.x)
     }
 }

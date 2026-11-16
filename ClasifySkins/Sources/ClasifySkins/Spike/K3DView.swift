@@ -1,8 +1,8 @@
-import AppKit
 import ClasifyCore
 import MetalKit
 import SwiftUI
 import simd
+import Synchronization
 
 /// CLA-101: the About screen's K.3D.8 flip in true 3D. It is on in every build.
 public enum K3DSpike {
@@ -61,27 +61,53 @@ public enum K3DRoom {
         fit.top = min(room.top, max(0, visibleTop - windowTop))
         return fit
     }
+}
 
-    /// CLA-122 (build 279: the device 45 pt too high for one frame as an About drag started): the
-    /// window's frame moves by the change in room, and the screen keeps the old picture until
-    /// the window draws again. That drawing has the padded SwiftUI content and the Metal frame of
-    /// the new size (`presentsWithTransaction`), so the window, the SwiftUI layers and the
-    /// Metal layer reach the screen in one update. Before, the window could show at its new
-    /// size with the old content centred in it: (top - bottom) / 2 = (200 - 110) / 2 = 45 pt up.
-    /// Used both ways: room added as the 3D body starts, room removed as the 2D device rests.
-    @MainActor public static func resize(_ window: NSWindow, from old: EdgeInsets, to new: EdgeInsets) {
-        window.disableScreenUpdatesUntilFlush()
-        window.setFrame(frame(window.frame, from: old, to: new), display: false)
+/// CLA-122 (build 279: the device 45 pt too high for one frame as an About drag started): the
+/// window and the padded content change size in different frames now and then. SwiftUI centred
+/// the content in the window, so for that frame the device moved by (top - bottom) / 2 =
+/// (200 - 110) / 2 = 45 pt. This layout places the content by the room's own split instead of
+/// the centre: `fraction` = top / (top + bottom), and leading / (leading + trailing). Then the
+/// device is at the same point on the screen whichever of the window and the content has its new
+/// size: both old, both new, or one of each. `fraction` is set as the room is picked, before
+/// either changes, and kept as the room goes, so the shrink uses the same split.
+public struct K3DRoomAnchor: Layout {
+    /// The room's split. A reference, so a layout pass reads the new split even when it still
+    /// has the old content.
+    public final class Fraction: Sendable {
+        private let value = Mutex(CGPoint(x: 0.5, y: 0.5))
+        public init() {}
+        public var point: CGPoint { value.withLock { $0 } }
+        /// Sets the split from `room`. A room of 0 keeps the split it had.
+        public func set(_ room: EdgeInsets) {
+            let width = room.leading + room.trailing, height = room.top + room.bottom
+            value.withLock { point in
+                if width > 0 { point.x = room.leading / width }
+                if height > 0 { point.y = room.top / height }
+            }
+        }
     }
 
-    /// The window's frame (AppKit: the origin at the bottom left) with its edges moved by the
-    /// change in room, so the device stays at the same point on the screen.
-    public static func frame(_ frame: NSRect, from old: EdgeInsets, to new: EdgeInsets) -> NSRect {
-        let top = new.top - old.top, left = new.leading - old.leading
-        let bottom = new.bottom - old.bottom, right = new.trailing - old.trailing
-        return NSRect(
-            x: frame.minX - left, y: frame.minY - bottom,
-            width: frame.width + left + right, height: frame.height + top + bottom)
+    let fraction: Fraction
+
+    public init(fraction: Fraction) { self.fraction = fraction }
+
+    /// The content's top left in `bounds`. Smaller content moves in by its share of the space
+    /// left; larger content moves out by its share of the overflow.
+    static func origin(in bounds: CGRect, size: CGSize, fraction: CGPoint) -> CGPoint {
+        CGPoint(
+            x: bounds.minX + fraction.x * (bounds.width - size.width), y: bounds.minY + fraction.y * (bounds.height - size.height))
+    }
+
+    public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(proposal) ?? .zero
+    }
+
+    public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let content = subviews.first else { return }
+        let size = content.sizeThatFits(proposal)
+        content.place(
+            at: Self.origin(in: bounds, size: size, fraction: fraction.point), anchor: .topLeading, proposal: ProposedViewSize(size))
     }
 }
 
