@@ -48,6 +48,8 @@ struct K3DSpikeSkin: View {
     @State private var hold: Task<Void, Never>?
     /// The hold opened the device: the rest of this press does nothing.
     @State private var holdOpened = false
+    /// CLA-119: the window has `K3DRoom.extra` round today's margins, while the 3D body may show.
+    @State private var roomy = false
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -60,7 +62,11 @@ struct K3DSpikeSkin: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        K3DFlipView(flip: flip, black: store.state.shownColor == .black, margin: DeviceWindow.margin, onTap: showroom ? click : turn) {
+        let room = roomy ? K3DRoom.extra : EdgeInsets()
+        K3DFlipView(
+            flip: flip, black: store.state.shownColor == .black, margin: DeviceWindow.margin + room, onTap: showroom ? click : turn,
+            onRoom: { roomy = $0 }
+        ) {
             PocketSkin(state: store.state) { action in
                 // CLA-117: the full arrival takes no input until it lands. The short one lands in
                 // 0.25 s at most, and the input still does its job.
@@ -87,6 +93,10 @@ struct K3DSpikeSkin: View {
             .environment(\.artwork, artwork)
         }
         .overlay { if showroom { handle } }
+        // CLA-119: the room goes round the device, and the window grows by the same amount on
+        // each side in the same pass, so the device stays where it is on the screen.
+        .padding(room)
+        .background(WindowRoom(room: room))
         .onModifierKeysChanged(mask: .option) { _, keys in optionDown = keys.contains(.option) }
         .task(id: store.state.top.screen) { await nudge() }
         .onChange(of: store.state.top.screen) { _, screen in

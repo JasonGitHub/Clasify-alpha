@@ -34,6 +34,16 @@ public enum K3DSpike {
     public init() {}
 }
 
+/// CLA-119 (build 258: the top of the turned device cut off): the room the window gets round
+/// today's margins while the 3D body shows, so the body's frame is never cut at any pose. One
+/// size for every turn and the take-apart, so the window does not change size while the 3D
+/// body shows. From the bounding box of the parts apart at any angle with tilt ±35°, plus a
+/// little: 192 pt above, 184 at the sides, 107 below today's window
+/// (`K3DRoomTests` checks every pose). At rest on the front the window has no extra room.
+public enum K3DRoom {
+    public static let extra = EdgeInsets(top: 200, leading: 190, bottom: 110, trailing: 190)
+}
+
 /// Shows `content`, the 2D device, while the front rests flat. While the device turns or shows
 /// its back, the 3D body shows in its place, over the window's margins too, with the 2D
 /// device's drop shadow cast from its outline. The two hand over by angle within 2° of the resting
@@ -48,6 +58,9 @@ public struct K3DFlipView<Content: View>: View {
     let black: Bool
     let margin: EdgeInsets
     let onTap: () -> Void
+    /// CLA-119: true while the 3D body may show (the device is not at rest on the front), so the
+    /// window needs `K3DRoom.extra`; false once the 2D device rests on the front again.
+    let onRoom: (Bool) -> Void
     let content: Content
     /// Counts the turns that ended, so the body runs again and pauses the timeline.
     @State private var settled = 0
@@ -55,12 +68,14 @@ public struct K3DFlipView<Content: View>: View {
     @State private var ready = false
 
     public init(
-        flip: K3DFlip, black: Bool, margin: EdgeInsets, onTap: @escaping () -> Void, @ViewBuilder content: () -> Content
+        flip: K3DFlip, black: Bool, margin: EdgeInsets, onTap: @escaping () -> Void, onRoom: @escaping (Bool) -> Void = { _ in },
+        @ViewBuilder content: () -> Content
     ) {
         self.flip = flip
         self.black = black
         self.margin = margin
         self.onTap = onTap
+        self.onRoom = onRoom
         self.content = content()
     }
 
@@ -69,6 +84,7 @@ public struct K3DFlipView<Content: View>: View {
         // the pose is the side it rests on. A new turn changes `flip`, which starts it again.
         // Reading `settled` makes the body run again when a turn ends.
         let resting = settled >= 0 && flip.isResting(at: .now)
+        let needsRoom = !(settled >= 0 && flip.restsOnFront(at: .now))
         TimelineView(.animation(paused: resting)) { context in
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
@@ -83,6 +99,9 @@ public struct K3DFlipView<Content: View>: View {
                     .opacity(max(look.opacity, 0.001))
             }
         }
+        // CLA-119: the window grows as a turn starts (the 2D device still covers the first 2°)
+        // and shrinks once the 2D device rests on the front again.
+        .onChange(of: needsRoom, initial: true) { _, needs in onRoom(needs) }
         .task(id: flip.ends) {
             // When the turn ends, run the body again so the timeline pauses. A hurried short
             // arrival (change 303) ends sooner, so its end starts a new wait.
