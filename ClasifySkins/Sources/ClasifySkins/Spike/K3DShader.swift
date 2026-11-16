@@ -78,6 +78,22 @@ enum K3DShader {
         return o;
     }
 
+    // CLA-119: the 2:1 filter. The scene is drawn at twice the pixels; this pass reads it with
+    // a linear sampler at the middle of each 2 x 2 block, which is their mean.
+    struct K3DDown { float4 position [[position]]; float2 uv; };
+
+    vertex K3DDown k3dDownVertex(uint id [[vertex_id]], constant float2& scale [[buffer(0)]]) {
+        float2 p = float2((id << 1) & 2, id & 2);  // one triangle over the viewport
+        K3DDown o;
+        o.position = float4(p * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+        o.uv = p * scale;
+        return o;
+    }
+
+    fragment float4 k3dDownFragment(K3DDown in [[stage_in]], texture2d<float> t [[texture(0)]], sampler s [[sampler(0)]]) {
+        return t.sample(s, in.uv);
+    }
+
     // The frozen light (UC): a lamp fixed in the room, 350 pt left, 800 pt up and 1000 pt out from
     // the front face (z = 34), and the room as a bright ceiling and a darker floor.
     constant float3 lamp = float3(-350.0, 800.0, 34.0 + 1000.0 - 2600.0);

@@ -361,6 +361,7 @@ import Testing
         let library = try K3DRenderer.makeLibrary(device)
         _ = try K3DRenderer.makePipeline(library)
         _ = try K3DRenderer.makePipeline(library, blend: true)
+        _ = try K3DRenderer.makeDownPipeline(library)
         #expect(K3DRenderer.shared != nil)
     }
 }

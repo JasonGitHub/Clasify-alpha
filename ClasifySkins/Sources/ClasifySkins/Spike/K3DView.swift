@@ -198,8 +198,11 @@ final class K3DLayerView: MTKView {
         isPaused = true
         enableSetNeedsDisplay = true
         colorPixelFormat = .bgra8Unorm  // the mock writes its colors as they are, like a canvas
-        depthStencilPixelFormat = .depth32Float
-        sampleCount = K3DRenderer.samples
+        // CLA-119: the scene is drawn at 2x in the renderer's own targets, then filtered into
+        // the drawable, so the drawable needs no samples and no depth.
+        depthStencilPixelFormat = .invalid
+        sampleCount = 1
+        framebufferOnly = true
         clearColor = MTLClearColorMake(0, 0, 0, 0)
         colorspace = CGColorSpace(name: CGColorSpace.sRGB)
         layer?.isOpaque = false
@@ -232,6 +235,11 @@ final class K3DLayerView: MTKView {
 @MainActor final class K3DRenderer {
     static let shared = K3DRenderer()
     static let samples = 4
+    /// CLA-119: the scene is drawn at twice the screen's pixels and filtered down 2:1, as the
+    /// mock's canvas (k3d_src3.js lines 7-9: the canvas at 2x, the browser scales it down).
+    /// MSAA smooths only the outline; the shader's own edges, text and the steel need the
+    /// extra pixels.
+    static let supersample = 2
     /// The mock's camera: the eye 2600 pt from the body's center, near 500, far 3000.
     static let distance: Float = 2600, near: Float = 500, far: Float = 3000
 
@@ -242,12 +250,20 @@ final class K3DLayerView: MTKView {
     /// Take apart: the window glass, blended over the parts with no depth write (the mock's pass 1).
     private let glassPipeline: any MTLRenderPipelineState
     private let glassDepth: any MTLDepthStencilState
+    /// CLA-119: the 2:1 filter into the screen's pixels.
+    private let downPipeline: any MTLRenderPipelineState
     private let vertices: any MTLBuffer, indices: any MTLBuffer
     /// CLA-119: the closed body's outer points, for the shadow's cut (`K3DShadow.cut`).
     let outerPoints: [SIMD3<Double>]
+    /// The body's box in its own points, closed and with the take-apart parts at every `ex`.
+    private let closedBox: (min: SIMD3<Float>, max: SIMD3<Float>), apartBox: (min: SIMD3<Float>, max: SIMD3<Float>)
+    /// The 2x scene targets, kept while big enough.
+    private var targets: (color: any MTLTexture, resolved: any MTLTexture, depth: any MTLTexture)?
     private let closedIndexCount: Int, indexCount: Int
     private let front: any MTLTexture, back: any MTLTexture, steel: any MTLTexture
     private let linear: any MTLSamplerState, nearest: any MTLSamplerState
+    /// The 2:1 filter's sampler: linear, no mipmaps.
+    private let filterSampler: any MTLSamplerState
     /// The screen picture now in the front texture.
     private var frontScreen: CGImage?
     /// The front texture's bytes as bundled, read once: a turn's new screen goes into a copy.
@@ -273,7 +289,8 @@ final class K3DLayerView: MTKView {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
               let library = try? Self.makeLibrary(device),
               let pipeline = try? Self.makePipeline(library), let depth = Self.makeDepth(device, write: true),
-              let glassPipeline = try? Self.makePipeline(library, blend: true), let glassDepth = Self.makeDepth(device, write: false)
+              let glassPipeline = try? Self.makePipeline(library, blend: true), let glassDepth = Self.makeDepth(device, write: false),
+              let downPipeline = try? Self.makeDownPipeline(library)
         else { return nil }
         let mesh = K3DMesh()
         guard let vertices = device.makeBuffer(bytes: mesh.vertices, length: mesh.vertices.count * 4, options: []),
@@ -282,7 +299,8 @@ final class K3DLayerView: MTKView {
               let front = Self.texture(device, queue, frontBytes),
               let back = Self.texture(device, queue, K3DTextures.back(version: K3DTextures.version)),
               let steel = Self.texture(device, queue, K3DTextures.rgba(.steel)),
-              let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest)
+              let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest),
+              let filterSampler = Self.filterSampler(device)
         else { return nil }
         self.device = device
         self.queue = queue
@@ -290,6 +308,9 @@ final class K3DLayerView: MTKView {
         self.depth = depth
         self.glassPipeline = glassPipeline
         self.glassDepth = glassDepth
+        self.downPipeline = downPipeline
+        closedBox = Self.box(mesh, apart: false)
+        apartBox = Self.box(mesh, apart: true)
         self.vertices = vertices
         outerPoints = K3DShadow.outerPoints(mesh)
         self.indices = indices
@@ -301,6 +322,7 @@ final class K3DLayerView: MTKView {
         self.steel = steel
         self.linear = linear
         self.nearest = nearest
+        self.filterSampler = filterSampler
         // Warm-up: one frame of the back, off screen, when the view is mounted. In build 194 the
         // first turn repeated a frame near edge-on, where the back first shows. The likely cause
         // is first-use work for the back texture and its shader path, so it is done here.
@@ -331,6 +353,60 @@ final class K3DLayerView: MTKView {
         descriptor.depthAttachmentPixelFormat = .depth32Float
         descriptor.rasterSampleCount = samples
         return try device.makeRenderPipelineState(descriptor: descriptor)
+    }
+
+    /// CLA-119: the 2:1 filter's pipeline: one sample, no depth.
+    static func makeDownPipeline(_ library: any MTLLibrary) throws -> any MTLRenderPipelineState {
+        let descriptor = MTLRenderPipelineDescriptor()
+        descriptor.vertexFunction = library.makeFunction(name: "k3dDownVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "k3dDownFragment")
+        descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        return try library.device.makeRenderPipelineState(descriptor: descriptor)
+    }
+
+    /// The box round the mesh's points, in the body's own points. Apart (`apart`), each part
+    /// can be anywhere from its closed place to its place at `ex` 1, and the wheel's cable
+    /// anywhere along its slide (K3DShader's vertex shader), so the box takes both ends of each.
+    /// The shader's moves are straight lines, so the box holds every `ex` between.
+    nonisolated static func box(_ mesh: K3DMesh, apart: Bool) -> (min: SIMD3<Float>, max: SIMD3<Float>) {
+        var lo = SIMD3<Float>(repeating: .infinity), hi = SIMD3<Float>(repeating: -.infinity)
+        let count = apart ? mesh.vertexCount : mesh.closedVertexCount
+        for i in 0..<count {
+            let e = i * K3DMesh.stride
+            let p = SIMD3(mesh.vertices[e], mesh.vertices[e + 1], mesh.vertices[e + 2])
+            lo = simd_min(lo, p)
+            hi = simd_max(hi, p)
+            guard apart else { continue }
+            let m = mesh.vertices[e + 11], pt = mesh.vertices[e + 12]
+            let dz = K3DShader.apart[Int(min(max(pt + 0.5, 0), 9))] - K3DShader.apartBack
+            let cable = pt > 2.5 && pt < 3.5 && ((m > 13.5 && m < 16.5) || (m > 40.5 && m < 41.5))
+            for q in [p + SIMD3(0, 0, dz)] + (cable ? [p + SIMD3(160, 0, -2), p + SIMD3(160, 0, dz - 2)] : []) {
+                lo = simd_min(lo, q)
+                hi = simd_max(hi, q)
+            }
+        }
+        return (lo, hi)
+    }
+
+    /// CLA-119: the part of a frame of `size` points the body can cover at the pose, in pixels
+    /// at `pixelScale` from the top left: the box's 8 corners through the same matrices as the
+    /// draw, 2 pixels out, on whole pixels, inside the frame. Nil when the body is off the frame.
+    static func bodyRect(
+        _ box: (min: SIMD3<Float>, max: SIMD3<Float>), pose: K3DPose, size: CGSize, center: CGPoint, pixelScale: Double
+    ) -> (x: Int, y: Int, w: Int, h: Int)? {
+        let m = projection(size: size, center: center, scale: pose.scale) * modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt)
+        var x0 = Double.infinity, y0 = Double.infinity, x1 = -Double.infinity, y1 = -Double.infinity
+        for i in 0..<8 {
+            let c = SIMD4<Float>(i & 1 == 0 ? box.min.x : box.max.x, i & 2 == 0 ? box.min.y : box.max.y, i & 4 == 0 ? box.min.z : box.max.z, 1)
+            let q = m * c
+            let x = (Double(q.x / q.w) + 1) / 2 * size.width, y = (1 - Double(q.y / q.w)) / 2 * size.height
+            x0 = min(x0, x); x1 = max(x1, x); y0 = min(y0, y); y1 = max(y1, y)
+        }
+        let wPx = Int((size.width * pixelScale).rounded()), hPx = Int((size.height * pixelScale).rounded())
+        let l = max(0, Int((x0 * pixelScale).rounded(.down)) - 2), t = max(0, Int((y0 * pixelScale).rounded(.down)) - 2)
+        let r = min(wPx, Int((x1 * pixelScale).rounded(.up)) + 2), b = min(hPx, Int((y1 * pixelScale).rounded(.up)) + 2)
+        guard r > l && b > t else { return nil }
+        return (l, t, r - l, b - t)
     }
 
     private static func makeDepth(_ device: any MTLDevice, write: Bool) -> (any MTLDepthStencilState)? {
@@ -369,6 +445,18 @@ final class K3DLayerView: MTKView {
         descriptor.magFilter = filter
         // The id sampler reads level 0 only; the color sampler blends levels, like the mock's tm.
         descriptor.mipFilter = filter == .linear ? .linear : .notMipmapped
+        // CLA-119: as the mock's export (k3d_src3.js `up`): anisotropic filtering, up to 8, so the
+        // front's print stays sharp at a steep angle.
+        if filter == .linear { descriptor.maxAnisotropy = 8 }
+        descriptor.sAddressMode = .clampToEdge
+        descriptor.tAddressMode = .clampToEdge
+        return device.makeSamplerState(descriptor: descriptor)
+    }
+
+    private static func filterSampler(_ device: any MTLDevice) -> (any MTLSamplerState)? {
+        let descriptor = MTLSamplerDescriptor()
+        descriptor.minFilter = .linear
+        descriptor.magFilter = .linear
         descriptor.sAddressMode = .clampToEdge
         descriptor.tAddressMode = .clampToEdge
         return device.makeSamplerState(descriptor: descriptor)
@@ -388,10 +476,10 @@ final class K3DLayerView: MTKView {
     /// Draws one frame in the view. Returns false when it drew nothing.
     @discardableResult func draw(in view: K3DLayerView) -> Bool {
         show(screen: view.screen)
-        guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
-              let buffer = queue.makeCommandBuffer(), let encoder = buffer.makeRenderCommandEncoder(descriptor: pass)
+        guard let drawable = view.currentDrawable, let buffer = queue.makeCommandBuffer(), view.bounds.width > 0,
+              render(buffer, pose: view.pose, size: view.bounds.size, center: view.deviceCenter,
+                     pixelScale: Double(view.drawableSize.width / view.bounds.width), into: drawable.texture)
         else { return false }
-        encode(encoder, pose: view.pose, size: view.bounds.size, center: view.deviceCenter)
         if view.firstFrame != nil {
             // Before the commit, so the handler cannot miss the presentation.
             drawable.addPresentedHandler(Self.presentedHandler(for: view))
@@ -409,6 +497,74 @@ final class K3DLayerView: MTKView {
     /// The view is a main-actor class, so it is Sendable and may be captured.
     nonisolated static func presentedHandler<Drawable>(for view: K3DLayerView) -> @Sendable (Drawable) -> Void {
         { [weak view] _ in Task { @MainActor in view?.firstFrameShown() } }
+    }
+
+    /// CLA-119: one frame of `size` points into `out` (one sample, `pixelScale` pixels per
+    /// point). The scene is drawn at `supersample` times the pixels over the body's rect only,
+    /// then filtered 2:1 into the same rect of `out`, on whole pixels. The rest is clear.
+    private func render(
+        _ buffer: any MTLCommandBuffer, pose: K3DPose, size: CGSize, center: CGPoint, pixelScale: Double, into out: any MTLTexture
+    ) -> Bool {
+        let down = MTLRenderPassDescriptor()
+        down.colorAttachments[0].texture = out
+        down.colorAttachments[0].loadAction = .clear
+        down.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+        down.colorAttachments[0].storeAction = .store
+        guard let rect = Self.bodyRect(pose.ex > 0 ? apartBox : closedBox, pose: pose, size: size, center: center, pixelScale: pixelScale)
+        else {
+            buffer.makeRenderCommandEncoder(descriptor: down)?.endEncoding()
+            return true
+        }
+        let k = Self.supersample, w = rect.w * k, h = rect.h * k
+        guard let targets = sceneTargets(w, h) else { return false }
+        let scene = MTLRenderPassDescriptor()
+        scene.colorAttachments[0].texture = targets.color
+        scene.colorAttachments[0].resolveTexture = targets.resolved
+        scene.colorAttachments[0].loadAction = .clear
+        scene.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
+        scene.colorAttachments[0].storeAction = .multisampleResolve
+        scene.depthAttachment.texture = targets.depth
+        scene.depthAttachment.loadAction = .clear
+        scene.depthAttachment.clearDepth = 1
+        scene.depthAttachment.storeAction = .dontCare
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: scene) else { return false }
+        // The rect's own camera: the same lens, cut to the rect, so the body is where it would be.
+        encoder.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(w), height: Double(h), znear: 0, zfar: 1))
+        let points = CGSize(width: Double(rect.w) / pixelScale, height: Double(rect.h) / pixelScale)
+        let shifted = CGPoint(x: center.x - Double(rect.x) / pixelScale, y: center.y - Double(rect.y) / pixelScale)
+        encode(encoder, pose: pose, size: points, center: shifted)
+        guard let filter = buffer.makeRenderCommandEncoder(descriptor: down) else { return false }
+        filter.setViewport(MTLViewport(
+            originX: Double(rect.x), originY: Double(rect.y), width: Double(rect.w), height: Double(rect.h), znear: 0, zfar: 1))
+        filter.setRenderPipelineState(downPipeline)
+        var scale = SIMD2<Float>(Float(w) / Float(targets.resolved.width), Float(h) / Float(targets.resolved.height))
+        filter.setVertexBytes(&scale, length: MemoryLayout<SIMD2<Float>>.stride, index: 0)
+        filter.setFragmentTexture(targets.resolved, index: 0)
+        filter.setFragmentSamplerState(filterSampler, index: 0)
+        filter.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        filter.endEncoding()
+        return true
+    }
+
+    /// The 2x targets, made again only when they are too small. The MSAA color and the depth
+    /// live in tile memory where the GPU can (Apple silicon); elsewhere they are private.
+    private func sceneTargets(_ w: Int, _ h: Int) -> (color: any MTLTexture, resolved: any MTLTexture, depth: any MTLTexture)? {
+        if let t = targets, t.resolved.width >= w, t.resolved.height >= h { return t }
+        let tile = device.supportsFamily(.apple7)
+        func target(_ format: MTLPixelFormat, samples: Int, read: Bool) -> (any MTLTexture)? {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: w, height: h, mipmapped: false)
+            descriptor.textureType = samples > 1 ? .type2DMultisample : .type2D
+            descriptor.sampleCount = samples
+            descriptor.usage = read ? [.renderTarget, .shaderRead] : .renderTarget
+            descriptor.storageMode = read ? .private : (tile ? .memoryless : .private)
+            return device.makeTexture(descriptor: descriptor)
+        }
+        guard let color = target(.bgra8Unorm, samples: Self.samples, read: false),
+              let resolved = target(.bgra8Unorm, samples: 1, read: true),
+              let depth = target(.depth32Float, samples: Self.samples, read: false)
+        else { return nil }
+        targets = (color, resolved, depth)
+        return targets
     }
 
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
@@ -449,31 +605,13 @@ final class K3DLayerView: MTKView {
     func image(_ pose: K3DPose, screen: CGImage?, size: CGSize, scale: Int) -> [UInt8]? {
         show(screen: screen)
         let w = Int(size.width) * scale, h = Int(size.height) * scale
-        func target(_ format: MTLPixelFormat, samples: Int, storage: MTLStorageMode) -> (any MTLTexture)? {
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: format, width: w, height: h, mipmapped: false)
-            descriptor.textureType = samples > 1 ? .type2DMultisample : .type2D
-            descriptor.sampleCount = samples
-            descriptor.usage = .renderTarget
-            descriptor.storageMode = storage
-            return device.makeTexture(descriptor: descriptor)
-        }
-        guard let color = target(.bgra8Unorm, samples: Self.samples, storage: .private),
-              let resolved = target(.bgra8Unorm, samples: 1, storage: .managed),
-              let depth = target(.depth32Float, samples: Self.samples, storage: .private),
-              let buffer = queue.makeCommandBuffer()
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
+        descriptor.usage = .renderTarget
+        descriptor.storageMode = .managed
+        guard let resolved = device.makeTexture(descriptor: descriptor), let buffer = queue.makeCommandBuffer(),
+              render(buffer, pose: pose, size: size, center: CGPoint(x: size.width / 2, y: size.height / 2),
+                     pixelScale: Double(scale), into: resolved)
         else { return nil }
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = color
-        pass.colorAttachments[0].resolveTexture = resolved
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
-        pass.colorAttachments[0].storeAction = .multisampleResolve
-        pass.depthAttachment.texture = depth
-        pass.depthAttachment.loadAction = .clear
-        pass.depthAttachment.clearDepth = 1
-        pass.depthAttachment.storeAction = .dontCare
-        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
-        encode(encoder, pose: pose, size: size, center: CGPoint(x: size.width / 2, y: size.height / 2))
         guard let blit = buffer.makeBlitCommandEncoder() else { return nil }
         blit.synchronize(resource: resolved)
         blit.endEncoding()
