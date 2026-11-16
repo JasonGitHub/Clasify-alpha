@@ -452,6 +452,23 @@ func sampleState() -> AppState {
         }
     }
 
+    /// CLA-121: a click that waited for the sound output more than 100 ms is dropped, so no burst
+    /// of late clicks plays after the first one.
+    @Test func aLateClickIsDropped() {
+        let asked = ContinuousClock.now
+        #expect(Clicker.fresh(asked: asked, now: asked))
+        #expect(Clicker.fresh(asked: asked, now: asked + .milliseconds(100)))
+        #expect(!Clicker.fresh(asked: asked, now: asked + .milliseconds(101)))
+        #expect(!Clicker.fresh(asked: asked, now: asked + .milliseconds(400)))  // the first-play wait
+    }
+
+    /// CLA-121: asking for a click returns at once. The sound plays on the click queue.
+    @Test func askingForAClickDoesNotWait() {
+        let start = ContinuousClock.now
+        for _ in 0..<20 { Clicker.shared.click() }
+        #expect(ContinuousClock.now - start < .milliseconds(50))
+    }
+
     @Test func theMarqueeLoopFollowsTheLabelLength() {
         #expect(Labels.marqueeLoop(String(repeating: "x", count: 30)) == 11)  // 222 points: round(222 / 28 + 3)
         #expect(Labels.marqueeLoop(String(repeating: "夏", count: 17)) == 11)  // a CJK character counts as 13 points

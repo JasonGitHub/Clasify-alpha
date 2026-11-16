@@ -2,25 +2,56 @@ import AppKit
 
 /// The click that the wheel and the buttons make when the Clicker setting is on.
 /// It is the N24 click, made in memory from a table of numbers. Nothing is written to disk.
-@MainActor
-public final class Clicker {
+///
+/// The click plays on its own serial queue, never on the main actor (CLA-121). The first play after
+/// some seconds of silence waits about 0.4 s for macOS to start the sound output. On the main actor
+/// that wait froze the wheel. Now only the click is late, and a click that waited more than
+/// `maxAge` is dropped, so a fast turn does not end with a burst of old clicks.
+public final class Clicker: Sendable {
     public static let shared = Clicker()
 
-    private let sound = NSSound(data: Clicker.wav())
+    /// A click older than this when it can play is dropped.
+    static let maxAge = Duration.milliseconds(100)
 
+    private let queue = DispatchQueue(label: "Clicker", qos: .userInitiated)
+    private let output = Output()
+
+    /// Asks for one click and returns at once. It never waits for the sound output.
     public func click() {
-        // A copy, so a fast turn of the wheel can play clicks that overlap.
-        (sound?.copy() as? NSSound)?.play()
+        let asked = ContinuousClock.now
+        queue.async { [output] in output.play(asked: asked) }
     }
 
-    nonisolated static let sampleRate = 44_100
+    /// True when a click asked for at `asked` is still new enough to play at `now`.
+    static func fresh(asked: ContinuousClock.Instant, now: ContinuousClock.Instant) -> Bool {
+        now - asked <= maxAge
+    }
+
+    /// The NSSound. NSSound is not Sendable. This is safe because `Clicker` touches `Output` only
+    /// in blocks on its one serial queue, so no two threads use the sound at the same time.
+    private final class Output: @unchecked Sendable {
+        private var sound: NSSound?
+        private var made = false
+
+        func play(asked: ContinuousClock.Instant) {
+            guard Clicker.fresh(asked: asked, now: .now) else { return }
+            if !made {
+                sound = NSSound(data: Clicker.wav())
+                made = true
+            }
+            // A copy, so a fast turn of the wheel can play clicks that overlap.
+            (sound?.copy() as? NSSound)?.play()
+        }
+    }
+
+    static let sampleRate = 44_100
 
     /// The N24 click (CLA-87, Jason approved 2026-11-10 21:52 JST): 24 damped sine modes, fitted
     /// to a recording of a real click wheel. Each mode is
     /// (sin · sin 2πfτ + cos · cos 2πfτ) · e^(−τ / decay), with τ = t − start, and 0 before start.
     /// Times in the table are in milliseconds. The fit was made at 48 kHz, but t is in seconds,
     /// so the sum works at any sample rate.
-    nonisolated static let modes: [(freq: Double, decay: Double, start: Double, sin: Double, cos: Double)] = [
+    static let modes: [(freq: Double, decay: Double, start: Double, sin: Double, cos: Double)] = [
         (5466.094, 2.0, 0.0, -0.034104926, 0.012543953),
         (4843.477, 0.5, 1.0833, 0.082100485, 0.23688523),
         (5579.648, 2.0, 0.5417, -0.12120239, 0.11858789),
@@ -48,12 +79,12 @@ public final class Clicker {
     ]
 
     /// The click is 11.979 ms long.
-    nonisolated static let length = 0.011979
+    static let length = 0.011979
     /// A linear fade to 0 over the last 2 ms.
-    nonisolated static let fade = 0.002
+    static let fade = 0.002
 
     /// The sum of the modes at t seconds, before the fade and the gain.
-    nonisolated static func wave(at t: Double) -> Double {
+    static func wave(at t: Double) -> Double {
         modes.reduce(0.0) { sum, mode in
             let tau = t - mode.start / 1000
             guard tau >= 0 else { return sum }
@@ -64,7 +95,7 @@ public final class Clicker {
 
     /// The click with the fade, scaled so the peak is 0.28: 5 dB under the old 0.5 (CLA-91, card BE
     /// change 219, Jason 00:35 JST 11-11). Returns 16-bit mono samples.
-    nonisolated static func samples() -> [Int16] {
+    static func samples() -> [Int16] {
         let rate = Double(sampleRate)
         let count = Int(rate * length), fadeCount = Double(Int(rate * fade))
         let levels = (0..<count).map { i in
@@ -75,7 +106,7 @@ public final class Clicker {
     }
 
     /// The samples as a WAV file in memory, for NSSound.
-    nonisolated static func wav() -> Data {
+    static func wav() -> Data {
         let pcm = samples()
         var data = Data()
         func put<T: FixedWidthInteger>(_ value: T) { withUnsafeBytes(of: value.littleEndian) { data.append(contentsOf: $0) } }
