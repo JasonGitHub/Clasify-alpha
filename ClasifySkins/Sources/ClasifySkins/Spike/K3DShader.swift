@@ -139,10 +139,10 @@ enum K3DShader {
         return ss(e, -e, k);
     }
 
-    // CLA-123, K.3D.10 (Jason 22:07 JST 11-16): room F, the room the outer steel (side and back)
-    // reflects, fixed to the camera, with a little parallax. The K.3D.9 room with the horizon
-    // a little higher and the softbox nearer the middle, softer at its edge. `studio` below stays the
-    // K.3D.8 room for the take-apart parts, which do not change.
+    // CLA-123, K.3D.10 (Jason 22:07 JST 11-16): room F, the room the steel reflects (the side,
+    // the back and the take-apart parts' metals), fixed to the camera, with a little parallax.
+    // The K.3D.9 room with the horizon a little higher and the softbox nearer the middle, softer
+    // at its edge.
     float studioF(float3 r, float3 p) {
         float2 q = r.xy + p.xy / 1400.0;
         float L = 0.15 + 0.10 * ss(-0.2, 1.0, q.y) + 0.03 * sin(q.x * 3.1 + q.y * 1.7);
@@ -151,19 +151,6 @@ enum K3DShader {
         float fl = ss(0.012, -0.012, q.y - hz);
         L = mix(L, 0.50 + 0.30 * ss(hz - 0.7, hz - 0.05, q.y), fl);
         L = mix(L, 1.0, rbox(q, float2(-0.20, 0.37), float2(0.20, 0.14), 0.05, 0.03));
-        L = mix(L, 0.80, rbox(q, float2(0.78, 0.15), float2(0.08, 0.55), 0.04, 0.06));
-        return clamp(L, 0.04, 1.0);
-    }
-
-    // The K.3D.8 room, for the take-apart parts' metals.
-    float studio(float3 r, float3 p) {
-        float2 q = r.xy + p.xy / 1400.0;
-        float L = 0.15 + 0.10 * ss(-0.2, 1.0, q.y) + 0.03 * sin(q.x * 3.1 + q.y * 1.7);
-        float hz = -0.17 + 0.04 * q.x;
-        L = mix(L, 0.09, ss(0.0, 0.03, q.y - hz) * ss(0.16, 0.03, q.y - hz));
-        float fl = ss(0.012, -0.012, q.y - hz);
-        L = mix(L, 0.50 + 0.30 * ss(hz - 0.7, hz - 0.05, q.y), fl);
-        L = mix(L, 1.0, rbox(q, float2(-0.42, 0.40), float2(0.20, 0.14), 0.05, 0.015));
         L = mix(L, 0.80, rbox(q, float2(0.78, 0.15), float2(0.08, 0.55), 0.04, 0.06));
         return clamp(L, 0.04, 1.0);
     }
@@ -547,8 +534,8 @@ enum K3DShader {
         float sr = 0.46 + 0.30 * ss(-0.7, 0.7, r.y) + 0.42 * pow(max(dot(r, normalize(float3(-0.45, 0.5, 0.75))), 0.0), 5.0)
             + 0.10 * ss(0.2, 0.95, dot(r, normalize(float3(0.7, 0.1, 0.7))));
         float mm = 0.60 * mt;
-        if (id == 34.0) { sr = mix(sr, 0.50 + 0.75 * studio(r, vp), 0.7); mm = 0.85; }
-        if (id == 12.0 && pt > 6.5 && pt < 7.5) { sr = mix(sr, 0.50 + 0.75 * studio(r, vp), 0.65); mm = 0.82; }
+        if (id == 34.0) { sr = mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.7); mm = 0.85; }
+        if (id == 12.0 && pt > 6.5 && pt < 7.5) { sr = mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.65); mm = 0.82; }
         return c * mix(float3(g), float3(sr * 1.18), mm) * (1.0 + 0.045 * mt * (brl - 0.5)) * sh * (1.0 + eg);
     }
 
