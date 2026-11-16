@@ -36,6 +36,10 @@ import simd
         #expect(held.angle(at: t0) == 30)
         #expect(abs(held.tilt(at: t0) - 3) < 1e-9)
         #expect(held.flatOpacity(at: t0) == 0 && !held.restsOnFront(at: t0))
+        // CLA-119: within 2° of the front the 2D device shows by angle, the tilt counted.
+        let near = drag.changed(CGSize(width: 1, height: 0), flip: K3DFlip())
+        #expect(abs(near.flatOpacity(at: t0) - K3DFlip.nearRest(angle: 0.6, tilt: 0)) < 1e-12)
+        #expect(drag.changed(CGSize(width: 1, height: 20), flip: K3DFlip()).flatOpacity(at: t0) == 0)
         #expect(drag.changed(CGSize(width: 0, height: 200), flip: K3DFlip()).tilt(at: t0) == 6)
         #expect(drag.changed(CGSize(width: 0, height: -200), flip: K3DFlip()).tilt(at: t0) == -6)
     }
@@ -130,25 +134,33 @@ import simd
         #expect(front.flatOpacity(at: t0.addingTimeInterval(0.25)) == 1)
     }
 
-    /// Change 297: 16° and back in 0.9 s, a sine bump on a quad in-out. The 2D device fades
-    /// out in its first 0.1 s and back in its last 0.1 s.
+    /// Change 297: 16° and back in 0.9 s, a sine bump on a quad in-out. The 2D device hands
+    /// over within 2° of the front (CLA-119).
     @Test func theNudgeTurns16DegreesAndBack() {
         let flip = K3DFlip().nudge(at: t0)
         #expect(flip.length == 0.9)
         #expect(abs(flip.angle(at: t0.addingTimeInterval(0.45)) - 16) < 1e-9)
         #expect(abs(flip.angle(at: t0.addingTimeInterval(0.9))) < 1e-9)
-        #expect(flip.flatOpacity(at: t0) == 1 && flip.flatOpacity(at: t0.addingTimeInterval(0.1)) == 0)
-        #expect(flip.flatOpacity(at: t0.addingTimeInterval(0.45)) == 0)
+        let early = flip.flatOpacity(at: t0.addingTimeInterval(0.1))  // 1.2°
+        #expect(flip.flatOpacity(at: t0) == 1 && early > 0 && early < 0.5)
+        #expect(flip.flatOpacity(at: t0.addingTimeInterval(0.2)) == 0 && flip.flatOpacity(at: t0.addingTimeInterval(0.45)) == 0)
         #expect(flip.flatOpacity(at: t0.addingTimeInterval(1)) == 1)
     }
 
-    /// A turn that starts from the resting front fades the 2D device out in 0.1 s; a turn that
-    /// ends on the front fades it in over its last 0.1 s.
+    /// CLA-119: the 2D device hands over within 2° of the front, by angle. The turn-over that
+    /// lands on the front swings 3° past it first: the 2D device waits for the landing.
     @Test func the2DDeviceCrossfadesAtTheFront() {
         let away = K3DFlip().go(to: 180, time: 0.8, soft: true, at: t0)
         #expect(away.flatOpacity(at: t0) == 1)
-        #expect(abs(away.flatOpacity(at: t0.addingTimeInterval(0.05)) - 0.5) < 1e-9)
+        let early = away.flatOpacity(at: t0.addingTimeInterval(0.002))
+        #expect(early > 0 && early < 1 && away.flatOpacity(at: t0.addingTimeInterval(0.05)) == 0)
         #expect(away.flatOpacity(at: t0.addingTimeInterval(0.8)) == 0)
+        let over = away.go(to: 0, time: 0.8, soft: true, at: t0.addingTimeInterval(1))
+        let swing = (0..<60).map { t0.addingTimeInterval(1 + Double($0) / 100) }
+        #expect(swing.contains { abs(over.angle(at: $0)) < 1 } && swing.allSatisfy { over.flatOpacity(at: $0) == 0 })
+        let landing = t0.addingTimeInterval(1.7)
+        #expect(abs(over.flatOpacity(at: landing) - K3DFlip.nearRest(angle: over.angle(at: landing), tilt: 0)) < 1e-12)
+        #expect(over.flatOpacity(at: t0.addingTimeInterval(1.8)) == 1)
         let home = released(10)
         #expect(home.flatOpacity(at: t0) == 0)
         #expect(home.flatOpacity(at: t0.addingTimeInterval(0.5)) == 1)

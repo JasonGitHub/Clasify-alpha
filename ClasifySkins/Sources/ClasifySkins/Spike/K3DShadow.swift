@@ -30,9 +30,16 @@ struct K3DShadow: View {
         let size = PocketSkin.size, r = Self.room
         let copy = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: PocketSkin.shadowDrop)
         let cut = Self.cut(angle: angle, lift: lift, tilt: tilt).offsetBy(dx: r, dy: r)
+        // CLA-119 (#263 frames: a black line on the right and bottom edge): the copy is the
+        // section hull, up to about 1 pt wider than the mesh's real outline, and the band below
+        // shows 1.5 pt outside the outline. So the copy itself is drawn out of the frame, and
+        // only its shadow falls here: its opaque fill never shows past the body. Its shadow is
+        // the same as before, so it still hands over from the 2D device's with no step.
+        let away = size.width + 2 * r + 100
         copy.offsetBy(dx: r, dy: r)
             .fill(Color.black)
-            .shadow(color: PocketSkin.shadowColor(black ? 1 : 0), radius: 20, y: 20)
+            .offset(x: away)
+            .shadow(color: PocketSkin.shadowColor(black ? 1 : 0), radius: 20, x: -away, y: 20)
             .mask {
                 ZStack {
                     Path { p in

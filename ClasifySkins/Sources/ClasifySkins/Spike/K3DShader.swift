@@ -41,6 +41,8 @@ enum K3DShader {
     static let apartBack: Float = 172
     /// CLA-119: within this many degrees of rest, all of the body that shows is the 2D picture.
     static let restAngle = 2.0
+    /// CLA-119: the grain's cell on screen, in the scene's pixels: one screen pixel.
+    static let grain = Double(K3DRenderer.supersample)
 
     static let source = """
     #include <metal_stdlib>
@@ -387,13 +389,14 @@ enum K3DShader {
         float3x3 M = float3x3(u.mv[0].xyz, u.mv[1].xyz, u.mv[2].xyz);
         float vm = in.vm, pt = in.vpt;
         // CLA-119: the plate's grain is read once per screen pixel, at its middle, as the mock
-        // reads it at 2 px per pt. The scene is drawn at 2x (`K3DRenderer.supersample`); read
-        // at each of its 4 samples, the 2:1 filter would average the grain 20 to 40% weaker.
-        float2 gx = floor(in.position.xy / 2.0) * 2.0 + 1.0 - in.position.xy;
+        // reads it at 2 px per pt. The scene is drawn at `K3DRenderer.supersample` x; read at
+        // each of its samples, the filter down would average the grain 20 to 40% weaker.
+        float2 gx = floor(in.position.xy / \(grain)) * \(grain) + \(grain / 2) - in.position.xy;
         float2 gu = in.vuv + dfdx(in.vuv) * gx.x + dfdy(in.vuv) * gx.y;
         float2 go = in.vo.xy + dfdx(in.vo.xy) * gx.x + dfdy(in.vo.xy) * gx.y;
-        // CLA-119: 1 at rest, 0 from `restAngle` (2°) off it: the body's z toward the eye.
-        float nearRest = ss(\(cos(K3DShader.restAngle * .pi / 180)), 1.0, u.mv[2].z);
+        // CLA-119: 1 at rest, 0 from `restAngle` (2°) off it, smooth in degrees, as the 2D
+        // device's own fade (`K3DFlip.nearRest`). The body's z toward the eye is the angle's cosine.
+        float nearRest = 1.0 - ss(0.0, \(K3DShader.restAngle), acos(min(u.mv[2].z, 1.0)) * \(180 / Double.pi));
         float2 o = in.vo.xy;
         // The window's clear middle (the LCD id in the front texture's top half).
         float glass = isId(tf.sample(sn, in.vuv, level(0)).a, 251.0) * (1.0 - step(0.5, in.vuv.y));
@@ -455,7 +458,7 @@ enum K3DShader {
             float2 pu = pt > 3.5 && pt < 4.5 ? in.vuv : lcdUV(n, in.vp, M, in.vuv);
             float3 pic = tf.sample(sm, pu).rgb;
             col = frontPart(n, in.vp, in.vo, M, in.vuv, pt, t, id, pu, pic, u.blk, u.ex, gu, go);
-            if (u.flat > 0.5) {
+            if (u.flat > 0.0) {
                 // CLA-119, the mock's 2D layer (k3d_src3.js `t2`, `u2d` 1): the 2D device's picture
                 // plus only the change of the 3D light from the rest pose, so at 0° the front is
                 // the 2D device. `rest` is the same point lit as it rests: face on, 2600 pt away.
@@ -472,7 +475,7 @@ enum K3DShader {
                 if (isL > 0.5 && (pin.x < 66.0 || pin.x > 666.0 || pin.y < 65.0 || pin.y > 515.0)) f2 = float4(0.10, 0.10, 0.11, f2.a);
                 // The plate's round and the wheel's side take the 3D light only (the mock), except
                 // within `restAngle` of rest, where all of the body that shows is the 2D picture.
-                f2.a *= max(ss(0.25, 0.7, on.z), nearRest);
+                f2.a *= max(ss(0.25, 0.7, on.z), nearRest) * u.flat;
                 col = saturate(mix(col, f2.rgb + (col - rest), f2.a));
             }
         } else {  // the back: mirror steel with a frosted etch
@@ -490,10 +493,10 @@ enum K3DShader {
         }
         // CLA-119: near rest, the hole walls, the window's cut edge, the steel and the seam that
         // show round the front are the 2D picture too, so at 0° the body is the 2D device.
-        if (u.flat > 0.5 && ff && (vm < 2.5 || (vm > 9.5 && vm < 10.5)) && nearRest > 0.0) {
+        if (u.flat > 0.0 && ff && (vm < 2.5 || (vm > 9.5 && vm < 10.5)) && nearRest > 0.0) {
             float2 ru = restUV(in.vo);
             float4 f2 = flatAt(t2, sf, ru, ru);
-            col = mix(col, f2.rgb, f2.a * nearRest);
+            col = mix(col, f2.rgb, f2.a * nearRest * u.flat);
         }
         // Apart, seen from behind, the front parts show their back faces: plain material, no
         // print, in the same physical light. The shell's back faces are not drawn.

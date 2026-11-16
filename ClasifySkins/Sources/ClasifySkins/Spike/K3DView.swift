@@ -8,14 +8,16 @@ public enum K3DSpike {
     /// The device as it shows now, at 2x, with its covers, for the 3D front: its screen, and
     /// (CLA-119) the whole picture as the 2D layer. `time` pins the skin's loops to one frame;
     /// nil draws them as they are now. `wheel`: the wheel key the pointer is over or presses,
-    /// so the picture is the face as it is at the swap.
+    /// so the picture is the face as it is at the swap. `black`: the color a spin shows, as the
+    /// 2D device shows it (`spinBlack`), or nil for the state's own.
     @MainActor public static func snapshot(
-        _ state: AppState, artwork: Artwork = .none, time: Double? = nil, wheel: WheelLook? = nil
+        _ state: AppState, artwork: Artwork = .none, time: Double? = nil, wheel: WheelLook? = nil, black: Bool? = nil
     ) -> CGImage? {
         let wheel = wheel ?? .live
         // No drop shadow: the picture is the 2D layer of the 3D front, so its round corners stay clear.
         let skin = PocketSkin(state: state, interactive: false, pressed: wheel.pressed, hovered: wheel.hovered)
             .environment(\.artwork, artwork).environment(\.animationTime, time).environment(\.pocketDropShadow, false)
+            .environment(\.spinBlack, black)
         let renderer = ImageRenderer(content: skin)
         renderer.scale = 2
         return renderer.cgImage
@@ -34,7 +36,7 @@ public enum K3DSpike {
 
 /// Shows `content`, the 2D device, while the front rests flat. While the device turns or shows
 /// its back, the 3D body shows in its place, over the window's margins too, with the 2D
-/// device's drop shadow cast from its outline. The two crossfade in 0.1 s where a turn leaves or reaches the resting
+/// device's drop shadow cast from its outline. The two hand over by angle within 2° of the resting
 /// front. A click on the 3D body calls `onTap`.
 ///
 /// The Metal view stays mounted behind the 2D device, drawn at the pose the device rests in, so
@@ -103,7 +105,7 @@ public struct K3DFlipView<Content: View>: View {
             // JST 11-14). At rest on the front, the 2D device draws its own.
             if shows { K3DShadow(angle: angle, lift: lift, tilt: tilt, black: black).scaleEffect(scale) }
             K3DMetalView(
-                angle: angle, lift: lift, tilt: tilt, scale: scale, black: black, screen: flip.screen,
+                angle: angle, lift: lift, tilt: tilt, scale: scale, black: black, screen: flip.screen, oldScreen: flip.oldScreen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
                 onFirstFrame: { ready.wrappedValue = true })
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
@@ -166,6 +168,7 @@ struct K3DMetalView: NSViewRepresentable {
     var scale = 1.0
     let black: Bool
     let screen: CGImage?
+    var oldScreen: CGImage?
     /// The device's center in the view, in points from the top left.
     let center: CGPoint
     /// Called once, on the main actor, when the view's first frame is on screen.
@@ -180,9 +183,10 @@ struct K3DMetalView: NSViewRepresentable {
     func updateNSView(_ view: K3DLayerView, context: Context) {
         let pose = K3DPose(angle: angle, lift: lift, tilt: tilt, black: black, scale: scale)
         // Draw only when the picture changes: the view stays mounted while the device rests.
-        guard pose != view.pose || screen !== view.screen || center != view.deviceCenter || !view.drewOnce else { return }
+        guard pose != view.pose || screen !== view.screen || oldScreen !== view.oldScreen || center != view.deviceCenter || !view.drewOnce else { return }
         view.pose = pose
         view.screen = screen
+        view.oldScreen = oldScreen
         view.deviceCenter = center
         view.needsDisplay = true
     }
@@ -204,6 +208,8 @@ struct K3DPose: Equatable {
 final class K3DLayerView: MTKView {
     var pose = K3DPose()
     var screen: CGImage?
+    /// CLA-119: the old color's picture during a color spin.
+    var oldScreen: CGImage?
     var deviceCenter = CGPoint.zero
     /// Called once when the first frame is on screen, then cleared.
     var firstFrame: (@MainActor () -> Void)?
@@ -256,7 +262,7 @@ final class K3DLayerView: MTKView {
     /// mock's canvas (k3d_src3.js lines 7-9: the canvas at 2x, the browser scales it down).
     /// MSAA smooths only the outline; the shader's own edges, text and the steel need the
     /// extra pixels.
-    static let supersample = 2
+    nonisolated static let supersample = 2
     /// The mock's camera: the eye 2600 pt from the body's center, near 500, far 3000.
     static let distance: Float = 2600, near: Float = 500, far: Float = 3000
 
@@ -287,6 +293,12 @@ final class K3DLayerView: MTKView {
     /// whether that picture is Black. Nil: no picture, the front is 3D only.
     private let flat: any MTLTexture
     private var flatBlack: Bool?
+    /// CLA-119: the old color's picture in a color spin (`K3DFlip.oldScreen`), the 2D device as it
+    /// shows to 180°, so the spin starts from the 2D device with no step.
+    private let oldFlat: any MTLTexture
+    private var oldScreen: CGImage?, oldBlack: Bool?
+    /// CLA-119: the 2D layer fades out over the first part of the take-apart (`ex` 0 to this).
+    nonisolated static let exFade = 0.05
     /// The 2D picture's sampler: nearest when magnified, so at 0° each pixel is the picture's own.
     private let flatSampler: any MTLSamplerState
     /// The front texture's bytes as bundled, read once: a turn's new screen goes into a copy.
@@ -327,6 +339,7 @@ final class K3DLayerView: MTKView {
               let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest),
               let filterSampler = Self.filterSampler(device),
               let flat = Self.texture(device, queue, [UInt8](repeating: 0, count: K3DTextures.width * K3DTextures.height * 4)),
+              let oldFlat = Self.texture(device, queue, [UInt8](repeating: 0, count: K3DTextures.width * K3DTextures.height * 4)),
               let flatSampler = Self.flatSampler(device)
         else { return nil }
         self.device = device
@@ -351,6 +364,7 @@ final class K3DLayerView: MTKView {
         self.nearest = nearest
         self.filterSampler = filterSampler
         self.flat = flat
+        self.oldFlat = oldFlat
         self.flatSampler = flatSampler
         // Warm-up: one frame of the back, off screen, when the view is mounted. In build 194 the
         // first turn repeated a frame near edge-on, where the back first shows. The likely cause
@@ -531,9 +545,34 @@ final class K3DLayerView: MTKView {
         frontScreen = screen
     }
 
+    /// Puts the old color's picture of a color spin in the 2D layer's second slot.
+    func show(old screen: CGImage?) {
+        guard screen !== oldScreen else { return }
+        let picture = screen.flatMap(K3DTextures.picture)
+        if let picture { Self.fill(oldFlat, picture, queue) }
+        oldBlack = picture.map(K3DTextures.isBlack)
+        oldScreen = screen
+    }
+
+    /// CLA-119: the 2D layer for the body's color, and how much it shows: 1 closed, 0 from
+    /// `ex` 0.05 apart. Nil: no picture in that color, the front is 3D only.
+    private func layer(_ pose: K3DPose) -> (texture: any MTLTexture, weight: Float)? {
+        guard pose.ex < Self.exFade else { return nil }
+        let weight = Float(1 - Self.smooth(pose.ex / Self.exFade))
+        if flatBlack == pose.black { return (flat, weight) }
+        if oldBlack == pose.black { return (oldFlat, weight) }
+        return nil
+    }
+
+    nonisolated static func smooth(_ x: Double) -> Double {
+        let t = min(1, max(0, x))
+        return t * t * (3 - 2 * t)
+    }
+
     /// Draws one frame in the view. Returns false when it drew nothing.
     @discardableResult func draw(in view: K3DLayerView) -> Bool {
         show(screen: view.screen)
+        show(old: view.oldScreen)
         guard let drawable = view.currentDrawable, let buffer = queue.makeCommandBuffer(), view.bounds.width > 0,
               render(buffer, pose: view.pose, size: view.bounds.size, center: view.deviceCenter,
                      pixelScale: Double(view.drawableSize.width / view.bounds.width), into: drawable.texture)
@@ -630,9 +669,10 @@ final class K3DLayerView: MTKView {
             mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt),
             pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0,
             ex: Float(pose.ex))
-        // The 2D layer shows only on the closed device, in the picture's own color: in the first
-        // half of a color spin the 3D body is the old color, and the picture the new one.
-        uniforms.flat = pose.ex == 0 && flatBlack == pose.black ? 1 : 0
+        // The 2D layer shows in the body's own color: in the first half of a color spin the 3D
+        // body is the old color, and shows the old color's picture. It fades as the parts move apart.
+        let layer = self.layer(pose)
+        uniforms.flat = layer?.weight ?? 0
         let passes = Self.passes(ex: uniforms.ex)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
@@ -648,7 +688,7 @@ final class K3DLayerView: MTKView {
         encoder.setFragmentTexture(steel, index: 2)
         encoder.setFragmentSamplerState(linear, index: 0)
         encoder.setFragmentSamplerState(nearest, index: 1)
-        encoder.setFragmentTexture(flat, index: 3)
+        encoder.setFragmentTexture(layer?.texture ?? flat, index: 3)
         encoder.setFragmentSamplerState(flatSampler, index: 2)
         let count = passes.all ? indexCount : closedIndexCount
         encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
@@ -665,8 +705,9 @@ final class K3DLayerView: MTKView {
 
     /// One frame drawn off screen, `size` points at `scale` pixels per point, the device
     /// centered: for tests. Its pixels are premultiplied BGRA rows from the top.
-    func image(_ pose: K3DPose, screen: CGImage?, size: CGSize, scale: Int) -> [UInt8]? {
+    func image(_ pose: K3DPose, screen: CGImage?, old: CGImage? = nil, size: CGSize, scale: Int) -> [UInt8]? {
         show(screen: screen)
+        show(old: old)
         let w = Int(size.width) * scale, h = Int(size.height) * scale
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
         descriptor.usage = .renderTarget

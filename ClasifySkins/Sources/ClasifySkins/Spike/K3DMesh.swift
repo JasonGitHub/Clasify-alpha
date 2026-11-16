@@ -323,6 +323,8 @@ public struct K3DFlip {
     static let turn = 0.82, duration = 1.0, lift = 70.0
     /// The crossfade between the 3D body and the flat 2D device.
     static let fade = 0.1
+    /// CLA-119: past `restAngle`, the degrees over which the flip's push back comes in.
+    static let liftIn = 18.0
     /// Card BR, change 288: the arrival's turn and its crossfade to the 2D device.
     public static let arriveTurn = 1.6, arriveFade = 0.35, arriveFrom = -120.0, arriveScale = 0.55
     /// When the skin sends `.arrived`, before the turn ends: Hello's wait before its first
@@ -356,6 +358,8 @@ public struct K3DFlip {
     private(set) var fromBlack = false
     /// A live picture of the device for the 3D front's screen, taken when the turn started.
     public private(set) var screen: CGImage?
+    /// CLA-119: in a color spin, the picture in the old color, which the 3D front shows to 180°.
+    public private(set) var oldScreen: CGImage?
     /// Card BT row 2: the tilt (pitch, degrees) the script starts from, which levels out; and
     /// whether it starts from the front at rest, where the 2D device shows.
     private(set) var tilt0 = 0.0
@@ -428,10 +432,14 @@ public struct K3DFlip {
     }
 
     /// Changes 289 and 290: a color spin with a turn of `turn` seconds. The device was black
-    /// before the change when `fromBlack`. The clock starts after the screen picture is made.
-    @MainActor public static func spin(turn: Double, fromBlack: Bool, at now: Date? = nil, screen make: () -> CGImage?) -> K3DFlip {
+    /// before the change when `fromBlack`. The clock starts after the screen pictures are made:
+    /// `make` in the new color, `old` in the old color, as the 2D device shows to 180° (CLA-119).
+    @MainActor public static func spin(
+        turn: Double, fromBlack: Bool, at now: Date? = nil, screen make: () -> CGImage?, old: () -> CGImage? = { nil }
+    ) -> K3DFlip {
         var flip = K3DFlip()
         flip.show(screen: make())
+        flip.show(old: old())
         flip.script = .spin(turn)
         (flip.fromBlack, flip.start) = (fromBlack, now ?? .now)
         return flip
@@ -443,6 +451,7 @@ public struct K3DFlip {
         var flip = self
         flip.script = .held
         (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (angle, angle, .now, tilt, nil)
+        flip.oldScreen = nil
         flip.fromRest = false
         return flip
     }
@@ -459,6 +468,7 @@ public struct K3DFlip {
         flip.fromRest = restsOnFront(at: now)
         flip.script = .go(time, soft: soft)
         (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (current - shift, side - shift, now, tilt, nil)
+        flip.oldScreen = nil
         return flip
     }
 
@@ -470,6 +480,7 @@ public struct K3DFlip {
         flip.fromRest = restsOnFront(at: now)
         flip.script = .nudge
         (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (side, side, now, 0, nil)
+        flip.oldScreen = nil
         return flip
     }
 
@@ -482,6 +493,7 @@ public struct K3DFlip {
         flip.fromRest = restsOnFront(at: now)
         flip.script = .swap
         (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (current - shift, side - shift, now, 0, nil)
+        flip.oldScreen = nil
         return flip
     }
 
@@ -504,6 +516,19 @@ public struct K3DFlip {
     @MainActor public mutating func show(screen: CGImage?) {
         if let screen { K3DRenderer.shared?.prepare(screen: screen) }
         self.screen = screen
+    }
+
+    /// CLA-119: puts a new old-color picture in the 3D front during a spin, as `show(screen:)`.
+    @MainActor public mutating func show(old: CGImage?) {
+        K3DRenderer.shared?.show(old: old)
+        oldScreen = old
+    }
+
+    /// CLA-119: the old color while a spin still shows it (to 180°), or nil. A change on the
+    /// screen then needs a new picture in that color too (`show(old:)`).
+    public func oldColor(at now: Date) -> Bool? {
+        guard case .spin(let turn) = script, now.timeIntervalSince(start) - Self.spinFade < turn / 2 else { return nil }
+        return fromBlack
     }
 
     /// A color spin runs now. A color change during it lands at its end, with no second spin.
@@ -555,6 +580,7 @@ public struct K3DFlip {
         start = now
         script = .flip
         hurriedAt = nil
+        oldScreen = nil
         tilt0 = 0
         fromRest = false
         if toBack { self.screen = screen }
@@ -579,28 +605,43 @@ public struct K3DFlip {
     public var arriving: Bool { script == .arrive || script == .arriveShort }
 
     /// How much the flat 2D device shows over the 3D body: 1 at rest on the front, 0 while the 3D
-    /// body turns or rests on the back. They crossfade in the last 0.1 s of a turn that ends on
-    /// the front, and in the first 0.1 s of a turn that starts from the resting front. The
-    /// arrival crossfades in its last 0.35 s, the short arrival in its turn's last 0.15 s.
+    /// body turns or rests on the back. CLA-119: the 3D front at rest is the 2D device, so the two
+    /// hand over by angle: the 2D device fades out from rest to `restAngle` (2°) off it, as the
+    /// shader's `nearRest`. Its outline line and its size fade with it. Where a turn passes 0° on
+    /// its way to land (the flip's swing past the front, the turn-over's 3°), the 2D device waits
+    /// for the landing. The arrivals and the Reduce Motion swap keep their fades in time:
+    /// the arrival in its last 0.35 s, the short arrival in its turn's last 0.15 s.
     public func flatOpacity(at now: Date) -> Double {
         let t = elapsed(at: now)
-        if script == .arrive { return min(1, max(0, (t - Self.arriveTurn) / Self.arriveFade)) }
-        if script == .arriveShort { return min(1, max(0, (t - (Self.shortTurn - Self.shortFade)) / Self.shortFade)) }
-        if case .spin(let turn) = script {
-            return t < Self.spinFade ? 1 - max(0, t) / Self.spinFade : min(1, max(0, (t - Self.spinFade - turn) / Self.spinFade))
-        }
         switch script {
-        case .held: return 0
-        case .go, .nudge, .swap:
+        case .arrive: return min(1, max(0, (t - Self.arriveTurn) / Self.arriveFade))
+        case .arriveShort: return min(1, max(0, (t - (Self.shortTurn - Self.shortFade)) / Self.shortFade))
+        case .swap:
             // Card BT row 2: out in the first 0.1 s from the resting front, in at the end on the front.
-            let gap = script == .swap ? Self.swapTime / 2 : 0
+            let gap = Self.swapTime / 2
             let fadeIn = toBack ? 0 : (t - gap - (length - gap - Self.fade)) / Self.fade
             let out = fromRest ? 1 - t / Self.fade : 0
             return min(1, max(0, max(fadeIn, out)))
-        default: break
+        case .flip:
+            if !toBack && t < Self.turn { return 0 }  // swings past the front first
+        case .go(let time, let soft):
+            if soft && !toBack && t < 0.75 * time { return 0 }  // swings 3° past the front first
+        case .held, .nudge, .spin: break
         }
-        if !toBack { return min(1, max(0, (t - (Self.duration - Self.fade)) / Self.fade)) }
-        return from == 0 ? min(1, max(0, 1 - t / Self.fade)) : 0
+        return Self.nearRest(angle: pose(at: now).angle, tilt: tilt(at: now))
+    }
+
+    /// CLA-119: 1 at rest on the front, 0 from `restAngle` off it, smooth in degrees, for a turn
+    /// of `angle` and a tilt of `tilt` (degrees): the shader's `nearRest`, from the same angle
+    /// between the body's z and the eye.
+    static func nearRest(angle: Double, tilt: Double) -> Double {
+        1 - K3DRenderer.smooth(offRest(angle: angle, tilt: tilt) / K3DShader.restAngle)
+    }
+
+    /// The angle between the body's z and the eye, in degrees, for a turn and a tilt.
+    static func offRest(angle: Double, tilt: Double) -> Double {
+        let c = cos(angle * .pi / 180) * cos(tilt * .pi / 180)
+        return acos(min(1, c)) * 180 / .pi
     }
 
     /// The 3D body's size and opacity: 1 and 1, except while it arrives (gen.py `g1`: scale
@@ -657,7 +698,11 @@ public struct K3DFlip {
             angle = to + (to - from) * 0.025 * (1 - q) * (1 - q)
         }
         let p = min(1, max(0, t / Self.turn))
-        return (angle, Self.lift * sin(.pi * p))
+        // CLA-119: no push back while the 2D device shows (within `restAngle` of the front), so
+        // the 3D body under it is the 2D device's size. It comes in smoothly from 2° to 20°.
+        let off = Self.offRest(angle: angle, tilt: 0) - K3DShader.restAngle
+        let away = K3DRenderer.smooth(off / Self.liftIn)
+        return (angle, Self.lift * sin(.pi * p) * away)
     }
 
     static func ease(_ p: Double) -> Double { p < 0.5 ? 4 * p * p * p : 1 - pow(-2 * p + 2, 3) / 2 }
