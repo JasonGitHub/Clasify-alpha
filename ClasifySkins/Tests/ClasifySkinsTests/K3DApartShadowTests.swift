@@ -9,7 +9,8 @@ import Testing
     func bytes<V: View>(_ view: V) throws -> [UInt8] {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
-        return try #require(K3DTextures.picture(try #require(renderer.cgImage)))
+        let image = try #require(renderer.cgImage)
+        return try #require(K3DTextures.picture(image))
     }
 
     let ground = Color(.sRGB, red: 0.9, green: 0.9, blue: 0.9)
