@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Testing
 
@@ -57,5 +58,55 @@ import Testing
         #expect(K3DRoom.fit(room, windowTop: 0, visibleTop: -.infinity).top == 0)  // no screen
         let fit = K3DRoom.fit(room, windowTop: 990, visibleTop: 1000)
         #expect(fit.leading == room.leading && fit.trailing == room.trailing && fit.bottom == room.bottom)
+    }
+
+    /// CLA-122: a window that records the calls `K3DRoom.resize` makes.
+    final class Recorder: NSWindow {
+        var calls: [String] = []
+        override func disableScreenUpdatesUntilFlush() {
+            calls.append("hold")
+            super.disableScreenUpdatesUntilFlush()
+        }
+        override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+            calls.append("frame")
+            super.setFrame(frameRect, display: flag)
+        }
+    }
+
+    func recorder() -> Recorder {
+        _ = NSApplication.shared
+        let window = Recorder(
+            contentRect: NSRect(x: 300, y: 300, width: 400, height: 700), styleMask: .borderless, backing: .buffered, defer: true)
+        window.calls = []
+        return window
+    }
+
+    /// CLA-122 (build 279): the screen holds the old picture before the window's frame changes,
+    /// when the room comes (a turn starts) and when it goes (the device rests on the front).
+    @Test func theScreenHoldsBeforeTheWindowGrowsOrShrinks() {
+        let room = K3DRoom.fit(K3DRoom.extra, windowTop: 1000, visibleTop: 1300)
+        let grow = recorder()
+        K3DRoom.resize(grow, from: EdgeInsets(), to: room)
+        #expect(grow.calls == ["hold", "frame"])
+        #expect(grow.frame == NSRect(x: 110, y: 190, width: 780, height: 1010))
+
+        let shrink = recorder()
+        shrink.setFrame(NSRect(x: 110, y: 190, width: 780, height: 1010), display: false)
+        shrink.calls = []
+        K3DRoom.resize(shrink, from: room, to: EdgeInsets())
+        #expect(shrink.calls == ["hold", "frame"])
+        #expect(shrink.frame == NSRect(x: 300, y: 300, width: 400, height: 700))
+    }
+
+    /// The device stays at the same point on the screen: each edge moves by its room.
+    @Test func theFrameMovesEachEdgeByItsRoom() {
+        let old = NSRect(x: 300, y: 300, width: 400, height: 700)
+        let cut = EdgeInsets(top: 45, leading: 190, bottom: 110, trailing: 190)
+        let new = K3DRoom.frame(old, from: EdgeInsets(), to: cut)
+        #expect(new.maxY == old.maxY + 45)
+        #expect(new.minY == old.minY - 110)
+        #expect(new.minX == old.minX - 190)
+        #expect(new.maxX == old.maxX + 190)
+        #expect(K3DRoom.frame(new, from: cut, to: EdgeInsets()) == old)
     }
 }

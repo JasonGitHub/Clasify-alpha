@@ -1,3 +1,4 @@
+import AppKit
 import ClasifyCore
 import MetalKit
 import SwiftUI
@@ -59,6 +60,28 @@ public enum K3DRoom {
         var fit = room
         fit.top = min(room.top, max(0, visibleTop - windowTop))
         return fit
+    }
+
+    /// CLA-122 (build 279: the device 45 pt too high for one frame as an About drag started): the
+    /// window's frame moves by the change in room, and the screen keeps the old picture until
+    /// the window draws again. That drawing has the padded SwiftUI content and the Metal frame of
+    /// the new size (`presentsWithTransaction`), so the window, the SwiftUI layers and the
+    /// Metal layer reach the screen in one update. Before, the window could show at its new
+    /// size with the old content centred in it: (top - bottom) / 2 = (200 - 110) / 2 = 45 pt up.
+    /// Used both ways: room added as the 3D body starts, room removed as the 2D device rests.
+    @MainActor public static func resize(_ window: NSWindow, from old: EdgeInsets, to new: EdgeInsets) {
+        window.disableScreenUpdatesUntilFlush()
+        window.setFrame(frame(window.frame, from: old, to: new), display: false)
+    }
+
+    /// The window's frame (AppKit: the origin at the bottom left) with its edges moved by the
+    /// change in room, so the device stays at the same point on the screen.
+    public static func frame(_ frame: NSRect, from old: EdgeInsets, to new: EdgeInsets) -> NSRect {
+        let top = new.top - old.top, left = new.leading - old.leading
+        let bottom = new.bottom - old.bottom, right = new.trailing - old.trailing
+        return NSRect(
+            x: frame.minX - left, y: frame.minY - bottom,
+            width: frame.width + left + right, height: frame.height + top + bottom)
     }
 }
 

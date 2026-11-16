@@ -40,17 +40,8 @@ struct WindowRoom: NSViewRepresentable {
         context.coordinator.room = room
         // No window yet: SwiftUI makes it at the content's size, room included.
         guard let window = view.window else { return }
-        window.setFrame(Self.frame(window.frame, from: old, to: room), display: false)
-    }
-
-    /// The window's frame (AppKit: the origin at the bottom left) with its edges moved by the
-    /// change in room.
-    static func frame(_ frame: NSRect, from old: EdgeInsets, to new: EdgeInsets) -> NSRect {
-        let top = new.top - old.top, left = new.leading - old.leading
-        let bottom = new.bottom - old.bottom, right = new.trailing - old.trailing
-        return NSRect(
-            x: frame.minX - left, y: frame.minY - bottom,
-            width: frame.width + left + right, height: frame.height + top + bottom)
+        // CLA-122: the screen keeps the old picture until the window draws with the new room.
+        K3DRoom.resize(window, from: old, to: room)
     }
 
     final class Coordinator {
