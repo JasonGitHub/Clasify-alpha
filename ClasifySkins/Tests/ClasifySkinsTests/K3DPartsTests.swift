@@ -79,7 +79,10 @@ struct K3DPartsTests {
 /// CLA-105 PR B: the renderer draws the parts apart, and the closed device as before.
 @Suite @MainActor struct K3DApartRenderTests {
     nonisolated static var hasMetal: Bool { MTLCreateSystemDefaultDevice() != nil }
-    var size: CGSize { PocketSkin.size }
+    /// The device's size with 100 points round it, so a part that comes toward the eye is not
+    /// cut off at the frame's edge.
+    static let pad = 100
+    var size: CGSize { CGSize(width: PocketSkin.size.width + 2 * Double(Self.pad), height: PocketSkin.size.height + 2 * Double(Self.pad)) }
 
     /// The mock's vertex shader: each part's move along z at `ex` 1, then all back 172 pt.
     @Test func thePartsMoveAsInTheMock() {
@@ -105,10 +108,10 @@ struct K3DPartsTests {
         return bytes
     }
 
-    /// Opaque pixels in one row, at 2x.
+    /// Opaque pixels at 2x in one row, `row` in device points from the device's top.
     func width(_ bytes: [UInt8], row: Int) -> Int {
-        let w = Int(size.width) * 2
-        return (0..<w).filter { bytes[(row * 2 * w + $0) * 4 + 3] == 255 }.count
+        let w = Int(size.width) * 2, y = (row + Self.pad) * 2
+        return (0..<w).filter { bytes[(y * w + $0) * 4 + 3] == 255 }.count
     }
 
     /// The parts' own geometry is hidden at the start of the move: a frame a hair apart draws
