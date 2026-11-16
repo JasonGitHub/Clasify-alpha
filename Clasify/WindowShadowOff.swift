@@ -15,5 +15,8 @@ struct WindowShadowOff: NSViewRepresentable {
             super.viewDidMoveToWindow()
             window?.hasShadow = false
         }
+
+        /// Clicks go through to the device and the window drag.
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
