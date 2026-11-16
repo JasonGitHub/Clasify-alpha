@@ -268,6 +268,11 @@ final class K3DLayerView: MTKView {
         clearColor = MTLClearColorMake(0, 0, 0, 0)
         colorspace = CGColorSpace(name: CGColorSpace.sRGB)
         layer?.isOpaque = false
+        // CLA-119 (build 269: pale strips beside the body edge-on in a color spin): the frame
+        // shows in the same Core Animation commit as SwiftUI's views, so the body and
+        // `K3DShadow` are at the same angle. Presented on its own, the drawable came about one
+        // frame late: 4.3° in a 1.4 s spin, a cut 24 pt wider than the body at 90°.
+        presentsWithTransaction = true
     }
 
     @available(*, unavailable)
@@ -651,8 +656,11 @@ final class K3DLayerView: MTKView {
             // Before the commit, so the handler cannot miss the presentation.
             drawable.addPresentedHandler(Self.presentedHandler(for: view))
         }
-        buffer.present(drawable)
+        // With `presentsWithTransaction`: commit, wait until the GPU has the work, then present in
+        // the current transaction (Apple's order). The handler above still fires on presentation.
         buffer.commit()
+        buffer.waitUntilScheduled()
+        drawable.present()
         return true
     }
 
