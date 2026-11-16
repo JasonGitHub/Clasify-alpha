@@ -48,8 +48,13 @@ enum K3DTextures {
     /// takes the snapshot's pixel at the same place.
     /// `base` is the bundled front, when the caller has it already.
     static func front(screen: CGImage?, base: [UInt8]? = nil) -> [UInt8]? {
+        front(live: screen.flatMap(picture), base: base)
+    }
+
+    /// The front with `live`, the device's picture as `picture` draws it, in the LCD.
+    static func front(live: [UInt8]?, base: [UInt8]? = nil) -> [UInt8]? {
         guard var front = base ?? rgba(.front) else { return nil }
-        guard let screen, let live = draw(screen) else { return front }
+        guard let live else { return front }
         // Every id 251 pixel is in this rect: only its 270,000 pixels are looked at, not the
         // texture's 897,432 (build 194 stuttered at the turn's start).
         for y in lcd.y {
@@ -110,6 +115,17 @@ enum K3DTextures {
             return true
         }
         return done ? out : nil
+    }
+
+    /// CLA-119: the device's picture (`K3DSpike.snapshot`) as 732 x 1226 premultiplied RGBA
+    /// bytes, rows from the top: the 2D layer of the 3D front, and the source of its LCD.
+    static func picture(_ image: CGImage) -> [UInt8]? { draw(image) }
+
+    /// The picture is of the Black device: its body left of the wheel (10 pt in, 350 pt down)
+    /// is dark. Silver's body there is near white.
+    static func isBlack(_ picture: [UInt8]) -> Bool {
+        let i = (700 * width + 20) * 4
+        return Int(picture[i]) + Int(picture[i + 1]) + Int(picture[i + 2]) < 3 * 128
     }
 
     /// The image drawn into 732 x 1226 RGBA bytes. The screen is opaque, so premultiplied

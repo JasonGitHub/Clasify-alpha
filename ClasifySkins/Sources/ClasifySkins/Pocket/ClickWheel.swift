@@ -54,7 +54,7 @@ struct ClickWheel: View {
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
         movesBar: Bool = false, glowFrom: Double? = nil, fingerFrom: Double? = nil, label: LabelGlow? = nil,
-        pressed: Zone? = nil
+        pressed: Zone? = nil, hovered: Zone? = nil
     ) {
         self.input = input
         self.color = color
@@ -64,6 +64,7 @@ struct ClickWheel: View {
         self.fingerFrom = fingerFrom
         self.label = label
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
+        _hovered = State(initialValue: hovered)  // and the 3D front's picture the key under the pointer
     }
 
     /// The parts of the wheel that act as buttons.
@@ -116,6 +117,10 @@ struct ClickWheel: View {
     @State private var turn: Turn?
     @State private var pressed: Zone?
     @State private var hovered: Zone?
+    @Environment(\.pocketPreview) private var preview
+
+    /// CLA-119: the app's own device, whose keys the 3D front's picture shows (`WheelLook.live`).
+    private var live: Bool { catchesScroll && !preview }
 
     var body: some View {
         face
@@ -125,6 +130,8 @@ struct ClickWheel: View {
             .onContinuousHover { phase in
                 if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
             }
+            .onChange(of: hovered) { _, zone in if live { WheelLook.live.hovered = zone } }
+            .onChange(of: pressed) { _, zone in if live { WheelLook.live.pressed = zone } }
             .accessibilityElement()
             .accessibilityLabel("Click wheel")
             .accessibilityAdjustableAction { direction in
