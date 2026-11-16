@@ -80,7 +80,8 @@ struct K3DApartInputTests {
         let warm = clock.now - start
         _ = renderer.image(K3DPose(angle: 180), screen: nil, size: CGSize(width: 64, height: 64), scale: 1)
         #expect(renderer.printsReady)
-        print("CLA-105 D: warm-up apart frame \(warm)")
+        #expect(renderer.warmed)
+        print("CLA-105 D: warm-up apart frame, main actor time (not waited for) \(warm)")
         let bind = try #require(renderer.printsBindTime)
         print("CLA-105 D: prints bind on the main actor (upload + mipmap commands) \(bind)")
     }

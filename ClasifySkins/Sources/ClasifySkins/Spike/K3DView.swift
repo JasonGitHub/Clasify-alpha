@@ -713,12 +713,25 @@ final class K3DLayerView: MTKView {
 
     /// CLA-105 D: the first frame with the parts apart costs time (the parts' shader path). One
     /// small frame off screen, at the start of the press-and-hold, takes that cost before the
-    /// device opens. It does not count as apart, so it releases nothing.
+    /// device opens. It does not count as apart, so it releases nothing. It is committed and not
+    /// waited for, so the press goes on at once; once per renderer is enough.
     func warmApart() {
+        guard !warmed else { return }
         let was = wasApart
-        _ = image(K3DPose(angle: 305, tilt: 20, ex: 0.1), screen: nil, size: CGSize(width: 64, height: 64), scale: 1)
-        wasApart = was
+        defer { wasApart = was }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: 64, height: 64, mipmapped: false)
+        descriptor.usage = .renderTarget
+        descriptor.storageMode = .private
+        guard let target = device.makeTexture(descriptor: descriptor), let buffer = queue.makeCommandBuffer(),
+              render(buffer, pose: K3DPose(angle: 305, tilt: 20, ex: 0.1), size: CGSize(width: 64, height: 64),
+                     center: CGPoint(x: 32, y: 32), pixelScale: 1, into: target)
+        else { return }
+        buffer.commit()
+        warmed = true
     }
+
+    /// The warm-up frame was sent.
+    private(set) var warmed = false
 
     /// Frees the printed textures: the device is closed again.
     func releasePrints() {
