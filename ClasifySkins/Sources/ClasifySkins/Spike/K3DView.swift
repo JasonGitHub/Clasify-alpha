@@ -176,6 +176,8 @@ struct K3DPose: Equatable {
     var angle = 0.0, lift = 0.0
     /// Change 307: the pitch, in degrees (k3d_src3.js `tilt`).
     var tilt = 0.0
+    /// CLA-105 Take apart: 0 closed, 1 apart. Above 0 the renderer draws the parts too.
+    var ex = 0.0
     var black = false
     /// The size on screen about the device's center (change 288). It scales the projection only,
     /// so the light on the body does not change.
@@ -237,8 +239,11 @@ final class K3DLayerView: MTKView {
     private let queue: any MTLCommandQueue
     private let pipeline: any MTLRenderPipelineState
     private let depth: any MTLDepthStencilState
+    /// Take apart: the window glass, blended over the parts with no depth write (the mock's pass 1).
+    private let glassPipeline: any MTLRenderPipelineState
+    private let glassDepth: any MTLDepthStencilState
     private let vertices: any MTLBuffer, indices: any MTLBuffer
-    private let indexCount: Int
+    private let closedIndexCount: Int, indexCount: Int
     private let front: any MTLTexture, back: any MTLTexture, steel: any MTLTexture
     private let linear: any MTLSamplerState, nearest: any MTLSamplerState
     /// The screen picture now in the front texture.
@@ -252,6 +257,16 @@ final class K3DLayerView: MTKView {
         var blk: Float
         /// CLA-119: how much the side's mirror steel shows (`steelShows(angle:)`).
         var steel: Float
+        /// CLA-105: how far apart the parts are, and the pass (0, or 1 for the window glass).
+        var ex: Float = 0
+        var pass: Float = 0
+    }
+
+    /// CLA-105: closed, only the closed device draws, in one pass with back faces culled, as
+    /// before. Apart, every part draws; from `ex` .001 their back faces too, and from .0005 the
+    /// window glass in a second pass (the mock's `draw`).
+    nonisolated static func passes(ex: Float) -> (all: Bool, cull: Bool, glass: Bool) {
+        (ex > 0, ex <= 0.001, ex > 0.0005)
     }
 
     /// CLA-119: the side's mirror steel shows only as the device turns away from the front: 0 at
@@ -265,7 +280,9 @@ final class K3DLayerView: MTKView {
 
     init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
-              let pipeline = try? Self.makePipeline(device), let depth = Self.makeDepth(device)
+              let library = try? Self.makeLibrary(device),
+              let pipeline = try? Self.makePipeline(library), let depth = Self.makeDepth(device, write: true),
+              let glassPipeline = try? Self.makePipeline(library, blend: true), let glassDepth = Self.makeDepth(device, write: false)
         else { return nil }
         let mesh = K3DMesh()
         guard let vertices = device.makeBuffer(bytes: mesh.vertices, length: mesh.vertices.count * 4, options: []),
@@ -280,9 +297,12 @@ final class K3DLayerView: MTKView {
         self.queue = queue
         self.pipeline = pipeline
         self.depth = depth
+        self.glassPipeline = glassPipeline
+        self.glassDepth = glassDepth
         self.vertices = vertices
         self.indices = indices
-        indexCount = mesh.closedIndexCount  // the closed device; Take apart (CLA-105) draws the rest later
+        closedIndexCount = mesh.closedIndexCount
+        indexCount = mesh.indices.count
         self.front = front
         self.frontBytes = frontBytes
         self.back = back
@@ -296,21 +316,35 @@ final class K3DLayerView: MTKView {
     }
 
     /// The shaders and the pipeline. Internal so a test can check that the shaders compile.
-    static func makePipeline(_ device: any MTLDevice) throws -> any MTLRenderPipelineState {
-        let library = try device.makeLibrary(source: K3DShader.source, options: nil)
+    /// `blend`: the window glass pass, as the mock's blendFuncSeparate(SRC_ALPHA,
+    /// ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA).
+    static func makeLibrary(_ device: any MTLDevice) throws -> any MTLLibrary {
+        try device.makeLibrary(source: K3DShader.source, options: nil)
+    }
+
+    static func makePipeline(_ library: any MTLLibrary, blend: Bool = false) throws -> any MTLRenderPipelineState {
+        let device = library.device
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: "k3dVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "k3dFragment")
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        if blend {
+            let color = descriptor.colorAttachments[0]!
+            color.isBlendingEnabled = true
+            color.sourceRGBBlendFactor = .sourceAlpha
+            color.destinationRGBBlendFactor = .oneMinusSourceAlpha
+            color.sourceAlphaBlendFactor = .one
+            color.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        }
         descriptor.depthAttachmentPixelFormat = .depth32Float
         descriptor.rasterSampleCount = samples
         return try device.makeRenderPipelineState(descriptor: descriptor)
     }
 
-    private static func makeDepth(_ device: any MTLDevice) -> (any MTLDepthStencilState)? {
+    private static func makeDepth(_ device: any MTLDevice, write: Bool) -> (any MTLDepthStencilState)? {
         let descriptor = MTLDepthStencilDescriptor()
         descriptor.depthCompareFunction = .less
-        descriptor.isDepthWriteEnabled = true
+        descriptor.isDepthWriteEnabled = write
         return device.makeDepthStencilState(descriptor: descriptor)
     }
 
@@ -389,13 +423,14 @@ final class K3DLayerView: MTKView {
         var uniforms = Uniforms(
             mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt),
             pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0,
-            steel: Self.steelShows(angle: pose.angle))
+            steel: Self.steelShows(angle: pose.angle), ex: Float(pose.ex))
+        let passes = Self.passes(ex: uniforms.ex)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
-        // As the mock: only front faces draw. Metal's clip space has y up, as WebGL's, so the
-        // mock's counterclockwise front faces are counterclockwise here too.
+        // As the mock: closed, only front faces draw. Metal's clip space has y up, as WebGL's, so
+        // the mock's counterclockwise front faces are counterclockwise here too.
         encoder.setFrontFacing(.counterClockwise)
-        encoder.setCullMode(.back)
+        encoder.setCullMode(passes.cull ? .back : .none)
         encoder.setVertexBuffer(vertices, offset: 0, index: 0)
         encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
@@ -404,7 +439,16 @@ final class K3DLayerView: MTKView {
         encoder.setFragmentTexture(steel, index: 2)
         encoder.setFragmentSamplerState(linear, index: 0)
         encoder.setFragmentSamplerState(nearest, index: 1)
-        encoder.drawIndexedPrimitives(type: .triangle, indexCount: indexCount, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
+        let count = passes.all ? indexCount : closedIndexCount
+        encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
+        if passes.glass {
+            uniforms.pass = 1
+            encoder.setRenderPipelineState(glassPipeline)
+            encoder.setDepthStencilState(glassDepth)
+            encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
+            encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
+        }
         encoder.endEncoding()
     }
 

@@ -5,8 +5,8 @@
 /// 11-14). Mesh and textures are the same as K.3D.7. The math is `k3d_src3.js` (`data-edge="parts"`, the
 /// physical light, `uPhys` 1) for the assembled device, line by line, with its uniforms fixed
 /// at the frozen values (`UC` in the mock). Not ported, as the folder's README says: the old
-/// light (`uPhys` 0), the 2D layer (`u2d`, `t2`), the other edge options, and everything only
-/// Take apart draws (`ex` > 0, materials above 10, back faces). The LCD parallax (`lcdUV`) is
+/// light (`uPhys` 0), the 2D layer (`u2d`, `t2`), the other edge options, and
+/// everything only Take apart draws (ported from CLA-105, below). The LCD parallax (`lcdUV`) is
 /// part of the frozen look and is ported (the README's correction, 23:20 JST 11-13).
 ///
 /// Changes from the mock:
@@ -15,16 +15,34 @@
 /// - One front texture with mipmaps. The color is read with the mipmapped linear sampler, like
 ///   the mock's `tm`. The material id (alpha) is read from level 0 with nearest filtering, like
 ///   the mock's `tf`.
-/// - Back faces are culled as in the mock, so the mock's normal flip for them never runs.
+/// - Back faces are culled as in the mock while the device is closed.
 /// - CLA-119: the side's mirror steel and the seam fade in with the turn (`steel`, 0 near the
 ///   front, 1 from 15°). Below that they show the body's color as the flat front has it, so the
 ///   swap from the 2D device shows no bright line round the edge.
+///
+/// CLA-105 (Take apart, change 308), PR B: `ex` (0 closed, 1 apart) moves each part along the
+/// device's own z, and the shader draws the parts: their inner faces (materials 11 to 45, the
+/// mock's `vm>10.5` block, in `inner`), their back faces, and the window glass in a second,
+/// blended pass (`pass` 1). Everything new is behind `ex` > 0, or on geometry that only draws
+/// then (materials above 10, part 4, back faces), so the closed device is drawn as before. Not
+/// yet ported: the fine detail of the inner materials (the mock's lines from "real materials")
+/// and the three printed textures (tl, tp, tq). Those parts show their plain color for now.
 enum K3DShader {
+    /// How far each part moves out along the device's z at `ex` 1, by part (k3d_src3.js vertex
+    /// shader): shell, plate, window, wheel, screen module, button, frame, drive, foam, board.
+    /// Then the whole device moves back `apartBack`, so it stays in the middle.
+    static let apart: [Float] = [0, 240, 285, 277, 196, 313, 130, 62, 127.5, 140.5]
+    static let apartBack: Float = 172
+
     static let source = """
     #include <metal_stdlib>
     using namespace metal;
 
-    struct K3DUniforms { float4x4 mv; float4x4 pr; float blk; float steel; };
+    struct K3DUniforms { float4x4 mv; float4x4 pr; float blk; float steel; float ex; float pass; };
+
+    constant float apart[10] = { \(K3DShader.apart.map { "\($0)" }.joined(separator: ", ")) };
+
+    float ss(float e0, float e1, float x) { float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
 
     struct K3DVarying {
         float4 position [[position]];
@@ -34,7 +52,18 @@ enum K3DShader {
     vertex K3DVarying k3dVertex(uint id [[vertex_id]], const device float* data [[buffer(0)]],
                                 constant K3DUniforms& u [[buffer(1)]]) {
         const device float* e = data + id * 13;
-        float4 q = u.mv * float4(e[0], e[1], e[2], 1.0);
+        float m = e[11], pt = e[12];
+        // Take apart: each part moves out along the device's z, then the whole device moves back.
+        // The wheel's cable stays tucked behind the wheel until the wheel is clear of the plate
+        // (ex .14), then slides out to its place (ex .16 to .6).
+        float3 pp = float3(e[0], e[1], e[2]);
+        pp.z += u.ex * apart[int(clamp(pt + 0.5, 0.0, 9.0))];
+        pp.z -= u.ex * \(K3DShader.apartBack);
+        float cb = (pt > 2.5 && pt < 3.5 && ((m > 13.5 && m < 16.5) || (m > 40.5 && m < 41.5))) ? 1.0 : 0.0;
+        float cg = 1.0 - ss(0.16, 0.6, u.ex);
+        pp.x += cb * 160.0 * cg;
+        pp.z -= cb * 2.0 * cg;
+        float4 q = u.mv * float4(pp, 1.0);
         float3x3 m3 = float3x3(u.mv[0].xyz, u.mv[1].xyz, u.mv[2].xyz);
         K3DVarying o;
         o.vo = float3(e[0], e[1], e[2]);
@@ -43,9 +72,12 @@ enum K3DShader {
         o.vuv = float2(e[6], e[7]);
         o.vuv2 = float2(e[8], e[9]);
         o.vwt = e[10];
-        o.vm = e[11];
-        o.vpt = e[12];
+        o.vm = m;
+        o.vpt = pt;
         o.position = u.pr * q;
+        // The parts' own geometry (materials above 10) is hidden while closed and for the first
+        // 6% of the move: seen edge-on, its thin faces can draw as stray lines.
+        if ((u.ex < 0.06 && m > 10.5) || (cb > 0.5 && u.ex < 0.14)) o.position = float4(2.0, 2.0, 2.0, 1.0);
         return o;
     }
 
@@ -56,7 +88,6 @@ enum K3DShader {
     constant float3 uTint = float3(0.995, 0.997, 1.0);
     constant float2 wheelUV = float2(366.0 / 732.0, 867.0 / 1226.0);
 
-    float ss(float e0, float e1, float x) { float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
     float box(float3 r, float3 d, float w) { return ss(1.0 - w, 1.0 - w * 0.35, dot(r, normalize(d))); }
     float seg(float z, float z0, float z1, float a, float b) { return mix(a, b, ss(z0, z1, z)); }
     float isId(float a, float id) { return step(abs(a - id / 255.0), 0.0018); }
@@ -180,29 +211,152 @@ enum K3DShader {
         return col;
     }
 
+    // Take apart: the parts' inner faces and the inside of the device (materials 11 to 45), plain
+    // colors lit by the physical light. The mock's `vm>10.5` block. `glass` is 1 in the window's
+    // clear middle. The fine detail and the prints are not ported yet: those faces show their
+    // plain color.
+    float3 inner(float id, float3 n, float3 v, float3 r, float3 vp, float3 vo, float3x3 M, float pt, float blk, float ex, float glass) {
+        float g = pow(clamp(physE(n, vp, vo, M), 0.0, 2.0), 0.4545);
+        float2 o = vo.xy, w = o - float2(0.0, -127.0);
+        float rho = length(w);
+        float3 h = normalize(normalize(float3(lamp.x, lamp.y, 1000.0)) + v);
+        float sp = pow(max(dot(n, h), 0.0), 30.0);
+        float3 c = float3(0.5);
+        if (id == 11.0) c = float3(0.33, 0.40, 0.50);  // battery
+        else if (id == 12.0) c = float3(0.72, 0.73, 0.75) * (0.985 + 0.015 * sin(o.y * 2.3)) + 0.25 * sp;  // drive, shield can: brushed metal
+        else if (id == 13.0) c = float3(0.055, 0.06, 0.065) + float3(0.05, 0.04, 0.02) * step(0.86, fract(o.x * 0.11 + floor(o.y * 0.035) * 0.37)) * step(0.3, fract(o.y * 0.035)) + 0.06 * sp;  // logic board
+        else if (id == 14.0) c = float3(0.17, 0.17, 0.18) + 0.14 * sp;  // chips
+        else if (id == 41.0) c = float3(0.17, 0.17, 0.18) + 0.06 * sp;  // chip label (its print: tl, later)
+        else if (id == 15.0) c = float3(0.86, 0.68, 0.30) + 0.35 * sp;  // gold
+        else if (id == 16.0) c = float3(0.84, 0.50, 0.16) * (0.90 + 0.10 * step(0.5, fract(o.x * 0.25)));  // ribbon cable
+        else if (id == 17.0) c = float3(0.66, 0.67, 0.69) + 0.20 * sp;  // LCD panel frame
+        else if (id == 18.0) c = float3(0.52, 0.33, 0.12);  // flex pad
+        else if (id == 19.0) c = float3(0.90, 0.90, 0.88);  // battery print (tl, later)
+        else if (id == 20.0) c = float3(0.80, 0.78, 0.70) * (0.96 + 0.04 * sin(o.x * 5.0)) + 0.12 * sp;
+        else if (id == 45.0) c = float3(0.52, 0.40, 0.26) + 0.14 * sp;  // connector latch
+        else if (id == 21.0) {  // plate inner skin: raw aluminium, a black strip round the window, a red-brown sheet round the wheel
+            c = uTint * 0.72 * (blk > 0.5 ? 0.34 : 1.0);
+            float2 d = abs(o - float2(0.0, 161.25)) - float2(149.5, 112.25);
+            float wd = length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 7.0;
+            float2 e = abs(o - float2(0.0, -137.0)) - float2(148.0, 137.0);
+            float sd = length(max(e, 0.0)) + min(max(e.x, e.y), 0.0) - 12.0;
+            c = mix(c, float3(0.56, 0.33, 0.17), ss(0.6, -0.6, sd) * ss(118.0, 119.2, rho) * (1.0 - step(abs(o.x + 4.0), 84.0) * step(-34.0, o.y))
+                * (1.0 - step(o.y, -268.0) * step(abs(abs(o.x) - 110.0), 13.0)));
+            c = mix(c, float3(0.07, 0.07, 0.08), ss(12.6, 11.4, wd));
+        }
+        else if (id == 22.0) c = float3(0.78, 0.86, 0.84) + 0.25 * sp;  // window cut edge: clear plastic
+        else if (id == 23.0) c = mix(float3(0.10, 0.11, 0.12), float3(0.60, 0.64, 0.68), glass);  // window back: ink border, clear glass
+        else if (id == 24.0) {  // wheel back: plastic with a moulded line (its print: tq, later)
+            c = (blk > 0.5 ? float3(0.13) : float3(0.90, 0.91, 0.92)) * mix(1.0, 0.93, ss(1.2, 0.0, abs(rho - 100.0)));
+            c *= 1.0 - 0.07 * ss(1.3, 0.4, rho * abs(sin(atan2(w.y, w.x) * 4.0 + 1.5708)) / 4.0) * step(50.0, rho) * step(rho, 99.0);
+        }
+        else if (id == 25.0) c = (blk > 0.5 ? float3(0.16) : float3(0.62, 0.63, 0.65)) * mix(1.0, 0.72, ss(8.5, 7.5, rho));  // button back
+        else if (id == 28.0) c = blk > 0.5 ? float3(0.13) : float3(0.92, 0.93, 0.94);  // wheel side and center hole wall
+        else if (id == 29.0) c = blk > 0.5 ? float3(0.16) : float3(0.62, 0.63, 0.65);  // button side
+        else if (id == 34.0) c = float3(0.80, 0.81, 0.83) * (0.985 + 0.015 * sin(o.y * 1.3)) + 0.12 * sp;  // shell inner wall: brushed steel
+        else if (id == 35.0) c = float3(0.13, 0.36, 0.78);  // battery wrap
+        else if (id == 36.0) {  // drive bumpers: grey foam
+            float fh = fract(sin(dot(floor(vo * 1.9), float3(12.9898, 78.233, 37.719))) * 43758.5453);
+            float fh2 = fract(sin(dot(floor(vo * 0.7), float3(39.3, 11.1, 57.7))) * 4375.5);
+            c = float3(0.50, 0.51, 0.49) * (0.86 + 0.14 * fh) * (0.95 + 0.05 * fh2);
+            if (pt < 0.5) c *= 0.24;
+        }
+        else if (id == 37.0) c = float3(0.50, 0.76, 0.90) * (0.94 + 0.06 * fract(sin(dot(floor(o * 0.6), float2(12.9898, 78.233))) * 43758.5453));  // blue foam
+        else if (id == 38.0) {  // gold switch with its dark center
+            float d = min(min(length(w), length(abs(w) - float2(78.0, 0.0))), length(abs(w) - float2(0.0, 78.0)));
+            c = mix(float3(0.05, 0.045, 0.04), float3(0.86, 0.61, 0.13) * (0.80 + 0.30 * ss(8.0, 11.5, d)) * (1.0 - 0.42 * ss(12.5, 14.0, d)), ss(7.2, 8.1, d)) + 0.28 * sp;
+        }
+        else if (id == 44.0) c = float3(0.085, 0.09, 0.09) + 0.10 * sp;  // switch base
+        else if (id == 39.0) {  // the pale ring round the center switch
+            c = mix(float3(0.17, 0.18, 0.185), float3(0.80, 0.82, 0.80), ss(0.7, 0.0, abs(rho - 37.0) - 4.5));
+            c = mix(c, float3(0.80, 0.82, 0.80), step(abs(abs(w.x) - abs(w.y)), 2.0) * step(abs(rho - 42.5), 1.6));
+        }
+        else if (id == 42.0) {  // yellow label with a square code
+            c = float3(0.88, 0.80, 0.20);
+            float2 q = o - float2(-45.0, -60.5);
+            if (max(abs(q.x), abs(q.y)) < 17.0) {
+                float k = fract(sin(dot(floor(q / 2.6), float2(12.9898, 78.233))) * 43758.5453);
+                c = mix(c, float3(0.10), step(0.52, k) * step(max(abs(q.x), abs(q.y)), 15.6));
+            }
+        }
+        else if (id == 43.0) c = mix(float3(0.10, 0.10, 0.09), float3(0.24, 0.21, 0.14), step(0.5, fract(vo.z * 0.9)));  // board edge: layers
+        else if (id == 40.0) c = float3(0.72, 0.73, 0.75);  // drive back: metal (its label: tl, later)
+        else if (id == 30.0) c = float3(0.74, 0.75, 0.76) * (0.975 + 0.025 * fract(sin(dot(floor(o * 1.3), float2(12.9898, 78.233))) * 43758.5453));  // frame: cast metal
+        else if (id == 31.0) c = float3(0.46, 0.48, 0.49);  // frame floor
+        else if (id == 32.0) c = float3(0.66, 0.67, 0.68) * (0.99 + 0.01 * sin(o.x * 1.7)) + 0.12 * sp;  // shield plate
+        else if (id == 33.0) c = float3(0.76, 0.77, 0.78) + 0.25 * sp;  // the plate's steel clips
+        else if (id == 26.0) c = float3(0.16, 0.36, 0.70);  // blue rubber corners
+        else if (id == 27.0) {  // LCD back: metal, a plain label, the flex tail
+            c = float3(0.66, 0.67, 0.69) * (0.96 + 0.04 * sin(o.x * 2.1)) + 0.20 * sp;
+            float2 l = abs(o - float2(0.0, 176.0)) - float2(70.0, 26.0);
+            c = mix(c, float3(0.88, 0.88, 0.86), step(max(l.x, l.y), 0.0));
+            c = mix(c, float3(0.52, 0.33, 0.12), step(o.y, 62.0) * step(abs(o.x), 60.0));
+        }
+        // Metals reflect the room; the inside is darker until the parts are well apart.
+        float mt = 0.0, sh = 1.0;
+        if (id == 12.0 || id == 17.0 || id == 27.0 || id == 32.0 || id == 33.0 || id == 34.0 || id == 40.0) mt = 1.0;
+        else if (id == 30.0 || id == 31.0) mt = 0.55;
+        if (id == 31.0) sh *= 0.80;
+        if (id != 22.0 && id != 23.0) sh *= mix(0.62, 1.0, ss(0.06, 0.75, ex));
+        float brl = fract(sin(floor(o.x * 3.0) * 12.9898) * 43758.5453);
+        float sr = 0.46 + 0.30 * ss(-0.7, 0.7, r.y) + 0.42 * pow(max(dot(r, normalize(float3(-0.45, 0.5, 0.75))), 0.0), 5.0)
+            + 0.10 * ss(0.2, 0.95, dot(r, normalize(float3(0.7, 0.1, 0.7))));
+        float mm = 0.60 * mt;
+        if (id == 34.0) { sr = mix(sr, 0.50 + 0.75 * studio(r, vp), 0.7); mm = 0.85; }
+        if (id == 12.0 && pt > 6.5 && pt < 7.5) { sr = mix(sr, 0.50 + 0.75 * studio(r, vp), 0.65); mm = 0.82; }
+        return c * mix(float3(g), float3(sr * 1.18), mm) * (1.0 + 0.045 * mt * (brl - 0.5)) * sh;
+    }
+
     fragment float4 k3dFragment(K3DVarying in [[stage_in]], constant K3DUniforms& u [[buffer(0)]],
                                 texture2d<float> tf [[texture(0)]], texture2d<float> tb [[texture(1)]],
                                 texture2d<float> ts [[texture(2)]], sampler sm [[sampler(0)]],
-                                sampler sn [[sampler(1)]]) {
+                                sampler sn [[sampler(1)]], bool ff [[front_facing]]) {
         float3x3 M = float3x3(u.mv[0].xyz, u.mv[1].xyz, u.mv[2].xyz);
         float vm = in.vm, pt = in.vpt;
         float2 o = in.vo.xy;
+        // The window's clear middle (the LCD id in the front texture's top half).
+        float glass = isId(tf.sample(sn, in.vuv, level(0)).a, 251.0) * (1.0 - step(0.5, in.vuv.y));
+        // Apart, the window's clear middle is see-through: pass 1 draws it alone, blended, after
+        // everything else; pass 0 leaves it out. Closed, there is one pass and nothing changes.
+        float oA = 1.0;
+        if (u.ex > 0.0005) {
+            float isG = (pt > 1.5 && pt < 2.5 && ((vm > 2.5 && vm < 3.5) || (vm > 22.5 && vm < 23.5))) ? glass : 0.0;
+            if ((u.pass < 0.5 && isG > 0.5) || (u.pass > 0.5 && isG < 0.5)) discard_fragment();
+            if (u.pass > 0.5) {
+                float3 nn = ff ? normalize(in.vn) : -normalize(in.vn);
+                oA = (0.10 + 0.55 * pow(1.0 - max(dot(nn, normalize(-in.vp)), 0.0), 3.0)) * ss(0.0, 0.25, u.ex);
+            }
+        }
         // The plate's real holes: the screen's rounded rectangle and the wheel's circle. The
         // wheel's own center hole, where the button sits.
         if (pt > 0.5 && pt < 1.5 && vm > 2.5 && vm < 3.5) {
             float2 d = abs(o - float2(0.0, 161.25)) - float2(149.5, 112.25);
             if (length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 7.0 < 0.0 || length(o - float2(0.0, -127.0)) < 112.65) discard_fragment();
         }
+        if (pt > 0.5 && pt < 1.5 && vm > 20.5 && vm < 21.5) {  // and in its inner skin
+            float2 d = abs(o - float2(0.0, 161.25)) - float2(149.5, 112.25);
+            if (length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 7.0 < 0.0 || length(o - float2(0.0, -127.0)) < 112.65) discard_fragment();
+        }
         if (pt > 2.5 && pt < 3.5 && length(o - float2(0.0, -127.0)) < 41.65) discard_fragment();
+        if (pt > 0.5 && pt < 1.5 && vm < 0.5 && u.ex > 0.0005 && in.vo.z < \(K3DMesh.depth / 2 - 2.2)) discard_fragment();  // apart: the wheel hole's wall is a short collar
+        if (pt < 0.5 && vm > 9.5 && vm < 10.5 && u.ex >= 0.06) discard_fragment();  // apart: the shell is open (its dark cover is for the closed device)
+        if (pt > 8.5 && ((vm > 12.5 && vm < 13.5) || (vm > 42.5 && vm < 43.5))) {  // the logic board's real outline
+            if ((o.y > -17.0 && length(o - float2(0.0, -127.0)) > 121.0) || (o.y < -281.0 && abs(o.x) > 118.0)) discard_fragment();
+        }
 
-        float3 n = normalize(in.vn);
+        float3 n = ff ? normalize(in.vn) : -normalize(in.vn);  // apart, back faces draw too
         float3 v = normalize(-in.vp);
         float3 r = reflect(-v, n);
         float3 Ld = normalize(float3(-0.45, 0.55, 0.7));
         float dif = max(dot(n, Ld), 0.0);
+        float fr = pow(1.0 - max(dot(n, v), 0.0), 3.0);
         float3 col;
-        if (vm > 9.5) {  // dark: the window's cut edge and the board inside
+        if (vm > 10.5) {  // Take apart: the parts' inner faces
+            col = inner(floor(vm + 0.5), n, v, r, in.vp, in.vo, M, pt, u.blk, u.ex, glass);
+        } else if (vm > 9.5) {  // dark: the window's cut edge and the board inside
             col = float3(0.09, 0.095, 0.10) * (0.7 + 0.4 * dif);
+            if (u.ex > 0.0 && pt > 1.5 && pt < 2.5)  // apart: the window's cut edge is clear plastic
+                col = mix(col, float3(0.78, 0.86, 0.84) * pow(clamp(physE(n, in.vp, in.vo, M), 0.0, 2.0), 0.4545), ss(0.0, 0.25, u.ex));
         } else if (vm < 0.5) {  // the plate's hole walls: aluminium
             col = matte(physE(n, in.vp, in.vo, M));
         } else if (vm < 1.5) {  // mirror steel, lifted so the dark room does not read as rubber
@@ -213,12 +367,17 @@ enum K3DShader {
             col = mix(bodyEdge(in.vp, in.vo, M, u.blk), col, u.steel);  // CLA-119: no bright edge near the front
         } else if (vm < 2.5) {  // the seam: the shadow in the gap
             col = mix(bodyEdge(in.vp, in.vo, M, u.blk), float3(0.16), u.steel);
+            if (u.ex > 0.0) col = mix(col, float3(0.70 + 0.18 * ss(-0.6, 0.7, r.y)), ss(0.0, 0.12, u.ex));  // apart: the shell rim is plain steel
         } else if (vm < 3.5) {  // the front parts
             float3 t = tf.sample(sm, in.vuv).rgb;
             float id = tf.sample(sn, in.vuv, level(0)).a;  // the material id, not blended
-            float2 pu = lcdUV(n, in.vp, M, in.vuv);
+            // The screen module's LCD (part 4, only apart) is the picture itself: no parallax.
+            float2 pu = pt > 3.5 && pt < 4.5 ? in.vuv : lcdUV(n, in.vp, M, in.vuv);
             col = saturate(front(n, in.vp, in.vo, M, in.vuv, pt, t, id, pu, tf.sample(sm, pu).rgb));
             float isL = isId(id, 251.0) * (1.0 - step(0.5, in.vuv.y));
+            if (u.ex > 0.0 && pt > 1.5 && pt < 2.5)  // apart: the window is clear glass once the screen has moved out
+                col = mix(col, float3(0.78, 0.82, 0.86) * (0.5 + 0.4 * fr) + 0.12 * env(r), isL * ss(0.0, 0.25, u.ex));
+            if (pt > 3.5 && pt < 4.5) col = mix(float3(0.10, 0.11, 0.12) * (0.7 + 0.4 * dif), col, isL);  // the screen module round its LCD
             float rw = length(o - float2(0.0, -127.0));
             if (pt > 2.5 && pt < 3.5) col *= mix(1.0, 0.86, ss(111.6, 112.5, rw));  // the thin gap line round the wheel
             if (pt > 4.5) col *= mix(1.0, 0.88, ss(40.6, 41.5, rw));  // and round the button
@@ -254,7 +413,18 @@ enum K3DShader {
             tone = mix(tone, 0.30 + 0.55 * (tone - 0.30), ss(0.35, 0.75, sl));
             col = mix(st, float3(tone * (0.90 + 0.12 * dif)), t.a);
         }
-        return float4(col, 1.0);
+        // Apart, seen from behind, the front parts show their back faces: plain material, no
+        // print, in the same physical light. The shell's back faces are not drawn.
+        if (!ff && vm < 10.5) {
+            if (pt < 0.5) discard_fragment();
+            float g = pow(clamp(physE(n, in.vp, in.vo, M), 0.0, 2.0), 0.4545);
+            if (pt < 1.5) col = uTint * 0.72 * g * (u.blk > 0.5 ? 0.34 : 1.0);  // plate: bare aluminium
+            else if (pt < 2.5) col = mix(float3(0.10, 0.11, 0.12) * (0.6 + 0.4 * g), float3(0.78, 0.82, 0.86) * (0.5 + 0.4 * fr) + 0.12 * env(r), glass);  // window
+            else if (pt < 3.5) col = (u.blk > 0.5 ? float3(0.13) : float3(0.90, 0.91, 0.92)) * g;  // wheel: plain plastic
+            else if (pt < 4.5) col = float3(0.12, 0.14, 0.13) * (0.5 + 0.5 * g);  // screen module: dark board
+            else col = uTint * pow(0.50, 0.4545) * g * (u.blk > 0.5 ? 0.34 : 1.0);  // center button
+        }
+        return float4(col, oA);
     }
     """
 }
