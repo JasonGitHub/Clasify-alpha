@@ -31,14 +31,14 @@ import Testing
         }
     }
 
-    /// The body's horizontal extent (alpha over 64) in points, at a pose, at 1x.
-    func extent(_ renderer: K3DRenderer, angle: Double, lift: Double, tilt: Double) throws -> (CGFloat, CGFloat) {
+    /// The body's horizontal extent in points, at a pose, at 1x: pixels with alpha over `alpha`.
+    func extent(_ renderer: K3DRenderer, angle: Double, lift: Double, tilt: Double, alpha: UInt8 = 64) throws -> (CGFloat, CGFloat) {
         let size = PocketSkin.size
         let bytes = try #require(renderer.image(K3DPose(angle: angle, lift: lift, tilt: tilt), screen: nil, size: size, scale: 1))
         let w = Int(size.width), h = Int(size.height)
         var x0 = w, x1 = -1
         for y in stride(from: 0, to: h, by: 2) {
-            for x in 0..<w where bytes[(y * w + x) * 4 + 3] > 64 {
+            for x in 0..<w where bytes[(y * w + x) * 4 + 3] > alpha {
                 x0 = min(x0, x)
                 x1 = max(x1, x)
             }
@@ -59,7 +59,8 @@ import Testing
             if let known = bodies[frame] { return known }
             let then = start.addingTimeInterval(Double(frame) / 60)
             let pose = flip.pose(at: then)
-            let found = try extent(renderer, angle: pose.angle, lift: pose.lift, tilt: flip.tilt(at: then))
+            // Any coverage: the desktop shows only where the body does not cover a pixel at all.
+            let found = try extent(renderer, angle: pose.angle, lift: pose.lift, tilt: flip.tilt(at: then), alpha: 0)
             bodies[frame] = found
             return found
         }
