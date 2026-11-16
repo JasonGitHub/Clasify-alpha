@@ -199,6 +199,7 @@ import Testing
     /// pose, so no pixel between the body's edge and the shadow shows the desktop.
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [
         (0.0, 0.0, 0.0), (8.0, 0.0, 6.0), (30.0, 0.0, -6.0), (30.0, 0.0, 6.0), (90.0, 70.0, 0.0), (90.0, 0.0, -6.0),
+        (0.0, 0.0, 35.0), (30.0, 0.0, 35.0), (150.0, 0.0, -35.0), (90.0, 0.0, 35.0),
         (135.0, 40.0, 3.0), (150.0, 0.0, 6.0), (180.0, 0.0, 0.0), (250.0, 20.0, -4.0),
     ])
     func theShadowCutStaysUnderTheBody(_ pose: (angle: Double, lift: Double, tilt: Double)) throws {

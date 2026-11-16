@@ -90,4 +90,24 @@ import Testing
         #expect(K3DShadow.cut(angle: pose.angle, lift: pose.lift, tilt: held.tilt(at: now), trail: K3DShadow.trail(held, at: now))
                 == K3DShadow.cut(angle: 40, lift: pose.lift, tilt: 3))
     }
+
+    /// CLA-118 row 3 (change 310): a drag tilts the closed device up to 35°. At a still pose at
+    /// that tilt, the cut lies inside the drawn body (any covered pixel), within 2 pt, both ways.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [
+        (0.0, 35.0), (0.0, -35.0), (30.0, 35.0), (90.0, -35.0), (150.0, 35.0), (210.0, -20.0), (300.0, 35.0),
+    ])
+    func theCutStaysInsideATiltedBody(_ pose: (angle: Double, tilt: Double)) throws {
+        let renderer = try #require(K3DRenderer.shared)
+        let size = PocketSkin.size, w = Int(size.width), h = Int(size.height)
+        let bytes = try #require(renderer.image(K3DPose(angle: pose.angle, tilt: pose.tilt), screen: nil, size: size, scale: 1))
+        var x0 = w, x1 = -1, y0 = h, y1 = -1
+        for y in 0..<h {
+            for x in 0..<w where bytes[(y * w + x) * 4 + 3] > 0 {
+                x0 = min(x0, x); x1 = max(x1, x); y0 = min(y0, y); y1 = max(y1, y)
+            }
+        }
+        let cut = K3DShadow.cut(angle: pose.angle, lift: 0, tilt: pose.tilt).boundingRect
+        #expect(cut.minX >= CGFloat(x0) - 2 && cut.maxX <= CGFloat(x1 + 1) + 2 && cut.minY >= CGFloat(y0) - 2 && cut.maxY <= CGFloat(y1 + 1) + 2,
+                "angle \(pose.angle), tilt \(pose.tilt): body \(x0)...\(x1 + 1) x \(y0)...\(y1 + 1), cut \(cut)")
+    }
 }

@@ -2,27 +2,28 @@ import CoreGraphics
 import Foundation
 import SwiftUI
 
-/// Card BT row 2 (CLA-118): the About showroom's rules, as in the trial page's row 2
-/// (design-review/round20/bt/show/index.html). The skin sends the drag to it and shows the
+/// Card BT rows 2 and 3 (CLA-118): the About showroom's rules, as in the trial page's row 3
+/// (design-review/round20/bt/show/index.html, `dev(3, true, true)`). The skin sends the drag to it and shows the
 /// `K3DFlip` it gives back.
 ///
 /// - 296: the case is the handle. On the resting front, the screen and the wheel keep their jobs.
 /// - 304: a click turns the device over in 0.8 s. On the back, it turns to the front.
-/// - 305: a drag turns it 0.6° per point. A release 20° or more from the side it started on goes
+/// - 305, 309: a drag turns it 0.5° per point (row 3; was 0.6). A release 20° or more from the side it started on goes
 ///   on to the next side in 0.8 s; less goes back in 0.4 s.
 /// - 306: every turn-over has the soft landing (`K3DFlip.go`).
-/// - 307: a drag tilts it 0.1° per point of vertical travel, at most 6°. It levels on release.
+/// - 307, 310: a drag tilts it 0.3° per point of vertical travel from the tilt at the press, at
+///   most 35° each way (row 3; was 0.1° and 6°). It levels on release.
 /// - 302: with Reduce Motion, a release or a click changes side with a 0.2 s crossfade.
 public struct K3DShowroom: Equatable {
-    public static let perPoint = 0.6, tiltPerPoint = 0.1, maxTilt = 6.0, goOn = 20.0
+    public static let perPoint = 0.5, tiltPerPoint = 0.3, maxTilt = 35.0, goOn = 20.0
     /// A drag shorter than this (|dx| + |dy|, points) is a click (trial: 4).
     public static let slop = 4.0
     /// Change 297: the nudge comes 1.4 s after About first opens.
     public static let nudgeDelay = 1.4
     /// CLA-105 D (the showroom trial, bt/show/index.html): a press with no move held 1.2 s on
-    /// the back takes the device apart. Apart, a drag turns it 0.6° per point and tilts it 0.3°
-    /// per point up to 35° each way; a click with no move puts it together.
-    public static let holdTime = 1.2, apartTiltPerPoint = 0.3, apartMaxTilt = 35.0
+    /// the back takes the device apart. Apart, a drag turns and tilts it as when closed (row 3:
+    /// one rate); a click with no move puts it together.
+    public static let holdTime = 1.2
 
     /// The angle at the press, and the side the device was nearest then.
     public let angle0: Double, side0: Double
@@ -60,11 +61,8 @@ public struct K3DShowroom: Equatable {
     /// The pose while the drag holds the device: the drag `translation`, in points.
     public mutating func changed(_ translation: CGSize, flip: K3DFlip) -> K3DFlip {
         if abs(translation.width) + abs(translation.height) > Self.slop { moved = true }
-        if apart {
-            let tilt = min(Self.apartMaxTilt, max(-Self.apartMaxTilt, tilt0 + translation.height * Self.apartTiltPerPoint))
-            return flip.held(angle: angle0 + translation.width * Self.perPoint, tilt: tilt)
-        }
-        let tilt = min(Self.maxTilt, max(-Self.maxTilt, translation.height * Self.tiltPerPoint))
+        // Row 3 (changes 309 and 310), closed and apart alike: from the pose at the press.
+        let tilt = min(Self.maxTilt, max(-Self.maxTilt, tilt0 + translation.height * Self.tiltPerPoint))
         return flip.held(angle: angle0 + translation.width * Self.perPoint, tilt: tilt)
     }
 

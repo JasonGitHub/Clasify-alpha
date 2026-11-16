@@ -5,7 +5,7 @@ import Testing
 
 /// CLA-119 (build 258: the top of the turned device cut off): with `K3DRoom.extra` round the
 /// app's margins, the body's frame rect is never clamped at the window's edge, at any pose the
-/// app can show: every turn (tilt ±6°, lift up to 70) and the take-apart (any angle, tilt ±35°).
+/// app can show: every turn (tilt ±35°, lift up to 70) and the take-apart (any angle, tilt ±35°).
 @MainActor struct K3DRoomTests {
     /// The app's `DeviceWindow.margin` (Clasify/ClasifyApp.swift).
     static let margin = EdgeInsets(top: 5, leading: 60, bottom: 90, trailing: 60)
@@ -26,7 +26,9 @@ import Testing
 
     @Test func theTurnsAreNotCut() {
         for angle in stride(from: 0.0, to: 360, by: 3) {
-            for tilt in [-6.0, 0, 6] {
+            // Row 3 (change 310): a drag tilts the closed device up to 35° each way, and the
+            // turn after the release starts from that tilt.
+            for tilt in [-35.0, -20, -6, 0, 6, 20, 35] {
                 for lift in [0.0, 35, 70] {
                     let pose = K3DPose(angle: angle, lift: lift, tilt: tilt)
                     #expect(unclamped(pose, apart: false), "angle \(angle), tilt \(tilt), lift \(lift)")
