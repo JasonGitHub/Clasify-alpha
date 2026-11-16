@@ -323,6 +323,8 @@ public struct K3DFlip {
     static let turn = 0.82, duration = 1.0, lift = 70.0
     /// The crossfade between the 3D body and the flat 2D device.
     static let fade = 0.1
+    /// CLA-119: past `restAngle`, the degrees over which the flip's push back comes in.
+    static let liftIn = 18.0
     /// Card BR, change 288: the arrival's turn and its crossfade to the 2D device.
     public static let arriveTurn = 1.6, arriveFade = 0.35, arriveFrom = -120.0, arriveScale = 0.55
     /// When the skin sends `.arrived`, before the turn ends: Hello's wait before its first
@@ -633,9 +635,13 @@ public struct K3DFlip {
     /// of `angle` and a tilt of `tilt` (degrees): the shader's `nearRest`, from the same angle
     /// between the body's z and the eye.
     static func nearRest(angle: Double, tilt: Double) -> Double {
+        1 - K3DRenderer.smooth(offRest(angle: angle, tilt: tilt) / K3DShader.restAngle)
+    }
+
+    /// The angle between the body's z and the eye, in degrees, for a turn and a tilt.
+    static func offRest(angle: Double, tilt: Double) -> Double {
         let c = cos(angle * .pi / 180) * cos(tilt * .pi / 180)
-        let off = acos(min(1, c)) * 180 / .pi
-        return 1 - K3DRenderer.smooth(off / K3DShader.restAngle)
+        return acos(min(1, c)) * 180 / .pi
     }
 
     /// The 3D body's size and opacity: 1 and 1, except while it arrives (gen.py `g1`: scale
@@ -692,7 +698,11 @@ public struct K3DFlip {
             angle = to + (to - from) * 0.025 * (1 - q) * (1 - q)
         }
         let p = min(1, max(0, t / Self.turn))
-        return (angle, Self.lift * sin(.pi * p))
+        // CLA-119: no push back while the 2D device shows (within `restAngle` of the front), so
+        // the 3D body under it is the 2D device's size. It comes in smoothly from 2° to 20°.
+        let off = Self.offRest(angle: angle, tilt: 0) - K3DShader.restAngle
+        let away = K3DRenderer.smooth(off / Self.liftIn)
+        return (angle, Self.lift * sin(.pi * p) * away)
     }
 
     static func ease(_ p: Double) -> Double { p < 0.5 ? 4 * p * p * p : 1 - pow(-2 * p + 2, 3) / 2 }

@@ -168,6 +168,10 @@ import Testing
         let early = flip.flatOpacity(at: at(0.05))
         #expect(early > 0.9 && early < 1 && byAngle(0.05) && byAngle(0.1))
         #expect(flip.flatOpacity(at: at(0.15)) == 0)  // past 2°
+        // No push back while the 2D device shows: the 3D body under it is its size.
+        let start = (0..<40).map { at(Double($0) / 200) }
+        #expect(start.allSatisfy { flip.flatOpacity(at: $0) == 0 || flip.pose(at: $0).lift == 0 })
+        #expect(flip.pose(at: at(0.3)).lift > 20)
         #expect(flip.flatOpacity(at: at(5)) == 0)  // the back rests
         flip.toggle(at: at(5), screen: nil)
         // The flip swings 4.5° past the front: it passes 0° while the 2D device waits.

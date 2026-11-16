@@ -22,33 +22,72 @@ import Testing
         state.deviceColor = color
         let black = color == .black
         let shot = try #require(K3DSpike.snapshot(state))
-        let size = PocketSkin.size, m: CGFloat = 60
-        let room = CGSize(width: size.width + 2 * m, height: size.height + 2 * m)
         let expected: [Double: Double] = [0: 1, 0.5: 0.84375, 1: 0.5, 1.5: 0.15625, 2: 0, 3: 0]
         for angle in [0, 0.5, 1, 1.5, 2, 3] {
             let shown = K3DFlip.nearRest(angle: angle, tilt: 0)
             #expect(abs(shown - (expected[angle] ?? -1)) < 1e-9, "at \(angle)°")
-            let bytes = try #require(renderer.image(K3DPose(angle: angle, black: black), screen: shot, size: room, scale: 2))
-            let body = try #require(Self.image(bytes, Int(room.width) * 2, Int(room.height) * 2))
-            let frame = ZStack {
-                Color(hex: 0x9b5fd0)
-                if shown < 1 { K3DShadow(angle: angle, lift: 0, black: black) }
-                Image(decorative: body, scale: 2)
-                PocketSkin(state: state, interactive: false)
-                    .environment(\.pocketDropShadow, shown >= 1)
-                    .compositingGroup()
-                    .opacity(shown)
-            }
-            .frame(width: room.width, height: room.height)
-            let image = ImageRenderer(content: frame)
-            image.scale = 2
-            let png = try #require(image.cgImage.flatMap { NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:]) })
+            let png = try frame(renderer, state, shot, angle: angle, lift: 0, shown: shown)
             #expect(png.count > 0)
             let name = "\(black ? "black" : "silver")-\(String(format: "%.1f", angle))"
             if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"] {
                 try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-k3d-fade-\(name).png"))
             }
         }
+    }
+
+    /// Frames from the real flip off the front, at the times where the 2D device shows at 1,
+    /// 0.75, 0.5, 0.25 and 0, with the flip's own pose (its push back included), Silver and
+    /// Black, on #9b5fd0. PNGs: `pocket-k3d-flip-<color>-<opacity>.png`.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
+    func theFlipFramesOffTheFront(_ color: DeviceColor) throws {
+        let renderer = try #require(K3DRenderer.shared)
+        var state = AppState()
+        state.deviceColor = color
+        let black = color == .black
+        let shot = try #require(K3DSpike.snapshot(state))
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        var flip = K3DFlip()
+        flip.toggle(at: t0, screen: shot)
+        for target in [1, 0.75, 0.5, 0.25, 0] {
+            // The fade falls as the turn starts: find its time by halving.
+            var (lo, hi) = (0.0, 0.3)
+            for _ in 0..<50 {
+                let mid = (lo + hi) / 2
+                if flip.flatOpacity(at: t0.addingTimeInterval(mid)) > target { lo = mid } else { hi = mid }
+            }
+            let time = t0.addingTimeInterval(target == 1 ? 0 : hi)
+            let pose = flip.pose(at: time), shown = flip.flatOpacity(at: time)
+            #expect(abs(shown - target) < 0.01, "at \(target)")
+            if shown > 0 { #expect(pose.lift == 0, "the 3D body is the 2D device's size while it shows") }
+            let png = try frame(renderer, state, shot, angle: pose.angle, lift: pose.lift, shown: shown)
+            let name = "\(black ? "black" : "silver")-\(String(format: "%.2f", target))"
+            if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"] {
+                try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-k3d-flip-\(name).png"))
+            }
+        }
+    }
+
+    /// One frame as `K3DFlipView` composes it, at 2x, 60 pt of purple round the device.
+    func frame(_ renderer: K3DRenderer, _ state: AppState, _ shot: CGImage, angle: Double, lift: Double, shown: Double) throws -> Data {
+        let black = state.deviceColor == .black
+        let size = PocketSkin.size, m: CGFloat = 60
+        let room = CGSize(width: size.width + 2 * m, height: size.height + 2 * m)
+        let pose = K3DPose(angle: angle, lift: lift, black: black)
+        let bytes = try #require(renderer.image(pose, screen: shot, size: room, scale: 2))
+        let body = try #require(Self.image(bytes, Int(room.width) * 2, Int(room.height) * 2))
+        let view = ZStack {
+            Color(hex: 0x9b5fd0)
+            if shown < 1 { K3DShadow(angle: angle, lift: lift, black: black) }
+            Image(decorative: body, scale: 2)
+            PocketSkin(state: state, interactive: false)
+                .environment(\.pocketDropShadow, shown >= 1)
+                .compositingGroup()
+                .opacity(shown)
+        }
+        .frame(width: room.width, height: room.height)
+        let image = ImageRenderer(content: view)
+        image.scale = 2
+        return try #require(image.cgImage.flatMap { NSBitmapImageRep(cgImage: $0).representation(using: .png, properties: [:]) })
     }
 
     /// A color spin starts from the 2D device in the old color: the 3D body, still the old
