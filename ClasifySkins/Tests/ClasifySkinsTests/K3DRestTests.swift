@@ -120,6 +120,31 @@ import Testing
         #expect(near(a, b), "\(name) bezel: 2D \(a), 3D \(b)")
     }
 
+    /// CLA-119 (Jason, 11:54 JST 11-16: a white outline flashed round the device at the 2D-3D
+    /// swap): near the front, the side shows the body's color, not the bright mirror steel. At
+    /// 0° the side faces away; at 6° the left side faces the eye, about 2 pt wide. The outermost
+    /// opaque pixels on the left, at the row through (60, 450), must be no brighter than the
+    /// flat body there by more than 40 of 255. Mirror steel reads about 80 above Black's body.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [0.0, 6.0])
+    func theEdgeShowsNoSteelNearTheFront(_ angle: Double) throws {
+        let renderer = try #require(K3DRenderer.shared)
+        let size = PocketSkin.size, w = Int(size.width) * 2
+        let bytes = try #require(renderer.image(K3DPose(angle: angle, black: true), screen: nil, size: size, scale: 2))
+        // Premultiplied BGRA, rows from the top. Luminance of opaque pixels only.
+        func lum(_ x: Int, _ y: Int) -> Int {
+            let i = (y * w + x) * 4
+            return (Int(bytes[i + 2]) * 3 + Int(bytes[i + 1]) * 6 + Int(bytes[i])) / 10
+        }
+        func opaque(_ x: Int, _ y: Int) -> Bool { bytes[(y * w + x) * 4 + 3] == 255 }
+        let y = 450 * 2
+        var body = 0
+        for dy in -8...8 { for dx in -8...8 { body += lum(60 * 2 + dx, y + dy) } }
+        body /= 289
+        let first = try #require((0..<w).first { opaque($0, y) })
+        let edge = (first..<(first + 4)).map { lum($0, y) }
+        #expect(edge.allSatisfy { $0 <= body + 40 }, "at \(angle)°: edge \(edge), body \(body)")
+    }
+
     /// The 3D texture's MENU label is where the app draws it: its top within 1 pt.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func menuIsWhereTheAppDrawsIt() throws {
         let renderer = try #require(K3DRenderer.shared)
