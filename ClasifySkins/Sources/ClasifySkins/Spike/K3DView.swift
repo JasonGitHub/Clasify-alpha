@@ -246,6 +246,17 @@ final class K3DLayerView: MTKView {
         var mv: simd_float4x4
         var pr: simd_float4x4
         var blk: Float
+        /// CLA-119: how much the side's mirror steel shows (`steelShows(angle:)`).
+        var steel: Float
+    }
+
+    /// CLA-119: the side's mirror steel shows only as the device turns away from the front: 0 at
+    /// the front (yaw 0, or 360), 1 from 15° on either side, a smoothstep between. Near the front
+    /// the side shows the body's color, as the flat device's edge does.
+    nonisolated static func steelShows(angle: Double) -> Float {
+        let a = abs(angle).truncatingRemainder(dividingBy: 360), d = min(a, 360 - a)
+        let t = min(1, max(0, d / 15))
+        return Float(t * t * (3 - 2 * t))
     }
 
     init?() {
@@ -373,7 +384,8 @@ final class K3DLayerView: MTKView {
     private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
         var uniforms = Uniforms(
             mv: Self.modelView(angle: pose.angle, lift: pose.lift),
-            pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0)
+            pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0,
+            steel: Self.steelShows(angle: pose.angle))
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
         // As the mock: only front faces draw. Metal's clip space has y up, as WebGL's, so the
