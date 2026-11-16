@@ -443,12 +443,16 @@ enum K3DShader {
                 float3 rest = frontPart(on, vr, in.vo, I, in.vuv, pt, t, id, pu, pic, u.blk, u.ex, gu, go);
                 // In the LCD the picture moves with the parallax, from where it is at rest.
                 float isL = isId(id, 251.0) * (1.0 - step(0.5, in.vuv.y));
-                float2 fu = mix(in.vuv, in.vuv + pu - lcdUV(on, vr, I, in.vuv), isL);
+                // The picture is read where the point shows at rest, not at its own uv: the wheel and
+                // the button sit up to 1.6 pt behind the front plane, so they show a little smaller.
+                float2 rp = in.vo.xy * (2600.0 - \(K3DMesh.depth / 2)) / (2600.0 - in.vo.z);
+                float2 ru = float2(rp.x / 366.0 + 0.5, 0.5 - rp.y / 613.0);
+                float2 fu = mix(ru, ru + pu - lcdUV(on, vr, I, in.vuv), isL);
                 float4 f2 = t2.sample(sf, fu);
                 f2.rgb /= max(f2.a, 1.0 / 255.0);  // the picture is premultiplied
                 float2 pin = fu * float2(732.0, 1226.0);  // past the picture's edge: the dark inner wall
                 if (isL > 0.5 && (pin.x < 66.0 || pin.x > 666.0 || pin.y < 65.0 || pin.y > 515.0)) f2 = float4(0.10, 0.10, 0.11, 1.0);
-                float2 cq = abs(in.vuv * float2(732.0, 1226.0) - float2(366.0, 613.0)) - float2(298.0, 545.0);
+                float2 cq = abs(ru * float2(732.0, 1226.0) - float2(366.0, 613.0)) - float2(298.0, 545.0);
                 f2.a *= ss(68.5, 67.0, length(max(cq, 0.0)));  // the 2D device's round corner
                 f2.a *= ss(0.25, 0.7, on.z);  // the plate's round and wall take the 3D light only
                 col = saturate(mix(col, f2.rgb + (col - rest), f2.a));
