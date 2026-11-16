@@ -22,12 +22,13 @@ import simd
         K3DPose(angle: -120, lift: 70, scale: 0.55), K3DPose(angle: -60, scale: 0.8), K3DPose(angle: 8, tilt: 6),
         K3DPose(angle: 200, tilt: -6), K3DPose(angle: 305, tilt: 20, ex: 1), K3DPose(angle: 305, tilt: 20, ex: 0.15),
         K3DPose(angle: 90, tilt: 20, ex: 1), K3DPose(angle: 180, tilt: -20, ex: 0.5),
+        K3DPose(angle: 30, ex: 0.002), K3DPose(angle: 30, ex: 0.0021),
     ]
 
     /// Every point of the mesh, moved as the vertex shader moves it, falls inside the rect.
     @Test(arguments: poses) func theRectHoldsTheBody(_ pose: K3DPose) throws {
         let mesh = K3DMesh()
-        let box = K3DRenderer.box(mesh, apart: pose.ex > 0)
+        let box = K3DRenderer.box(mesh, apart: K3DRenderer.apartRect(ex: pose.ex))
         let rect = try #require(K3DRenderer.bodyRect(box, pose: pose, size: size, center: center, pixelScale: 2))
         let m = K3DRenderer.projection(size: size, center: center, scale: pose.scale)
             * K3DRenderer.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt)
@@ -38,7 +39,9 @@ import simd
             var p = SIMD3(mesh.vertices[e], mesh.vertices[e + 1], mesh.vertices[e + 2])
             let mat = mesh.vertices[e + 11], pt = mesh.vertices[e + 12]
             p.z += ex * (K3DShader.apart[Int(min(max(pt + 0.5, 0), 9))] - K3DShader.apartBack)
-            if pt > 2.5 && pt < 3.5 && ((mat > 13.5 && mat < 16.5) || (mat > 40.5 && mat < 41.5)) { p.x += 160 * cg; p.z -= 2 * cg }
+            let cable = pt > 2.5 && pt < 3.5 && ((mat > 13.5 && mat < 16.5) || (mat > 40.5 && mat < 41.5))
+            if (ex < 0.06 && mat > 10.5) || (cable && ex < 0.14) { continue }  // hidden, as the vertex shader hides them
+            if cable { p.x += 160 * cg; p.z -= 2 * cg }
             let q = m * SIMD4(p, 1)
             let x = (Double(q.x / q.w) + 1) / 2 * size.width * 2, y = (1 - Double(q.y / q.w)) / 2 * size.height * 2
             if x < Double(rect.x) || x > Double(rect.x + rect.w) || y < Double(rect.y) || y > Double(rect.y + rect.h) { outside += 1 }
@@ -57,7 +60,7 @@ import simd
         let renderer = try #require(K3DRenderer.shared)
         let bytes = try #require(renderer.image(pose, screen: nil, size: size, scale: 2))
         let w = Int(size.width) * 2
-        let box = K3DRenderer.box(K3DMesh(), apart: pose.ex > 0)
+        let box = K3DRenderer.box(K3DMesh(), apart: K3DRenderer.apartRect(ex: pose.ex))
         let rect = try #require(K3DRenderer.bodyRect(box, pose: pose, size: size, center: center, pixelScale: 2))
         var touching = 0
         for y in rect.y..<(rect.y + rect.h) {

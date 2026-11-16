@@ -393,6 +393,13 @@ final class K3DLayerView: MTKView {
         return (lo, hi)
     }
 
+    /// CLA-119: the frame's rect holds the parts' moves only from `ex` 0.002. Below it every
+    /// part is less than 0.35 pt from its closed place (the most is the device's move back, 172
+    /// pt at `ex` 1), inside the closed rect's 2 px margin; the parts' own faces and the cable are
+    /// hidden there (K3DShader). So a frame a hair apart is drawn in the same rect as the closed
+    /// one, and looks the same (K3DApartRenderTests).
+    nonisolated static func apartRect(ex: Double) -> Bool { ex > 0.002 }
+
     /// CLA-119: the part of a frame of `size` points the body can cover at the pose, in pixels
     /// at `pixelScale` from the top left: the box's 8 corners through the same matrices as the
     /// draw, 2 pixels out, on whole pixels, inside the frame. Nil when the body is off the frame.
@@ -515,7 +522,7 @@ final class K3DLayerView: MTKView {
         down.colorAttachments[0].loadAction = .clear
         down.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
         down.colorAttachments[0].storeAction = .store
-        guard let rect = Self.bodyRect(pose.ex > 0 ? apartBox : closedBox, pose: pose, size: size, center: center, pixelScale: pixelScale)
+        guard let rect = Self.bodyRect(Self.apartRect(ex: pose.ex) ? apartBox : closedBox, pose: pose, size: size, center: center, pixelScale: pixelScale)
         else {
             buffer.makeRenderCommandEncoder(descriptor: down)?.endEncoding()
             return true
