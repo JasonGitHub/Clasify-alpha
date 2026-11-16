@@ -169,7 +169,7 @@ enum K3DShader {
 
     // The front parts (material 3): plate, window, wheel and button. The mock's frontVR. `pu` is
     // where the LCD picture is read, and `pic` its color there.
-    float3 front(float3 n, float3 vp, float3 vo, float3x3 M, float2 uv, float pt, float3 t, float id, float2 pu, float3 pic) {
+    float3 front(float3 n, float3 vp, float3 vo, float3x3 M, float2 uv, float pt, float3 t, float id, float2 pu, float3 pic, float2 gu) {
         float3 v = normalize(-vp);
         float3 r = reflect(-v, n);
         float3 Ld = normalize(float3(-0.45, 0.55, 0.7));
@@ -191,7 +191,7 @@ enum K3DShader {
         }
         float gz = 1.0 - max(dot(n, v), 0.0);
         // Bead-blasted aluminium: the physical light, with a fine grain in 0.75 pt cells.
-        float2 gc = floor(uv * float2(366.0, 613.0) / uGs);
+        float2 gc = floor(gu * float2(366.0, 613.0) / uGs);
         float gn = fract(sin(dot(gc, float2(12.9898, 78.233))) * 43758.5453);
         float pE = physE(n, vp, vo, M);
         float3 alu = matte(pE) * (1.0 + uGa * (gn - 0.5) * (1.0 - btn));
@@ -323,13 +323,13 @@ enum K3DShader {
     // lines and the Silver and Black finish. CLA-119: one function, so the 2D layer can light
     // the same point at the rest pose too.
     float3 frontPart(float3 n, float3 vp, float3 vo, float3x3 M, float2 uv, float pt, float3 t, float id, float2 pu, float3 pic,
-                     float blk, float ex) {
+                     float blk, float ex, float2 gu, float2 go) {
         float3 v = normalize(-vp);
         float3 r = reflect(-v, n);
         float dif = max(dot(n, normalize(float3(-0.45, 0.55, 0.7))), 0.0);
         float fr = pow(1.0 - max(dot(n, v), 0.0), 3.0);
         float2 o = vo.xy;
-        float3 col = saturate(front(n, vp, vo, M, uv, pt, t, id, pu, pic));
+        float3 col = saturate(front(n, vp, vo, M, uv, pt, t, id, pu, pic, gu));
         float isL = isId(id, 251.0) * (1.0 - step(0.5, uv.y));
         if (ex > 0.0 && pt > 1.5 && pt < 2.5)  // apart: the window is clear glass once the screen has moved out
             col = mix(col, float3(0.78, 0.82, 0.86) * (0.5 + 0.4 * fr) + 0.12 * env(r), isL * ss(0.0, 0.25, ex));
@@ -345,7 +345,7 @@ enum K3DShader {
             float L = dot(col, float3(0.333));
             float2 d = o - float2(0.0, -127.0);
             if ((pt > 0.5 && pt < 1.5) || pt > 4.5) {
-                float gn = fract(sin(dot(floor(o * 3.0), float2(12.9898, 78.233))) * 43758.5453);  // grain, one cell per 1/3 pt
+                float gn = fract(sin(dot(floor(go * 3.0), float2(12.9898, 78.233))) * 43758.5453);  // grain, one cell per 1/3 pt
                 float3 ch = float3(0.285, 0.290, 0.303) * pow(L / 0.80, 1.7) * (0.86 + 0.30 * ss(-300.0, 300.0, o.y)) * (0.97 + 0.06 * gn);
                 if (pt > 4.5) ch *= 0.84 * (1.0 - 0.12 * d.y / 41.0) * (1.0 - 0.07 * dot(d, d) / 1681.0);
                 col = mix(ch, col, isL);  // the screen surround keeps its look
@@ -366,6 +366,12 @@ enum K3DShader {
                                 bool ff [[front_facing]]) {
         float3x3 M = float3x3(u.mv[0].xyz, u.mv[1].xyz, u.mv[2].xyz);
         float vm = in.vm, pt = in.vpt;
+        // CLA-119: the plate's grain is read once per screen pixel, at its middle, as the mock
+        // reads it at 2 px per pt. The scene is drawn at 2x (`K3DRenderer.supersample`); read
+        // at each of its 4 samples, the 2:1 filter would average the grain 20 to 40% weaker.
+        float2 gx = floor(in.position.xy / 2.0) * 2.0 + 1.0 - in.position.xy;
+        float2 gu = in.vuv + dfdx(in.vuv) * gx.x + dfdy(in.vuv) * gx.y;
+        float2 go = in.vo.xy + dfdx(in.vo.xy) * gx.x + dfdy(in.vo.xy) * gx.y;
         float2 o = in.vo.xy;
         // The window's clear middle (the LCD id in the front texture's top half).
         float glass = isId(tf.sample(sn, in.vuv, level(0)).a, 251.0) * (1.0 - step(0.5, in.vuv.y));
@@ -426,7 +432,7 @@ enum K3DShader {
             // The screen module's LCD (part 4, only apart) is the picture itself: no parallax.
             float2 pu = pt > 3.5 && pt < 4.5 ? in.vuv : lcdUV(n, in.vp, M, in.vuv);
             float3 pic = tf.sample(sm, pu).rgb;
-            col = frontPart(n, in.vp, in.vo, M, in.vuv, pt, t, id, pu, pic, u.blk, u.ex);
+            col = frontPart(n, in.vp, in.vo, M, in.vuv, pt, t, id, pu, pic, u.blk, u.ex, gu, go);
             if (u.flat > 0.5) {
                 // CLA-119, the mock's 2D layer (k3d_src3.js `t2`, `u2d` 1): the 2D device's picture
                 // plus only the change of the 3D light from the rest pose, so at 0° the front is
@@ -434,7 +440,7 @@ enum K3DShader {
                 float3 on = ff ? normalize(in.von) : -normalize(in.von);
                 float3 vr = in.vo + float3(0.0, 0.0, -2600.0);  // K3DRenderer.distance
                 float3x3 I = float3x3(1.0);
-                float3 rest = frontPart(on, vr, in.vo, I, in.vuv, pt, t, id, pu, pic, u.blk, u.ex);
+                float3 rest = frontPart(on, vr, in.vo, I, in.vuv, pt, t, id, pu, pic, u.blk, u.ex, gu, go);
                 // In the LCD the picture moves with the parallax, from where it is at rest.
                 float isL = isId(id, 251.0) * (1.0 - step(0.5, in.vuv.y));
                 float2 fu = mix(in.vuv, in.vuv + pu - lcdUV(on, vr, I, in.vuv), isL);
