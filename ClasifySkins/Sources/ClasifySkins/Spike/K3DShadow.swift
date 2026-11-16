@@ -11,9 +11,10 @@ import SwiftUI
 /// The black copy itself never shows: everything inside the body's outline is cut away. The
 /// body covers that area anyway.
 ///
-/// CLA-119 (build 249: a light line just outside the 3D device): the cut is `cutInset` inside
-/// the body's outline, and it tilts with the body (change 307). A cut exactly on the edge left
-/// a thin ring where neither the body's soft edge nor the shadow covered the desktop.
+/// CLA-119 (build 249: a light line just outside the 3D device): the cut is the body's real
+/// outline (`cut`, the hull of the mesh's outer points at the pose, tilt included), and the
+/// shadow still shows `cutInset` inside it, under the body's edge. A cut exactly on the edge
+/// left a thin ring where neither the body's soft edge nor the shadow covered the desktop.
 struct K3DShadow: View {
     let angle: Double, lift: Double
     var tilt = 0.0
@@ -28,16 +29,20 @@ struct K3DShadow: View {
     var body: some View {
         let size = PocketSkin.size, r = Self.room
         let copy = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: PocketSkin.shadowDrop)
-        let cut = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: 0, inset: Self.cutInset)
+        let cut = Self.cut(angle: angle, lift: lift, tilt: tilt).offsetBy(dx: r, dy: r)
         copy.offsetBy(dx: r, dy: r)
             .fill(Color.black)
             .shadow(color: PocketSkin.shadowColor(black ? 1 : 0), radius: 20, y: 20)
             .mask {
-                Path { p in
-                    p.addRect(CGRect(x: 0, y: 0, width: size.width + 2 * r, height: size.height + 2 * r))
-                    p.addPath(cut.offsetBy(dx: r, dy: r))
+                ZStack {
+                    Path { p in
+                        p.addRect(CGRect(x: 0, y: 0, width: size.width + 2 * r, height: size.height + 2 * r))
+                        p.addPath(cut)
+                    }
+                    .fill(style: FillStyle(eoFill: true))
+                    // The band under the body's edge: the shadow runs on under it.
+                    cut.stroke(lineWidth: 2 * Self.cutInset)
                 }
-                .fill(style: FillStyle(eoFill: true))
             }
             .frame(width: size.width + 2 * r, height: size.height + 2 * r)
             .padding(-r)
@@ -48,22 +53,44 @@ struct K3DShadow: View {
     /// from the top left), with its top `drop` points lower. It is the hull of three sections of
     /// the body: the flat front, the end of the straight aluminium wall (70% of the depth back),
     /// and the flat back, which the steel curves in to by 14 pt. Each section is the 2D body's
-    /// own rounded rectangle, projected with the renderer's camera. `inset` moves every section
-    /// that many points in.
-    static func outline(angle: Double, lift: Double, tilt: Double = 0, drop: CGFloat, inset: CGFloat = 0) -> Path {
+    /// own rounded rectangle, projected with the renderer's camera.
+    static func outline(angle: Double, lift: Double, tilt: Double = 0, drop: CGFloat) -> Path {
         let size = PocketSkin.size
         let t = K3DMesh.depth
         let sections: [(z: Double, inset: CGFloat)] = [(t / 2, 0), (t / 2 - 0.7 * t, 0), (-t / 2, 14)]
         var points: [CGPoint] = []
         for section in sections {
-            let i = section.inset + inset
+            let i = section.inset
             let rect = CGRect(x: i, y: i + drop, width: size.width - 2 * i, height: size.height - drop - 2 * i)
             for p in Self.points(RoundedRectangle(cornerRadius: max(34 - i, 0)).path(in: rect)) {
                 points.append(project(p, z: section.z, angle: angle, lift: lift, tilt: tilt))
             }
         }
-        return Path { path in
-            let hull = Self.hull(points)
+        return polygon(Self.hull(points))
+    }
+
+    /// CLA-119: the closed body's real outline on screen at a pose, in the 2D device's frame: the
+    /// hull of the mesh's shell and plate points through the renderer's camera. The body is
+    /// convex, so this is its silhouette.
+    static func cut(angle: Double, lift: Double, tilt: Double = 0) -> Path {
+        polygon(hull(outerPoints.map { projectBody($0, angle: angle, lift: lift, tilt: tilt) }))
+    }
+
+    /// The closed mesh's shell and plate points (parts 0 and 1), in the body's points, each once.
+    static let outerPoints: [SIMD3<Double>] = {
+        let mesh = K3DMesh()
+        var seen = Set<SIMD3<Int>>(), out: [SIMD3<Double>] = []
+        for i in 0..<mesh.closedVertexCount {
+            let e = i * K3DMesh.stride
+            guard mesh.vertices[e + 12] < 1.5 else { continue }
+            let p = SIMD3(Double(mesh.vertices[e]), Double(mesh.vertices[e + 1]), Double(mesh.vertices[e + 2]))
+            if seen.insert(SIMD3(Int((p.x * 4).rounded()), Int((p.y * 4).rounded()), Int((p.z * 4).rounded()))).inserted { out.append(p) }
+        }
+        return out
+    }()
+
+    static func polygon(_ hull: [CGPoint]) -> Path {
+        Path { path in
             guard let first = hull.first else { return }
             path.move(to: first)
             for p in hull.dropFirst() { path.addLine(to: p) }
@@ -77,7 +104,14 @@ struct K3DShadow: View {
     /// its center. The flat front at rest shows at 1 pt per pt.
     static func project(_ p: CGPoint, z: Double, angle: Double, lift: Double, tilt: Double = 0) -> CGPoint {
         let size = PocketSkin.size
-        let x = Double(p.x) - size.width / 2, y = size.height / 2 - Double(p.y)
+        return projectBody(SIMD3(Double(p.x) - size.width / 2, size.height / 2 - Double(p.y), z), angle: angle, lift: lift, tilt: tilt)
+    }
+
+    /// A point in the body's own points (x right, y up, z out of the front, from its center) on
+    /// screen, in the 2D device's frame.
+    static func projectBody(_ v: SIMD3<Double>, angle: Double, lift: Double, tilt: Double = 0) -> CGPoint {
+        let size = PocketSkin.size
+        let x = v.x, y = v.y, z = v.z
         let a = angle * .pi / 180, b = tilt * .pi / 180
         let xe = cos(a) * x + sin(a) * z
         let z1 = -sin(a) * x + cos(a) * z

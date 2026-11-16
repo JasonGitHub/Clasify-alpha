@@ -92,6 +92,9 @@ import Testing
         // The hull's corners are the 2D shape's: a point on the corner's curve is on the outline.
         let path = K3DShadow.outline(angle: 0, lift: 0, drop: 0)
         #expect(path.contains(CGPoint(x: 12, y: 12)) && !path.contains(CGPoint(x: 4, y: 4)))
+        // CLA-119: the cut is the mesh's own outline: straight on, the 2D body's size.
+        let cut = K3DShadow.cut(angle: 0, lift: 0).boundingRect
+        #expect(abs(cut.minX) < 0.5 && abs(cut.minY) < 0.5 && abs(cut.width - 366) < 0.5 && abs(cut.height - 613) < 0.5, "\(cut)")
     }
 
     /// The back shows the app's version in place of the art's "1.0 · Build 161". Only the spec

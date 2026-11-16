@@ -194,11 +194,12 @@ import Testing
         #expect(bare.mean(243, 300).g > 200, "inside the body: \(bare.mean(243, 300))")
     }
 
-    /// CLA-119 (build 249: a light line just outside the 3D device): the shadow's cut lies
-    /// inside the 3D body at every pose, so no pixel between the body's edge and the shadow
-    /// shows the desktop. Every pixel the cut covers must be fully opaque in the 3D frame.
+    /// CLA-119 (build 249: a light line just outside the 3D device): where the shadow is cut
+    /// away (the outline less its band under the edge), the 3D body is fully opaque at every
+    /// pose, so no pixel between the body's edge and the shadow shows the desktop.
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [
-        (0.0, 0.0, 0.0), (8.0, 0.0, 6.0), (30.0, 0.0, -6.0), (90.0, 70.0, 0.0), (135.0, 40.0, 3.0), (180.0, 0.0, 0.0), (250.0, 20.0, -4.0),
+        (0.0, 0.0, 0.0), (8.0, 0.0, 6.0), (30.0, 0.0, -6.0), (30.0, 0.0, 6.0), (90.0, 70.0, 0.0), (90.0, 0.0, -6.0),
+        (135.0, 40.0, 3.0), (150.0, 0.0, 6.0), (180.0, 0.0, 0.0), (250.0, 20.0, -4.0),
     ])
     func theShadowCutStaysUnderTheBody(_ pose: (angle: Double, lift: Double, tilt: Double)) throws {
         let renderer = try #require(K3DRenderer.shared)
@@ -207,7 +208,7 @@ import Testing
             K3DPose(angle: pose.angle, lift: pose.lift, tilt: pose.tilt), screen: nil, size: size, scale: 2))
         // The cut, filled with no antialiasing at 2x, rows from the top.
         var mask = [UInt8](repeating: 0, count: w * h)
-        let cut = K3DShadow.outline(angle: pose.angle, lift: pose.lift, tilt: pose.tilt, drop: 0, inset: K3DShadow.cutInset)
+        let cut = K3DShadow.cut(angle: pose.angle, lift: pose.lift, tilt: pose.tilt)
         mask.withUnsafeMutableBytes { buffer in
             guard let context = CGContext(
                 data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
@@ -218,6 +219,10 @@ import Testing
             context.addPath(cut.cgPath)
             context.setFillColor(gray: 1, alpha: 1)
             context.fillPath()
+            context.addPath(cut.cgPath)
+            context.setLineWidth(2 * K3DShadow.cutInset)
+            context.setStrokeColor(gray: 0, alpha: 1)
+            context.strokePath()
         }
         var covered = 0, gaps: [(Int, Int)] = []
         for y in 0..<h {
