@@ -256,16 +256,6 @@ import Testing
         #expect(near(arrive.ends.timeIntervalSince(t0), 1.95))
     }
 
-    /// CLA-119: the side's steel shows only as the device turns away from the front.
-    @Test func theSteelFadesInWithTheTurn() {
-        typealias R = K3DRenderer
-        #expect(R.steelShows(angle: 0) == 0 && R.steelShows(angle: 360) == 0 && R.steelShows(angle: -360) == 0)
-        #expect(R.steelShows(angle: 15) == 1 && R.steelShows(angle: 90) == 1 && R.steelShows(angle: 180) == 1)
-        #expect(R.steelShows(angle: 345) == 1 && R.steelShows(angle: -15) == 1)
-        #expect(R.steelShows(angle: 7.5) == 0.5 && R.steelShows(angle: -7.5) == 0.5 && R.steelShows(angle: 352.5) == 0.5)
-        #expect(R.steelShows(angle: 3) < R.steelShows(angle: 6) && R.steelShows(angle: 6) < R.steelShows(angle: 12))
-    }
-
     /// CLA-117: which arrival a window plays, for each case.
     @Test func eachLaunchPicksItsArrival() {
         typealias A = K3DArrival

@@ -255,8 +255,6 @@ final class K3DLayerView: MTKView {
         var mv: simd_float4x4
         var pr: simd_float4x4
         var blk: Float
-        /// CLA-119: how much the side's mirror steel shows (`steelShows(angle:)`).
-        var steel: Float
         /// CLA-105: how far apart the parts are, and the pass (0, or 1 for the window glass).
         var ex: Float = 0
         var pass: Float = 0
@@ -267,15 +265,6 @@ final class K3DLayerView: MTKView {
     /// window glass in a second pass (the mock's `draw`).
     nonisolated static func passes(ex: Float) -> (all: Bool, cull: Bool, glass: Bool) {
         (ex > 0, ex <= 0.001, ex > 0.0005)
-    }
-
-    /// CLA-119: the side's mirror steel shows only as the device turns away from the front: 0 at
-    /// the front (yaw 0, or 360), 1 from 15° on either side, a smoothstep between. Near the front
-    /// the side shows the body's color, as the flat device's edge does.
-    nonisolated static func steelShows(angle: Double) -> Float {
-        let a = abs(angle).truncatingRemainder(dividingBy: 360), d = min(a, 360 - a)
-        let t = min(1, max(0, d / 15))
-        return Float(t * t * (3 - 2 * t))
     }
 
     init?() {
@@ -423,7 +412,7 @@ final class K3DLayerView: MTKView {
         var uniforms = Uniforms(
             mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt),
             pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0,
-            steel: Self.steelShows(angle: pose.angle), ex: Float(pose.ex))
+            ex: Float(pose.ex))
         let passes = Self.passes(ex: uniforms.ex)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
