@@ -152,25 +152,47 @@ import Testing
         #expect(flip.restsOnFront(at: t0.addingTimeInterval(3)))
     }
 
-    /// The flat 2D device and the 3D body crossfade in 0.1 s where a turn leaves or reaches the
-    /// resting front, and nowhere else.
+    /// CLA-119: the flat 2D device and the 3D body hand over by angle, within 2° of the resting
+    /// front, as the shader's `nearRest`. A turn that lands on the front swings past it first:
+    /// the 2D device waits for the landing.
     @Test func theFlatDeviceCrossfades() {
         var flip = K3DFlip()
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
+        func byAngle(_ t: Double) -> Bool {
+            abs(flip.flatOpacity(at: at(t)) - K3DFlip.nearRest(angle: flip.angle(at: at(t)), tilt: 0)) < 1e-12
+        }
         #expect(flip.flatOpacity(at: t0) == 1)
         flip.toggle(at: t0, screen: nil)
-        #expect(abs(flip.flatOpacity(at: t0.addingTimeInterval(0.05)) - 0.5) < 0.001)
-        #expect(flip.flatOpacity(at: t0.addingTimeInterval(0.1)) < 0.001)
-        #expect(flip.flatOpacity(at: t0.addingTimeInterval(5)) == 0)  // the back rests
-        flip.toggle(at: t0.addingTimeInterval(5), screen: nil)
-        #expect(flip.flatOpacity(at: t0.addingTimeInterval(5.89)) == 0)
-        #expect(abs(flip.flatOpacity(at: t0.addingTimeInterval(5.95)) - 0.5) < 0.001)
-        #expect(flip.flatOpacity(at: t0.addingTimeInterval(6)) > 0.999)
-        // A turn to the back that starts mid-turn, not from the resting front, never shows 2D.
-        flip.toggle(at: t0.addingTimeInterval(10), screen: nil)
-        flip.toggle(at: t0.addingTimeInterval(10.4), screen: nil)
-        flip.toggle(at: t0.addingTimeInterval(10.45), screen: nil)
-        #expect(flip.flatOpacity(at: t0.addingTimeInterval(10.46)) == 0)
+        #expect(flip.flatOpacity(at: t0) == 1)
+        let early = flip.flatOpacity(at: at(0.05))
+        #expect(early > 0.9 && early < 1 && byAngle(0.05) && byAngle(0.1))
+        #expect(flip.flatOpacity(at: at(0.15)) == 0)  // past 2°
+        #expect(flip.flatOpacity(at: at(5)) == 0)  // the back rests
+        flip.toggle(at: at(5), screen: nil)
+        // The flip swings 4.5° past the front: it passes 0° while the 2D device waits.
+        let swing = (0..<82).map { at(5 + Double($0) / 100) }
+        #expect(swing.contains { abs(flip.angle(at: $0)) < 0.5 })
+        #expect(swing.allSatisfy { flip.flatOpacity(at: $0) == 0 })
+        let back = flip.flatOpacity(at: at(5.89))
+        #expect(back > 0 && back < 0.2 && byAngle(5.89) && byAngle(5.95))
+        #expect(flip.flatOpacity(at: at(6)) == 1)
+        // A turn to the back that starts mid-turn, away from the front, shows no 2D.
+        flip.toggle(at: at(10), screen: nil)
+        flip.toggle(at: at(10.4), screen: nil)
+        flip.toggle(at: at(10.45), screen: nil)
+        #expect(flip.flatOpacity(at: at(10.46)) == 0)
+    }
+
+    /// CLA-119: the fade by angle is 1 at rest, smooth in degrees to 0 at 2°, and counts the tilt.
+    @Test func theFadeByAngleEndsAt2Degrees() {
+        #expect(K3DFlip.nearRest(angle: 0, tilt: 0) == 1)
+        #expect(abs(K3DFlip.nearRest(angle: 1, tilt: 0) - 0.5) < 1e-6)
+        #expect(abs(K3DFlip.nearRest(angle: -1, tilt: 0) - 0.5) < 1e-6)
+        #expect(abs(K3DFlip.nearRest(angle: 0, tilt: 1) - 0.5) < 1e-6)
+        #expect(K3DFlip.nearRest(angle: 2, tilt: 0) == 0 && K3DFlip.nearRest(angle: 180, tilt: 0) == 0)
+        #expect(K3DFlip.nearRest(angle: 360, tilt: 0) > 0.999)
+        #expect(K3DFlip.nearRest(angle: 1.5, tilt: 1.5) == 0)  // about 2.1° off rest
     }
 
     /// Change 288 must not change the About flip: the same 1.0 s, angles and 0.1 s crossfade,
@@ -299,9 +321,13 @@ import Testing
         func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
         func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
         #expect(near(flip.length, turn + 0.3) && !flip.arriving && !flip.toBack)
-        #expect(near(flip.flatOpacity(at: at(0)), 1) && near(flip.flatOpacity(at: at(0.075)), 0.5))
-        #expect(flip.flatOpacity(at: at(0.15 + turn / 2)) == 0)
-        #expect(near(flip.flatOpacity(at: at(turn + 0.225)), 0.5) && flip.flatOpacity(at: at(turn + 0.31)) == 1)
+        // CLA-119: the 2D device hands over by angle: it shows while the spin waits at 0°.
+        #expect(flip.flatOpacity(at: at(0)) == 1 && flip.flatOpacity(at: at(0.1)) == 1)
+        #expect(flip.flatOpacity(at: at(0.15 + turn / 10)) == 0 && flip.flatOpacity(at: at(0.15 + turn / 2)) == 0)
+        #expect(flip.flatOpacity(at: at(0.15 + 0.9 * turn)) == 0)
+        let late = 0.15 + 0.99 * turn
+        #expect(near(flip.flatOpacity(at: at(late)), K3DFlip.nearRest(angle: flip.angle(at: at(late)), tilt: 0)))
+        #expect(flip.flatOpacity(at: at(turn + 0.15)) == 1 && flip.flatOpacity(at: at(turn + 0.31)) == 1)
         #expect(flip.pose(at: at(0.1)).angle == 0)  // no turn while it crossfades
         #expect(near(flip.pose(at: at(0.15 + turn / 4)).angle, 360 * 0.125))  // quad in: 2u²
         #expect(near(flip.pose(at: at(0.15 + turn / 2)).angle, 180))

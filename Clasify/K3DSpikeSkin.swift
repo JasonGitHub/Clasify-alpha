@@ -142,6 +142,8 @@ struct K3DSpikeSkin: View {
         // During a spin or the short arrival (CLA-117), any new row, color or screen shows on the 3D front.
         if flip.takesInput(at: .now) {
             flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
+            // CLA-119: to 180° the 3D front shows the old color's picture.
+            if let old = flip.oldColor(at: .now) { flip.show(old: K3DSpike.snapshot(store.state, artwork: artwork, black: old)) }
             return
         }
         guard old.black != new.black, old.top.screen == new.top.screen else { return }
@@ -152,7 +154,10 @@ struct K3DSpikeSkin: View {
         default: return
         }
         guard !reduceMotion, K3DFlip.canDraw, flip.restsOnFront(at: .now) else { return }
-        flip = K3DFlip.spin(turn: turn, fromBlack: old.black) { K3DSpike.snapshot(store.state, artwork: artwork) }
+        let state = store.state
+        flip = K3DFlip.spin(
+            turn: turn, fromBlack: old.black, screen: { K3DSpike.snapshot(state, artwork: artwork) },
+            old: { K3DSpike.snapshot(state, artwork: artwork, black: old.black) })
     }
 
     /// CLA-118: the About showroom is on.
