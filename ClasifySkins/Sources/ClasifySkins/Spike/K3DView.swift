@@ -380,7 +380,12 @@ final class K3DLayerView: MTKView {
             let m = mesh.vertices[e + 11], pt = mesh.vertices[e + 12]
             let dz = K3DShader.apart[Int(min(max(pt + 0.5, 0), 9))] - K3DShader.apartBack
             let cable = pt > 2.5 && pt < 3.5 && ((m > 13.5 && m < 16.5) || (m > 40.5 && m < 41.5))
-            for q in [p + SIMD3(0, 0, dz)] + (cable ? [p + SIMD3(160, 0, -2), p + SIMD3(160, 0, dz - 2)] : []) {
+            var ends: [SIMD3<Float>] = [p + SIMD3<Float>(0, 0, dz)]
+            if cable {
+                ends.append(p + SIMD3<Float>(160, 0, -2))
+                ends.append(p + SIMD3<Float>(160, 0, dz - 2))
+            }
+            for q in ends {
                 lo = simd_min(lo, q)
                 hi = simd_max(hi, q)
             }
