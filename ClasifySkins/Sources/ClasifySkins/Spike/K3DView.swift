@@ -64,13 +64,18 @@ public enum K3DRoom {
 }
 
 /// CLA-122 (build 279: the device 45 pt too high for one frame as an About drag started): the
-/// window and the padded content change size in different frames now and then. SwiftUI centred
-/// the content in the window, so for that frame the device moved by (top - bottom) / 2 =
-/// (200 - 110) / 2 = 45 pt. This layout places the content by the room's own split instead of
-/// the centre: `fraction` = top / (top + bottom), and leading / (leading + trailing). Then the
-/// device is at the same point on the screen whichever of the window and the content has its new
-/// size: both old, both new, or one of each. `fraction` is set as the room is picked, before
+/// window and the padded content change size in different frames now and then. The hosting view
+/// centred the content in the window, so for that frame the device moved by (top - bottom) / 2 =
+/// (200 - 110) / 2 = 45 pt. This layout is the window's root view. It places the content by the
+/// room's own split instead of the centre: `fraction` = top / (top + bottom), and leading /
+/// (leading + trailing). Then the device is at the same point on the screen whichever of the
+/// window and the content has its new size. `fraction` is set as the room is picked, before
 /// either changes, and kept as the room goes, so the shrink uses the same split.
+///
+/// Sizes: a proposal of a real size (the window's content size, as the hosting view lays out)
+/// takes that size, so the content is placed in the whole window. A proposal with no size
+/// (ideal), 0 (min) or infinity (max) gets the content's own size, so
+/// `.windowResizability(.contentSize)` still sizes the window from the content.
 public struct K3DRoomAnchor: Layout {
     /// The room's split. A reference, so a layout pass reads the new split even when it still
     /// has the old content.
@@ -99,16 +104,29 @@ public struct K3DRoomAnchor: Layout {
             x: bounds.minX + fraction.x * (bounds.width - size.width), y: bounds.minY + fraction.y * (bounds.height - size.height))
     }
 
+    /// A real proposed length, or the content's length for none, 0 or infinity.
+    static func length(_ proposed: CGFloat?, content: CGFloat) -> CGFloat {
+        guard let proposed, proposed > 0, proposed.isFinite else { return content }
+        return proposed
+    }
+
     public func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        subviews.first?.sizeThatFits(proposal) ?? .zero
+        guard let content = subviews.first?.sizeThatFits(.unspecified) else { return .zero }
+        return CGSize(
+            width: Self.length(proposal.width, content: content.width), height: Self.length(proposal.height, content: content.height))
     }
 
     public func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard let content = subviews.first else { return }
-        let size = content.sizeThatFits(proposal)
+        let size = content.sizeThatFits(.unspecified)
         content.place(
             at: Self.origin(in: bounds, size: size, fraction: fraction.point), anchor: .topLeading, proposal: ProposedViewSize(size))
     }
+}
+
+extension EnvironmentValues {
+    /// CLA-122: the device window's room split, set by the skin as it picks the room.
+    @Entry public var roomSplit: K3DRoomAnchor.Fraction? = nil
 }
 
 /// Shows `content`, the 2D device, while the front rests flat. While the device turns or shows

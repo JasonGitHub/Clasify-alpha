@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import Testing
 
@@ -59,53 +60,106 @@ import Testing
         #expect(fit.leading == room.leading && fit.trailing == room.trailing && fit.bottom == room.bottom)
     }
 
-    /// The device's top left on the screen (AppKit: y up), for a window frame and the room the
-    /// content has, as `K3DRoomAnchor` places the content in the window less the margin.
-    func device(window: CGRect, room: EdgeInsets, split: CGPoint) -> CGPoint {
+    /// CLA-122: finds the device's frame in its window.
+    @MainActor final class ProbeBox {
+        var view: NSView?
+    }
+
+    struct Probe: NSViewRepresentable {
+        let box: ProbeBox
+        func makeNSView(context: Context) -> NSView {
+            let view = NSView()
+            box.view = view
+            return view
+        }
+        func updateNSView(_ view: NSView, context: Context) {}
+    }
+
+    /// The app's tree: `DeviceRoot` (the anchor round the content and the margin) and the skin's
+    /// `.padding(room)` round the device. `split` nil leaves the anchor out, as before CLA-122.
+    struct Tree: View {
+        let room: EdgeInsets
+        let split: K3DRoomAnchor.Fraction?
+        let box: ProbeBox
+
+        var body: some View {
+            let content = Color.gray.frame(width: PocketSkin.size.width, height: PocketSkin.size.height)
+                .background(Probe(box: box))
+                .padding(room)
+                .padding(K3DRoomTests.margin)
+            if let split {
+                K3DRoomAnchor(fraction: split) { content }
+            } else {
+                content
+            }
+        }
+    }
+
+    /// The window's frame (AppKit, y up) with each edge moved out by `room`.
+    func grown(_ frame: CGRect, by room: EdgeInsets) -> CGRect {
+        CGRect(
+            x: frame.minX - room.leading, y: frame.minY - room.bottom,
+            width: frame.width + room.leading + room.trailing, height: frame.height + room.top + room.bottom)
+    }
+
+    /// Lays the tree out in a window with frame `window` (a hosting view that does not size the
+    /// window), and returns the device's top left on the screen (AppKit: y up) and the tree's
+    /// fitting size.
+    func layOut(window frame: CGRect, room: EdgeInsets, split: K3DRoomAnchor.Fraction?) -> (top: CGPoint, fitting: CGSize) {
+        _ = NSApplication.shared
+        let box = ProbeBox()
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: frame.size), styleMask: .borderless, backing: .buffered, defer: true)
+        let host = NSHostingView(rootView: Tree(room: room, split: split, box: box))
+        host.sizingOptions = []
+        window.contentView = host
+        host.frame = NSRect(origin: .zero, size: frame.size)
+        host.layoutSubtreeIfNeeded()
+        guard let view = box.view else { return (CGPoint(x: -1, y: -1), .zero) }
+        let rect = view.convert(view.bounds, to: nil)
+        // The size the window gets from the content (`.contentSize`), from a hosting view that
+        // sizes itself as the app's does.
+        let fitting = NSHostingView(rootView: Tree(room: room, split: split, box: ProbeBox())).fittingSize
+        return (CGPoint(x: frame.minX + rect.minX, y: frame.minY + rect.maxY), fitting)
+    }
+
+    var small: CGRect {
         let m = Self.margin, device = PocketSkin.size
-        let bounds = CGRect(x: 0, y: 0, width: window.width - m.leading - m.trailing, height: window.height - m.top - m.bottom)
-        let size = CGSize(width: device.width + room.leading + room.trailing, height: device.height + room.top + room.bottom)
-        let origin = K3DRoomAnchor.origin(in: bounds, size: size, fraction: split)
-        return CGPoint(x: window.minX + m.leading + origin.x + room.leading, y: window.maxY - m.top - origin.y - room.top)
+        return CGRect(x: 300, y: 200, width: device.width + m.leading + m.trailing, height: device.height + m.top + m.bottom)
     }
 
     /// CLA-122 (build 279: the device 45 pt too high for one frame as an About drag started):
-    /// the device stays at the same point on the screen whichever of the window and the content
-    /// has its new size, as the room comes and as it goes, with the full room and with a top cut
-    /// under the menu bar.
+    /// through the real SwiftUI tree in a hosting view, the device stays at the same point on
+    /// the screen whichever of the window and the content has its new size, as the room comes
+    /// and as it goes, with the full room, a top cut under the menu bar and no top room. The
+    /// fitting size, which `.windowResizability(.contentSize)` uses, is the content's.
     @Test func theDeviceStaysWhileTheWindowAndTheContentChangeApart() {
-        let m = Self.margin, device = PocketSkin.size
-        let small = CGRect(x: 300, y: 200, width: device.width + m.leading + m.trailing, height: device.height + m.top + m.bottom)
         for visibleTop in [small.maxY + 400, small.maxY + 45, small.maxY] {
             let room = K3DRoom.fit(K3DRoom.extra, windowTop: small.maxY, visibleTop: visibleTop)
-            let big = CGRect(
-                x: small.minX - room.leading, y: small.minY - room.bottom,
-                width: small.width + room.leading + room.trailing, height: small.height + room.top + room.bottom)
+            let big = grown(small, by: room)
             let split = K3DRoomAnchor.Fraction()
             split.set(room)
             split.set(EdgeInsets())  // the room going keeps the split
-            let at = device(window: small, room: EdgeInsets(), split: split.point)
+            let at = layOut(window: small, room: EdgeInsets(), split: split).top
             for window in [small, big] {
                 for content in [EdgeInsets(), room] {
-                    let now = device(window: window, room: content, split: split.point)
-                    #expect(abs(now.x - at.x) < 0.001 && abs(now.y - at.y) < 0.001, "top room \(room.top)")
+                    let now = layOut(window: window, room: content, split: split)
+                    #expect(abs(now.top.x - at.x) < 0.5 && abs(now.top.y - at.y) < 0.5, "top room \(room.top), window \(window.size), content \(content.top)")
+                    let fits = layOut(window: window, room: content, split: nil).fitting
+                    #expect(now.fitting == fits)
+                    #expect(now.fitting == grown(small, by: content).size)
                 }
             }
         }
     }
 
-    /// The old centring moved the device 45 pt up for the frame with the new window and the old
-    /// content, as Jason's clip showed.
-    @Test func centringMovedTheDevice45Points() {
-        let m = Self.margin, device = PocketSkin.size, room = K3DRoom.extra
-        let small = CGRect(x: 300, y: 200, width: device.width + m.leading + m.trailing, height: device.height + m.top + m.bottom)
-        let big = CGRect(
-            x: small.minX - room.leading, y: small.minY - room.bottom,
-            width: small.width + room.leading + room.trailing, height: small.height + room.top + room.bottom)
-        let centre = CGPoint(x: 0.5, y: 0.5)
-        let before = device(window: small, room: EdgeInsets(), split: centre)
-        let jump = device(window: big, room: EdgeInsets(), split: centre)
-        #expect(jump.y - before.y == 45)  // up, in AppKit's y
-        #expect(jump.x == before.x)
+    /// The same tree with no anchor: the hosting view centres the old content in the new window,
+    /// and the device moves 45 pt up, as Jason's clip showed. This is the defect CLA-122 fixes.
+    @Test func withNoAnchorTheDeviceJumps45Points() {
+        let big = grown(small, by: K3DRoom.extra)
+        let before = layOut(window: small, room: EdgeInsets(), split: nil).top
+        let jump = layOut(window: big, room: EdgeInsets(), split: nil).top
+        #expect(abs(jump.y - before.y - 45) < 0.5)  // up, in AppKit's y
+        #expect(abs(jump.x - before.x) < 0.5)
     }
 }

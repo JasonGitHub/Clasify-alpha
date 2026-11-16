@@ -11,8 +11,7 @@ struct PlainWindowApp: App {
 
     var body: some Scene {
         WindowGroup("myPod", id: DeviceWindow.id) {
-            AppContent(model: model)
-                .padding(DeviceWindow.margin)
+            DeviceRoot { AppContent(model: model) }
                 .containerBackground(.clear, for: .window)
                 .gesture(WindowDragGesture())
                 .background(WindowShadowOff())
@@ -91,6 +90,25 @@ enum DeviceWindow {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
         return true
+    }
+}
+
+/// CLA-122: the device window's root. `K3DRoomAnchor` places the content (with the margin)
+/// by the room's split, so the device stays put when the window and the content change size in
+/// different frames. Each window has its own split.
+struct DeviceRoot<Content: View>: View {
+    let content: Content
+    @State private var split = K3DRoomAnchor.Fraction()
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        K3DRoomAnchor(fraction: split) {
+            content.padding(DeviceWindow.margin)
+        }
+        .environment(\.roomSplit, split)
     }
 }
 
