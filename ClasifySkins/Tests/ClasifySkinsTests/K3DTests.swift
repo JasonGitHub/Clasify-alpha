@@ -363,7 +363,9 @@ import Testing
     /// The shaders compile and link, where the machine has a Metal device.
     @Test func theShadersCompile() throws {
         guard let device = MTLCreateSystemDefaultDevice() else { return }
-        _ = try K3DRenderer.makePipeline(device)
+        let library = try K3DRenderer.makeLibrary(device)
+        _ = try K3DRenderer.makePipeline(library)
+        _ = try K3DRenderer.makePipeline(library, blend: true)
         #expect(K3DRenderer.shared != nil)
     }
 }
