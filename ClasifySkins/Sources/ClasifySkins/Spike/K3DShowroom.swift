@@ -81,11 +81,13 @@ public struct K3DShowroom: Equatable {
     /// Change 296: the case, the device's metal round the screen and the wheel, in the 2D
     /// device's points. Fill it with the even-odd rule.
     public static var casePath: Path {
-        var path = Path(roundedRect: CGRect(origin: .zero, size: PocketSkin.size), cornerRadius: K3DMesh.radius)
+        // The body is 366 x 613 (K3DMesh), the 2D device's size: `PocketSkin.size` is main-actor isolated.
+        let w = K3DMesh.width, h = K3DMesh.height
+        var path = Path(roundedRect: CGRect(x: 0, y: 0, width: w, height: h), cornerRadius: K3DMesh.radius)
         // The window (K3DMesh: 313 x 238.5 at y 161.25 from the center, radius 7).
         path.addRoundedRect(in: CGRect(x: 26.5, y: 26, width: 313, height: 238.5), cornerSize: CGSize(width: 7, height: 7))
         // The wheel (K3DMesh: radius 112.8 at y −127 from the center).
-        let wheel = CGPoint(x: PocketSkin.size.width / 2, y: PocketSkin.size.height / 2 - K3DMesh.wheelCenter.y)
+        let wheel = CGPoint(x: w / 2, y: h / 2 - K3DMesh.wheelCenter.y)
         path.addEllipse(in: CGRect(x: wheel.x - 112.8, y: wheel.y - 112.8, width: 225.6, height: 225.6))
         return path
     }
