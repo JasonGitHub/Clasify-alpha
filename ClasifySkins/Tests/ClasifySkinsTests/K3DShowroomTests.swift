@@ -113,8 +113,8 @@ import simd
         let away = K3DFlip().go(to: 180, time: K3DFlip.turnOver, soft: true, at: t0)
         let t = t0.addingTimeInterval(0.1)
         #expect(away.angle(at: t) < 90)
-        let back = try #require(K3DShowroom.front(flip: away, reduceMotion: false, at: t))
-        #expect(!back.toBack && back.angle(at: t.addingTimeInterval(0.8)) == 0)
+        let home = try #require(K3DShowroom.front(flip: away, reduceMotion: false, at: t))
+        #expect(!home.toBack && home.angle(at: t.addingTimeInterval(0.8)) == 0)
     }
 
     /// Change 302: with Reduce Motion the side changes with a 0.2 s crossfade, and no turn.
