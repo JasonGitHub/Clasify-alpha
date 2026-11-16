@@ -1,3 +1,5 @@
+import Foundation
+
 /// SPIKE (CLA-101): the K.3D.8 shaders in Metal Shading Language, compiled at run time with
 /// `makeLibrary(source:)`. K.3D.8 is K.3D.7 with a new Black (charcoal plate with grain and a
 /// light fall, a shaded button, a glossy wheel) and a sheen on the Silver wheel: the
@@ -37,6 +39,8 @@ enum K3DShader {
     /// Then the whole device moves back `apartBack`, so it stays in the middle.
     static let apart: [Float] = [0, 240, 285, 277, 196, 313, 130, 62, 127.5, 140.5]
     static let apartBack: Float = 172
+    /// CLA-119: within this many degrees of rest, all of the body that shows is the 2D picture.
+    static let restAngle = 2.0
 
     static let source = """
     #include <metal_stdlib>
@@ -359,6 +363,22 @@ enum K3DShader {
         return col;
     }
 
+    // CLA-119, the 2D layer: where the point shows at rest, as uv of the 2D picture. The wheel and
+    // the button sit up to 1.6 pt behind the front plane, so they show a little smaller.
+    float2 restUV(float3 vo) {
+        float2 rp = vo.xy * (2600.0 - \(K3DMesh.depth / 2)) / (2600.0 - vo.z);
+        return float2(rp.x / 366.0 + 0.5, 0.5 - rp.y / 613.0);
+    }
+
+    // The 2D picture at `fu`, straight alpha, with the 2D device's round corner cut at `ru`.
+    float4 flatAt(texture2d<float> t2, sampler sf, float2 fu, float2 ru) {
+        float4 f2 = t2.sample(sf, fu);
+        f2.rgb /= max(f2.a, 1.0 / 255.0);  // the picture is premultiplied
+        float2 cq = abs(ru * float2(732.0, 1226.0) - float2(366.0, 613.0)) - float2(298.0, 545.0);
+        f2.a *= ss(68.5, 67.0, length(max(cq, 0.0)));
+        return f2;
+    }
+
     fragment float4 k3dFragment(K3DVarying in [[stage_in]], constant K3DUniforms& u [[buffer(0)]],
                                 texture2d<float> tf [[texture(0)]], texture2d<float> tb [[texture(1)]],
                                 texture2d<float> ts [[texture(2)]], sampler sm [[sampler(0)]],
@@ -372,6 +392,8 @@ enum K3DShader {
         float2 gx = floor(in.position.xy / 2.0) * 2.0 + 1.0 - in.position.xy;
         float2 gu = in.vuv + dfdx(in.vuv) * gx.x + dfdy(in.vuv) * gx.y;
         float2 go = in.vo.xy + dfdx(in.vo.xy) * gx.x + dfdy(in.vo.xy) * gx.y;
+        // CLA-119: 1 at rest, 0 from `restAngle` (2°) off it: the body's z toward the eye.
+        float nearRest = ss(\(cos(K3DShader.restAngle * .pi / 180)), 1.0, u.mv[2].z);
         float2 o = in.vo.xy;
         // The window's clear middle (the LCD id in the front texture's top half).
         float glass = isId(tf.sample(sn, in.vuv, level(0)).a, 251.0) * (1.0 - step(0.5, in.vuv.y));
@@ -443,18 +465,14 @@ enum K3DShader {
                 float3 rest = frontPart(on, vr, in.vo, I, in.vuv, pt, t, id, pu, pic, u.blk, u.ex, gu, go);
                 // In the LCD the picture moves with the parallax, from where it is at rest.
                 float isL = isId(id, 251.0) * (1.0 - step(0.5, in.vuv.y));
-                // The picture is read where the point shows at rest, not at its own uv: the wheel and
-                // the button sit up to 1.6 pt behind the front plane, so they show a little smaller.
-                float2 rp = in.vo.xy * (2600.0 - \(K3DMesh.depth / 2)) / (2600.0 - in.vo.z);
-                float2 ru = float2(rp.x / 366.0 + 0.5, 0.5 - rp.y / 613.0);
+                float2 ru = restUV(in.vo);
                 float2 fu = mix(ru, ru + pu - lcdUV(on, vr, I, in.vuv), isL);
-                float4 f2 = t2.sample(sf, fu);
-                f2.rgb /= max(f2.a, 1.0 / 255.0);  // the picture is premultiplied
+                float4 f2 = flatAt(t2, sf, fu, ru);
                 float2 pin = fu * float2(732.0, 1226.0);  // past the picture's edge: the dark inner wall
-                if (isL > 0.5 && (pin.x < 66.0 || pin.x > 666.0 || pin.y < 65.0 || pin.y > 515.0)) f2 = float4(0.10, 0.10, 0.11, 1.0);
-                float2 cq = abs(ru * float2(732.0, 1226.0) - float2(366.0, 613.0)) - float2(298.0, 545.0);
-                f2.a *= ss(68.5, 67.0, length(max(cq, 0.0)));  // the 2D device's round corner
-                f2.a *= ss(0.25, 0.7, on.z);  // the plate's round and wall take the 3D light only
+                if (isL > 0.5 && (pin.x < 66.0 || pin.x > 666.0 || pin.y < 65.0 || pin.y > 515.0)) f2 = float4(0.10, 0.10, 0.11, f2.a);
+                // The plate's round and the wheel's side take the 3D light only (the mock), except
+                // within `restAngle` of rest, where all of the body that shows is the 2D picture.
+                f2.a *= max(ss(0.25, 0.7, on.z), nearRest);
                 col = saturate(mix(col, f2.rgb + (col - rest), f2.a));
             }
         } else {  // the back: mirror steel with a frosted etch
@@ -469,6 +487,13 @@ enum K3DShader {
             float sl = dot(st, float3(0.33));
             tone = mix(tone, 0.30 + 0.55 * (tone - 0.30), ss(0.35, 0.75, sl));
             col = mix(st, float3(tone * (0.90 + 0.12 * dif)), t.a);
+        }
+        // CLA-119: near rest, the hole walls, the window's cut edge, the steel and the seam that
+        // show round the front are the 2D picture too, so at 0° the body is the 2D device.
+        if (u.flat > 0.5 && ff && (vm < 2.5 || (vm > 9.5 && vm < 10.5)) && nearRest > 0.0) {
+            float2 ru = restUV(in.vo);
+            float4 f2 = flatAt(t2, sf, ru, ru);
+            col = mix(col, f2.rgb, f2.a * nearRest);
         }
         // Apart, seen from behind, the front parts show their back faces: plain material, no
         // print, in the same physical light. The shell's back faces are not drawn.
