@@ -17,6 +17,12 @@ import SwiftUI
 /// in 3D too, as the UserDefaults string `arrive.cold` says. Missing or "short" is change 303,
 /// a 1.0 s turn that input hurries. "full" is change 288 with no Hello, and input waits until it
 /// lands. "off" or any other value: no arrival. Reduce Motion or no Metal: no arrival.
+///
+/// Card BT row 2 (CLA-118): on About, the case is a handle (`K3DShowroom`). A drag turns the
+/// device, a click turns it over, and on the back MENU (Esc or Delete) turns it to the front.
+/// The first time About opens, the device nudges once. The UserDefaults string `about.turn`
+/// says how: missing or "drag", a plain drag; "option", an Option-drag (a plain drag moves the
+/// window); "off" or any other value, build 224's About.
 struct K3DSpikeSkin: View {
     let store: Store
     let artwork: Artwork
@@ -26,6 +32,14 @@ struct K3DSpikeSkin: View {
     static let cold = K3DArrival.Cold(UserDefaults.standard.string(forKey: "arrive.cold"))
     /// This launch's arrival has started, or was skipped. A window opened later shows at once.
     @MainActor private static var launched = false
+    /// CLA-118: the About showroom's mode, read once at launch.
+    static let aboutTurn = K3DShowroom.Mode(UserDefaults.standard.string(forKey: "about.turn"))
+    /// Change 297: the nudge showed once. Saved, so it never shows again.
+    static let nudgedKey = "about.nudged"
+    /// The drag on the case, from the press to the release.
+    @State private var drag: K3DShowroom?
+    /// The Option key is down: in the "option" mode, the case takes the drag only then.
+    @State private var optionDown = false
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -38,12 +52,23 @@ struct K3DSpikeSkin: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        K3DFlipView(flip: flip, black: store.state.shownColor == .black, margin: DeviceWindow.margin, onTap: turn) {
+        K3DFlipView(flip: flip, black: store.state.shownColor == .black, margin: DeviceWindow.margin, onTap: showroom ? click : turn) {
             PocketSkin(state: store.state) { action in
                 // CLA-117: the full arrival takes no input until it lands. The short one lands in
                 // 0.25 s at most, and the input still does its job.
                 if flip.holdsInput(at: .now) { return }
                 flip.hurry(at: .now)
+                // Change 301: while the device is not at rest on the front, MENU turns it to the
+                // front and Play/Pause turns it over. Other input does nothing.
+                if showroom, drag != nil || !flip.restsOnFront(at: .now) {
+                    if case .play = action, drag == nil {
+                        turn()
+                    } else if case .menu = action, drag == nil,
+                              let front = K3DShowroom.front(flip: flip, reduceMotion: reduceMotion, at: .now) {
+                        flip = front
+                    }
+                    return
+                }
                 if case .play = action, store.state.top.screen == .about, !flip.arriving {
                     turn()
                 } else {
@@ -52,8 +77,14 @@ struct K3DSpikeSkin: View {
             }
             .environment(\.artwork, artwork)
         }
+        .overlay { if showroom { handle } }
+        .onModifierKeysChanged(mask: .option) { _, keys in optionDown = keys.contains(.option) }
+        .task(id: store.state.top.screen) { await nudge() }
         .onChange(of: store.state.top.screen) { _, screen in
-            if screen != .about && !flip.arriving && !flip.isSpinning(at: .now) { flip = K3DFlip() }
+            if screen != .about && !flip.arriving && !flip.isSpinning(at: .now) {
+                flip = K3DFlip()
+                drag = nil
+            }
         }
         .onChange(of: ColorCue(top: store.state.top, black: store.state.shownColor == .black)) { old, new in
             colorChanged(from: old, to: new)
@@ -122,6 +153,71 @@ struct K3DSpikeSkin: View {
         }
         guard !reduceMotion, K3DFlip.canDraw, flip.restsOnFront(at: .now) else { return }
         flip = K3DFlip.spin(turn: turn, fromBlack: old.black) { K3DSpike.snapshot(store.state, artwork: artwork) }
+    }
+
+    /// CLA-118: the About showroom is on.
+    private var showroom: Bool {
+        Self.aboutTurn != .off && store.state.top.screen == .about && !flip.arriving && K3DFlip.canDraw
+    }
+
+    /// Change 296: the handle over the device. On the front it is the case only, so the screen
+    /// and the wheel keep their jobs. During a drag and on the back it is the whole device.
+    private var handle: some View {
+        let size = PocketSkin.size
+        let whole = drag != nil || flip.toBack
+        let shape = whole ? Path(CGRect(origin: .zero, size: size)) : K3DShowroom.casePath
+        return Color.clear
+            .frame(width: size.width, height: size.height)
+            .contentShape(shape, eoFill: true)
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { dragged($0.translation) }
+                    .onEnded { _ in released() })
+            .pointerStyle(drag == nil ? .grabIdle : .grabActive)
+            .allowsHitTesting(Self.aboutTurn == .drag || optionDown || drag != nil)
+    }
+
+    /// Change 305 and 307: the device follows the drag once it passes 4 points. A turn that runs
+    /// stops where it is at the press.
+    private func dragged(_ translation: CGSize) {
+        let now = Date.now
+        var drag = self.drag ?? K3DShowroom(flip: flip, at: now)
+        if self.drag == nil, !flip.isResting(at: now) {
+            flip = flip.held(angle: flip.angle(at: now), tilt: flip.tilt(at: now))
+        }
+        if drag.moved || abs(translation.width) + abs(translation.height) > K3DShowroom.slop {
+            // The 3D front shows the screen as it is now: the picture is made before the turn.
+            if flip.restsOnFront(at: now) { flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork)) }
+            flip = drag.changed(translation, flip: flip)
+        }
+        self.drag = drag
+    }
+
+    /// Changes 304 and 305: a click turns the device over; a drag goes on or comes back.
+    private func released() {
+        guard let drag else { return }
+        self.drag = nil
+        if !drag.moved, flip.restsOnFront(at: .now) { flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork)) }
+        flip = drag.ended(flip: flip, reduceMotion: reduceMotion, at: .now)
+    }
+
+    /// Change 304: a click on the 3D body where the handle is not (the screen or the wheel during
+    /// a turn to the front) turns it over too.
+    private func click() {
+        guard drag == nil else { return }
+        flip = K3DShowroom(flip: flip, at: .now).ended(flip: flip, reduceMotion: reduceMotion, at: .now)
+    }
+
+    /// Change 297: 1.4 s after About opens for the first time ever, the device turns 16° and back.
+    /// Not with Reduce Motion, and only when the device rests on the front.
+    private func nudge() async {
+        let defaults = UserDefaults.standard
+        guard showroom, !reduceMotion, !defaults.bool(forKey: Self.nudgedKey) else { return }
+        do { try await Task.sleep(for: .seconds(K3DShowroom.nudgeDelay)) } catch { return }
+        guard showroom, drag == nil, flip.restsOnFront(at: .now) else { return }
+        defaults.set(true, forKey: Self.nudgedKey)
+        flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
+        flip = flip.nudge(at: .now)
     }
 
     private func turn() {
