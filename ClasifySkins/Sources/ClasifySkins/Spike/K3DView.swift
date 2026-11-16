@@ -268,6 +268,21 @@ final class K3DLayerView: MTKView {
         clearColor = MTLClearColorMake(0, 0, 0, 0)
         colorspace = CGColorSpace(name: CGColorSpace.sRGB)
         layer?.isOpaque = false
+        // CLA-119 (build 269: pale strips beside the body edge-on in a color spin): the frame
+        // shows in the same Core Animation commit as SwiftUI's views, so the body and
+        // `K3DShadow` are at the same angle. Presented on its own, the drawable came about one
+        // frame late: 4.3° in a 1.4 s spin, a cut 24 pt wider than the body at 90°.
+        presentsWithTransaction = true
+        // CLA-119 (build 269: the device 1.8x too big for one frame as a turn started): the window's
+        // room makes this view larger. Its last frame must never be stretched to the new size.
+        // A frame of the new size comes in the same transaction (`setFrameSize`).
+        layer?.contentsGravity = .center
+    }
+
+    /// A new size draws a new frame, at the new size and center, in the same transaction.
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        needsDisplay = true
     }
 
     @available(*, unavailable)
@@ -276,6 +291,7 @@ final class K3DLayerView: MTKView {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         layer?.isOpaque = false
+        layer?.contentsGravity = .center
     }
 
     /// Clicks go through to SwiftUI, which turns the device back.
@@ -651,8 +667,11 @@ final class K3DLayerView: MTKView {
             // Before the commit, so the handler cannot miss the presentation.
             drawable.addPresentedHandler(Self.presentedHandler(for: view))
         }
-        buffer.present(drawable)
+        // With `presentsWithTransaction`: commit, wait until the GPU has the work, then present in
+        // the current transaction (Apple's order). The handler above still fires on presentation.
         buffer.commit()
+        buffer.waitUntilScheduled()
+        drawable.present()
         return true
     }
 
