@@ -53,6 +53,8 @@ struct K3DSpikeSkin: View {
     @State private var room = EdgeInsets()
     /// This skin's own window.
     @State private var window = WindowRoom.WindowRef()
+    /// CLA-122: the room's split, for the window's `K3DRoomAnchor`.
+    @Environment(\.roomSplit) private var split
     /// CLA-119: the last change that input sent and `colorChanged` already handled.
     @State private var handledCue: ColorCue?
 
@@ -69,7 +71,11 @@ struct K3DSpikeSkin: View {
     var body: some View {
         K3DFlipView(
             flip: flip, black: store.state.shownColor == .black, margin: DeviceWindow.margin + room, onTap: showroom ? click : turn,
-            onRoom: { room = $0 ? WindowRoom.fit(K3DRoom.extra, in: window.window) : EdgeInsets() }
+            onRoom: { needs in
+                let new = needs ? WindowRoom.fit(K3DRoom.extra, in: window.window) : EdgeInsets()
+                split?.set(new)  // before `room`, so no layout pass sees the new room with the old split
+                room = new
+            }
         ) {
             PocketSkin(state: store.state) { action in
                 // CLA-117: the full arrival takes no input until it lands. The short one lands in
