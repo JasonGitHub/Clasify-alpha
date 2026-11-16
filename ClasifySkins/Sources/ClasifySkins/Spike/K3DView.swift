@@ -5,14 +5,31 @@ import simd
 
 /// CLA-101: the About screen's K.3D.8 flip in true 3D. It is on in every build.
 public enum K3DSpike {
-    /// The device as it shows now, at 2x, with its covers, for the 3D front's screen. `time`
-    /// pins the skin's loops to one frame; nil draws them as they are now.
-    @MainActor public static func snapshot(_ state: AppState, artwork: Artwork = .none, time: Double? = nil) -> CGImage? {
-        let skin = PocketSkin(state: state, interactive: false).environment(\.artwork, artwork).environment(\.animationTime, time)
+    /// The device as it shows now, at 2x, with its covers, for the 3D front: its screen, and
+    /// (CLA-119) the whole picture as the 2D layer. `time` pins the skin's loops to one frame;
+    /// nil draws them as they are now. `wheel`: the wheel key the pointer is over or presses,
+    /// so the picture is the face as it is at the swap.
+    @MainActor public static func snapshot(
+        _ state: AppState, artwork: Artwork = .none, time: Double? = nil, wheel: WheelLook? = nil
+    ) -> CGImage? {
+        let wheel = wheel ?? .live
+        // No drop shadow: the picture is the 2D layer of the 3D front, so its round corners stay clear.
+        let skin = PocketSkin(state: state, interactive: false, pressed: wheel.pressed, hovered: wheel.hovered)
+            .environment(\.artwork, artwork).environment(\.animationTime, time).environment(\.pocketDropShadow, false)
         let renderer = ImageRenderer(content: skin)
         renderer.scale = 2
         return renderer.cgImage
     }
+}
+
+/// CLA-119: the wheel key the pointer is over and the key pressed, as the app's 2D device shows
+/// them now, so the 3D front's picture (`K3DSpike.snapshot`) is the face as it is at the swap.
+/// Only the app's own full-size device writes `live`; nothing observes it.
+@MainActor public final class WheelLook {
+    public static let live = WheelLook()
+    var hovered: ClickWheel.Zone?
+    var pressed: ClickWheel.Zone?
+    public init() {}
 }
 
 /// Shows `content`, the 2D device, while the front rests flat. While the device turns or shows
@@ -266,6 +283,12 @@ final class K3DLayerView: MTKView {
     private let filterSampler: any MTLSamplerState
     /// The screen picture now in the front texture.
     private var frontScreen: CGImage?
+    /// CLA-119, the mock's 2D layer (`t2`): the whole 2D device as `frontScreen` shows it, and
+    /// whether that picture is Black. Nil: no picture, the front is 3D only.
+    private let flat: any MTLTexture
+    private var flatBlack: Bool?
+    /// The 2D picture's sampler: nearest when magnified, so at 0° each pixel is the picture's own.
+    private let flatSampler: any MTLSamplerState
     /// The front texture's bytes as bundled, read once: a turn's new screen goes into a copy.
     private let frontBytes: [UInt8]
 
@@ -276,6 +299,8 @@ final class K3DLayerView: MTKView {
         /// CLA-105: how far apart the parts are, and the pass (0, or 1 for the window glass).
         var ex: Float = 0
         var pass: Float = 0
+        /// CLA-119: 1 when the front shows the 2D layer.
+        var flat: Float = 0
     }
 
     /// CLA-105: closed, only the closed device draws, in one pass with back faces culled, as
@@ -300,7 +325,9 @@ final class K3DLayerView: MTKView {
               let back = Self.texture(device, queue, K3DTextures.back(version: K3DTextures.version)),
               let steel = Self.texture(device, queue, K3DTextures.rgba(.steel)),
               let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest),
-              let filterSampler = Self.filterSampler(device)
+              let filterSampler = Self.filterSampler(device),
+              let flat = Self.texture(device, queue, [UInt8](repeating: 0, count: K3DTextures.width * K3DTextures.height * 4)),
+              let flatSampler = Self.flatSampler(device)
         else { return nil }
         self.device = device
         self.queue = queue
@@ -323,6 +350,8 @@ final class K3DLayerView: MTKView {
         self.linear = linear
         self.nearest = nearest
         self.filterSampler = filterSampler
+        self.flat = flat
+        self.flatSampler = flatSampler
         // Warm-up: one frame of the back, off screen, when the view is mounted. In build 194 the
         // first turn repeated a frame near edge-on, where the back first shows. The likely cause
         // is first-use work for the back texture and its shader path, so it is done here.
@@ -474,14 +503,31 @@ final class K3DLayerView: MTKView {
         return device.makeSamplerState(descriptor: descriptor)
     }
 
+    /// CLA-119: the 2D picture's sampler: nearest when magnified, linear with mipmaps when made
+    /// smaller. Drawn at 2x and filtered 2:1, at 0° each pixel of the 2D picture covers 2 x 2
+    /// samples, so the frame's pixel is the picture's pixel.
+    private static func flatSampler(_ device: any MTLDevice) -> (any MTLSamplerState)? {
+        let descriptor = MTLSamplerDescriptor()
+        descriptor.minFilter = .linear
+        descriptor.magFilter = .nearest
+        descriptor.mipFilter = .linear
+        descriptor.sAddressMode = .clampToEdge
+        descriptor.tAddressMode = .clampToEdge
+        return device.makeSamplerState(descriptor: descriptor)
+    }
+
     /// Puts a new screen picture in the front's LCD now, before a turn starts, so the turn's
     /// first frame has no texture work to do.
     func prepare(screen: CGImage) { show(screen: screen) }
 
-    /// Puts a new screen picture in the front's LCD.
+    /// Puts a new screen picture in the front's LCD, and the whole picture in the 2D layer.
     private func show(screen: CGImage?) {
-        guard screen !== frontScreen, let bytes = K3DTextures.front(screen: screen, base: frontBytes) else { return }
+        guard screen !== frontScreen else { return }
+        let picture = screen.flatMap(K3DTextures.picture)
+        guard let bytes = K3DTextures.front(live: picture, base: frontBytes) else { return }
         Self.fill(front, bytes, queue)
+        if let picture { Self.fill(flat, picture, queue) }
+        flatBlack = picture.map(K3DTextures.isBlack)
         frontScreen = screen
     }
 
@@ -584,6 +630,9 @@ final class K3DLayerView: MTKView {
             mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt),
             pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0,
             ex: Float(pose.ex))
+        // The 2D layer shows only on the closed device, in the picture's own color: in the first
+        // half of a color spin the 3D body is the old color, and the picture the new one.
+        uniforms.flat = pose.ex == 0 && flatBlack == pose.black ? 1 : 0
         let passes = Self.passes(ex: uniforms.ex)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
@@ -599,6 +648,8 @@ final class K3DLayerView: MTKView {
         encoder.setFragmentTexture(steel, index: 2)
         encoder.setFragmentSamplerState(linear, index: 0)
         encoder.setFragmentSamplerState(nearest, index: 1)
+        encoder.setFragmentTexture(flat, index: 3)
+        encoder.setFragmentSamplerState(flatSampler, index: 2)
         let count = passes.all ? indexCount : closedIndexCount
         encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
         if passes.glass {

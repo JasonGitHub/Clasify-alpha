@@ -11,8 +11,10 @@ public struct PocketSkin: View {
     let send: @MainActor (Action) -> Void
     /// False in snapshot tests. See `ClickWheel.catchesScroll`.
     var interactive = true
-    /// A wheel button drawn pressed, for snapshot tests.
+    /// A wheel button drawn pressed, for snapshot tests and the 3D front's picture.
     var pressed: ClickWheel.Zone?
+    /// CLA-119: the wheel key drawn as under the pointer, for the 3D front's picture.
+    var hovered: ClickWheel.Zone?
     /// For tests: the color fade drawn at this fraction, from 0 (Silver) to 1 (Black).
     var fade: Double?
 
@@ -29,11 +31,12 @@ public struct PocketSkin: View {
         self.send = send
     }
 
-    init(state: AppState, interactive: Bool, pressed: ClickWheel.Zone? = nil, fade: Double? = nil) {
+    init(state: AppState, interactive: Bool, pressed: ClickWheel.Zone? = nil, hovered: ClickWheel.Zone? = nil, fade: Double? = nil) {
         self.state = state
         self.send = { _ in }
         self.interactive = interactive
         self.pressed = pressed
+        self.hovered = hovered
         self.fade = fade
     }
 
@@ -43,7 +46,7 @@ public struct PocketSkin: View {
             PocketScreen(state: state, input: input)
             ClickWheel(
                 input: input, color: color, catchesScroll: interactive, movesBar: state.wheelMovesBar,
-                glowFrom: glowFrom, fingerFrom: fingerFrom, label: labelGlow, pressed: pressed)
+                glowFrom: glowFrom, fingerFrom: fingerFrom, label: labelGlow, pressed: pressed, hovered: hovered)
                 .animation(colorFade, value: color)
         }
         // The mockup's 24.8 point padding starts inside the 1 point border.

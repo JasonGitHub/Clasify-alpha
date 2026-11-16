@@ -54,7 +54,7 @@ struct ClickWheel: View {
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
         movesBar: Bool = false, glowFrom: Double? = nil, fingerFrom: Double? = nil, label: LabelGlow? = nil,
-        pressed: Zone? = nil
+        pressed: Zone? = nil, hovered: Zone? = nil
     ) {
         self.input = input
         self.color = color
@@ -64,6 +64,7 @@ struct ClickWheel: View {
         self.fingerFrom = fingerFrom
         self.label = label
         _pressed = State(initialValue: pressed)  // a snapshot test draws a pressed button
+        _hovered = State(initialValue: hovered)  // and the 3D front's picture the key under the pointer
     }
 
     /// The parts of the wheel that act as buttons.
@@ -116,15 +117,13 @@ struct ClickWheel: View {
     @State private var turn: Turn?
     @State private var pressed: Zone?
     @State private var hovered: Zone?
+    @Environment(\.pocketPreview) private var preview
+
+    /// CLA-119: the app's own device, whose keys the 3D front's picture shows (`WheelLook.live`).
+    private var live: Bool { catchesScroll && !preview }
 
     var body: some View {
-        face
-            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
-            .contentShape(Circle())
-            .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
-            .onContinuousHover { phase in
-                if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
-            }
+        tracked
             .accessibilityElement()
             .accessibilityLabel("Click wheel")
             .accessibilityAdjustableAction { direction in
@@ -139,6 +138,24 @@ struct ClickWheel: View {
             .accessibilityAction(named: "Play or pause") { input(.play) }
             .accessibilityAction(named: "Next track") { input(.next) }
             .accessibilityAction(named: "Previous track") { input(.prev) }
+    }
+
+    /// The face with its input: scroll, drag, clicks and the pointer.
+    private var handled: some View {
+        face
+            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
+            .contentShape(Circle())
+            .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
+            .onContinuousHover { phase in
+                if case .active(let point) = phase { hovered = Self.zone(at: point) } else { hovered = nil }
+            }
+    }
+
+    /// CLA-119: `handled`, and the key under the pointer and the pressed key go to `WheelLook.live`.
+    private var tracked: some View {
+        handled
+            .onChange(of: hovered) { (_: Zone?, zone: Zone?) in if live { WheelLook.live.hovered = zone } }
+            .onChange(of: pressed) { (_: Zone?, zone: Zone?) in if live { WheelLook.live.pressed = zone } }
     }
 
     /// The wheel, its labels, the lights and the center.
