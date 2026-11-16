@@ -210,6 +210,61 @@ import Testing
         #expect(Hello.written(look: 0, at: Hello.elapsed(at: 1.39, since: 0, waiting: true)) < 1e-6)
     }
 
+    /// CLA-117, change 303 (cold.py `arr`): from -60° and 80% size, one ease-out turn to the
+    /// front in 1.0 s, fading in over 0.25 s. The 2D device fades in over the turn's last 0.15 s.
+    @Test func theShortArrivalFollowsTheSketch() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let flip = K3DFlip.arriveShort(at: t0) { nil }
+        func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
+        #expect(flip.arriving && !flip.toBack && near(flip.length, 1.0) && near(flip.ends.timeIntervalSince(t0), 1.0))
+        let e = 1 - pow(0.5, 3.0)  // the ease-out at u = 0.5
+        #expect(near(flip.pose(at: at(0)).angle, -60) && near(flip.pose(at: at(0.5)).angle, -60 + 60 * e))
+        #expect(near(flip.pose(at: at(1)).angle, 0) && flip.pose(at: at(0.5)).lift == 0)
+        #expect(near(flip.look(at: at(0)).scale, 0.8) && near(flip.look(at: at(0.5)).scale, 0.8 + 0.2 * e))
+        #expect(near(flip.look(at: at(0)).opacity, 0) && near(flip.look(at: at(0.125)).opacity, 0.5))
+        #expect(near(flip.look(at: at(0.25)).opacity, 1) && near(flip.look(at: at(1)).scale, 1))
+        #expect(flip.flatOpacity(at: at(0.84)) == 0 && near(flip.flatOpacity(at: at(0.925)), 0.5))
+        #expect(flip.flatOpacity(at: at(1.01)) == 1 && flip.restsOnFront(at: at(1.01)))
+        // The hidden 2D device takes input during the turn; nothing holds it.
+        #expect(flip.takesInput(at: at(0.1)) && !flip.takesInput(at: at(1.01)))
+        #expect(!flip.holdsInput(at: at(0.1)))
+    }
+
+    /// CLA-117: input during the short arrival runs the rest 4 times faster: it lands in 0.25 s
+    /// at most, from where it was.
+    @Test func inputHurriesTheShortArrival() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
+        func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
+        var flip = K3DFlip.arriveShort(at: t0) { nil }
+        flip.hurry(at: at(0.2))
+        #expect(near(flip.ends.timeIntervalSince(t0), 0.4))  // 0.8 s left, 4 times faster
+        #expect(near(flip.pose(at: at(0.2)).angle, K3DFlip.arriveShort(at: t0) { nil }.pose(at: at(0.2)).angle))  // no jump
+        #expect(near(flip.elapsed(at: at(0.3)), 0.6))
+        #expect(!flip.restsOnFront(at: at(0.39)) && flip.restsOnFront(at: at(0.41)))
+        flip.hurry(at: at(0.3))  // once only
+        #expect(near(flip.ends.timeIntervalSince(t0), 0.4))
+        var first = K3DFlip.arriveShort(at: t0) { nil }
+        first.hurry(at: at(0))
+        #expect(near(first.ends.timeIntervalSince(t0), 0.25))
+        // Other scripts do not hurry.
+        var arrive = K3DFlip.arrive(at: t0) { nil }
+        arrive.hurry(at: at(0.2))
+        #expect(near(arrive.ends.timeIntervalSince(t0), 1.95))
+    }
+
+    /// CLA-117 "full" and change 288: input waits until the turn lands.
+    @Test func theFullArrivalHoldsInputUntilItLands() {
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000)
+        let flip = K3DFlip.arrive(at: t0) { nil }
+        #expect(flip.holdsInput(at: t0.addingTimeInterval(1.59)) && !flip.holdsInput(at: t0.addingTimeInterval(1.61)))
+        #expect(!flip.takesInput(at: t0.addingTimeInterval(0.5)))
+        #expect(K3DFlip.waiting.holdsInput(at: .now))
+        #expect(!K3DFlip().holdsInput(at: .now))
+        #expect(!K3DFlip.spin(turn: 0.8, fromBlack: false) { nil }.holdsInput(at: .now))
+    }
+
     /// Card BR, changes 289 and 290 (gen.py `spin`): a 0.15 s crossfade to 3D, one 360° turn with
     /// a quad in-out, the old color until 180°, and a 0.15 s crossfade back.
     @Test(arguments: [K3DFlip.spinPick, K3DFlip.spinSettings]) func theColorSpinFollowsTheSketch(turn: Double) {

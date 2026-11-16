@@ -263,7 +263,10 @@ struct K3DMesh {
 /// in 1.6 s, fading in over the first 0.8 s; then the 2D device fades in over 0.35 s while
 /// Hello writes (Jason, 23:05 JST 11-15: no rest, so Hello comes sooner). `spin` is card BR's color change (changes 289 and 290): the device crossfades to 3D
 /// in 0.15 s, turns 360° with a quad in-out, and crossfades back in 0.15 s. It shows the old
-/// color until 180°, then the color the device has now.
+/// color until 180°, then the color the device has now. `arriveShort` is change 303, the
+/// cold-start trial (CLA-117): from -60° and 80% size, one ease-out turn to the front in 1.0 s,
+/// fading in over the first 0.25 s, with the 2D device fading in over the turn's last 0.15 s.
+/// Input during it hurries the rest of the turn 4 times.
 public struct K3DFlip {
     static let turn = 0.82, duration = 1.0, lift = 70.0
     /// The crossfade between the 3D body and the flat 2D device.
@@ -279,7 +282,12 @@ public struct K3DFlip {
     static let spinFade = 0.15
     public static let spinPick = 1.4, spinSettings = 0.8
 
-    enum Script: Equatable { case flip, arrive, spin(Double) }
+    /// Change 303 (cold.py `arr`): the short arrival's turn, start angle, start size, fade-in,
+    /// its crossfade to the 2D device at the end of the turn, and how much faster input runs the rest.
+    static let shortTurn = 1.0, shortFrom = -60.0, shortScale = 0.8, shortFadeIn = 0.25, shortFade = 0.15
+    static let shortHurry = 4.0
+
+    enum Script: Equatable { case flip, arrive, arriveShort, spin(Double) }
 
     /// The angle the last turn started from and goes to, in degrees: 0 is the front, 180 the back.
     private(set) var from = 0.0, to = 0.0
@@ -290,6 +298,9 @@ public struct K3DFlip {
     private(set) var fromBlack = false
     /// A live picture of the device for the 3D front's screen, taken when the turn started.
     public private(set) var screen: CGImage?
+    /// Change 303: when input hurried the short arrival, and the script time it had then.
+    private(set) var hurriedAt: Date?
+    private(set) var hurriedFrom = 0.0
 
     public init() {}
 
@@ -310,6 +321,48 @@ public struct K3DFlip {
         flip.script = .arrive
         (flip.from, flip.to, flip.start) = (arriveFrom, 0, now ?? .now)
         return flip
+    }
+
+    /// Change 303, the cold-start trial: the short arrival. As for `arrive`, the clock starts
+    /// after the screen picture is made.
+    @MainActor public static func arriveShort(at now: Date? = nil, screen make: () -> CGImage?) -> K3DFlip {
+        var flip = K3DFlip()
+        flip.show(screen: make())
+        flip.script = .arriveShort
+        (flip.from, flip.to, flip.start) = (shortFrom, 0, now ?? .now)
+        return flip
+    }
+
+    /// Change 303: input during the short arrival runs the rest of it 4 times faster, so the
+    /// device lands in 0.25 s at most. Once only; other scripts do not change.
+    public mutating func hurry(at now: Date) {
+        guard script == .arriveShort, hurriedAt == nil, !isResting(at: now) else { return }
+        hurriedFrom = max(0, now.timeIntervalSince(start))
+        hurriedAt = now
+    }
+
+    /// The script's time at `now`, in seconds from its start: the clock, or 4 times faster after
+    /// a hurry (change 303).
+    func elapsed(at now: Date) -> Double {
+        guard let hurriedAt, now > hurriedAt else { return now.timeIntervalSince(start) }
+        return hurriedFrom + Self.shortHurry * now.timeIntervalSince(hurriedAt)
+    }
+
+    /// When the script ends, with the 2D device at full opacity.
+    public var ends: Date {
+        guard let hurriedAt else { return start.addingTimeInterval(length) }
+        return hurriedAt.addingTimeInterval((length - hurriedFrom) / Self.shortHurry)
+    }
+
+    /// The short arrival runs: the 2D device, hidden, still takes the wheel and the keys, and
+    /// the 3D screen stays live (change 303).
+    public func takesInput(at now: Date) -> Bool {
+        script == .arriveShort ? !isResting(at: now) : isSpinning(at: now)
+    }
+
+    /// Input waits: the full arrival (change 288, and the cold-start "full" trial) has not landed.
+    public func holdsInput(at now: Date) -> Bool {
+        script == .arrive && elapsed(at: now) < Self.arriveTurn
     }
 
     /// Changes 289 and 290: a color spin with a turn of `turn` seconds. The device was black
@@ -354,6 +407,7 @@ public struct K3DFlip {
         switch script {
         case .flip: Self.duration
         case .arrive: Self.arriveTurn + Self.arriveFade
+        case .arriveShort: Self.shortTurn
         case .spin(let turn): turn + 2 * Self.spinFade
         }
     }
@@ -368,6 +422,7 @@ public struct K3DFlip {
         to = toBack ? 0 : 180
         start = now
         script = .flip
+        hurriedAt = nil
         if toBack { self.screen = screen }
     }
 
@@ -381,21 +436,22 @@ public struct K3DFlip {
     }
 
     /// No turn runs: the device rests on one side.
-    func isResting(at now: Date) -> Bool { now.timeIntervalSince(start) >= length }
+    func isResting(at now: Date) -> Bool { elapsed(at: now) >= length }
 
     /// The front shows flat, with no turn running: the 2D skin can show.
     public func restsOnFront(at now: Date) -> Bool { !toBack && isResting(at: now) }
 
-    /// The arrival runs: the 2D device must not show before the 3D body has drawn.
-    public var arriving: Bool { script == .arrive }
+    /// An arrival runs: the 2D device must not show before the 3D body has drawn.
+    public var arriving: Bool { script == .arrive || script == .arriveShort }
 
     /// How much the flat 2D device shows over the 3D body: 1 at rest on the front, 0 while the 3D
     /// body turns or rests on the back. They crossfade in the last 0.1 s of a turn that ends on
     /// the front, and in the first 0.1 s of a turn that starts from the resting front. The
-    /// arrival crossfades in its last 0.35 s.
+    /// arrival crossfades in its last 0.35 s, the short arrival in its turn's last 0.15 s.
     public func flatOpacity(at now: Date) -> Double {
-        let t = now.timeIntervalSince(start)
+        let t = elapsed(at: now)
         if script == .arrive { return min(1, max(0, (t - Self.arriveTurn) / Self.arriveFade)) }
+        if script == .arriveShort { return min(1, max(0, (t - (Self.shortTurn - Self.shortFade)) / Self.shortFade)) }
         if case .spin(let turn) = script {
             return t < Self.spinFade ? 1 - max(0, t) / Self.spinFade : min(1, max(0, (t - Self.spinFade - turn) / Self.spinFade))
         }
@@ -404,17 +460,25 @@ public struct K3DFlip {
     }
 
     /// The 3D body's size and opacity: 1 and 1, except while it arrives (gen.py `g1`: scale
-    /// 0.55 + 0.45 e, alpha min(1, 2u), with e the ease-out of u over 1.6 s).
+    /// 0.55 + 0.45 e, alpha min(1, 2u), with e the ease-out of u over 1.6 s). The short arrival
+    /// (cold.py `arr`): scale 0.8 + 0.2 e over 1.0 s, alpha min(1, t / 0.25 s).
     func look(at now: Date) -> (scale: Double, opacity: Double) {
+        if script == .arriveShort {
+            let t = elapsed(at: now), e = Self.easeOut(min(1, max(0, t / Self.shortTurn)))
+            return (Self.shortScale + (1 - Self.shortScale) * e, min(1, max(0, t / Self.shortFadeIn)))
+        }
         guard script == .arrive else { return (1, 1) }
         let u = min(1, max(0, now.timeIntervalSince(start) / Self.arriveTurn))
         return (Self.arriveScale + (1 - Self.arriveScale) * Self.easeOut(u), min(1, 2 * u))
     }
 
     func pose(at now: Date) -> (angle: Double, lift: Double) {
-        let t = now.timeIntervalSince(start)
+        let t = elapsed(at: now)
         if script == .arrive {
             return (from + (to - from) * Self.easeOut(min(1, max(0, t / Self.arriveTurn))), 0)
+        }
+        if script == .arriveShort {
+            return (from + (to - from) * Self.easeOut(min(1, max(0, t / Self.shortTurn))), 0)
         }
         if case .spin(let turn) = script {
             // 360° is the front again: the pose at rest is 0, so a later flip starts from 0.
