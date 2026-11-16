@@ -12,20 +12,23 @@ import SwiftUI
 /// behind it, as the margins do.
 struct WindowRoom: NSViewRepresentable {
     let room: EdgeInsets
+    /// This skin's own device window, for `fit` (more than one device window can be open).
+    let window: WindowRef
 
     func makeCoordinator() -> Coordinator { Coordinator(room: room) }
 
-    func makeNSView(context: Context) -> NSView { Hook() }
-
-    /// The device window, for `fit`.
-    @MainActor static weak var window: NSWindow?
+    func makeNSView(context: Context) -> NSView {
+        let hook = Hook()
+        hook.ref = window
+        return hook
+    }
 
     /// CLA-119 (build 269: the device jumped down when a spin started after a move up): macOS
     /// keeps a window's top under the menu bar, and moves a taller window down. So the top room is
     /// only the room up to the top of the screen's visible area: nothing could show above it.
     /// The sides and the bottom keep their room (macOS does not move a window for them). Read once
     /// as the 3D body starts; the shrink takes the same room away, so the device comes back exactly.
-    @MainActor static func fit(_ room: EdgeInsets) -> EdgeInsets {
+    @MainActor static func fit(_ room: EdgeInsets, in window: NSWindow?) -> EdgeInsets {
         // No window or screen: no top room, so macOS has nothing to move.
         K3DRoom.fit(room, windowTop: window?.frame.maxY ?? 0, visibleTop: window?.screen?.visibleFrame.maxY ?? -.infinity)
     }
@@ -55,10 +58,17 @@ struct WindowRoom: NSViewRepresentable {
         init(room: EdgeInsets) { self.room = room }
     }
 
+    /// A skin's device window, set when the hook joins it.
+    @MainActor final class WindowRef {
+        weak var window: NSWindow?
+    }
+
     final class Hook: NSView {
+        var ref: WindowRef?
+
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            if let window { WindowRoom.window = window }
+            ref?.window = window
         }
 
         /// Clicks go through to the device and the window drag.
