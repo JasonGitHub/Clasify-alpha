@@ -84,7 +84,7 @@ public struct K3DFlipView<Content: View>: View {
             // (`shows`). Then the 2D device's own shadow is off (`K3DHandover`), so one shadow
             // shows at any time, with no step where they hand over (shadow option 1, Jason 17:30
             // JST 11-14). At rest on the front, the 2D device draws its own.
-            if shows { K3DShadow(angle: angle, lift: lift, black: black).scaleEffect(scale) }
+            if shows { K3DShadow(angle: angle, lift: lift, tilt: tilt, black: black).scaleEffect(scale) }
             K3DMetalView(
                 angle: angle, lift: lift, tilt: tilt, scale: scale, black: black, screen: flip.screen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
@@ -243,6 +243,8 @@ final class K3DLayerView: MTKView {
     private let glassPipeline: any MTLRenderPipelineState
     private let glassDepth: any MTLDepthStencilState
     private let vertices: any MTLBuffer, indices: any MTLBuffer
+    /// CLA-119: the closed body's outer points, for the shadow's cut (`K3DShadow.cut`).
+    let outerPoints: [SIMD3<Double>]
     private let closedIndexCount: Int, indexCount: Int
     private let front: any MTLTexture, back: any MTLTexture, steel: any MTLTexture
     private let linear: any MTLSamplerState, nearest: any MTLSamplerState
@@ -289,6 +291,7 @@ final class K3DLayerView: MTKView {
         self.glassPipeline = glassPipeline
         self.glassDepth = glassDepth
         self.vertices = vertices
+        outerPoints = K3DShadow.outerPoints(mesh)
         self.indices = indices
         closedIndexCount = mesh.closedIndexCount
         indexCount = mesh.indices.count
