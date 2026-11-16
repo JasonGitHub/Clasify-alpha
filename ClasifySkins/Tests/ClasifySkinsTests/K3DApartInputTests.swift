@@ -10,6 +10,10 @@ struct K3DApartInputTests {
     nonisolated static var hasMetal: Bool { MTLCreateSystemDefaultDevice() != nil }
     let t0 = Date(timeIntervalSinceReferenceDate: 1000)
     func at(_ s: Double) -> Date { t0.addingTimeInterval(s) }
+    /// Dates round (`at(2.3)` is 2.2999999999999545 s): compare within 1e-6, and check a
+    /// phase's end 1 µs after it.
+    func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-6 }
+    func after(_ s: Double) -> Date { at(s + 1e-6) }
 
     var onBack: K3DFlip {
         var flip = K3DFlip()
@@ -34,7 +38,7 @@ struct K3DApartInputTests {
     @Test func apartADragTurnsAndTilts() {
         let open = onBack.apart(at: t0)
         var drag = K3DShowroom(flip: open, at: at(3))
-        #expect(drag.apart && drag.angle0 == 305 && drag.tilt0 == 20)
+        #expect(drag.apart && near(drag.angle0, 305) && near(drag.tilt0, 20))
         let a = drag.changed(CGSize(width: 50, height: 10), flip: open)
         #expect(abs(a.angle(at: at(3)) - 335) < 1e-9 && abs(a.tilt(at: at(3)) - 23) < 1e-9)
         let b = drag.changed(CGSize(width: -100, height: 100), flip: open)
@@ -50,18 +54,18 @@ struct K3DApartInputTests {
         let open = onBack.apart(at: t0)
         let click = K3DShowroom(flip: open, at: at(3))
         let close = click.ended(flip: open, reduceMotion: false, at: at(3))
-        #expect(close.apartRuns(at: at(3.1)) && close.ex(at: at(4.6)) == 0)
-        #expect(close.restsOnFront(at: at(5.2)) && close.angle(at: at(5.2)) == 0)
+        #expect(close.apartRuns(at: at(3.1)) && near(close.ex(at: at(4.6)), 0))
+        #expect(close.restsOnFront(at: after(5.2)) && near(close.angle(at: after(5.2)), 0))
     }
 
     /// While the device opens or closes, input waits; apart, it counts as apart.
     @Test func whileItRunsInputWaits() {
         let open = onBack.apart(at: t0)
         #expect(open.apartRuns(at: at(1)) && open.isApart(at: at(0.1)))
-        #expect(!open.apartRuns(at: at(2.3)) && open.isApart(at: at(2.3)))
+        #expect(!open.apartRuns(at: after(2.3)) && open.isApart(at: after(2.3)))
         #expect(!onBack.isApart(at: t0) && !onBack.apartRuns(at: t0))
         let closed = open.apart(at: at(3))
-        #expect(!closed.isApart(at: at(5.2)))
+        #expect(!closed.isApart(at: after(5.2)))
     }
 
     /// The warm-up frame at the hold's start does not count as apart: a closed frame after it
