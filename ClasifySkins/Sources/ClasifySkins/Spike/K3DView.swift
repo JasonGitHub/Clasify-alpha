@@ -428,7 +428,7 @@ final class K3DLayerView: MTKView {
     /// The 2x scene targets, kept while big enough.
     private var targets: (color: any MTLTexture, resolved: any MTLTexture, depth: any MTLTexture)?
     private let closedIndexCount: Int, indexCount: Int
-    private let front: any MTLTexture, back: any MTLTexture, steel: any MTLTexture
+    private let front: any MTLTexture, back: any MTLTexture
     private let linear: any MTLSamplerState, nearest: any MTLSamplerState
     /// The 2:1 filter's sampler: linear, no mipmaps.
     private let filterSampler: any MTLSamplerState
@@ -492,7 +492,6 @@ final class K3DLayerView: MTKView {
               let frontBytes = K3DTextures.rgba(.front),
               let front = Self.texture(device, queue, frontBytes),
               let back = Self.texture(device, queue, K3DTextures.back(version: K3DTextures.version)),
-              let steel = Self.texture(device, queue, K3DTextures.rgba(.steel)),
               let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest),
               let filterSampler = Self.filterSampler(device),
               let flat = Self.texture(device, queue, [UInt8](repeating: 0, count: K3DTextures.width * K3DTextures.height * 4)),
@@ -516,7 +515,6 @@ final class K3DLayerView: MTKView {
         self.front = front
         self.frontBytes = frontBytes
         self.back = back
-        self.steel = steel
         self.linear = linear
         self.nearest = nearest
         self.filterSampler = filterSampler
@@ -931,7 +929,6 @@ final class K3DLayerView: MTKView {
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
         encoder.setFragmentTexture(front, index: 0)
         encoder.setFragmentTexture(back, index: 1)
-        encoder.setFragmentTexture(steel, index: 2)
         encoder.setFragmentSamplerState(linear, index: 0)
         encoder.setFragmentSamplerState(nearest, index: 1)
         encoder.setFragmentTexture(layer?.texture ?? flat, index: 3)

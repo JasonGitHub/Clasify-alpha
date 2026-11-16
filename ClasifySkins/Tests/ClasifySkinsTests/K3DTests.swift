@@ -26,8 +26,8 @@ import Testing
         #expect(pixel(front, 365, 865) == [206, 207, 207, 249])  // center button
     }
 
-    @Test func theBackAndSteelLoad() throws {
-        for name in [K3DTextures.Name.back, .steel] {
+    @Test func theBackLoads() throws {
+        for name in [K3DTextures.Name.back] {
             let bytes = try #require(K3DTextures.rgba(name))
             #expect(bytes.count == K3DTextures.width * K3DTextures.height * 4, "\(name)")
         }
