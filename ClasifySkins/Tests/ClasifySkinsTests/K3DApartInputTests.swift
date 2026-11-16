@@ -33,16 +33,16 @@ struct K3DApartInputTests {
         #expect(!K3DShowroom.canHold(flip: open, at: at(1)) && !K3DShowroom.canHold(flip: open, at: at(5)))
     }
 
-    /// Apart, a drag turns the device 0.6° per point and tilts it 0.3° per point from the tilt
+    /// Apart, a drag turns the device 0.5° per point (row 3, change 309) and tilts it 0.3° per point from the tilt
     /// at the press, up to 35° each way. The release leaves it where it is, still apart.
     @Test func apartADragTurnsAndTilts() {
         let open = onBack.apart(at: t0)
         var drag = K3DShowroom(flip: open, at: at(3))
         #expect(drag.apart && near(drag.angle0, 305) && near(drag.tilt0, 20))
         let a = drag.changed(CGSize(width: 50, height: 10), flip: open)
-        #expect(abs(a.angle(at: at(3)) - 335) < 1e-9 && abs(a.tilt(at: at(3)) - 23) < 1e-9)
+        #expect(abs(a.angle(at: at(3)) - 330) < 1e-9 && abs(a.tilt(at: at(3)) - 23) < 1e-9)
         let b = drag.changed(CGSize(width: -100, height: 100), flip: open)
-        #expect(abs(b.angle(at: at(3)) - 245) < 1e-9 && b.tilt(at: at(3)) == 35)
+        #expect(abs(b.angle(at: at(3)) - 255) < 1e-9 && b.tilt(at: at(3)) == 35)
         let c = drag.changed(CGSize(width: 0, height: -300), flip: open)
         #expect(c.tilt(at: at(3)) == -35)
         let released = drag.ended(flip: b, reduceMotion: false, at: at(3))

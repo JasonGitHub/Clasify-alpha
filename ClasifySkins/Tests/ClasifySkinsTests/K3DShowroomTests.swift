@@ -27,21 +27,24 @@ import simd
         #expect(K3DShowroom.Mode("other") == .off)
     }
 
-    /// Changes 305 and 307: 0.6° per point of horizontal travel, 0.1° tilt per point of
-    /// vertical travel, clamped to ±6°. The 2D device does not show while the drag holds it.
+    /// Changes 309 and 310 (row 3): 0.5° per point of horizontal travel, 0.3° tilt per point of
+    /// vertical travel, clamped to ±35°. The 2D device does not show while the drag holds it.
     @Test func aDragHoldsTheDeviceWithAClampedTilt() {
         var drag = K3DShowroom(flip: K3DFlip(), at: t0)
         let held = drag.changed(CGSize(width: 50, height: 30), flip: K3DFlip())
         #expect(drag.moved)
-        #expect(held.angle(at: t0) == 30)
-        #expect(abs(held.tilt(at: t0) - 3) < 1e-9)
+        #expect(held.angle(at: t0) == 25)
+        #expect(abs(held.tilt(at: t0) - 9) < 1e-9)
         #expect(held.flatOpacity(at: t0) == 0 && !held.restsOnFront(at: t0))
         // CLA-119: within 2° of the front the 2D device shows by angle, the tilt counted.
         let near = drag.changed(CGSize(width: 1, height: 0), flip: K3DFlip())
-        #expect(abs(near.flatOpacity(at: t0) - K3DFlip.nearRest(angle: 0.6, tilt: 0)) < 1e-12)
+        #expect(abs(near.flatOpacity(at: t0) - K3DFlip.nearRest(angle: 0.5, tilt: 0)) < 1e-12)
         #expect(drag.changed(CGSize(width: 1, height: 20), flip: K3DFlip()).flatOpacity(at: t0) == 0)
-        #expect(drag.changed(CGSize(width: 0, height: 200), flip: K3DFlip()).tilt(at: t0) == 6)
-        #expect(drag.changed(CGSize(width: 0, height: -200), flip: K3DFlip()).tilt(at: t0) == -6)
+        #expect(drag.changed(CGSize(width: 0, height: 200), flip: K3DFlip()).tilt(at: t0) == 35)
+        #expect(drag.changed(CGSize(width: 0, height: -200), flip: K3DFlip()).tilt(at: t0) == -35)
+        // The tilt counts from the tilt at the press (trial row 3: `drag.tilt + dy * .3`).
+        var again = K3DShowroom(flip: K3DFlip().held(angle: 10, tilt: 20), at: t0)
+        #expect(abs(again.changed(CGSize(width: 0, height: 10), flip: K3DFlip()).tilt(at: t0) - 23) < 1e-9)
     }
 
     /// A press that travels 4 points or less is a click.
@@ -65,11 +68,11 @@ import simd
 
     /// Change 305: 20° or more goes on to the next side in 0.8 s; less goes back in 0.4 s.
     @Test func theReleaseGoesOnFrom20Degrees() {
-        let on = released(34)  // 20.4°
+        let on = released(41)  // 20.5°
         #expect(on.toBack && on.length == K3DFlip.turnOver)
-        let left = released(-34)
-        #expect(left.toBack && abs(left.angle(at: t0) - (360 - 34 * K3DShowroom.perPoint)) < 1e-9)
-        let back = released(32)  // 19.2°
+        let left = released(-41)
+        #expect(left.toBack && abs(left.angle(at: t0) - (360 - 41 * K3DShowroom.perPoint)) < 1e-9)
+        let back = released(38)  // 19°
         #expect(!back.toBack && back.length == K3DFlip.dragReturn)
         #expect(back.restsOnFront(at: t0.addingTimeInterval(0.5)))
         // A drag past more than half a turn lands on the nearest side in that direction.
@@ -97,9 +100,9 @@ import simd
 
     /// Change 307: the tilt levels out in the first half of the turn after the release.
     @Test func theTiltLevelsOnRelease() {
-        let flip = released(50, 40)
-        #expect(abs(flip.tilt(at: t0) - 4) < 1e-9)
-        #expect(abs(flip.tilt(at: t0.addingTimeInterval(0.2)) - 4 * (1 - K3DFlip.easeOut(0.5))) < 1e-9)
+        let flip = released(50, 40)  // 12° (change 310)
+        #expect(abs(flip.tilt(at: t0) - 12) < 1e-9)
+        #expect(abs(flip.tilt(at: t0.addingTimeInterval(0.2)) - 12 * (1 - K3DFlip.easeOut(0.5))) < 1e-9)
         #expect(flip.tilt(at: t0.addingTimeInterval(0.4)) == 0)
         #expect(flip.tilt(at: .distantFuture) == 0)
     }
@@ -123,9 +126,9 @@ import simd
 
     /// Change 302: with Reduce Motion the side changes with a 0.2 s crossfade, and no turn.
     @Test func reduceMotionSwapsTheSide() throws {
-        let flip = released(40, reduceMotion: true)
+        let flip = released(42, reduceMotion: true)
         #expect(flip.toBack && flip.length == K3DFlip.swapTime)
-        #expect(flip.angle(at: t0.addingTimeInterval(0.05)) == 24)
+        #expect(flip.angle(at: t0.addingTimeInterval(0.05)) == 21)
         #expect(flip.angle(at: t0.addingTimeInterval(0.15)).truncatingRemainder(dividingBy: 360) == 180)
         #expect(flip.look(at: t0.addingTimeInterval(0.1)).opacity < 1e-9)
         #expect(flip.look(at: t0.addingTimeInterval(0.2)).opacity == 1)
