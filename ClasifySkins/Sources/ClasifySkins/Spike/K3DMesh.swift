@@ -344,10 +344,17 @@ public struct K3DFlip {
     /// Card BT row 2 (CLA-118): the About showroom. `held` is a drag in progress, `go` a turn
     /// of `go` seconds (`soft`: the turn-over landing, 306), `nudge` the first-time nudge (297),
     /// `swap` the Reduce Motion side change (302).
-    enum Script: Equatable { case flip, arrive, arriveShort, spin(Double), held, go(Double, soft: Bool), nudge, swap }
+    enum Script: Equatable { case flip, arrive, arriveShort, spin(Double), held, go(Double, soft: Bool), nudge, swap, apart }
     /// Card BT row 2: a turn-over, the return of a short drag, the nudge, the Reduce Motion swap.
     public static let turnOver = 0.8, dragReturn = 0.4, nudgeTime = 0.9, swapTime = 0.2
     static let overshoot = 3.0, nudgeAngle = 16.0
+    /// CLA-105 Take apart (change 308; the showroom trial Jason approved, bt/show/index.html
+    /// `open` and `close`): opening, the device turns to 305° and tilts to 20° in 0.7 s on a
+    /// quad in-out, then the parts move apart in 1.6 s on a cubic in-out (mock K.3D.8
+    /// `explode`). Closing, the parts move together in 1.6 s where the device is, then it turns
+    /// to the front by the short way and levels out in 0.6 s.
+    public static let apartTurn = 0.7, apartTime = 1.6, closeTurn = 0.6
+    static let apartAngle = 305.0, apartTilt = 20.0
 
     /// The angle the last turn started from and goes to, in degrees: 0 is the front, 180 the back.
     private(set) var from = 0.0, to = 0.0
@@ -367,6 +374,10 @@ public struct K3DFlip {
     /// Change 303: when input hurried the short arrival, and the script time it had then.
     private(set) var hurriedAt: Date?
     private(set) var hurriedFrom = 0.0
+    /// CLA-105: how far apart the parts are at the start of `apart` and where they go (0 closed,
+    /// 1 apart), and the tilt the apart script goes to. Other scripts keep `exTo`, so a turn of
+    /// the open device stays open.
+    private(set) var ex0 = 0.0, exTo = 0.0, tiltTo = 0.0
 
     public init() {}
 
@@ -497,6 +508,44 @@ public struct K3DFlip {
         return flip
     }
 
+    /// CLA-105: takes the device apart if it is closed, or puts it together if it is apart.
+    /// Nothing happens while the apart script runs (the trial's `busy`). Opening starts from the
+    /// angle now, as 0° to 360°; closing turns from the angle now, as -180° to 180°, so the turn
+    /// to the front is the short way.
+    public func apart(at now: Date) -> K3DFlip {
+        if script == .apart && !isResting(at: now) { return self }
+        var flip = self
+        let current = pose(at: now).angle, tilt = self.tilt(at: now)
+        let opens = exTo == 0
+        let turn = (current.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360)
+        flip.fromRest = restsOnFront(at: now)
+        flip.script = .apart
+        (flip.start, flip.tilt0, flip.hurriedAt) = (now, tilt, nil)
+        (flip.from, flip.to) = opens ? (turn, Self.apartAngle) : (turn > 180 ? turn - 360 : turn, 0)
+        flip.tiltTo = opens ? Self.apartTilt : 0
+        (flip.ex0, flip.exTo) = opens ? (0, 1) : (1, 0)
+        flip.oldScreen = nil
+        return flip
+    }
+
+    /// The apart script opens the device (else it closes it).
+    var opens: Bool { exTo > ex0 }
+
+    /// CLA-105: how far apart the parts are at `now`: 0 closed, 1 apart.
+    public func ex(at now: Date) -> Double {
+        guard script == .apart else { return exTo }
+        let t = elapsed(at: now) - (opens ? Self.apartTurn : 0)
+        return ex0 + (exTo - ex0) * Self.ease(min(1, max(0, t / Self.apartTime)))
+    }
+
+    /// The share of the apart script's turn and tilt done at `now`: before the parts move when
+    /// it opens, after they close when it closes.
+    func apartTurn(at now: Date) -> Double {
+        let t = elapsed(at: now)
+        let u = opens ? t / Self.apartTurn : (t - Self.apartTime) / Self.closeTurn
+        return Self.quad(min(1, max(0, u)))
+    }
+
     /// The angle the device shows at `now`, in degrees.
     public func angle(at now: Date) -> Double { pose(at: now).angle }
 
@@ -505,6 +554,7 @@ public struct K3DFlip {
     public func tilt(at now: Date) -> Double {
         switch script {
         case .held: return tilt0
+        case .apart: return tilt0 + (tiltTo - tilt0) * apartTurn(at: now)
         case .go(let time, _):
             let u = time > 0 ? min(1, max(0, elapsed(at: now) / time)) : 1
             return tilt0 * (1 - Self.easeOut(min(1, 2 * u)))
@@ -563,6 +613,7 @@ public struct K3DFlip {
         case .go(let time, _): time
         case .nudge: Self.nudgeTime
         case .swap: Self.swapTime
+        case .apart: Self.apartTime + (opens ? Self.apartTurn : Self.closeTurn)
         }
     }
 
@@ -599,7 +650,11 @@ public struct K3DFlip {
     public func isResting(at now: Date) -> Bool { elapsed(at: now) >= length }
 
     /// The front shows flat, with no turn running: the 2D skin can show.
-    public func restsOnFront(at now: Date) -> Bool { script != .held && !toBack && isResting(at: now) }
+    /// CLA-105: closed again after a take-apart, it rests on the front only at 0° with no tilt.
+    public func restsOnFront(at now: Date) -> Bool {
+        guard script != .held, !toBack, isResting(at: now), exTo == 0 else { return false }
+        return script != .apart || Self.nearRest(angle: pose(at: now).angle, tilt: tilt(at: now)) >= 1
+    }
 
     /// An arrival runs: the 2D device must not show before the 3D body has drawn.
     public var arriving: Bool { script == .arrive || script == .arriveShort }
@@ -613,6 +668,7 @@ public struct K3DFlip {
     /// the arrival in its last 0.35 s, the short arrival in its turn's last 0.15 s.
     public func flatOpacity(at now: Date) -> Double {
         let t = elapsed(at: now)
+        if ex(at: now) > 0 { return 0 }  // CLA-105: apart, only the 3D parts show
         switch script {
         case .arrive: return min(1, max(0, (t - Self.arriveTurn) / Self.arriveFade))
         case .arriveShort: return min(1, max(0, (t - (Self.shortTurn - Self.shortFade)) / Self.shortFade))
@@ -626,7 +682,7 @@ public struct K3DFlip {
             if !toBack && t < Self.turn { return 0 }  // swings past the front first
         case .go(let time, let soft):
             if soft && !toBack && t < 0.75 * time { return 0 }  // swings 3° past the front first
-        case .held, .nudge, .spin: break
+        case .held, .nudge, .spin, .apart: break
         }
         return Self.nearRest(angle: pose(at: now).angle, tilt: tilt(at: now))
     }
@@ -682,6 +738,7 @@ public struct K3DFlip {
             guard t < Self.nudgeTime else { return (to, 0) }
             return (to + Self.nudgeAngle * sin(.pi * Self.quad(max(0, t / Self.nudgeTime))), 0)
         case .swap: return (t < Self.swapTime / 2 ? from : to, 0)
+        case .apart: return (from + (to - from) * apartTurn(at: now), 0)
         default: break
         }
         if case .spin(let turn) = script {

@@ -72,14 +72,14 @@ public struct K3DFlipView<Content: View>: View {
         TimelineView(.animation(paused: resting)) { context in
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
-            let pose = flip.pose(at: date), look = flip.look(at: date), tilt = flip.tilt(at: date)
+            let pose = flip.pose(at: date), look = flip.look(at: date), tilt = flip.tilt(at: date), ex = flip.ex(at: date)
             let black = flip.black(at: date, live: self.black)  // a spin shows the old color to 180°
             let flatDevice = content.environment(\.spinBlack, flip.blackOverride(at: date, live: self.black))
             K3DHandover(
                 flat: flat, ready: ready, hidesUntilReady: flip.arriving, keepsInput: flip.takesInput(at: date), content: flatDevice
             ) { shown in
                 // Never 0, as for `body3D`'s own opacity: a hidden Metal view does not draw.
-                body3D(angle: pose.angle, lift: pose.lift, tilt: tilt, scale: look.scale, black: black, shown: shown)
+                body3D(angle: pose.angle, lift: pose.lift, tilt: tilt, ex: ex, scale: look.scale, black: black, shown: shown)
                     .opacity(max(look.opacity, 0.001))
             }
         }
@@ -94,7 +94,7 @@ public struct K3DFlipView<Content: View>: View {
     }
 
     /// The 3D body and its shadow, under the 2D device that shows with opacity `shown`.
-    private func body3D(angle: Double, lift: Double, tilt: Double, scale: Double, black: Bool, shown: Double) -> some View {
+    private func body3D(angle: Double, lift: Double, tilt: Double, ex: Double, scale: Double, black: Bool, shown: Double) -> some View {
         let shows = shown < 1
         let size = PocketSkin.size
         let ready = $ready
@@ -105,7 +105,7 @@ public struct K3DFlipView<Content: View>: View {
             // JST 11-14). At rest on the front, the 2D device draws its own.
             if shows { K3DShadow(angle: angle, lift: lift, tilt: tilt, black: black).scaleEffect(scale) }
             K3DMetalView(
-                angle: angle, lift: lift, tilt: tilt, scale: scale, black: black, screen: flip.screen, oldScreen: flip.oldScreen,
+                angle: angle, lift: lift, tilt: tilt, ex: ex, scale: scale, black: black, screen: flip.screen, oldScreen: flip.oldScreen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
                 onFirstFrame: { ready.wrappedValue = true })
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
@@ -164,6 +164,8 @@ struct K3DMetalView: NSViewRepresentable {
     let angle: Double, lift: Double
     /// Change 307: the tilt toward the viewer while the About drag holds the device, in degrees.
     var tilt = 0.0
+    /// CLA-105: how far apart the parts are, 0 closed to 1 apart.
+    var ex = 0.0
     /// The body's size on screen about the device's center: 1, or less while it arrives.
     var scale = 1.0
     let black: Bool
@@ -181,7 +183,7 @@ struct K3DMetalView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: K3DLayerView, context: Context) {
-        let pose = K3DPose(angle: angle, lift: lift, tilt: tilt, black: black, scale: scale)
+        let pose = K3DPose(angle: angle, lift: lift, tilt: tilt, ex: ex, black: black, scale: scale)
         // Draw only when the picture changes: the view stays mounted while the device rests.
         guard pose != view.pose || screen !== view.screen || oldScreen !== view.oldScreen || center != view.deviceCenter || !view.drewOnce else { return }
         view.pose = pose
