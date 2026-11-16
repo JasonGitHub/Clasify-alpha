@@ -19,6 +19,9 @@ struct K3DShadow: View {
     let angle: Double, lift: Double
     var tilt = 0.0
     let black: Bool
+    /// CLA-119: the poses of the frames just before this one (`trail(_:at:)`). The cut is
+    /// never wider than any of them.
+    var trail: [Trail] = []
 
     /// How far inside the body's outline the cut runs, in points. The body hides the shadow there.
     static let cutInset: CGFloat = 1.5
@@ -32,13 +35,52 @@ struct K3DShadow: View {
         1 - K3DRenderer.smooth(ex / 0.15)
     }
 
+    /// A pose of an earlier frame, with its size on screen relative to this frame's.
+    struct Trail: Equatable {
+        var angle: Double, lift: Double, tilt = 0.0
+        var scale = 1.0
+    }
+
+    /// CLA-119 (build 275, 60 fps: still a 24-32 px gap beside the body as it gets wider, none
+    /// as it gets narrower): the Metal frame still shows up to about one frame after this cut.
+    /// So the cut is also kept inside the body of the two frames before (one more for a dropped
+    /// frame): a body that is late still covers the cut's edge. Where the body gets narrower,
+    /// the cut is this frame's, as before; the shadow under the wider body is hidden by it.
+    /// Only while the body is fully opaque: under a fading body (the arrivals) the shadow would
+    /// show through, so the cut stays this frame's alone there, as before.
+    static func trail(_ flip: K3DFlip, at date: Date) -> [Trail] {
+        let look = flip.look(at: date)
+        guard look.opacity >= 1 else { return [] }
+        return [1.0, 2.0].map { frames in
+            let then = date.addingTimeInterval(-frames / 60)
+            let pose = flip.pose(at: then)
+            return Trail(angle: pose.angle, lift: pose.lift, tilt: flip.tilt(at: then), scale: flip.look(at: then).scale / look.scale)
+        }
+    }
+
+    /// The cut at a pose, inside the cuts of `trail` too. A trail pose that is this pose (at
+    /// rest, or a drag that holds still) changes nothing: the cut is exactly the pose's own.
+    static func cut(angle: Double, lift: Double, tilt: Double = 0, trail: [Trail]) -> Path {
+        let size = PocketSkin.size
+        let now = Trail(angle: angle, lift: lift, tilt: tilt)
+        let points = trail.reduce(cutHull(angle: angle, lift: lift, tilt: tilt)) { points, then in
+            if then == now { return points }
+            // The shadow is scaled about the device's center with this frame's size.
+            let other = cutHull(angle: then.angle, lift: then.lift, tilt: then.tilt).map {
+                CGPoint(x: size.width / 2 + ($0.x - size.width / 2) * then.scale, y: size.height / 2 + ($0.y - size.height / 2) * then.scale)
+            }
+            return clip(points, by: other)
+        }
+        return polygon(points)
+    }
+
     /// Room round the device, so the shadow and its cut have the whole area to draw on.
     static let room: CGFloat = 120
 
     var body: some View {
         let size = PocketSkin.size, r = Self.room
         let copy = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: PocketSkin.shadowDrop)
-        let cut = Self.cut(angle: angle, lift: lift, tilt: tilt).offsetBy(dx: r, dy: r)
+        let cut = Self.cut(angle: angle, lift: lift, tilt: tilt, trail: trail).offsetBy(dx: r, dy: r)
         // CLA-119 (#263 frames: a black line on the right and bottom edge): the copy is the
         // section hull, up to about 1 pt wider than the mesh's real outline, and the band below
         // shows 1.5 pt outside the outline. So the copy itself is drawn out of the frame, and
@@ -71,6 +113,11 @@ struct K3DShadow: View {
     /// and the flat back, which the steel curves in to by 14 pt. Each section is the 2D body's
     /// own rounded rectangle, projected with the renderer's camera.
     static func outline(angle: Double, lift: Double, tilt: Double = 0, drop: CGFloat) -> Path {
+        polygon(outlineHull(angle: angle, lift: lift, tilt: tilt, drop: drop))
+    }
+
+    /// `outline`'s points, counterclockwise on screen.
+    static func outlineHull(angle: Double, lift: Double, tilt: Double = 0, drop: CGFloat) -> [CGPoint] {
         let size = PocketSkin.size
         let t = K3DMesh.depth
         let sections: [(z: Double, inset: CGFloat)] = [(t / 2, 0), (t / 2 - 0.7 * t, 0), (-t / 2, 14)]
@@ -82,7 +129,7 @@ struct K3DShadow: View {
                 points.append(project(p, z: section.z, angle: angle, lift: lift, tilt: tilt))
             }
         }
-        return polygon(Self.hull(points))
+        return Self.hull(points)
     }
 
     /// CLA-119: the closed body's real outline on screen at a pose, in the 2D device's frame: the
@@ -91,8 +138,43 @@ struct K3DShadow: View {
     /// The renderer's mesh is read, so the mesh is not built twice; with no renderer there is no
     /// 3D body, and the cut is the section hull.
     static func cut(angle: Double, lift: Double, tilt: Double = 0) -> Path {
-        guard let points = K3DRenderer.shared?.outerPoints else { return outline(angle: angle, lift: lift, tilt: tilt, drop: 0) }
-        return polygon(hull(points.map { projectBody($0, angle: angle, lift: lift, tilt: tilt) }))
+        polygon(cutHull(angle: angle, lift: lift, tilt: tilt))
+    }
+
+    /// `cut`'s points, counterclockwise on screen.
+    static func cutHull(angle: Double, lift: Double, tilt: Double = 0) -> [CGPoint] {
+        guard let points = K3DRenderer.shared?.outerPoints else { return outlineHull(angle: angle, lift: lift, tilt: tilt, drop: 0) }
+        return hull(points.map { projectBody($0, angle: angle, lift: lift, tilt: tilt) })
+    }
+
+    /// The part of the convex polygon `subject` inside the convex polygon `clip` (Sutherland-Hodgman).
+    /// Both are convex hulls, so the result is too. Either winding.
+    static func clip(_ subject: [CGPoint], by clip: [CGPoint]) -> [CGPoint] {
+        guard clip.count > 2 else { return subject }
+        func cross(_ o: CGPoint, _ a: CGPoint, _ b: CGPoint) -> CGFloat { (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x) }
+        var area: CGFloat = 0
+        for i in clip.indices { area += cross(.zero, clip[i], clip[(i + 1) % clip.count]) }
+        let sign: CGFloat = area < 0 ? -1 : 1
+        var out = subject
+        for i in clip.indices {
+            let a = clip[i], b = clip[(i + 1) % clip.count]
+            let points = out
+            out = []
+            guard let last = points.last else { break }
+            var previous = last
+            for point in points {
+                let inside = sign * cross(a, b, point) >= 0, wasInside = sign * cross(a, b, previous) >= 0
+                if inside != wasInside {
+                    // Where the edge from `previous` to `point` crosses the line through a and b.
+                    let d = cross(a, b, previous) - cross(a, b, point)
+                    let u = d == 0 ? 0 : cross(a, b, previous) / d
+                    out.append(CGPoint(x: previous.x + (point.x - previous.x) * u, y: previous.y + (point.y - previous.y) * u))
+                }
+                if inside { out.append(point) }
+                previous = point
+            }
+        }
+        return out
     }
 
     /// The closed mesh's shell and plate points (parts 0 and 1), in the body's points, each once.

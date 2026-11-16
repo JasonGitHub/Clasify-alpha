@@ -113,7 +113,9 @@ public struct K3DFlipView<Content: View>: View {
                 flat: flat, ready: ready, hidesUntilReady: flip.arriving, keepsInput: flip.takesInput(at: date), content: flatDevice
             ) { shown in
                 // Never 0, as for `body3D`'s own opacity: a hidden Metal view does not draw.
-                body3D(angle: pose.angle, lift: pose.lift, tilt: tilt, ex: ex, scale: look.scale, black: black, shown: shown)
+                body3D(
+                    angle: pose.angle, lift: pose.lift, tilt: tilt, ex: ex, scale: look.scale, black: black, shown: shown,
+                    trail: K3DShadow.trail(flip, at: date))
                     .opacity(max(look.opacity, 0.001))
             }
         }
@@ -131,7 +133,9 @@ public struct K3DFlipView<Content: View>: View {
     }
 
     /// The 3D body and its shadow, under the 2D device that shows with opacity `shown`.
-    private func body3D(angle: Double, lift: Double, tilt: Double, ex: Double, scale: Double, black: Bool, shown: Double) -> some View {
+    private func body3D(
+        angle: Double, lift: Double, tilt: Double, ex: Double, scale: Double, black: Bool, shown: Double, trail: [K3DShadow.Trail]
+    ) -> some View {
         let shows = shown < 1
         let size = PocketSkin.size
         let ready = $ready
@@ -143,7 +147,7 @@ public struct K3DFlipView<Content: View>: View {
             // CLA-105 (Jason OK 17:54 JST 11-16): the shadow is the closed body's, so it fades out
             // as the device opens and back in as it closes. Open, there is none, as in the mock.
             let fade = K3DShadow.fade(ex: ex)
-            if shows && fade > 0 { K3DShadow(angle: angle, lift: lift, tilt: tilt, black: black).scaleEffect(scale).opacity(fade) }
+            if shows && fade > 0 { K3DShadow(angle: angle, lift: lift, tilt: tilt, black: black, trail: trail).scaleEffect(scale).opacity(fade) }
             K3DMetalView(
                 angle: angle, lift: lift, tilt: tilt, ex: ex, scale: scale, black: black, screen: flip.screen, oldScreen: flip.oldScreen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
