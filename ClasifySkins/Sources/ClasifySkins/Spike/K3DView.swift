@@ -282,7 +282,7 @@ final class K3DLayerView: MTKView {
         self.depth = depth
         self.vertices = vertices
         self.indices = indices
-        indexCount = mesh.indices.count
+        indexCount = mesh.closedIndexCount  // the closed device; Take apart (CLA-105) draws the rest later
         self.front = front
         self.frontBytes = frontBytes
         self.back = back
