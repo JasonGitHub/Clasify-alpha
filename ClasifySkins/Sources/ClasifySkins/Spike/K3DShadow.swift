@@ -28,8 +28,13 @@ struct K3DShadow: View {
 
     var body: some View {
         let size = PocketSkin.size, r = Self.room
-        let copy = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: PocketSkin.shadowDrop)
-        let cut = Self.cut(angle: angle, lift: lift, tilt: tilt).offsetBy(dx: r, dy: r)
+        let body = Self.cut(angle: angle, lift: lift, tilt: tilt)
+        // CLA-119 (#263 frames: a black line on the right and bottom edge): the copy is the
+        // section hull, up to about 1 pt wider than the mesh's real outline, and the band below
+        // shows 1.5 pt outside the outline too. So the copy is cut to the outline: its opaque
+        // fill never shows past the body, only its blurred shadow does.
+        let copy = Self.outline(angle: angle, lift: lift, tilt: tilt, drop: PocketSkin.shadowDrop).intersection(body)
+        let cut = body.offsetBy(dx: r, dy: r)
         copy.offsetBy(dx: r, dy: r)
             .fill(Color.black)
             .shadow(color: PocketSkin.shadowColor(black ? 1 : 0), radius: 20, y: 20)
