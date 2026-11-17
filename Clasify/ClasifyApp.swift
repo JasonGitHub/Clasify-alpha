@@ -174,7 +174,7 @@ final class AppModel {
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
         let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
-        let store = Store(player: services, library: libraries, settings: UserDefaults.standard)
+        let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive())
         // Leaving Settings with another service (card BM, change 260). The reducer sends this
         // before the new service logs in, so every later call goes to the new one.
         store.onSetService = { [weak services, weak libraries, weak player, weak store] service in

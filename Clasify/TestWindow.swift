@@ -140,7 +140,7 @@ private struct TestPanel: View {
         case .color: "Pick Your Color"
         case .spotifyApp: "Spotify App"
         case .yourMusic: "Your Music"
-        case .betaSoon, .betaEnded: "Beta"
+        case .betaSoon, .betaEnded, .betaNew: "Beta"
         }
     }
 

@@ -104,9 +104,18 @@ func sampleState() -> AppState {
         #expect(Labels.title(.betaSoon, in: s) == "Beta" && Labels.title(.betaEnded, in: s) == "Beta")
         #expect(Labels.message(for: Frame(screen: .betaSoon), in: s) == nil)  // its rows show
         #expect(Labels.setupWords(for: Frame(screen: .betaSoon), in: s)
-            == .init(headline: "Time for a fresh beta", line: "Get it any time before 14 Dec."))
+            == .init(headline: "A fresh beta is out", line: "Get it any time before 14 Dec."))  // card BI.1, 317
         #expect(Labels.setupWords(for: Frame(screen: .betaEnded), in: s)
-            == .init(headline: "This beta has ended", line: "Get the new beta to keep listening."))
+            == .init(headline: "Thanks for testing", line: "Get the new beta to keep listening."))  // 318
+        // Card BV, change 312: the update notice.
+        s.beta?.number = 286
+        s.newBetaNow = 290
+        #expect(Labels.title(.betaNew, in: s) == "Beta" && Labels.message(for: Frame(screen: .betaNew), in: s) == nil)
+        #expect(Labels.setupWords(for: Frame(screen: .betaNew), in: s)
+            == .init(headline: "A fresh beta is out", line: "You have Beta 286. Get the new one any time."))
+        #expect(PreviewScreen.of(.betaNew, in: s)?.screen == .download(word: "Beta 290"))
+        #expect(PreviewScreen.of(.betaNew, in: s)?.cable == .light && PreviewScreen.of(.betaSoon, in: s)?.cable == .light)  // 315, 316
+        #expect(PreviewScreen.of(.betaEnded, in: s)?.cable == .off)
         #expect(Labels.row(.getNewBeta, on: .betaSoon, in: s) == .init(label: "Get New Beta"))
         #expect(Labels.row(.later, on: .betaSoon, in: s) == .init(label: "Later"))
         #expect(Labels.row(.quit, on: .betaEnded, in: s) == .init(label: "Quit"))
@@ -114,7 +123,7 @@ func sampleState() -> AppState {
         for screen in [Screen.tracks(playlist: Playlist.likedSongsID), .now, .about] {
             #expect(Labels.betaTag(on: screen, in: s))
         }
-        for screen in [Screen.main, .playlists, .albums, .artists, .settings, .betaSoon, .betaEnded, .login] {
+        for screen in [Screen.main, .playlists, .albums, .artists, .settings, .betaSoon, .betaEnded, .betaNew, .login] {
             #expect(!Labels.betaTag(on: screen, in: s))
         }
         s.beta = nil  // an ad-hoc build

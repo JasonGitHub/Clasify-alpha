@@ -41,8 +41,11 @@ enum PreviewScreen: Equatable {
             let names = state.namesAt > 0 ? state.firstReadNames : []
             return (screen: PreviewScreen.names(names, from: state.namesAt, songs: state.firstReadSongs, late: state.namesLate), cable: SyncCable.Plug.light)
         case .yourMusic: return (screen: PreviewScreen.mark(ok: true, word: "Synced"), cable: SyncCable.Plug.on)
-        // Card BI v2: the new beta (233) and the end (234), with the cable unplugged.
-        case .betaSoon: return (screen: PreviewScreen.download(word: "New beta"), cable: SyncCable.Plug.off)
+        // Card BI v2: the new beta (233) and the end (234). Something new comes in, so the
+        // warning's cable is plugged in with the light (card BI.1, change 316), as on the
+        // update notice (card BV, 315) with the new build's number; the end keeps it off.
+        case .betaSoon: return (screen: PreviewScreen.download(word: "New beta"), cable: SyncCable.Plug.light)
+        case .betaNew: return (screen: PreviewScreen.download(word: "Beta \(state.newBetaNow ?? 0)"), cable: SyncCable.Plug.light)
         case .betaEnded: return (screen: PreviewScreen.mark(ok: false, word: "Ended"), cable: SyncCable.Plug.off)
         default: return nil
         }

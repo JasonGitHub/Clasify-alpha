@@ -1563,6 +1563,17 @@ import Testing
         let ended = try render(s, "beta-ended", time: 10)
         #expect(headline(ended) && !arrow(ended))
         #expect(ended.isBlue(175, firstRow) && !ended.isBlue(175, firstRow + 23))  // Get New Beta, then Quit
+        // Card BV (312, 315): the update notice, the same on Silver and Black.
+        s.beta?.number = 286
+        s.newBetaNow = 290
+        s.stack = [Frame(screen: .main), Frame(screen: .betaNew)]
+        for color in DeviceColor.allCases {
+            s.deviceColor = color
+            let new = try render(s, "beta-new-\(color.rawValue)", time: 10)
+            #expect(headline(new) && arrow(new))
+            #expect(new.isBlue(175, firstRow) && !new.isBlue(175, firstRow + 23))  // Get New Beta, then Later
+        }
+        s.deviceColor = .silver
         // The pill: grey, right in the title bar, where the play mark is not.
         let pill = { (shot: Snapshot) in
             any(shot, x: (Self.screenLeft + 255)...(Self.screenLeft + 292), y: (Self.screenTop + 4)...(Self.screenTop + 14)) { r, g, b in

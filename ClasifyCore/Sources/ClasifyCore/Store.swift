@@ -24,6 +24,13 @@ public protocol Player: AnyObject {
     func setVolume(_ percent: Int)
 }
 
+/// Card BV (CLA-125): where the newest beta's build number comes from. The app reads one small
+/// file on getmypod.app; tests use a fake. It never touches the music services.
+public protocol BetaFeed: Sendable {
+    /// The newest beta's build number, or nil: offline, no answer in time, or a bad file.
+    func latestBuild() async -> Int?
+}
+
 /// How a login ended.
 public enum LoginResult: Equatable, Sendable {
     case ok, failed
@@ -149,13 +156,16 @@ public final class Store {
     @ObservationIgnored public var onQuit: (@MainActor () -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
+    /// Card BV: the launch check's source. With none, the check finds nothing.
+    @ObservationIgnored private let betaFeed: (any BetaFeed)?
 
     public init(
         player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live,
-        settings: (any SettingsStore)? = nil
+        settings: (any SettingsStore)? = nil, betaFeed: (any BetaFeed)? = nil
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
+        self.betaFeed = betaFeed
         self.state.words = library.words
         library.onProgress = { [weak self] playlist, done, total, albums in
             self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
@@ -258,6 +268,12 @@ public final class Store {
             case .openPrivacy: onOpenPrivacy?()
             case .getNewBeta: onGetNewBeta?()
             case .quit: onQuit?()
+            case .checkLatestBeta:
+                guard let betaFeed else { break }
+                Task { [weak self] in  // the read runs off the main actor; only its answer comes back
+                    guard let build = await betaFeed.latestBuild() else { return }
+                    self?.send(.latestBeta(build))
+                }
             case .cancelLogIn:
                 let library = self.library
                 Task { await library.cancelLogIn() }
