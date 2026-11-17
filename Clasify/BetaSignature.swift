@@ -29,11 +29,11 @@ enum BetaSignature {
 }
 
 /// Card BV (CLA-125, change 314): reads the newest beta's build number from one small file on
-/// getmypod.app, `{"build": 290, ...}`, once a launch. Only `build` is read. Offline, no answer in
+/// dl.getmypod.app (Cloudflare R2, written by app-dmg.yml), `{"build": 290, ...}`, once a launch. Only `build` is read. Offline, no answer in
 /// 5 s, an error status or a bad file give nil, with no error shown. The session is ephemeral:
 /// no cache and no cookies on disk.
 struct BetaFeedLive: BetaFeed {
-    static let latest = URL(string: "https://getmypod.app/beta/latest.json")!
+    static let latest = URL(string: "https://dl.getmypod.app/beta/latest.json")!
 
     private struct Latest: Decodable { let build: Int }
 
