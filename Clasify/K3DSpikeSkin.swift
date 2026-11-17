@@ -72,7 +72,13 @@ struct K3DSpikeSkin: View {
         K3DFlipView(
             flip: flip, black: store.state.shownColor == .black, margin: DeviceWindow.margin + room, onTap: showroom ? click : turn,
             onRoom: { needs in
-                let new = needs ? WindowRoom.fit(K3DRoom.extra, in: window.window) : EdgeInsets()
+                // CLA-124 (Jason 15:19 JST 11-17: the device moved right at each open): no room
+                // before the window is on screen. Else SwiftUI makes the window with the room at
+                // the restored top-left, and the device lands 190 pt right of its place. The
+                // arrivals fit in the margins alone (`K3DRoomTests.theArrivalsFitWithNoRoom`).
+                // The first turn after an arrival starts with the window on screen, so it gets its room.
+                let shown = window.window?.isVisible == true
+                let new = needs && shown ? WindowRoom.fit(K3DRoom.extra, in: window.window) : EdgeInsets()
                 split?.set(new)  // before `room`, so no layout pass sees the new room with the old split
                 room = new
             }

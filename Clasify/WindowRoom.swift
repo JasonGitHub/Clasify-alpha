@@ -16,11 +16,10 @@ struct WindowRoom: NSViewRepresentable {
     /// This skin's own device window, for `fit` (more than one device window can be open).
     let window: WindowRef
 
-    func makeCoordinator() -> Coordinator { Coordinator(room: room) }
-
     func makeNSView(context: Context) -> NSView {
         let hook = Hook()
         hook.ref = window
+        hook.room = room  // the window is made with this room
         return hook
     }
 
@@ -35,9 +34,9 @@ struct WindowRoom: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSView, context: Context) {
-        let old = context.coordinator.room
-        guard old != room else { return }
-        context.coordinator.room = room
+        guard let hook = view as? Hook, hook.room != room else { return }
+        let old = hook.room
+        hook.room = room
         // No window yet: SwiftUI makes it at the content's size, room included.
         guard let window = view.window else { return }
         window.setFrame(Self.frame(window.frame, from: old, to: room), display: false)
@@ -53,12 +52,6 @@ struct WindowRoom: NSViewRepresentable {
             width: frame.width + left + right, height: frame.height + top + bottom)
     }
 
-    final class Coordinator {
-        /// The room the window has now.
-        var room: EdgeInsets
-        init(room: EdgeInsets) { self.room = room }
-    }
-
     /// A skin's device window, set when the hook joins it.
     @MainActor final class WindowRef {
         weak var window: NSWindow?
@@ -66,10 +59,27 @@ struct WindowRoom: NSViewRepresentable {
 
     final class Hook: NSView {
         var ref: WindowRef?
+        /// The room the window has now. Only `updateNSView` and `leave` change it.
+        var room = EdgeInsets()
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
             ref?.window = window
+            let center = NotificationCenter.default
+            center.removeObserver(self, name: NSWindow.willCloseNotification, object: nil)
+            center.removeObserver(self, name: NSApplication.willTerminateNotification, object: nil)
+            guard let window else { return }
+            center.addObserver(self, selector: #selector(leave), name: NSWindow.willCloseNotification, object: window)
+            center.addObserver(self, selector: #selector(leave), name: NSApplication.willTerminateNotification, object: nil)
+        }
+
+        /// CLA-124: the saved frame never holds the room. When the window closes or the app quits
+        /// in the middle of a turn, the window goes back to its size with no room first, so the
+        /// next open puts the device where it was before the turn.
+        @objc private func leave(_ note: Notification) {
+            guard room != EdgeInsets(), let window else { return }
+            window.setFrame(WindowRoom.frame(window.frame, from: room, to: EdgeInsets()), display: false)
+            room = EdgeInsets()
         }
 
         /// Clicks go through to the device and the window drag.

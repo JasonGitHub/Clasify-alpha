@@ -47,6 +47,46 @@ import Testing
         }
     }
 
+    /// CLA-124 (Jason 15:19 JST 11-17: the device moves right at each open): the window gets no
+    /// room before it is on screen, so every arrival (change 288 at the first launch and as
+    /// arrive.cold "full", change 303 as "short") must fit in the app's margins alone, at every
+    /// frame. The body: its box's corners, projected, plus 2 pt (`bodyRect`), conservative. The
+    /// shadow: `K3DShadow`'s copy (the body's outline 20 pt lower, scaled with the body about the
+    /// device's centre, its shadow 20 pt down) and its blur, 20 pt. The geometry is the same for
+    /// Silver and Black (only the shadow's color differs), so one pass covers both.
+    @Test func theArrivalsFitWithNoRoom() {
+        let m = Self.margin, device = PocketSkin.size
+        let size = CGSize(width: m.leading + device.width + m.trailing, height: m.top + device.height + m.bottom)
+        let center = CGPoint(x: m.leading + device.width / 2, y: m.top + device.height / 2)
+        let start = Date(timeIntervalSinceReferenceDate: 0)
+        var worstBody = CGFloat.infinity, worstShadow = CGFloat.infinity
+        var whereBody = "", whereShadow = ""
+        for flip in [K3DFlip.arrive(at: start) { nil }, K3DFlip.arriveShort(at: start) { nil }] {
+            for t in stride(from: 0.0, through: flip.length, by: 1.0 / 120) {
+                let now = start.addingTimeInterval(t)
+                let pose = flip.pose(at: now), look = flip.look(at: now), tilt = flip.tilt(at: now)
+                let p = K3DPose(angle: pose.angle, lift: pose.lift, tilt: tilt, scale: look.scale)
+                guard let r = K3DRenderer.bodyRect(closed, pose: p, size: size, center: center, pixelScale: 1) else {
+                    Issue.record("\(flip.script) at \(t) s: no body rect")
+                    continue
+                }
+                // `bodyRect` stops at the edge, so 0 here means the body reaches it.
+                let body = CGFloat(min(r.x, r.y, Int(size.width) - r.x - r.w, Int(size.height) - r.y - r.h))
+                if body < worstBody { (worstBody, whereBody) = (body, "\(flip.script) at \(t) s") }
+                #expect(body > 0, "body at the window edge: \(flip.script) at \(t) s")
+                if look.opacity > 0 {
+                    let c = CGPoint(x: device.width / 2, y: device.height / 2)
+                    let hull = K3DShadow.outlineHull(angle: pose.angle, lift: pose.lift, tilt: tilt, drop: PocketSkin.shadowDrop)
+                        .map { CGPoint(x: m.leading + c.x + ($0.x - c.x) * look.scale, y: m.top + c.y + ($0.y - c.y) * look.scale + 20) }
+                    let xs = hull.map(\.x), ys = hull.map(\.y)
+                    let shadow = min(xs.min()!, ys.min()!, size.width - xs.max()!, size.height - ys.max()!) - 20
+                    if shadow < worstShadow { (worstShadow, whereShadow) = (shadow, "\(flip.script) at \(t) s") }
+                }
+            }
+        }
+        print("CLA-124 arrivals with no room: body clearance \(worstBody) pt (\(whereBody)), shadow clearance after its 20 pt blur \(worstShadow) pt (\(whereShadow))")
+    }
+
     /// CLA-119 (build 269): the top room is only the space up to the screen's visible top, so
     /// macOS never moves the grown window. The sides and the bottom keep their room.
     @Test func theTopRoomFitsUnderTheMenuBar() {
