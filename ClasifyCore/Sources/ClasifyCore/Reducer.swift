@@ -1106,7 +1106,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         case .latestBeta(let build):
             // Every answer is saved ("never miss"); only one before the first key may show now.
             s.newBeta = max(build, s.newBeta ?? 0)
-            if !s.touched && build > (s.newBetaNow ?? 0) { s.newBetaNow = build }
+            // The number on a notice that shows never changes under the user.
+            if !s.touched && !s.betaNoticedNow && build > (s.newBetaNow ?? 0) { s.newBetaNow = build }
             checkBeta()
 
         case .libraryWords(let words):

@@ -678,10 +678,11 @@ public struct AppState: Equatable, Sendable {
 
     /// Card BV (changes 312 to 314): the notice of a newer beta waits to show. Only a beta
     /// checks; the build must be newer than this one and than the last notice, and neither the
-    /// day-27 warning nor the notice has shown on this launch.
+    /// day-27 warning nor the notice has shown on this launch. It never comes in after a key or
+    /// a wheel turn ("never interrupt"): the build stays saved for the next launch.
     var newBetaWaits: Bool {
         guard let beta, let latest = newBetaNow, latest > beta.number, latest > (betaNoticed ?? 0) else { return false }
-        return !betaWarnedNow && !betaNoticedNow
+        return !touched && !betaWarnedNow && !betaNoticedNow
     }
 
     /// When `.tick` must next look at the beta: the warning, or the end. 0 when nothing is due.

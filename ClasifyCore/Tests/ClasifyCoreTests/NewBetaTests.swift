@@ -113,6 +113,25 @@ import Testing
         #expect(s.top.screen == .betaNew && s.betaNoticed == 290)
     }
 
+    /// "Never interrupt": an answer that came before the first key waits for the login; a key
+    /// in the meantime stops it on this launch. It stays saved, and the next launch shows it.
+    @Test func aKeyWhileTheNoticeWaitsStopsIt() {
+        var s = afterSetup()
+        send(&s, .betaBuild(beta), .launch, .latestBeta(290), .wheel(1), .restored(token: 1, ok: true), .tick)
+        #expect(s.stack.first?.screen == .main && s.top.screen != .betaNew && s.betaNoticed == nil && s.newBeta == 290)
+        #expect(s.betaDue != 1)
+        var next = nextLaunch(s)
+        send(&next, .betaBuild(beta))
+        #expect(next.top.screen == .betaNew && next.betaNoticed == 290)
+    }
+
+    /// The number on the notice does not change while it shows; a newer answer is only saved.
+    @Test func theNumberOnTheNoticeStays() {
+        var s = launched()
+        send(&s, .betaBuild(beta), .latestBeta(290), .latestBeta(291))
+        #expect(s.top.screen == .betaNew && s.newBetaNow == 290 && s.newBeta == 291)
+    }
+
     /// Change 313: on a launch where the day-27 warning shows, the notice does not.
     @Test func noNoticeOnALaunchWithTheWarning() {
         let day27 = beta.warnsAt + 1
