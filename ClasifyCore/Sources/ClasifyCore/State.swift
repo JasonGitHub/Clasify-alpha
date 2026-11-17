@@ -145,12 +145,14 @@ public enum Screen: Equatable, Sendable {
     case artists
     /// Card BI v2: the one warning on day 27 of a beta (change 233), and its end on day 30 (234).
     case betaSoon, betaEnded
+    /// Card BV (CLA-125, change 312): a newer beta is out. It shows once for each new build.
+    case betaNew
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -223,7 +225,9 @@ public enum Row: Equatable, Sendable {
 public struct BetaBuild: Equatable, Sendable {
     /// When the build was signed, in `Dependencies.now` time.
     public var signed: Double
-    public init(signed: Double) { self.signed = signed }
+    /// The build number (CFBundleVersion), which card BV compares with the newest beta.
+    public var number: Int
+    public init(signed: Double, number: Int = 0) { self.signed = signed; self.number = number }
 
     public static let day = 86_400.0
     /// Change 233: the one warning, 3 days before the end.
@@ -328,6 +332,22 @@ public struct AppState: Equatable, Sendable {
     /// The signing time of the beta whose warning showed (change 233: once). Saved with the
     /// settings, so a new beta warns again.
     public var betaWarned: Double?
+    /// Card BV (change 312): the newest beta build that any check found, also a late one.
+    /// Saved with the settings, so a later launch shows its notice at once ("never miss").
+    public var newBeta: Int?
+    /// Card BV (change 312): the newest beta build whose notice showed. Saved with the
+    /// settings, so the notice shows once for each build.
+    public var betaNoticed: Int?
+    /// Card BV: the build whose notice may show on this launch: the saved one at launch, or the
+    /// check's answer when it came before the first key or wheel turn. Not saved.
+    public var newBetaNow: Int?
+    /// The user pressed a key or turned the wheel on this launch. A later answer of the beta
+    /// check then shows nothing; it is only saved (change 312). Not saved.
+    public var touched = false
+    /// The day-27 warning (233) showed on this launch, so the notice does not (313). Not saved.
+    public var betaWarnedNow = false
+    /// The notice showed on this launch: a newer answer shows nothing more. Not saved.
+    public var betaNoticedNow = false
     /// The device arrived at the first launch ever (card BR, change 288): until then the skin
     /// shows it turning in, and the reducer takes no input. Saved with the settings.
     public var arrived = true
@@ -652,13 +672,24 @@ public struct AppState: Equatable, Sendable {
     /// The warning (change 233) may open now: on the main screens, signed in, after setup. It
     /// waits while a list loads, because a load ends only on its own frame.
     var canWarnBeta: Bool {
-        signedIn && stack.first?.screen == .main && !top.loading && top.screen != .spotifyApp && top.screen != .betaSoon
+        signedIn && stack.first?.screen == .main && !top.loading && top.screen != .spotifyApp
+            && top.screen != .betaSoon && top.screen != .betaNew
+    }
+
+    /// Card BV (changes 312 to 314): the notice of a newer beta waits to show. Only a beta
+    /// checks; the build must be newer than this one and than the last notice, and neither the
+    /// day-27 warning nor the notice has shown on this launch. It never comes in after a key or
+    /// a wheel turn ("never interrupt"): the build stays saved for the next launch.
+    var newBetaWaits: Bool {
+        guard let beta, let latest = newBetaNow, latest > beta.number, latest > (betaNoticed ?? 0) else { return false }
+        return !touched && !betaWarnedNow && !betaNoticedNow
     }
 
     /// When `.tick` must next look at the beta: the warning, or the end. 0 when nothing is due.
     /// Like every deadline that `.tick` ends, the app's ticker must check it.
     public var betaDue: Double {
         guard let beta, top.screen != .betaEnded else { return 0 }
+        if newBetaWaits && canWarnBeta { return 1 }  // card BV: due now
         return betaWarned != beta.signed && canWarnBeta ? beta.warnsAt : beta.endsAt
     }
 
@@ -883,7 +914,7 @@ public struct AppState: Equatable, Sendable {
         case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
         case .pickMusic: (appleMusicFirst ? [.appleMusic, .spotify] : MusicService.allCases).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
-        case .betaSoon: [.getNewBeta, .later]
+        case .betaSoon, .betaNew: [.getNewBeta, .later]
         case .betaEnded: [.getNewBeta, .quit]
         case .licenses: License.all.indices.map { .license($0) }
         case .about, .now, .hello, .yourMusic, .loggedIn, .license: []

@@ -40,7 +40,7 @@ enum Labels {
         case .pickMusic: "Pick Your Music"  // card BM, change 257
         case .spotifyApp: "Spotify App"
         case .yourMusic: "Your Music"
-        case .betaSoon, .betaEnded: "Beta"  // card BI v2, changes 233 and 234
+        case .betaSoon, .betaEnded, .betaNew: "Beta"  // card BI v2, changes 233 and 234; card BV, 312
         }
     }
 
@@ -179,9 +179,12 @@ enum Labels {
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
         case .yourMusic: SetupWords(headline: "You’re all set", line: ready)
-        // Card BI v2: one friendly warning (change 233), and the end (234). No countdown.
-        case .betaSoon: SetupWords(headline: "Time for a fresh beta", line: "Get it any time before \(betaEnd(state.beta)).")
-        case .betaEnded: SetupWords(headline: "This beta has ended", line: "Get the new beta to keep listening.")
+        // Card BI v2: one friendly warning (change 233), and the end (234). No countdown. Card
+        // BI.1: one-line headlines, so the text has 3 lines like AX and BB (changes 317, 318).
+        case .betaSoon: SetupWords(headline: "A fresh beta is out", line: "Get it any time before \(betaEnd(state.beta)).")
+        case .betaEnded: SetupWords(headline: "Thanks for testing", line: "Get the new beta to keep listening.")
+        // Card BV, change 312: the same headline, and this build's number.
+        case .betaNew: SetupWords(headline: "A fresh beta is out", line: "You have Beta \(state.beta?.number ?? 0). Get the new one any time.")
         default: nil
         }
     }

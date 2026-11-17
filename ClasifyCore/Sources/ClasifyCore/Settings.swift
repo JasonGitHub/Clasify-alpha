@@ -26,6 +26,8 @@ public struct Settings: Equatable, Sendable {
     public var tourHides: [Hint: Int] = [:]
     /// The beta whose warning showed, by its signing time (card BI v2, change 233).
     public var betaWarned: Double?
+    /// The newest beta build that a check found, and the newest whose notice showed (card BV).
+    public var newBeta: Int?, betaNoticed: Int?
     /// The device arrived once, at the first launch ever (card BR, change 288). True by default;
     /// a store with no saved value gives false, so a new Mac sees the arrival once.
     public var arrived = true
@@ -46,6 +48,8 @@ public struct Settings: Equatable, Sendable {
         static let tourOn = "hints.tour"
         static let tourHides = "hints.hides"
         static let betaWarned = "beta.warned"
+        static let newBeta = "beta.newest"
+        static let betaNoticed = "beta.noticed"
         static let arrived = "arrive.done"
     }
 
@@ -71,6 +75,8 @@ public struct Settings: Equatable, Sendable {
             }
         }
         betaWarned = store.string(forKey: Key.betaWarned).flatMap { Double($0) }
+        newBeta = store.string(forKey: Key.newBeta).flatMap { Int($0) }
+        betaNoticed = store.string(forKey: Key.betaNoticed).flatMap { Int($0) }
         arrived = store.string(forKey: Key.arrived).flatMap { Bool($0) } ?? false
     }
 
@@ -87,6 +93,8 @@ public struct Settings: Equatable, Sendable {
         store.set(String(tourOn), forKey: Key.tourOn)
         store.set(tourHides.map { "\($0.key.rawValue):\($0.value)" }.sorted().joined(separator: ","), forKey: Key.tourHides)
         store.set(betaWarned.map { String($0) }, forKey: Key.betaWarned)
+        store.set(newBeta.map { String($0) }, forKey: Key.newBeta)
+        store.set(betaNoticed.map { String($0) }, forKey: Key.betaNoticed)
         store.set(String(arrived), forKey: Key.arrived)
     }
 }
@@ -112,6 +120,7 @@ extension AppState {
             v.hintsDone = hintsDone
             (v.tourOn, v.tourHides) = (tourOn, tourHides)
             v.betaWarned = betaWarned
+            (v.newBeta, v.betaNoticed) = (newBeta, betaNoticed)
             v.arrived = arrived
             return v
         }
@@ -124,6 +133,7 @@ extension AppState {
             hintsDone = newValue.hintsDone
             (tourOn, tourHides) = (newValue.tourOn, newValue.tourHides)
             betaWarned = newValue.betaWarned
+            (newBeta, betaNoticed) = (newValue.newBeta, newValue.betaNoticed)
             arrived = newValue.arrived
         }
     }

@@ -80,6 +80,8 @@ public enum Action: Equatable, Sendable {
     case accessDenied(token: Int)
     /// The app read its own signature at launch (card BI v2): a beta, or nil for an ad-hoc build.
     case betaBuild(BetaBuild?)
+    /// The launch check of card BV (CLA-125) read the newest beta's build number.
+    case latestBeta(Int)
     /// The skin's first-launch arrival ended, or did not run (card BR, change 288). Hello starts
     /// from now. A second one does nothing.
     case arrived
@@ -135,6 +137,9 @@ public enum Effect: Equatable, Sendable {
     case getNewBeta
     /// Quit the app, from the ended beta (card BI v2, change 234).
     case quit
+    /// Card BV (CLA-125): read the newest beta's build number, once. A newer number comes back
+    /// as `.latestBeta`; offline, no answer in 5 s or a bad file send nothing (change 314).
+    case checkLatestBeta
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -511,16 +516,26 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.stack = [Frame(screen: .betaEnded)]
         } else if now >= beta.warnsAt && s.betaWarned != beta.signed && s.canWarnBeta {
             s.betaWarned = beta.signed
+            s.betaWarnedNow = true
             s.stack.append(Frame(screen: .betaSoon))
+        } else if s.newBetaWaits && s.canWarnBeta {
+            // Card BV, change 312: over the screen that shows. Music goes on as it was.
+            s.betaNoticed = s.newBetaNow
+            s.betaNoticedNow = true
+            s.stack.append(Frame(screen: .betaNew))
         }
     }
     func apply() {
         // Change 234: the ended beta takes only the wheel and its rows.
         if s.top.screen == .betaEnded {
             switch action {
-            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .arrived: break
+            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived: break
             default: return
             }
+        }
+        switch action {  // change 312: a key or a wheel turn; a later beta answer shows nothing
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: s.touched = true
+        default: break
         }
         switch action {
         case .wheel(let d):
@@ -710,7 +725,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .openPrivacy: fx.append(.openPrivacy)
             case .getNewBeta:  // the warning closes; the ended screen stays
                 fx.append(.getNewBeta)
-                if s.top.screen == .betaSoon { s.stack.removeLast() }
+                if s.top.screen == .betaSoon || s.top.screen == .betaNew { s.stack.removeLast() }
             case .later: s.stack.removeLast()
             case .quit: fx.append(.quit)
             case .useSpotify: switchService(to: .spotify)  // change 262
@@ -1081,7 +1096,19 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.battery = battery
 
         case .betaBuild(let beta):
+            // Card BV: once a launch, betas only, and not on an ended beta (313: its screen has Get New Beta).
+            if let beta, s.beta == nil, now < beta.endsAt {
+                fx.append(.checkLatestBeta)
+                s.newBetaNow = s.newBeta  // a build found before shows at once, with no wait
+            }
             s.beta = beta
+            checkBeta()
+
+        case .latestBeta(let build):
+            // Every answer is saved ("never miss"); only one before the first key may show now.
+            s.newBeta = max(build, s.newBeta ?? 0)
+            // The number on a notice that shows never changes under the user.
+            if !s.touched && !s.betaNoticedNow && build > (s.newBetaNow ?? 0) { s.newBetaNow = build }
             checkBeta()
 
         case .libraryWords(let words):
@@ -1254,7 +1281,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             guard s.setupDone, s.signedIn, s.stack.first?.screen == .main, !s.hintsDone.contains(hint) else { return false }
             switch hint {
             // Not over the beta warning (card BI v2): its own rows say what to do.
-            case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error && s.top.screen != .betaSoon
+            case .menu: return s.stack.count > 1 && s.top.screen.isList && !s.top.loading && !s.top.error
+                && s.top.screen != .betaSoon && s.top.screen != .betaNew
             // On Now Playing, only while a song plays and that row shows the time bar: the tip
             // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()
