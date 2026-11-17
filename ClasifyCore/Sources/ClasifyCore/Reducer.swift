@@ -1096,7 +1096,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             s.battery = battery
 
         case .betaBuild(let beta):
-            if beta != nil && s.beta == nil {  // card BV: once a launch, betas only
+            // Card BV: once a launch, betas only, and not on an ended beta (313: its screen has Get New Beta).
+            if let beta, s.beta == nil, now < beta.endsAt {
                 fx.append(.checkLatestBeta)
                 s.newBetaNow = s.newBeta  // a build found before shows at once, with no wait
             }

@@ -151,7 +151,8 @@ import Testing
     @Test func noNoticeOverTheEnd() {
         var s = launched()
         s.newBeta = 290
-        send(&s, .betaBuild(beta), .latestBeta(291), .tick, now: beta.endsAt + 1)
+        #expect(send(&s, .betaBuild(beta), now: beta.endsAt + 1).isEmpty)  // no check: the end has Get New Beta
+        send(&s, .latestBeta(291), .tick, now: beta.endsAt + 1)
         #expect(s.stack == [Frame(screen: .betaEnded)] && s.betaNoticed == nil && s.newBeta == 291)  // saved
     }
 
@@ -169,10 +170,14 @@ import Testing
     @MainActor @Test func theStoreAsksTheFeed() async {
         for (answer, screen) in [(Int?.some(290), Screen.betaNew), (nil, .main)] {
             let feed = FakeBetaFeed(answer: answer)
-            let store = Store(player: FakePlayer(), library: FakeLibrary(), state: launched(), betaFeed: feed)
+            let env = Dependencies(now: { 100 }, random: { _ in 0 })  // not past the beta's end
+            let store = Store(player: FakePlayer(), library: FakeLibrary(), state: launched(), env: env, betaFeed: feed)
             store.send(.betaBuild(beta))
             var tries = 0
-            while tries < 200, !(await feed.asked) || store.state.top.screen != screen { tries += 1; await Task.yield() }
+            while tries < 200, !(await feed.asked) || store.state.top.screen != screen {
+                tries += 1
+                try? await Task.sleep(for: .milliseconds(10))
+            }
             #expect(await feed.asked && store.state.top.screen == screen)
         }
     }
