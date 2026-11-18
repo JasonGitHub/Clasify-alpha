@@ -61,3 +61,91 @@ public struct K3DTurn: Equatable {
         !flip.arriving && !flip.isSpinning(at: now) && !flip.apartRuns(at: now)
     }
 }
+
+/// CLA-130: which scroll events turn the device, and when the turn ends (353). Plain values, so
+/// the app's AppKit wrapper (`K3DTurnInput`) stays thin and this is tested. Holding Cmd alone
+/// changes nothing: only a swipe, a wheel or a pinch with Cmd on the device starts a turn.
+public struct K3DTurnGesture: Equatable {
+    /// A scroll event, from its `phase` and `momentumPhase`.
+    public enum Scroll: Equatable { case begin, move, lift, glide, glideEnd, wheel }
+    /// Pass the event on; take it and do nothing; turn by its deltas; or end the turn.
+    public enum Answer: Equatable { case pass, swallow, turn, end }
+
+    /// A turn runs: the device is off its front by Cmd.
+    public private(set) var turning = false
+    /// The turn's fingers are down, or its glide runs.
+    private(set) var fingers = false, gliding = false
+    /// Cmd went up during the swipe or the glide: the turn ends when they end.
+    private(set) var endPending = false
+    /// The glide after a turn that ended: it goes nowhere, not to the wheel. A new swipe clears it.
+    private(set) var swallowGlide = false
+
+    public init() {}
+
+    /// A scroll event. `command`: Cmd is down. `inside`: the event is over the device.
+    public mutating func scroll(_ kind: Scroll, command: Bool, inside: Bool) -> Answer {
+        switch kind {
+        case .begin:
+            swallowGlide = false
+            guard command && inside || turning else { return .pass }
+            (turning, fingers) = (true, true)
+            return .turn
+        case .move:
+            return fingers ? .turn : .pass
+        case .lift:
+            guard fingers else { return .pass }
+            fingers = false
+            return endPending ? end() : .turn
+        case .glide:
+            if swallowGlide { return .swallow }
+            guard turning else { return .pass }
+            gliding = true
+            return .turn
+        case .glideEnd:
+            if swallowGlide { swallowGlide = false; return .swallow }
+            guard gliding else { return .pass }
+            gliding = false
+            return endPending ? end() : .turn
+        case .wheel:
+            guard command && inside || turning && command else { return .pass }
+            turning = true
+            return .turn
+        }
+    }
+
+    /// A pinch event: it is part of the turn when Cmd is down over the device, or a turn runs.
+    public mutating func pinch(command: Bool, inside: Bool) -> Bool {
+        guard command && (inside || turning) else { return false }
+        turning = true
+        return true
+    }
+
+    /// Cmd changed. True: the turn ends now. With the fingers down or a glide running, it ends
+    /// when they end (352: a flick glides first).
+    public mutating func command(down: Bool) -> Bool {
+        guard turning else { return false }
+        if down {
+            endPending = false  // Cmd down again before the swipe or glide ended: the turn goes on
+            return false
+        }
+        if fingers || gliding {
+            endPending = true
+            return false
+        }
+        return end() == .end
+    }
+
+    /// The app or the window is no longer in front: a lost Cmd up must not leave input dead.
+    /// True when a turn ran.
+    public mutating func resign() -> Bool {
+        guard turning else { return false }
+        return end() == .end
+    }
+
+    /// Ends the turn. A glide may still come after it, also when Cmd went up between the lift
+    /// and the glide's first event, so any glide until the next swipe goes nowhere.
+    private mutating func end() -> Answer {
+        (turning, fingers, gliding, endPending, swallowGlide) = (false, false, false, false, true)
+        return .end
+    }
+}

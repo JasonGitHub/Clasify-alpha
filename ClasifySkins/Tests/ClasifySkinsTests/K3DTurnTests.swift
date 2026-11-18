@@ -96,3 +96,130 @@ import Testing
         #expect(K3DTurn.canTurn(K3DFlip(), at: t0))
     }
 }
+
+/// CLA-130: which events turn the device, and when Cmd up ends the turn.
+struct K3DTurnGestureTests {
+    @Test func cmdAloneOrASwipeOffTheDeviceDoesNothing() {
+        var g = K3DTurnGesture()
+        let a1 = g.command(down: true)
+        let a2 = g.command(down: false)
+        #expect(!a1 && !a2)
+        let a3 = g.scroll(.begin, command: false, inside: true)
+        #expect(a3 == .pass)
+        let a4 = g.scroll(.move, command: false, inside: true)
+        #expect(a4 == .pass)
+        let a5 = g.scroll(.begin, command: true, inside: false)
+        #expect(a5 == .pass)
+        let a6 = g.scroll(.wheel, command: true, inside: false)
+        #expect(a6 == .pass)
+        let a7 = g.pinch(command: false, inside: true)
+        #expect(!a7 && !g.turning)
+    }
+
+    /// 352 and 353: lifted fingers keep the turn; Cmd up then ends it at once.
+    @Test func cmdUpAfterTheFingersLiftEndsTheTurn() {
+        var g = K3DTurnGesture()
+        let a8 = g.scroll(.begin, command: true, inside: true)
+        #expect(a8 == .turn)
+        let a9 = g.scroll(.move, command: true, inside: false)
+        #expect(a9 == .turn)  // the fingers may leave the device
+        let a10 = g.scroll(.lift, command: true, inside: false)
+        #expect(a10 == .turn)
+        #expect(g.turning)
+        let a11 = g.command(down: false)
+        #expect(a11)
+        #expect(!g.turning)
+    }
+
+    /// 352: Cmd up during a flick: the glide turns on, then the turn ends.
+    @Test func cmdUpDuringTheGlideEndsWhenItEnds() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        _ = g.scroll(.lift, command: true, inside: true)
+        let a12 = g.scroll(.glide, command: true, inside: true)
+        #expect(a12 == .turn)
+        let a13 = g.command(down: false)
+        #expect(!a13)
+        let a14 = g.scroll(.glide, command: false, inside: true)
+        #expect(a14 == .turn)
+        let a15 = g.scroll(.glideEnd, command: false, inside: true)
+        #expect(a15 == .end)
+        let a16 = g.scroll(.begin, command: false, inside: true)
+        #expect(a16 == .pass)
+    }
+
+    /// Cmd up with the fingers down ends the turn at the lift; its glide goes nowhere.
+    @Test func theGlideOfAnEndedTurnIsSwallowed() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        let a17 = g.command(down: false)
+        #expect(!a17)
+        let a18 = g.scroll(.move, command: false, inside: true)
+        #expect(a18 == .turn)
+        let a19 = g.scroll(.lift, command: false, inside: true)
+        #expect(a19 == .end)
+        let a20 = g.scroll(.glide, command: false, inside: true)
+        #expect(a20 == .swallow)
+        let a21 = g.scroll(.glideEnd, command: false, inside: true)
+        #expect(a21 == .swallow)
+        let a22 = g.scroll(.glide, command: false, inside: true)
+        #expect(a22 == .pass)
+    }
+
+    /// Cmd up after the lift, before the glide's first event: the glide still goes nowhere.
+    @Test func aGlideAfterCmdUpBetweenLiftAndGlideIsSwallowed() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        _ = g.scroll(.lift, command: true, inside: true)
+        let a23 = g.command(down: false)
+        #expect(a23)
+        let a24 = g.scroll(.glide, command: false, inside: true)
+        #expect(a24 == .swallow)
+        let a25 = g.scroll(.glideEnd, command: false, inside: true)
+        #expect(a25 == .swallow)
+        let a26 = g.scroll(.begin, command: false, inside: true)
+        #expect(a26 == .pass)
+        let a27 = g.scroll(.glide, command: false, inside: true)
+        #expect(a27 == .pass)
+    }
+
+    /// Cmd up and down again during the swipe: the turn goes on after the lift.
+    @Test func cmdDownAgainKeepsTheTurn() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        _ = g.command(down: false)
+        _ = g.command(down: true)
+        let lift = g.scroll(.lift, command: true, inside: true)
+        #expect(lift == .turn && g.turning)
+        let up = g.command(down: false)
+        #expect(up && !g.turning)
+    }
+
+    /// The CTO's safety exit: the app or the window goes to the back during a turn.
+    @Test func resignEndsTheTurn() {
+        var g = K3DTurnGesture()
+        let a28 = g.resign()
+        #expect(!a28)
+        let a29 = g.pinch(command: true, inside: true)
+        #expect(a29)
+        let a30 = g.resign()
+        #expect(a30 && !g.turning)
+        _ = g.scroll(.begin, command: true, inside: true)
+        let a31 = g.resign()
+        #expect(a31)
+        let a32 = g.scroll(.glide, command: false, inside: true)
+        #expect(a32 == .swallow)
+    }
+
+    @Test func aWheelWithCmdTurns() {
+        var g = K3DTurnGesture()
+        let a33 = g.scroll(.wheel, command: true, inside: true)
+        #expect(a33 == .turn)
+        let a34 = g.scroll(.wheel, command: true, inside: false)
+        #expect(a34 == .turn)
+        let a35 = g.scroll(.wheel, command: false, inside: true)
+        #expect(a35 == .pass)
+        let a36 = g.command(down: false)
+        #expect(a36)
+    }
+}
