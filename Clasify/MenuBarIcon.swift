@@ -48,13 +48,13 @@ final class MenuBarIcon: NSObject {
     /// black or white and pressed.
     static let icon: NSImage = {
         let image = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
-            let body = NSBezierPath(roundedRect: NSRect(x: 4, y: 1, width: 10, height: 16), xRadius: 2.5, yRadius: 2.5)
-            body.append(NSBezierPath(roundedRect: NSRect(x: 5.5, y: 10, width: 7, height: 5.5), xRadius: 1, yRadius: 1))
-            body.append(NSBezierPath(ovalIn: NSRect(x: 5.75, y: 2.5, width: 6.5, height: 6.5)))
+            let body = NSBezierPath(roundedRect: NSRect(x: 3.6, y: 1, width: 10.8, height: 16), xRadius: 2.4, yRadius: 2.4)
+            body.append(NSBezierPath(roundedRect: NSRect(x: 5.4, y: 10.1, width: 7.2, height: 5), xRadius: 0.7, yRadius: 0.7))
+            body.append(NSBezierPath(ovalIn: NSRect(x: 6.1, y: 2.5, width: 5.8, height: 5.8)))
             body.windingRule = .evenOdd
             NSColor.black.setFill()
             body.fill()
-            NSBezierPath(ovalIn: NSRect(x: 7.75, y: 4.5, width: 2.5, height: 2.5)).fill()
+            NSBezierPath(ovalIn: NSRect(x: 8, y: 4.4, width: 2, height: 2)).fill()
             return true
         }
         image.isTemplate = true
