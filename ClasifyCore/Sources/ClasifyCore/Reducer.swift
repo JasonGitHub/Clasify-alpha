@@ -374,6 +374,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func startActivateChecks() { s.activateStopAt = now + activateChecksFor; s.activateCheckAt = now + activateCheckEvery }
     /// Card BW: the page opens (320). The checks run for 15 minutes from now.
     func openActivatePage() {
+        s.activateRequest += 1  // an answer to the flow before is dropped
         showActivateStep {
             if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
             startActivateChecks()

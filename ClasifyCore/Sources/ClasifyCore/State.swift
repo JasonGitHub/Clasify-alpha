@@ -398,6 +398,14 @@ public struct AppState: Equatable, Sendable {
     /// Card BW, 323: when "Welcome to the beta" showed. Your Music follows after `activateBeat`.
     public var activatedAt = 0.0
 
+    /// Card BW: a `.tick` is due on the Activate screen: the 1.5 s beat ended, a 30 s check
+    /// is due, or the 15 minutes ended. The app's ticker sends `.tick` then.
+    public func activateDue(at now: Double) -> Bool {
+        guard top.screen == .activate else { return false }
+        if activatedAt > 0 { return now >= activatedAt + activateBeat }
+        return activateStopAt > 0 && (now >= activateStopAt || now >= activateCheckAt)
+    }
+
     /// Card BW: the Activate screen that shows now.
     public var activateStep: ActivateStep {
         if activation == .active { return .confirmed }

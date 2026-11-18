@@ -26,7 +26,7 @@ import Testing
     func mailOut() -> AppState {
         var s = join()
         send(&s, .select, now: 200)
-        send(&s, .checkActivation, .activation(sam, request: 1), now: 210)
+        send(&s, .checkActivation, .activation(sam, request: 2), now: 210)
         return s
     }
 
@@ -43,12 +43,12 @@ import Testing
         #expect(s.stack == [Frame(screen: .activate)] && s.activateStep == .join && s.rows(for: s.top) == [.openActivate])
         #expect(send(&s, .select, now: 200) == [.openActivatePage])
         #expect(s.activateStep == .browserOpen && s.rows(for: s.top) == [.openActivateAgain, .cancelActivate])
-        #expect(send(&s, .checkActivation, now: 210) == [.checkActivation(request: 1)])  // the app came back
-        send(&s, .activation(.locked, request: 1), now: 211)  // no mail yet
+        #expect(send(&s, .checkActivation, now: 210) == [.checkActivation(request: 2)])  // the app came back
+        send(&s, .activation(.locked, request: 2), now: 211)  // no mail yet
         #expect(s.activateStep == .browserOpen)
-        send(&s, .wheel(1), .checkActivation, .activation(sam, request: 2), now: 212)
+        send(&s, .wheel(1), .checkActivation, .activation(sam, request: 3), now: 212)
         #expect(s.activateStep == .checkMail && s.top.sel == 0 && s.rows(for: s.top) == [.sendAgain, .useAnotherEmail])
-        send(&s, .checkActivation, .activation(.active, request: 3), now: 220)
+        send(&s, .checkActivation, .activation(.active, request: 4), now: 220)
         #expect(s.activateStep == .confirmed && s.rows(for: s.top).isEmpty)
         send(&s, .tick, now: 221.4)
         #expect(s.top.screen == .activate)
@@ -58,7 +58,7 @@ import Testing
 
     @Test func aPressOnConfirmedGoesOnAtOnce() {
         var s = mailOut()
-        send(&s, .checkActivation, .activation(.active, request: 2), .select, now: 220)
+        send(&s, .checkActivation, .activation(.active, request: 3), .select, now: 220)
         #expect(s.top.screen == .yourMusic && s.activatedAt == 0)
     }
 
@@ -68,14 +68,14 @@ import Testing
         var s = join()
         send(&s, .select, now: 200)
         #expect(send(&s, .tick, now: 229).isEmpty)
-        #expect(send(&s, .tick, now: 230) == [.checkActivation(request: 1)])
-        send(&s, .activation(sam, request: 1), now: 231)
-        #expect(send(&s, .tick, now: 259).isEmpty && send(&s, .tick, now: 260) == [.checkActivation(request: 2)])
-        send(&s, .activation(sam, request: 2), now: 261)
+        #expect(send(&s, .tick, now: 230) == [.checkActivation(request: 2)])
+        send(&s, .activation(sam, request: 2), now: 231)
+        #expect(send(&s, .tick, now: 259).isEmpty && send(&s, .tick, now: 260) == [.checkActivation(request: 3)])
+        send(&s, .activation(sam, request: 3), now: 261)
         send(&s, .tick, now: 1100)
         #expect(s.activateStep == .stopped && s.rows(for: s.top) == [.checkMail, .sendAgain, .useAnotherEmail])
         #expect(send(&s, .checkActivation, now: 1200).isEmpty && send(&s, .tick, now: 1300).isEmpty)
-        #expect(send(&s, .select, now: 1400) == [.checkActivation(request: 3)])
+        #expect(send(&s, .select, now: 1400) == [.checkActivation(request: 4)])
         #expect(s.activateStep == .checkMail && s.activateStopAt == 1400 + activateChecksFor)
     }
 
@@ -83,26 +83,38 @@ import Testing
     /// opens the page (320) until a newer mail is out.
     @Test func sendAgainAndUseAnotherEmail() {
         var s = mailOut()
-        #expect(send(&s, .select, now: 500) == [.sendActivationAgain(request: 2)])
+        #expect(send(&s, .select, now: 500) == [.sendActivationAgain(request: 3)])
         #expect(s.activateStopAt == 500 + activateChecksFor && s.activatePressed == 2)
-        send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 2), .wheel(1), now: 501)
+        send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), .wheel(1), now: 501)
         #expect(send(&s, .select, now: 502) == [.openActivatePage] && s.activateStep == .browserOpen)
-        send(&s, .checkActivation, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), now: 510)
+        send(&s, .checkActivation, .activation(.waiting(email: "sam@example.com", mail: 2), request: 5), now: 510)
         #expect(s.activateStep == .browserOpen)  // the old mail
-        send(&s, .checkActivation, .activation(.waiting(email: "kim@example.com", mail: 3), request: 4), now: 520)
+        send(&s, .checkActivation, .activation(.waiting(email: "kim@example.com", mail: 3), request: 6), now: 520)
         #expect(s.activateStep == .checkMail && s.activation == .waiting(email: "kim@example.com", mail: 3))
     }
 
     /// An answer on its way when MENU cancels is dropped; "Send again" on 322 shows 321 on its first row.
     @Test func cancelDropsTheAnswerAndSendAgainStartsOnTheFirstRow() {
         var s = mailOut()
-        send(&s, .tick, now: 240)  // request 2 is out
-        send(&s, .menu, .activation(sam, request: 2), now: 241)
+        send(&s, .tick, now: 240)  // request 3 is out
+        send(&s, .menu, .activation(sam, request: 3), now: 241)
         #expect(s.activateStep == .join)
         var stopped = mailOut()
         send(&stopped, .tick, .wheel(1), now: 2000)
-        #expect(send(&stopped, .select, now: 2001) == [.sendActivationAgain(request: 2)])
+        #expect(send(&stopped, .select, now: 2001) == [.sendActivationAgain(request: 3)])
         #expect(stopped.activateStep == .checkMail && stopped.top.sel == 0)
+    }
+
+    /// "Use another email" drops the answer to a "Send again" still on its way. The app's
+    /// ticker sends `.tick` when a check, the end of the checks or the beat is due.
+    @Test func useAnotherEmailDropsTheResendAndTheTickerKnowsTheDeadlines() {
+        var s = mailOut()
+        #expect(!s.activateDue(at: 239) && s.activateDue(at: 240))
+        send(&s, .select, .wheel(1), .select, now: 300)  // "Send again", then "Use another email"
+        send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), now: 301)
+        #expect(s.activateStep == .browserOpen)
+        send(&s, .checkActivation, .activation(.active, request: 5), now: 310)
+        #expect(!s.activateDue(at: 311.4) && s.activateDue(at: 311.5) && !join().activateDue(at: 1000))
     }
 
     /// MENU on 320 and 321 is "Cancel" (to 319). On 319 and 322 to 327 it does nothing.
@@ -119,7 +131,7 @@ import Testing
         #expect(cancel.activateStep == .join)
         for answer in [Activation.mailBusy, .full, .off, .offline] {
             var s = mailOut()
-            send(&s, .select, .activation(answer, request: 2), .menu, now: 300)  // "Send again"
+            send(&s, .select, .activation(answer, request: 3), .menu, now: 300)  // "Send again"
             #expect(s.activation == answer && s.top.screen == .activate)
         }
         var stopped = mailOut()
@@ -135,12 +147,12 @@ import Testing
         let rows: [(Activation, [Row])] = [(.mailBusy, [.tryActivateAgain]), (.full, [.checkMail]), (.off, [.checkMail]), (.offline, [.tryActivateAgain])]
         for (answer, row) in rows {
             var s = mailOut()
-            send(&s, .select, .activation(answer, request: 2), now: 300)  // "Send again"
+            send(&s, .select, .activation(answer, request: 3), now: 300)  // "Send again"
             #expect(s.top.screen == .activate && s.rows(for: s.top) == row && s.activateStopAt == 0)
             let fx = send(&s, .select, now: 400)
-            #expect(fx == (answer == .mailBusy ? [.openActivatePage] : [.checkActivation(request: 3)]))
+            #expect(fx == (answer == .mailBusy ? [.openActivatePage] : [.checkActivation(request: 4)]))
             if answer != .mailBusy {  // the checks run again: a mail still out shows 321
-                send(&s, .activation(sam, request: 3), now: 401)
+                send(&s, .activation(sam, request: 4), now: 401)
                 #expect(s.activateStep == .checkMail)
             }
         }
@@ -150,10 +162,10 @@ import Testing
     /// not shown. The stored activation (no request number) always lands.
     @Test func anOlderAnswerAndAFailedTimerCheckAreDropped() {
         var s = mailOut()
-        send(&s, .select, now: 300)  // request 2 is out
-        send(&s, .activation(.active, request: 1), now: 301)
+        send(&s, .select, now: 300)  // request 3 is out
+        send(&s, .activation(.active, request: 2), now: 301)
         #expect(s.activateStep == .checkMail)
-        send(&s, .tick, .activation(.offline, request: 3), now: 330)
+        send(&s, .tick, .activation(.offline, request: 4), now: 330)
         #expect(s.activateStep == .checkMail)
         var launch = AppState()
         send(&launch, .activation(.active, request: nil))
@@ -203,7 +215,7 @@ import Testing
             tries += 1
             try? await Task.sleep(for: .milliseconds(10))
         }
-        #expect(store.state.activation == .waiting(email: "sam@example.com", mail: 2) && store.state.activateRequest == 2)
+        #expect(store.state.activation == .waiting(email: "sam@example.com", mail: 2) && store.state.activateRequest == 3)
     }
 }
 

@@ -263,7 +263,9 @@ final class AppModel {
                 let hintDue = state.hintDue > 0 && now >= state.hintDue
                 // A beta's warning on day 27, or its end on day 30 (card BI v2).
                 let betaDue = state.betaDue > 0 && now >= state.betaDue
-                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue {
+                // Card BW: the Activate screen's 30 s checks, their 15-minute end, and the 1.5 s beat.
+                let activateDue = state.activateDue(at: now)
+                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue {
                     store?.send(.tick)
                 }
                 // When the browser login works (change 170) or the Spotify app is found (174),
