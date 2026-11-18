@@ -107,7 +107,7 @@ import Testing
     /// Change 234: a beta that has ended at launch shows the ended screen, with no login.
     @Test func aBetaEndedAtLaunchShowsOnlyTheEnd() {
         var s = afterSetup()
-        #expect(send(&s, .betaBuild(beta), .launch, now: day30).isEmpty)
+        #expect(send(&s, .betaBuild(beta), .launch, now: day30) == [.showWindow])  // AN.1, 348: the end shows myPod
         #expect(s.stack == [Frame(screen: .betaEnded)] && s.betaWarned == nil)
     }
 
