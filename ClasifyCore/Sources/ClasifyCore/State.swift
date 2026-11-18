@@ -440,6 +440,8 @@ public struct AppState: Equatable, Sendable {
     /// The device arrived at the first launch ever (card BR, change 288): until then the skin
     /// shows it turning in, and the reducer takes no input. Saved with the settings.
     public var arrived = true
+    /// CLA-130: Cmd + a swipe holds the 3D device off its front (`Action.deviceTurned`). Not saved.
+    public var deviceTurned = false
     /// When Hello (card AT) opened, in `Dependencies.now` time. A skin times the hello word,
     /// the center glow and the begin text from it.
     public var helloAt: Double = 0

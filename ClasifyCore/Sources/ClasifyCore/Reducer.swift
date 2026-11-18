@@ -94,6 +94,10 @@ public enum Action: Equatable, Sendable {
     /// Card AN.1 (CLA-43, 344): a click or right-click on the menu bar icon. `shown`: the device
     /// window shows now. The answer is `.showWindow` or `.hideWindow`.
     case menuBarClick(shown: Bool)
+    /// CLA-130 (card BT row 4): Cmd + a two-finger swipe turned the 3D device off its front
+    /// (true), or it is back on its front (false). While it is turned, the wheel, the buttons
+    /// and the keys do nothing. The angle itself stays in the skin (`K3DTurn`).
+    case deviceTurned(Bool)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -603,7 +607,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         // Change 234: the ended beta takes only the wheel and its rows.
         if s.top.screen == .betaEnded {
             switch action {
-            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived, .menuBarClick: break
+            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived, .menuBarClick, .deviceTurned: break
             default: return
             }
         }
@@ -1239,6 +1243,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .menuBarClick(let shown):
             // 348: the first setup always shows in the window, so the icon does not hide it.
             fx.append(shown && s.setupDone ? .hideWindow : .showWindow)
+        case .deviceTurned(let turned):
+            s.deviceTurned = turned
 
         case .arrived:
             guard !s.arrived else { return }
@@ -1261,8 +1267,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     let playHintDone = s.hintsDone.contains(.playPause)
     let tourShown = s.hint?.isTour == true && s.hintTip ? s.hint : nil  // its words showed
     // Change 288: while the device arrives, the wheel, the buttons and the keys do nothing,
-    // and the tour and hints do not see them either.
-    if !s.arrived {
+    // and the tour and hints do not see them either. CLA-130: the same while it is turned.
+    if !s.arrived || s.deviceTurned {
         switch action {
         case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: return []
         default: break
