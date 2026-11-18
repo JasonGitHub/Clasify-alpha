@@ -65,6 +65,8 @@ struct K3DSpikeSkin: View {
     /// CLA-130: the Cmd turn's pinch, and the landing that sends `.deviceTurned(false)`.
     @State private var cmdTurn = K3DTurn()
     @State private var landing: Task<Void, Never>?
+    /// Build 308: applies the travel that waited at the turn's start, if no event comes after it.
+    @State private var settling: Task<Void, Never>?
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -330,6 +332,15 @@ struct K3DSpikeSkin: View {
     private func swiped(_ dx: Double, _ dy: Double) {
         guard startTurn() else { return }
         flip = cmdTurn.swipe(dx: dx, dy: dy, flip: flip, at: .now)
+        // Build 308: a single wheel line or a short drag sends no more events, so the travel
+        // that waits for `K3DTurn.settle` is applied once it ends.
+        guard cmdTurn.waitingX != 0 || cmdTurn.waitingY != 0, settling == nil else { return }
+        settling = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(K3DTurn.settle + 0.01))
+            settling = nil
+            guard cmdTurn.waitingX != 0 || cmdTurn.waitingY != 0 else { return }
+            flip = cmdTurn.swipe(dx: 0, dy: 0, flip: flip, at: .now)
+        }
     }
 
     /// Change 354: the pinch takes the device apart or puts it together.
