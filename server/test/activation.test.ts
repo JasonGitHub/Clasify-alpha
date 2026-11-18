@@ -110,6 +110,14 @@ describe("activation", () => {
     expect(await status(mac(3))).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
   });
 
+  it("two Macs that confirm at once cannot pass the limit together", async () => {
+    await activate(mac(1), "sam@example.com");
+    await join(mac(2), "sam@example.com");
+    await join(mac(3), "sam@example.com");
+    const [two, three] = mail.sent.slice(1).map((s) => new URL(s.link).searchParams.get("c")!);
+    expect((await Promise.all([confirm(two), confirm(three)])).sort()).toEqual(["macs", "ok"]);
+  });
+
   it("an account that is off stays off", async () => {
     await activate(mac(1), "sam@example.com");
     await env.DB.prepare("UPDATE accounts SET off = 1").run();

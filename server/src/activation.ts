@@ -103,9 +103,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       if (!mail || !m || mail.used_at || mail.expires_at <= now || m.account_id !== mail.account_id) return reply({ result: "expired" }, 200, cors);
       const a = await account(mail.account_id);
       if (!a || a.off) return reply({ result: "off" }, 200, cors);
-      const macs = await db.prepare("SELECT COUNT(*) AS n FROM macs WHERE account_id = ? AND state = 'active'").bind(a.id).first<{ n: number }>();
-      if ((macs?.n ?? 0) >= Number(env.MACS)) return reply({ result: "macs" }, 200, cors);
-      // One statement, so two presses at once cannot pass the cap together.
+      // One statement each, so two presses at once cannot pass the cap or the Mac limit together.
       const won = await db.prepare(
         `UPDATE accounts SET state = 'active', confirmed_at = COALESCE(confirmed_at, ?) WHERE id = ?
          AND (state = 'active' OR (SELECT COUNT(*) FROM accounts WHERE state = 'active') < ?)`,
@@ -114,10 +112,13 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
         await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ?").bind(a.id).run();
         return reply({ result: "full" }, 200, cors);
       }
-      await db.batch([
-        db.prepare("UPDATE macs SET state = 'active' WHERE device_hash = ?").bind(m.device_hash),
-        db.prepare("UPDATE mails SET used_at = ? WHERE token_hash = ?").bind(now, hash),
-      ]);
+      // A new account has no active Mac yet, so only an account that was already active can fail here.
+      const fits = await db.prepare(
+        `UPDATE macs SET state = 'active' WHERE device_hash = ?
+         AND (SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active') < ?`,
+      ).bind(m.device_hash, a.id, Number(env.MACS)).run();
+      if (!fits.meta.changes) return reply({ result: "macs" }, 200, cors);
+      await db.prepare("UPDATE mails SET used_at = ? WHERE token_hash = ?").bind(now, hash).run();
       return reply({ result: "ok" }, 200, cors);
     }
   }
