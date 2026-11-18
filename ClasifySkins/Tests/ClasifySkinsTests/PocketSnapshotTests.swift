@@ -714,9 +714,27 @@ import Testing
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
         s.top.sel = 7
+        s.scrollUntil = 1  // 10 rows: the list scrolls, so a wheel step shows the scroll bar
         let shot = try render(s, "settings-menu-bar")
         #expect(shot.isBlue(100, Self.rowCenter(7)))
         #expect(!shot.isBlue(100, Self.rowCenter(6)))
+        let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, want = try reference(0x5d6772)
+        #expect(near(shot.rgb(thumbX, Self.listTop + 8), want))  // the thumb starts at the top
+    }
+
+    /// Card AN.1: at Log out, the list has moved down one row and the thumb touches the bottom.
+    @Test func settingsScrollsToLogOut() throws {
+        var s = sampleState()
+        s.stack.append(Frame(screen: .settings))
+        s.top.sel = 9
+        s.top.off = 1
+        s.scrollUntil = 1
+        let shot = try render(s, "settings-log-out")
+        #expect(shot.isBlue(100, Self.rowCenter(8)))  // Log out, the last row on screen
+        #expect(!shot.isBlue(100, Self.rowCenter(7)))  // About
+        let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, want = try reference(0x5d6772)
+        #expect(near(shot.rgb(thumbX, Self.listTop + 200), want))  // the thumb's bottom
+        #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))  // the thumb left the top
     }
 
     @Test func nowPlayingShowsTheCover() throws {
