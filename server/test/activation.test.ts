@@ -67,6 +67,9 @@ describe("activation", () => {
     const code = await open(mac(1));
     expect((await call("POST", "/v1/start", { body: { code, email: "sam@example.com" } })).status).toBe(200);
     expect((await call("POST", "/v1/start", { body: { code, email: "sam@example.com" } })).status).toBe(400);
+    const twice = await open(mac(1));
+    const both = await Promise.all(["sam@example.com", "kim@example.com"].map((email) => call("POST", "/v1/start", { body: { code: twice, email } })));
+    expect(both.map((r) => r.status).sort()).toEqual([200, 400]);
     const late = await open(mac(1));
     clock += 15 * 60_000;
     expect((await call("POST", "/v1/start", { body: { code: late, email: "sam@example.com" } })).json).toEqual({ error: "code" });

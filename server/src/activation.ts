@@ -89,10 +89,11 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply({ error: "email" }, 400, cors);
       const code = typeof body.code === "string" ? await sha256(body.code) : "";
-      const owner = await db.prepare("SELECT device_hash FROM macs WHERE code_hash = ? AND code_expires_at > ?")
-        .bind(code, now).first<{ device_hash: string }>();
+      // One statement uses the code, so two pages with the same code cannot both go on.
+      const owner = await db.prepare(
+        "UPDATE macs SET code_hash = NULL, code_expires_at = NULL WHERE code_hash = ? AND code_expires_at > ? RETURNING device_hash",
+      ).bind(code, now).first<{ device_hash: string }>();
       if (!owner) return reply({ error: "code" }, 400, cors);
-      await db.prepare("UPDATE macs SET code_hash = NULL, code_expires_at = NULL WHERE device_hash = ?").bind(owner.device_hash).run();
       return reply(await start(owner.device_hash, email), 200, cors);
     }
     case "POST /v1/confirm": {  // the page, when the person presses Confirm
