@@ -87,7 +87,7 @@ struct K3DTurnInput: NSViewRepresentable {
                     let sign = event.isDirectionInvertedFromDevice ? 1.0 : -1.0
                     onSwipe(sign * event.scrollingDeltaX, sign * event.scrollingDeltaY)
                 } else {
-                    onSwipe(event.scrollingDeltaY * Self.line, 0)  // a mouse wheel turns only
+                    onSwipe(event.scrollingDeltaY * K3DTurnInput.line, 0)  // a mouse wheel turns only
                 }
             }
             return true
