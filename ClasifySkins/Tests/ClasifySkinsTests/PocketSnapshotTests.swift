@@ -375,8 +375,11 @@ import Testing
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
         }
-        #expect(box(7).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Menu Bar (card AN.1)
         #expect(box(8).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+        // Card AN.1: Menu Bar shows "On" where a chevron goes, so About is checked unselected.
+        s.top.sel = 7
+        let off = try render(s, "settings-chevron-off")
+        #expect(box(8).allSatisfy { off.isLight($0.0, $0.1) })  // no chevron on About
     }
 
     @Test func songListShowsArtistsAndTheScrollBar() throws {
