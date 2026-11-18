@@ -108,6 +108,10 @@ enum DeviceWindow {
             guard hidden === window else { return }  // a click showed it again during the fade
             window.orderOut(nil)
             window.alphaValue = 1
+            // With no other myPod window on screen, the app gives up the front too, so the
+            // app under it becomes active, as after Cmd+H.
+            let others = NSApp.windows.contains { !($0 is NSPanel) && $0.level == .normal && $0.isVisible }
+            if !others { NSApp.hide(nil) }
         }
     }
 
@@ -121,6 +125,7 @@ enum DeviceWindow {
             return
         }
         hidden = nil
+        if NSApp.isHidden { NSApp.unhide(nil) }  // hide() hid the app with the window
         if !window.isVisible { window.alphaValue = 0 }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
