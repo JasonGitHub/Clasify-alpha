@@ -99,6 +99,9 @@ import Testing
             #expect(send(&s, action, now: day30).isEmpty)
             #expect(s.stack == [Frame(screen: .betaEnded)])
         }
+        // Card AN.1: the menu bar icon still hides and shows myPod over the end.
+        #expect(send(&s, .menuBarClick(shown: true), now: day30) == [.hideWindow])
+        #expect(send(&s, .menuBarClick(shown: false), now: day30) == [.showWindow])
         #expect(send(&s, .select, now: day30) == [.getNewBeta])
         #expect(s.top.screen == .betaEnded)  // it stays
         #expect(send(&s, .wheel(1), .select, now: day30) == [.quit])

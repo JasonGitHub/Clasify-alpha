@@ -603,7 +603,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         // Change 234: the ended beta takes only the wheel and its rows.
         if s.top.screen == .betaEnded {
             switch action {
-            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived: break
+            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived, .menuBarClick: break
             default: return
             }
         }
