@@ -145,6 +145,17 @@ describe("activation", () => {
     expect(await status(mac(1))).toEqual({ state: "waiting", email: "kim@example.com", mail: 2 });
   });
 
+  it("a second link for an active Mac still says ok when the account has 2 Macs", async () => {
+    await join(mac(1), "sam@example.com");
+    const first = mail.token;
+    await call("POST", "/v1/start", { device: mac(1) });  // Send again
+    const second = mail.token;
+    expect(await confirm(second)).toBe("ok");
+    expect(await activate(mac(2), "sam@example.com")).toBe("ok");
+    expect(await confirm(first)).toBe("ok");
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM macs WHERE state = 'active'").first("n")).toBe(2);
+  });
+
   it("an account that is off stays off", async () => {
     await activate(mac(1), "sam@example.com");
     await env.DB.prepare("UPDATE accounts SET off = 1").run();

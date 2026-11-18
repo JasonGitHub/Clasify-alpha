@@ -103,25 +103,26 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       if (!mail || !m || mail.used_at || mail.expires_at <= now || m.account_id !== mail.account_id) return reply({ result: "expired" }, 200, cors);
       const a = await account(mail.account_id);
       if (!a || a.off) return reply({ result: "off" }, 200, cors);
-      // One statement each, so two presses at once cannot pass the cap or the Mac limit together.
-      const won = await db.prepare(
-        `UPDATE accounts SET state = 'active', confirmed_at = COALESCE(confirmed_at, ?) WHERE id = ?
-         AND (state = 'active' OR (SELECT COUNT(*) FROM accounts WHERE state = 'active') < ?)`,
-      ).bind(now, a.id, Number(env.CAP)).run();
-      if (!won.meta.changes) {
+      // One transaction (D1 batch). The Mac becomes active only while it is still on this account,
+      // is already active or fits the Mac limit, and the account is active or gets a cap slot.
+      // The account and the link follow the Mac, so a refused press never keeps a slot.
+      const isActive = "EXISTS (SELECT 1 FROM macs WHERE device_hash = ? AND account_id = ? AND state = 'active')";
+      const [step] = await db.batch([
+        db.prepare(
+          `UPDATE macs SET state = 'active' WHERE device_hash = ? AND account_id = ?
+           AND (state = 'active' OR (SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active') < ?)
+           AND ((SELECT state FROM accounts WHERE id = ?) = 'active' OR (SELECT COUNT(*) FROM accounts WHERE state = 'active') < ?)`,
+        ).bind(m.device_hash, a.id, a.id, Number(env.MACS), a.id, Number(env.CAP)),
+        db.prepare(`UPDATE accounts SET state = 'active', confirmed_at = COALESCE(confirmed_at, ?) WHERE id = ? AND ${isActive}`)
+          .bind(now, a.id, m.device_hash, a.id),
+        db.prepare(`UPDATE mails SET used_at = ? WHERE token_hash = ? AND ${isActive}`).bind(now, hash, m.device_hash, a.id),
+      ]);
+      if (!step.meta.changes) {
+        if ((await mac(m.device_hash))?.account_id !== a.id) return reply({ result: "expired" }, 200, cors);  // "Use another email" came first
+        if ((await account(a.id))?.state === "active") return reply({ result: "macs" }, 200, cors);
         await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ? AND state != 'active'").bind(a.id).run();
         return reply({ result: "full" }, 200, cors);
       }
-      // The Mac must still be on this mail's account. A new account has no active Mac yet.
-      const fits = await db.prepare(
-        `UPDATE macs SET state = 'active' WHERE device_hash = ? AND account_id = ?
-         AND (SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active') < ?`,
-      ).bind(m.device_hash, a.id, a.id, Number(env.MACS)).run();
-      if (!fits.meta.changes) {
-        const moved = (await mac(m.device_hash))?.account_id !== a.id;  // "Use another email" came first
-        return reply({ result: moved ? "expired" : "macs" }, 200, cors);
-      }
-      await db.prepare("UPDATE mails SET used_at = ? WHERE token_hash = ?").bind(now, hash).run();
       return reply({ result: "ok" }, 200, cors);
     }
   }
