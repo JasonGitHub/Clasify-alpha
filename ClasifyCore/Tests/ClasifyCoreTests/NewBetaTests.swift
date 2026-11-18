@@ -35,7 +35,8 @@ import Testing
     /// page and closes it; the notice does not show again for that build.
     @Test func aNewerBuildShowsTheNoticeOnce() {
         var s = launched()
-        send(&s, .betaBuild(beta), .latestBeta(290))
+        send(&s, .betaBuild(beta))
+        #expect(send(&s, .latestBeta(290)).contains(.showWindow))  // card AN.1, 348: a hidden myPod shows
         #expect(s.top.screen == .betaNew && s.stack.count == 2 && s.newBeta == 290 && s.betaNoticed == 290)
         #expect(s.rows(for: s.top) == [.getNewBeta, .later] && s.betaDue == beta.endsAt)  // the warning waits for the main screens
         #expect(send(&s, .select) == [.getNewBeta])
@@ -63,7 +64,7 @@ import Testing
     @Test func laterAndMenuCloseTheNoticeAndTheMusicGoesOn() {
         for close in [[Action.wheel(1), .select], [.menu]] {
             var s = launched(playing())
-            #expect(send(&s, .betaBuild(beta), .latestBeta(290)) == [.checkLatestBeta])
+            #expect(send(&s, .betaBuild(beta), .latestBeta(290)) == [.checkLatestBeta, .showWindow])  // AN.1, 348: the notice shows myPod
             #expect(s.top.screen == .betaNew && s.isPlaying)
             var fx: [Effect] = []
             for action in close { fx += send(&s, action) }
@@ -79,7 +80,7 @@ import Testing
             send(&s, .betaBuild(beta), key, .latestBeta(290), .tick)
             #expect(s.top.screen != .betaNew && s.betaNoticed == nil && s.newBeta == 290)
             var next = nextLaunch(s)
-            #expect(send(&next, .betaBuild(beta)) == [.checkLatestBeta])
+            #expect(send(&next, .betaBuild(beta)) == [.checkLatestBeta, .showWindow])  // AN.1, 348: the notice shows myPod
             #expect(next.top.screen == .betaNew && next.betaNoticed == 290)
         }
     }
@@ -151,7 +152,7 @@ import Testing
     @Test func noNoticeOverTheEnd() {
         var s = launched()
         s.newBeta = 290
-        #expect(send(&s, .betaBuild(beta), now: beta.endsAt + 1).isEmpty)  // no check: the end has Get New Beta
+        #expect(send(&s, .betaBuild(beta), now: beta.endsAt + 1) == [.showWindow])  // no check: the end has Get New Beta; it shows myPod (AN.1, 348)
         send(&s, .latestBeta(291), .tick, now: beta.endsAt + 1)
         #expect(s.stack == [Frame(screen: .betaEnded)] && s.betaNoticed == nil && s.newBeta == 291)  // saved
     }

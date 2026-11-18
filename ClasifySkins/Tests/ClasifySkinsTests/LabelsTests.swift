@@ -321,6 +321,9 @@ func sampleState() -> AppState {
         #expect(Labels.row(.deviceColor, on: .settings, in: s) == .init(label: "Color", value: "Black"))
         #expect(Labels.row(.clicker, on: .settings, in: s) == .init(label: "Clicker", value: "On"))
         #expect(Labels.row(.nowPlayingBar, on: .settings, in: s) == .init(label: "Now Playing Bar", value: "Off"))  // card AK
+        #expect(Labels.row(.menuBar, on: .settings, in: s) == .init(label: "Menu Bar", value: "On"))  // card AN.1, 346
+        s.menuBar = false
+        #expect(Labels.row(.menuBar, on: .settings, in: s) == .init(label: "Menu Bar", value: "Off"))
         #expect(Labels.row(.logOut, on: .settings, in: s) == .init(label: "Log out", opens: true))
     }
 

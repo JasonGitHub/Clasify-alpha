@@ -22,6 +22,13 @@ import Testing
         return s
     }
 
+    /// Card AN.1 (CLA-43, 348): Activate shows a hidden myPod when it opens.
+    @Test func activateShowsTheWindow() {
+        var s = loggedIn(switchOn: true)
+        #expect(send(&s, .tick, now: 101.5).contains(.showWindow))
+        #expect(s.top.screen == .activate)
+    }
+
     /// On 321 "Check your mail": the page opened at 200 and the mail went out.
     func mailOut() -> AppState {
         var s = join()

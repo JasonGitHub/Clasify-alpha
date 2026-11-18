@@ -199,7 +199,7 @@ public enum Row: Equatable, Sendable {
     case playlist(String), album(String), track(String)
     /// Card BN (Apple Music): the main menu's Artists and Songs, and one artist by its ID.
     case artists, songs, artist(String)
-    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, about, logOut
+    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, menuBar, about, logOut
     /// Card BM, change 256: the active music service, first in Settings.
     case service
     case cancel, confirmLogOut
@@ -629,6 +629,8 @@ public struct AppState: Equatable, Sendable {
     /// The Now Playing Bar setting (Round 11 card AK, change 109): the bar for the playing song
     /// on every list. Off by default.
     public var nowPlayingBar = false
+    /// Card AN.1 (CLA-43): the menu bar icon shows. On by default, as in `Settings`.
+    public var menuBar = true
     /// The music service that plays and that the lists come from (CLA-103). Spotify by default.
     public var service = MusicService.spotify
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
@@ -995,7 +997,7 @@ public struct AppState: Equatable, Sendable {
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
-        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .about, .logOut]
+        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .menuBar, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]

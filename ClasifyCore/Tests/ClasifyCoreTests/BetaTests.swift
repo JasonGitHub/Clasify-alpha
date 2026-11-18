@@ -20,7 +20,7 @@ import Testing
         #expect(s.top.screen == .main && s.betaDue == beta.warnsAt)
         send(&s, .tick, now: beta.warnsAt - 1)
         #expect(s.top.screen == .main)
-        send(&s, .tick, now: day27)
+        #expect(send(&s, .tick, now: day27) == [.showWindow])  // card AN.1, 348: a hidden myPod shows
         #expect(s.top.screen == .betaSoon && s.stack.count == 2)
         #expect(s.rows(for: s.top) == [.getNewBeta, .later])
         #expect(s.betaWarned == beta.signed && s.betaDue == beta.endsAt)
@@ -92,13 +92,16 @@ import Testing
     @Test func anEndedBetaStopsPlaybackAndTakesOnlyItsRows() {
         var s = playing()
         s.beta = beta
-        #expect(send(&s, .tick, now: day30) == [.stop])
+        #expect(send(&s, .tick, now: day30) == [.stop, .showWindow])  // card AN.1, 348: a hidden myPod shows
         #expect(s.stack == [Frame(screen: .betaEnded)] && s.current == nil && !s.isPlaying)
         #expect(s.rows(for: s.top) == [.getNewBeta, .quit] && s.betaDue == 0)
         for action in [Action.menu, .play, .next, .prev, .toggleShuffle, .launch, .spotifyAppFound(false), .expire] {
             #expect(send(&s, action, now: day30).isEmpty)
             #expect(s.stack == [Frame(screen: .betaEnded)])
         }
+        // Card AN.1: the menu bar icon still hides and shows myPod over the end.
+        #expect(send(&s, .menuBarClick(shown: true), now: day30) == [.hideWindow])
+        #expect(send(&s, .menuBarClick(shown: false), now: day30) == [.showWindow])
         #expect(send(&s, .select, now: day30) == [.getNewBeta])
         #expect(s.top.screen == .betaEnded)  // it stays
         #expect(send(&s, .wheel(1), .select, now: day30) == [.quit])
@@ -107,7 +110,7 @@ import Testing
     /// Change 234: a beta that has ended at launch shows the ended screen, with no login.
     @Test func aBetaEndedAtLaunchShowsOnlyTheEnd() {
         var s = afterSetup()
-        #expect(send(&s, .betaBuild(beta), .launch, now: day30).isEmpty)
+        #expect(send(&s, .betaBuild(beta), .launch, now: day30) == [.showWindow])  // AN.1, 348: the end shows myPod
         #expect(s.stack == [Frame(screen: .betaEnded)] && s.betaWarned == nil)
     }
 
