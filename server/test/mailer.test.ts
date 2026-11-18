@@ -62,7 +62,7 @@ describe("link mailer", () => {
     expect(alerts[0].text).toContain("21:00 JST");
     expect(alerts[0].text).not.toContain("late@example.com");
     const row = await env.DB.prepare("SELECT * FROM mail_days").first();
-    expect(row).toEqual({ day: "2026-11-18", sent: 3, refused: 2 });
+    expect(row).toEqual({ day: "2026-11-18", sent: 3, refused: 2, failed: 0 });
     expect(await mailer(3, "alert@example.com", noon + 86_400_000).send("next@example.com", link)).toBe("sent");
   });
 
@@ -79,6 +79,17 @@ describe("link mailer", () => {
     const alerts = sent.filter((m) => m.to === "alert@example.com");
     expect(alerts.map((m) => m.subject)).toEqual(["myPod: a link mail failed"]);
     expect(alerts[0].text).not.toContain("sam@example.com");
+  });
+
+  it("a failure and then the day limit send one alert each", async () => {
+    resendWorks = false;
+    await mailer(2).send("sam@example.com", link);
+    resendWorks = true;
+    await mailer(2).send("kim@example.com", link);
+    await mailer(2).send("lee@example.com", link);
+    await mailer(2).send("ann@example.com", link);
+    const alerts = sent.filter((m) => m.to === "alert@example.com").map((m) => m.subject);
+    expect(alerts).toEqual(["myPod: a link mail failed", "myPod: mail limit hit"]);
   });
 
   it("sends no alert when ALERT_TO is not set", async () => {

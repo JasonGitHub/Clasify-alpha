@@ -45,17 +45,18 @@ export function linkMailer(db: D1Database, send: SendMail, perDay: number, alert
         });
         if (ok) return "sent";
       }
-      // The first refusal of a day sends one alert; later ones only count up.
+      // The first refusal and the first failure of a day each send one alert; later ones only count up.
+      const kind = slot ? "failed" : "refused";
       const first = await db.prepare(
-        "INSERT INTO mail_days (day, refused) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET refused = refused + 1 RETURNING refused",
-      ).bind(date).first<{ refused: number }>();
-      if (first?.refused === 1 && alertTo) {
+        `INSERT INTO mail_days (day, ${kind}) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET ${kind} = ${kind} + 1 RETURNING ${kind} AS n`,
+      ).bind(date).first<{ n: number }>();
+      if (first?.n === 1 && alertTo) {
         const jst = new Date(now() + 9 * 3_600_000).toISOString().slice(11, 16);
         await send({
           to: alertTo,
           subject: slot ? "myPod: a link mail failed" : "myPod: mail limit hit",
           text: `${slot ? "Resend did not take a link mail" : `Mail limit hit (${perDay} a day)`} at ${jst} JST. New people see "Mail is busy". ` +
-            `The limit resets at 09:00 JST. The count of refusals today is in D1, table mail_days, day ${date}.`,
+            `The limit resets at 09:00 JST. The counts for today are in D1, table mail_days, day ${date}.`,
         });
       }
       return "busy";
