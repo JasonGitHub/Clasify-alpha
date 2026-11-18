@@ -14,7 +14,7 @@ const codeLife = 15 * 60_000;
 const linkLife = 60 * 60_000;
 
 type Account = { id: string; email: string; state: string; off: number };
-type Mac = { device_hash: string; account_id: string | null; state: string; mails: number };
+type Mac = { device_hash: string; account_id: string | null; state: string; mails: number; mail_state: string };
 
 export async function handle(request: Request, env: Env, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
@@ -39,7 +39,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     if (a.off) return { state: "off" };
     if (m.state === "active") return { state: "active", account: a.id };
     if (a.state === "waitlist") return { state: "full" };
-    return m.mails > 0 ? { state: "waiting", email: a.email, mail: m.mails } : { state: "locked" };
+    if (m.mail_state === "busy") return { state: "busy" };
+    return m.mail_state === "sent" ? { state: "waiting", email: a.email, mail: m.mails } : { state: "locked" };
   }
 
   /** Puts the Mac on the account and sends a new link, unless the beta is full or the account off. */
@@ -48,7 +49,9 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       .bind(token(), email, now).run();
     const a = (await db.prepare("SELECT * FROM accounts WHERE email = ?").bind(email).first<Account>())!;
     // An active Mac keeps its account, even when a Confirm lands while this runs.
-    const moved = await db.prepare("UPDATE macs SET account_id = ? WHERE device_hash = ? AND state != 'active'").bind(a.id, hash).run();
+    const moved = await db.prepare(
+      "UPDATE macs SET mail_state = CASE WHEN account_id = ?1 THEN mail_state ELSE 'none' END, account_id = ?1 WHERE device_hash = ?2 AND state != 'active'",
+    ).bind(a.id, hash).run();
     if (!moved.meta.changes) return status(hash);
     if (a.off) return { state: "off" };
     if (a.state !== "active" && (await activeCount()) >= Number(env.CAP)) {
@@ -57,12 +60,15 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       if (waits.meta.changes) return { state: "full" };
     }
     const link = token();
-    if ((await deps.mailer.send(email, `${page}/?c=${link}`)) === "busy") return { state: "busy" };
+    if ((await deps.mailer.send(email, `${page}/?c=${link}`)) === "busy") {
+      await db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND state != 'active'").bind(hash).run();
+      return { state: "busy" };
+    }
     await db.batch([
       db.prepare("UPDATE accounts SET state = 'pending' WHERE id = ? AND state = 'waitlist'").bind(a.id),
       db.prepare("INSERT INTO mails (token_hash, device_hash, account_id, sent_at, expires_at) VALUES (?, ?, ?, ?, ?)")
         .bind(await sha256(link), hash, a.id, now, now + linkLife),
-      db.prepare("UPDATE macs SET mails = mails + 1 WHERE device_hash = ?").bind(hash),
+      db.prepare("UPDATE macs SET mails = mails + 1, mail_state = 'sent' WHERE device_hash = ?").bind(hash),
     ]);
     return status(hash);
   }

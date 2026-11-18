@@ -170,7 +170,14 @@ describe("activation", () => {
   it("answers busy when the mail cannot go out", async () => {
     mail.busy = true;
     expect(await join(mac(1), "sam@example.com")).toEqual({ state: "busy" });
-    expect(await status(mac(1))).toEqual({ state: "locked" });
+    expect(await status(mac(1))).toEqual({ state: "busy" });  // the app shows "Mail is busy"
+    mail.busy = false;
+    await join(mac(1), "sam@example.com");
+    mail.busy = true;
+    expect(await join(mac(1), "kim@example.com")).toEqual({ state: "busy" });  // "Use another email"
+    expect(await status(mac(1))).toEqual({ state: "busy" });
+    mail.busy = false;
+    expect(await join(mac(1), "kim@example.com")).toEqual({ state: "waiting", email: "kim@example.com", mail: 2 });
   });
 
   it("answers the page from getmypod.app only", async () => {

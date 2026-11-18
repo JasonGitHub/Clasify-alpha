@@ -13,6 +13,8 @@ CREATE TABLE macs (
   account_id TEXT REFERENCES accounts(id),
   state TEXT NOT NULL CHECK (state IN ('waiting', 'active')),
   mails INTEGER NOT NULL DEFAULT 0,
+  -- The last link mail to the Mac's current account: none yet, sent, or refused as busy.
+  mail_state TEXT NOT NULL DEFAULT 'none' CHECK (mail_state IN ('none', 'sent', 'busy')),
   code_hash TEXT UNIQUE,
   code_expires_at INTEGER,
   created_at INTEGER NOT NULL
