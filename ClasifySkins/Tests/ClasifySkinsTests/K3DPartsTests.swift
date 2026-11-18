@@ -7,7 +7,8 @@ import Testing
 @testable import ClasifySkins
 
 /// CLA-105: Take apart's parts in the mesh, checked against the mock's own geometry code
-/// (`k3d_src3.js` from design-review/beta-page/v3/k3d8, lines 11 to 226) run in Node. The mesh
+/// (`k3d_src3.js` from design-review/beta-page/v3/k3d8, lines 11 to 226; CLA-129: about/k3d11/tools,
+/// the `D11` path of the drive, lines 212 to 233) run in Node. The mesh
 /// puts the parts after the closed device, so the order differs from the mock's; the counts and
 /// the sums of the positions do not.
 struct K3DPartsTests {
@@ -16,8 +17,8 @@ struct K3DPartsTests {
     func value(_ i: Int, _ k: Int) -> Double { Double(mesh.vertices[i * K3DMesh.stride + k]) }
 
     @Test func theCountsMatchTheMock() {
-        #expect(mesh.vertexCount == 32935)
-        #expect(mesh.indices.count == 137856)
+        #expect(mesh.vertexCount == 35352)
+        #expect(mesh.indices.count == 139746)
         #expect(mesh.indices.count % 3 == 0)
     }
 
@@ -31,8 +32,8 @@ struct K3DPartsTests {
             4: (1712, 1496.000, 271799.000, 42952.820),
             5: (770, -0.000, -97790.000, 23139.150),
             6: (1766, -478.000, -51364.180, 38125.380),
-            7: (2641, 12719.667, -134373.797, 10989.020),
-            8: (192, 1716.000, -5592.000, 3283.200),
+            7: (5058, -3942.632, -307736.341, 55804.800),
+            8: (192, 1464.000, -5784.000, 3494.400),
             9: (7631, -52018.000, -1110323.200, 154814.190),
         ]
         var got: [Int: (n: Int, x: Double, y: Double, z: Double)] = [:]
@@ -53,9 +54,9 @@ struct K3DPartsTests {
     /// Each material's vertex count, as in the mock.
     @Test func eachMaterialMatchesTheMock() {
         let want: [Int: Int] = [
-            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 5647, 13: 318, 14: 1712, 15: 1798, 16: 466, 17: 508,
+            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4892, 13: 298, 14: 1452, 15: 1798, 16: 446, 17: 508,
             19: 20, 20: 80, 21: 3901, 22: 588, 23: 295, 24: 349, 25: 129, 27: 207, 28: 448, 29: 256, 30: 1650, 32: 650,
-            34: 2301, 35: 402, 36: 308, 37: 218, 38: 545, 39: 73, 40: 149, 41: 40, 42: 24, 43: 296, 44: 140, 45: 668,
+            34: 2301, 35: 402, 36: 308, 37: 3818, 38: 545, 39: 73, 40: 149, 41: 32, 42: 24, 43: 296, 44: 140, 45: 548,
         ]
         var got: [Int: Int] = [:]
         for i in 0..<mesh.vertexCount { got[Int(value(i, 11)), default: 0] += 1 }
@@ -107,12 +108,20 @@ struct K3DPartsTests {
     static let pad = 100
     var size: CGSize { CGSize(width: PocketSkin.size.width + 2 * Double(Self.pad), height: PocketSkin.size.height + 2 * Double(Self.pad)) }
 
-    /// The mock's vertex shader: each part's move along z at `ex` 1, then all back 172 pt.
+    /// The mock's vertex shader (K.3D.11): each part's move along z at `ex` 1, then all back 152 pt.
     @Test func thePartsMoveAsInTheMock() {
-        #expect(K3DShader.apart == [0, 240, 285, 277, 196, 313, 130, 62, 127.5, 140.5])
-        #expect(K3DShader.apartBack == 172)
-        #expect(K3DShader.source.contains("constant float apart[10] = { 0.0, 240.0, 285.0, 277.0, 196.0, 313.0, 130.0, 62.0, 127.5, 140.5 };"))
-        #expect(K3DShader.source.contains("pp.z -= u.ex * 172.0;"))
+        #expect(K3DShader.apart == [-40, 240, 285, 277, 196, 313, 130, 62, 62, 140.5])
+        #expect(K3DShader.apartBack == 152)
+        #expect(K3DShader.source.contains("constant float apart[10] = { -40.0, 240.0, 285.0, 277.0, 196.0, 313.0, 130.0, 62.0, 62.0, 140.5 };"))
+        #expect(K3DShader.source.contains("pp.z -= u.ex * 152.0;"))
+        #expect(K3DShader.source.contains("if (pt > 6.5 && pt < 7.5) { pp.x = -pp.x; pp.z = 2.0 - pp.z; nn.x = -nn.x; nn.z = -nn.z; }"))
+    }
+
+    /// K.3D.11: the drive is turned 180° about y; nothing else is.
+    @Test func onlyTheDriveIsTurned() {
+        let p = SIMD3<Float>(10, 20, 5)
+        #expect(K3DShader.turnsDrive(p, part: 7) == SIMD3(-10, 20, -3))
+        for part in [0, 6, 8, 9] { #expect(K3DShader.turnsDrive(p, part: Float(part)) == p) }
         #expect(K3DShader.source.contains("in.vo.z < 31.8"))  // the wheel hole's collar, T/2 − 2.2
     }
 
@@ -145,6 +154,20 @@ struct K3DPartsTests {
         let hair = try frame(K3DPose(ex: 1e-9), "k3d-apart-hair")
         let worst = zip(closed, hair).map { abs(Int($0) - Int($1)) }.max() ?? 0
         #expect(worst <= 1, "largest difference \(worst)")
+    }
+
+    /// CLA-129: the closed device does not change with the K.3D.11 parts. From 12 back, side and
+    /// edge views, a closed frame equals a frame a hair apart, which draws every part's index:
+    /// no inside part shows through the shell. The PNGs are for the design check.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func noPartShowsThroughTheClosedShell() throws {
+        let views: [(Double, Double)] = [(180, 0), (150, 0), (210, 0), (180, 20), (180, -20), (90, 0), (270, 0), (110, 15), (250, -15), (135, 30), (225, -30), (30, 10)]
+        for (angle, tilt) in views {
+            let name = "k3d-closed-\(Int(angle))-\(Int(tilt))"
+            let closed = try frame(K3DPose(angle: angle, tilt: tilt), name)
+            let hair = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1e-9), name + "-hair")
+            let worst = zip(closed, hair).map { abs(Int($0) - Int($1)) }.max() ?? 0
+            #expect(worst <= 1, "\(name): largest difference \(worst)")
+        }
     }
 
     /// Apart, the plate comes 68 pt toward the eye, so the device is wider on screen. The PNGs

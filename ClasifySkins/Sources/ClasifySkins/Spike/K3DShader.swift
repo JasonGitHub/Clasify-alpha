@@ -36,11 +36,17 @@ import Foundation
 enum K3DShader {
     /// How far each part moves out along the device's z at `ex` 1, by part (k3d_src3.js vertex
     /// shader): shell, plate, window, wheel, screen module, button, frame, drive, foam, board.
-    /// Then the whole device moves back `apartBack`, so it stays in the middle.
-    static let apart: [Float] = [0, 240, 285, 277, 196, 313, 130, 62, 127.5, 140.5]
-    static let apartBack: Float = 172
+    /// Then the whole device moves back `apartBack`, so it stays in the middle. K.3D.11 (CLA-129):
+    /// the shell sits 40 pt further back, so more of the drive shows, and the foam pad stays on
+    /// the drive (62, as the drive).
+    static let apart: [Float] = [-40, 240, 285, 277, 196, 313, 130, 62, 62, 140.5]
+    static let apartBack: Float = 152
     /// CLA-119: within this many degrees of rest, all of the body that shows is the 2D picture.
     static let restAngle = 2.0
+    /// K.3D.11: the vertex shader turns part 7, the drive, 180° about y: x to -x, z to 2 - z.
+    static func turnsDrive(_ p: SIMD3<Float>, part: Float) -> SIMD3<Float> {
+        part > 6.5 && part < 7.5 ? SIMD3(-p.x, p.y, 2 - p.z) : p
+    }
     /// CLA-119: the grain's cell on screen, in the scene's pixels: one screen pixel.
     static let grain = Double(K3DRenderer.supersample)
 
@@ -66,7 +72,9 @@ enum K3DShader {
         // Take apart: each part moves out along the device's z, then the whole device moves back.
         // The wheel's cable stays tucked behind the wheel until the wheel is clear of the plate
         // (ex .14), then slides out to its place (ex .16 to .6).
-        float3 pp = float3(e[0], e[1], e[2]);
+        float3 pp = float3(e[0], e[1], e[2]), nn = float3(e[3], e[4], e[5]);
+        // K.3D.11: the drive is turned 180° about y, its label side to the board (`turnsDrive`).
+        if (pt > 6.5 && pt < 7.5) { pp.x = -pp.x; pp.z = 2.0 - pp.z; nn.x = -nn.x; nn.z = -nn.z; }
         pp.z += u.ex * apart[int(clamp(pt + 0.5, 0.0, 9.0))];
         pp.z -= u.ex * \(K3DShader.apartBack);
         float cb = (pt > 2.5 && pt < 3.5 && ((m > 13.5 && m < 16.5) || (m > 40.5 && m < 41.5))) ? 1.0 : 0.0;
@@ -78,7 +86,7 @@ enum K3DShader {
         K3DVarying o;
         o.vo = float3(e[0], e[1], e[2]);
         o.vp = q.xyz;
-        o.vn = m3 * float3(e[3], e[4], e[5]);
+        o.vn = m3 * nn;
         o.von = float3(e[3], e[4], e[5]);
         o.vuv = float2(e[6], e[7]);
         o.vuv2 = float2(e[8], e[9]);
