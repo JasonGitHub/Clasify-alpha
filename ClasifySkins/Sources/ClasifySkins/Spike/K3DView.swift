@@ -18,7 +18,7 @@ public enum K3DSpike {
         // No drop shadow: the picture is the 2D layer of the 3D front, so its round corners stay clear.
         let skin = PocketSkin(state: state, interactive: false, pressed: wheel.pressed, hovered: wheel.hovered)
             .environment(\.artwork, artwork).environment(\.animationTime, time).environment(\.pocketDropShadow, false)
-            .environment(\.spinBlack, black)
+            .environment(\.spinBlack, black).environment(\.pocketSnapshot, true)
         let renderer = ImageRenderer(content: skin)
         renderer.scale = 2
         return renderer.cgImage

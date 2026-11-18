@@ -106,6 +106,26 @@ import Testing
         #expect(nowOnly.isBlue(Self.screenLeft + 170, Self.rowCenter(1)))
     }
 
+    /// Build 308: the 3D front's picture of the main menu shows the loaded cover. It used to
+    /// show SwiftUI's yellow box with a red "no" sign, because it cannot draw the AppKit cover.
+    @Test func theThreeDFrontsPictureShowsTheCover() throws {
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
+        s.isPlaying = true
+        s.artRow = .nowPlaying
+        s.refreshArt()
+        let context = try #require(CGContext(
+            data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(CGColor(srgbRed: 0, green: 0.6, blue: 0, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        let green = try #require(context.makeImage())
+        let image = try #require(K3DSpike.snapshot(s, artwork: Artwork { _ in green }))
+        let shot = Snapshot(bitmap: NSBitmapImageRep(cgImage: image))
+        let art = shot.rgb(Self.screenLeft + 170, Self.screenTop + 191)
+        #expect(art.g > art.r + 60 && art.g > art.b + 60, "art \(art)")
+    }
+
     @Test func mainArtCrossfadesWithNoDarkDip() {
         func close(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
         let pose = { (t: Double, i: Int) in MainArt.pose(at: t, index: i, count: 4) }
