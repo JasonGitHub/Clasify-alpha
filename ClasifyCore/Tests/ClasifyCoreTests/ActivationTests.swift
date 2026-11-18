@@ -84,7 +84,7 @@ import Testing
     @Test func sendAgainAndUseAnotherEmail() {
         var s = mailOut()
         #expect(send(&s, .select, now: 500) == [.sendActivationAgain(request: 3)])
-        #expect(s.activateStopAt == 500 + activateChecksFor && s.activatePressed == 2)
+        #expect(s.activateStopAt == 500 + activateChecksFor && s.activatePressed == 3)
         send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), .wheel(1), now: 501)
         #expect(send(&s, .select, now: 502) == [.openActivatePage] && s.activateStep == .browserOpen)
         send(&s, .checkActivation, .activation(.waiting(email: "sam@example.com", mail: 2), request: 5), now: 510)
