@@ -52,6 +52,8 @@ struct HelpCommands: Commands {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Card AN.1, 347: the Dock icon also shows a myPod that the menu bar icon hid.
+        if DeviceWindow.isHidden { DeviceWindow.show(); return false }
         if DeviceWindow.raise() { return false }
         // Only How to Use shows. SwiftUI opens a window by itself only when none shows.
         if flag, let open = DeviceWindow.open {
@@ -75,6 +77,62 @@ enum DeviceWindow {
     /// The How to Use window (CLA-77) is not the device.
     private static func isHelp(_ window: NSWindow) -> Bool {
         window.title == HowToUse.title || window.identifier?.rawValue.hasPrefix(HowToUseWindow.id) == true
+    }
+
+    /// Card AN.1: the device window that the menu bar icon hid. It keeps its place and screen.
+    private static weak var hidden: NSWindow?
+    static var isHidden: Bool { hidden != nil }
+    /// The fade in and out (345).
+    private static let fade = 0.15
+
+    /// The device window shows: Clasify is in front, and the window is on screen, not in the
+    /// Dock. A window behind other apps counts as not shown, so a click brings it forward.
+    static var isShown: Bool {
+        NSApp.isActive && hidden == nil && NSApp.windows.contains {
+            !($0 is NSPanel) && $0.level == .normal && $0.isVisible && !$0.isMiniaturized && !isHelp($0)
+        }
+    }
+
+    /// Card AN.1, 344-345: fades the device window out, then takes it off the screen. The music
+    /// goes on.
+    static func hide() {
+        let windows = NSApp.windows.filter { !($0 is NSPanel) && $0.level == .normal && $0.isVisible && !isHelp($0) }
+        guard let window = windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return }
+        hidden = window
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = fade
+            window.animator().alphaValue = 0
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(fade))
+            guard hidden === window else { return }  // a click showed it again during the fade
+            window.orderOut(nil)
+            window.alphaValue = 1
+            // With no other myPod window on screen, the app gives up the front too, so the
+            // app under it becomes active, as after Cmd+H.
+            let others = NSApp.windows.contains { !($0 is NSPanel) && $0.level == .normal && $0.isVisible }
+            if !others { NSApp.hide(nil) }
+        }
+    }
+
+    /// Card AN.1, 344-345: fades the hidden device window in where it was. With none hidden, it
+    /// brings the window to the front, or opens one.
+    static func show() {
+        guard let window = hidden else {
+            // Already in front: do nothing, so a show at launch changes nothing. A window
+            // behind other apps or in the Dock comes to the front.
+            if !isShown && !raise() { open?() }
+            return
+        }
+        hidden = nil
+        if NSApp.isHidden { NSApp.unhide(nil) }  // hide() hid the app with the window
+        if !window.isVisible { window.alphaValue = 0 }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = fade
+            window.animator().alphaValue = 1
+        }
     }
 
     /// Puts the device window in front and makes Clasify active: back from the Dock when it
@@ -162,6 +220,8 @@ final class AppModel {
     @ObservationIgnored private var keeper: SessionKeeper?
     /// Sends the Mac's battery to the store, for the title bar.
     @ObservationIgnored private var battery: BatteryWatcher?
+    /// Card AN.1 (CLA-43): the menu bar icon that shows and hides myPod.
+    @ObservationIgnored private var menuBarIcon: MenuBarIcon?
 
     init() {
         guard let client = LibrespotClient() else {
@@ -218,6 +278,10 @@ final class AppModel {
         // Card BI v2: "Get New Beta" opens the download page; "Quit" on the ended beta quits.
         store.onGetNewBeta = { NSWorkspace.shared.open(BetaSignature.downloadPage) }
         store.onQuit = { NSApplication.shared.terminate(nil) }
+        // Card AN.1 (CLA-43): the menu bar icon, and the window's fade in and out.
+        store.onShowWindow = { DeviceWindow.show() }
+        store.onHideWindow = { DeviceWindow.hide() }
+        menuBarIcon = MenuBarIcon(store: store)
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] force in await keeper?.reconnect(force: force) ?? false }
