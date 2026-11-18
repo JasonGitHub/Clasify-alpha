@@ -82,6 +82,12 @@ public enum Action: Equatable, Sendable {
     case betaBuild(BetaBuild?)
     /// The launch check of card BV (CLA-125) read the newest beta's build number.
     case latestBeta(Int)
+    /// CLA-128: the activation server answered request number `request`. nil: the app's stored
+    /// activation, sent before `.launch`.
+    case activation(Activation, request: Int?)
+    /// CLA-128: ask the server again while the mail is out: the app came back, or its 30 s
+    /// timer ran. Only on the Activate screen.
+    case checkActivation
     /// The skin's first-launch arrival ended, or did not run (card BR, change 288). Hello starts
     /// from now. A second one does nothing.
     case arrived
@@ -140,6 +146,8 @@ public enum Effect: Equatable, Sendable {
     /// Card BV (CLA-125): read the newest beta's build number, once. A newer number comes back
     /// as `.latestBeta`; offline, no answer in 5 s or a bad file send nothing (change 314).
     case checkLatestBeta
+    /// CLA-128: start the activation; check it. The answer comes back as `.activation` with this request number.
+    case startActivation(request: Int), checkActivation(request: Int)
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -355,6 +363,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func setupNext() {
         if s.spotifyApp == false && s.service == .spotify { s.stack = [Frame(screen: .spotifyApp)]; return }
         guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
+        // CLA-128: Activate comes before Your Music, while the switch is on.
+        if s.activateOn && s.activation != .active { s.stack = [Frame(screen: .activate)]; return }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
         fetch(.yourMusic)
@@ -727,6 +737,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fx.append(.getNewBeta)
                 if s.top.screen == .betaSoon || s.top.screen == .betaNew { s.stack.removeLast() }
             case .later: s.stack.removeLast()
+            case .activate: s.activateRequest += 1; fx.append(.startActivation(request: s.activateRequest))
+            case .checkMail: s.activateRequest += 1; fx.append(.checkActivation(request: s.activateRequest))
             case .quit: fx.append(.quit)
             case .useSpotify: switchService(to: .spotify)  // change 262
             case .about:
@@ -1103,6 +1115,16 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             }
             s.beta = beta
             checkBeta()
+
+        case .activation(let activation, let request):
+            guard request == nil || request == s.activateRequest else { return }  // an older request
+            s.activation = activation
+            if activation == .active && s.top.screen == .activate { setupNext() }
+
+        case .checkActivation:
+            guard s.top.screen == .activate, s.activation == .waiting else { return }
+            s.activateRequest += 1
+            fx.append(.checkActivation(request: s.activateRequest))
 
         case .latestBeta(let build):
             // Every answer is saved ("never miss"); only one before the first key may show now.

@@ -31,6 +31,15 @@ public protocol BetaFeed: Sendable {
     func latestBuild() async -> Int?
 }
 
+/// CLA-128: the activation server. PR2 makes it real; tests use a fake. Each call answers
+/// with where the activation stands.
+public protocol Activator: Sendable {
+    /// Start: the person types their email on getmypod.app. Usually `.waiting`.
+    func start() async -> Activation
+    /// Was the mail link clicked?
+    func status() async -> Activation
+}
+
 /// How a login ended.
 public enum LoginResult: Equatable, Sendable {
     case ok, failed
@@ -158,14 +167,17 @@ public final class Store {
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
     /// Card BV: the launch check's source. With none, the check finds nothing.
     @ObservationIgnored private let betaFeed: (any BetaFeed)?
+    /// CLA-128: the activation server. With none, the requests get no answer.
+    @ObservationIgnored private let activator: (any Activator)?
 
     public init(
         player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live,
-        settings: (any SettingsStore)? = nil, betaFeed: (any BetaFeed)? = nil
+        settings: (any SettingsStore)? = nil, betaFeed: (any BetaFeed)? = nil, activator: (any Activator)? = nil
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
         self.betaFeed = betaFeed
+        self.activator = activator
         self.state.words = library.words
         library.onProgress = { [weak self] playlist, done, total, albums in
             self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
@@ -268,6 +280,18 @@ public final class Store {
             case .openPrivacy: onOpenPrivacy?()
             case .getNewBeta: onGetNewBeta?()
             case .quit: onQuit?()
+            case .startActivation(let request):
+                guard let activator else { break }
+                Task { [weak self] in
+                    let answer = await activator.start()
+                    self?.send(.activation(answer, request: request))
+                }
+            case .checkActivation(let request):
+                guard let activator else { break }
+                Task { [weak self] in
+                    let answer = await activator.status()
+                    self?.send(.activation(answer, request: request))
+                }
             case .checkLatestBeta:
                 guard let betaFeed else { break }
                 Task { [weak self] in  // the read runs off the main actor; only its answer comes back

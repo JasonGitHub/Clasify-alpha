@@ -147,12 +147,14 @@ public enum Screen: Equatable, Sendable {
     case betaSoon, betaEnded
     /// Card BV (CLA-125, change 312): a newer beta is out. It shows once for each new build.
     case betaNew
+    /// CLA-128: setup's Activate step, before Your Music. Its words and rows follow `activation`.
+    case activate
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -218,7 +220,26 @@ public enum Row: Equatable, Sendable {
     /// Card BI v2: the beta screens' rows. "Get New Beta" opens the download page, "Later"
     /// closes the warning, and "Quit" quits the app (changes 233 and 234).
     case getNewBeta, later, quit
+    /// CLA-128: "Activate" starts the activation (also "Try again"); "Check again" asks if the
+    /// mail link was clicked.
+    case activate, checkMail
 }
+
+/// CLA-128: where this Mac's activation stands, as the server last said.
+public enum Activation: Equatable, Sendable {
+    /// Not activated: the Activate step shows in setup.
+    case locked
+    /// The mail is sent; the server waits for the click on its link.
+    case waiting
+    case active
+    /// The beta cap is reached: no new accounts now.
+    case full
+    /// The server turned this account off.
+    case off
+    /// The mail limit is hit: try again later.
+    case mailBusy
+}
+
 
 /// A beta build (card BI v2, CLA-96): a Developer ID signed build. It warns once on day 27 and
 /// ends on day 30 after it was signed. Ad-hoc builds are not betas and never end.
@@ -348,6 +369,13 @@ public struct AppState: Equatable, Sendable {
     public var betaWarnedNow = false
     /// The notice showed on this launch: a newer answer shows nothing more. Not saved.
     public var betaNoticedNow = false
+    /// CLA-128: setup has the Activate step. Off by default, until the server is live; saved
+    /// with the settings (UserDefaults key `activate.on`), so a test Mac can turn it on.
+    public var activateOn = false
+    /// CLA-128: this Mac's activation. The app sends the stored one before `.launch`. Not saved here.
+    public var activation = Activation.locked
+    /// The newest request to the activation server; an older answer is dropped.
+    public var activateRequest = 0
     /// The device arrived at the first launch ever (card BR, change 288): until then the skin
     /// shows it turning in, and the reducer takes no input. Saved with the settings.
     public var arrived = true
@@ -915,6 +943,11 @@ public struct AppState: Equatable, Sendable {
         case .pickMusic: (appleMusicFirst ? [.appleMusic, .spotify] : MusicService.allCases).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
         case .betaSoon, .betaNew: [.getNewBeta, .later]
+        case .activate:  // card 1 (PR3) adds rows, such as "Send again" while waiting
+            switch activation {
+            case .waiting: [.checkMail]
+            case .locked, .active, .full, .off, .mailBusy: [.activate]
+            }
         case .betaEnded: [.getNewBeta, .quit]
         case .licenses: License.all.indices.map { .license($0) }
         case .about, .now, .hello, .yourMusic, .loggedIn, .license: []

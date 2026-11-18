@@ -41,6 +41,7 @@ enum Labels {
         case .spotifyApp: "Spotify App"
         case .yourMusic: "Your Music"
         case .betaSoon, .betaEnded, .betaNew: "Beta"  // card BI v2, changes 233 and 234; card BV, 312
+        case .activate: "Activate"  // CLA-128
         }
     }
 
@@ -111,6 +112,9 @@ enum Labels {
         case .getNewBeta: return RowText(label: "Get New Beta")
         case .later: return RowText(label: "Later")
         case .quit: return RowText(label: "Quit")
+        // CLA-128: plain words until card 1 (PR3) draws the Activate screen.
+        case .activate: return RowText(label: state.activation == .locked ? "Activate" : "Try again")
+        case .checkMail: return RowText(label: "Check again")
         }
     }
 
