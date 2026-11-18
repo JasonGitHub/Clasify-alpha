@@ -29,6 +29,16 @@ public struct K3DTurn: Equatable {
     /// The pinch since the last open or close, or since Cmd went down.
     public private(set) var magnified = 0.0
 
+    /// Build 308 (Jason: the device jumped up for one frame as a swipe started): a turn from the
+    /// resting front grows the window's room (CLA-119), and for one frame the 3D body drew 53 px
+    /// off. A trackpad swipe turns past 2° in its first frame, where a mouse drag does not. So
+    /// for `settle` seconds the device holds at the front, where the 2D device covers the 3D body
+    /// while the room grows, and the swipe's travel waits; then it turns by all of it.
+    public static let settle = 0.05
+    /// When this turn left the resting front, and the travel that waits for `settle`.
+    public private(set) var settledFrom: Date?
+    public private(set) var waitingX = 0.0, waitingY = 0.0
+
     public init() {}
 
     /// A swipe moved the fingers `dx`, `dy` points (right and down are +). The device holds the
@@ -37,6 +47,20 @@ public struct K3DTurn: Equatable {
         guard Self.canTurn(flip, at: now) else { return flip }
         let tilt = min(Self.maxTilt, max(-Self.maxTilt, flip.tilt(at: now) + dy * Self.tiltPerPoint))
         return flip.held(angle: flip.angle(at: now) + dx * Self.perPoint, tilt: tilt)
+    }
+
+    /// A swipe event as the app sends it: `swiped`, with the first `settle` seconds held at the
+    /// front when the turn leaves the resting front.
+    public mutating func swipe(dx: Double, dy: Double, flip: K3DFlip, at now: Date) -> K3DFlip {
+        guard Self.canTurn(flip, at: now) else { return flip }
+        if settledFrom == nil, flip.restsOnFront(at: now) { settledFrom = now }
+        waitingX += dx
+        waitingY += dy
+        if let from = settledFrom, now.timeIntervalSince(from) < Self.settle {
+            return flip.held(angle: flip.angle(at: now), tilt: flip.tilt(at: now))
+        }
+        defer { (waitingX, waitingY) = (0, 0) }
+        return swiped(dx: waitingX, dy: waitingY, flip: flip, at: now)
     }
 
     /// The pinch moved by `amount` (NSEvent.magnification: + is out). Past `pinch`, the device
