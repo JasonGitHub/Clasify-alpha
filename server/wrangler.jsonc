@@ -2,6 +2,8 @@
 {
   "name": "mypod-activation",
   "main": "src/index.ts",
+  // The activation page (card BX): static files at /activate/, with their headers in public/_headers.
+  "assets": { "directory": "./public" },
   "compatibility_date": "2026-11-01",
   "d1_databases": [
     // Placeholder: the real database ID goes here before the first deploy.
