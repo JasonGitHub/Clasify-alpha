@@ -115,6 +115,7 @@ struct K3DPartsTests {
         #expect(K3DShader.source.contains("constant float apart[10] = { -40.0, 240.0, 285.0, 277.0, 196.0, 313.0, 130.0, 62.0, 62.0, 140.5 };"))
         #expect(K3DShader.source.contains("pp.z -= u.ex * 152.0;"))
         #expect(K3DShader.source.contains("if (pt > 6.5 && pt < 7.5) { pp.x = -pp.x; pp.z = 2.0 - pp.z; nn.x = -nn.x; nn.z = -nn.z; }"))
+        #expect(K3DShader.source.contains("in.vo.z < 31.8"))  // the wheel hole's collar, T/2 − 2.2
     }
 
     /// K.3D.11: the drive is turned 180° about y; nothing else is.
@@ -122,7 +123,6 @@ struct K3DPartsTests {
         let p = SIMD3<Float>(10, 20, 5)
         #expect(K3DShader.turnsDrive(p, part: 7) == SIMD3(-10, 20, -3))
         for part in [0, 6, 8, 9] { #expect(K3DShader.turnsDrive(p, part: Float(part)) == p) }
-        #expect(K3DShader.source.contains("in.vo.z < 31.8"))  // the wheel hole's collar, T/2 − 2.2
     }
 
     /// The mock's `draw`: closed, one pass of the closed device with back faces culled.
@@ -167,6 +167,19 @@ struct K3DPartsTests {
             let hair = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1e-9), name + "-hair")
             let worst = zip(closed, hair).map { abs(Int($0) - Int($1)) }.max() ?? 0
             #expect(worst <= 1, "\(name): largest difference \(worst)")
+        }
+    }
+
+    /// CLA-129 PR 2: the drive's K.3D.11 colors are in the shader: the lid's pressed band, the
+    /// turquoise foam, and the label moved with the pad's cut-out. The PNGs show both of the
+    /// drive's sides apart, for the design check against the mock.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theDriveHasItsK3D11Colors() throws {
+        for line in ["float hook11(float2 o)", "c = float3(0.24, 0.62, 0.90)", "l -= float2(-49.0, -49.0);", "mm = 0.66;"] {
+            #expect(K3DShader.source.contains(line), "\(line)")
+        }
+        for (angle, tilt) in [(125.0, 15.0), (150.0, 25.0), (210.0, -25.0), (330.0, 25.0), (30.0, -25.0)] {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-drive-\(Int(angle))-\(Int(tilt))")
+            #expect(width(bytes, row: 300) > 100)
         }
     }
 
