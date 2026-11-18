@@ -377,6 +377,7 @@ enum K3DShader {
             if (pt > 7.5) {  // the pad: the label under it shows through 9%
                 float2 l8 = float2(-o.x, o.y + 80.0);
                 float in8 = step(abs(l8.x), 132.0) * step(abs(l8.y), 165.0) * pk;
+                l8 -= float2(-49.0, -49.0);  // the label's print shift, as on the label itself (mock fix 11-18)
                 float3 lc = tl.sample(sm, float2((132.0 - l8.x) / 264.0 * 0.625, (165.0 - l8.y) / 330.0 * 0.78125)).rgb;
                 c = mix(c, c * (0.35 + 0.85 * lc), 0.09 * in8);
             } else c = mix(c, c * 1.18 + 0.05, 0.08);  // the lid's U: the steel under it lifts it a little
