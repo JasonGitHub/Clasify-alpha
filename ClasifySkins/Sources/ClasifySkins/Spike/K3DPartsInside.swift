@@ -181,70 +181,76 @@ extension K3DMesh {
         for (x0, x1, y0, y1) in pads { bx6(x0, x1, y0, y1, 15.8, 20.6, 37) }
     }
 
-    /// A screw head with a cross slot (the mock's `scr`), on a surface at `z`.
-    private mutating func screw(_ hx: Double, _ hy: Double, _ z: Double, r: Double, h: Double, slot: Double, width: Double) {
-        let sc = Self.circle(hx, hy, r, 16)
-        d(sc, z + h, 12, hx, hy)
-        bd(sc, z + h, z, 12)
-        bx(hx - slot, hx + slot, hy - width, hy + width, z + h, z + h + 0.06, 14)
-        bx(hx - width, hx + width, hy - slot, hy + slot, z + h, z + h + 0.06, 14)
-    }
-
-    /// 0 inside the shell: the battery, the flex cables on the back wall, and the jack and hold
-    /// switch block at the top.
+    /// 0 inside the shell (K.3D.11, CLA-129, Jason's 4 shell photos): the battery in blue shrink
+    /// film, the flex cables on the back wall, the jack corner (a tall steel can at the top wall,
+    /// the jack body, a small flex board with a chip), the hold switch on its bracket, a rolled
+    /// bead along the top wall, and a clip rail inside each long wall.
     mutating func addShellInside() {
         let circle = Self.circle
         part = 0
-        let z0 = -Self.depth / 2 + 1
-        slab(Self.rr(-38, 210, 118, 46, 13, 8), -38, 210, z0, z0 + 30, 35)
-        bx(-140, 64, 176, 244, z0 + 30, z0 + 30.15, 19)
-        bx(-148, -14, 262, 284, z0, z0 + 8, 12)
-        bx(104, 146, 180, 214, z0, z0 + 3, 36)
-        bx(80, 93, 196, 205, z0, z0 + 0.6, 16)
-        bx(86, 93, 205, 214, z0, z0 + 0.6, 16)
-        let zb = z0 + 1.4
-        bx(84, 150, 214, 284, z0, zb, 16)
-        bx(84, 150, 264, 284, zb, zb + 1.6, 12)
-        bx(84, 90, 236, 264, zb, zb + 1.6, 12)
-        screw(93, 275, zb + 1.6, r: 3.4, h: 0.7, slot: 2.2, width: 0.45)
-        screw(143, 275, zb + 1.6, r: 3.4, h: 0.7, slot: 2.2, width: 0.45)
-        bx(108, 146, 218, 264, zb, z0 + 12, 44)
-        bx(111, 143, 221, 247, z0 + 12, z0 + 12.5, 14)
-        bx(113, 141, 250, 261, z0 + 12, z0 + 12.3, 14)
-        bx(118, 136, 264, 284, zb + 1.6, z0 + 11.4, 12)
-        bx(121, 133, 266, 284, z0 + 11.4, z0 + 11.9, 12)
-        bx(126.4, 127.6, 264, 284, z0 + 11.9, z0 + 11.96, 14)
-        let jb = circle(127, 234, 6.2, 24)
-        d(jb, z0 + 13.1, 12, 127, 234)
-        bd(jb, z0 + 13.1, z0 + 12.5, 12)
-        d(circle(127, 234, 3, 18), z0 + 13.15, 14, 127, 234)
-        for i in 0..<3 {
-            let y = 221 + Double(i) * 9
-            bx(146, 149, y, y + 5, zb, zb + 4.5, 12)
-            bx(149, 150, y + 0.6, y + 4.4, zb, zb + 0.5, 15)
-            bx(105, 108, y, y + 5, zb, zb + 4.5, 12)
+        let z0 = -Self.depth / 2 + 1, bH = 40.0
+        slab(Self.rr(-40, 212, 120, 48, 13, 8), -40, 212, z0 + 1.5, z0 + bH, 35)
+        bx(-140, 64, 176, 244, z0 + bH, z0 + bH + 0.15, 19)
+        let zq = z0 + 1.5
+        bx(80, 93, 196, 205, zq, zq + 0.6, 16)
+        bx(86, 93, 205, 214, zq, zq + 0.6, 16)
+        // The jack corner: flex board, gold contacts, chip, jack body, steel can.
+        bx(96, 134, 184, 216, z0 + 1.5, z0 + 2.7, 16)
+        for i in 0..<7 { bx(97, 99.6, 188 + Double(i) * 4, 190.4 + Double(i) * 4, z0 + 2.7, z0 + 3.3, 15) }
+        bx6(104, 126, 189, 210, z0 + 2.7, z0 + 6.5, 44)
+        bx6(100, 130, 218, 244, z0 + 1.5, z0 + 16, 45)
+        bx6(92, 138, 244, 290, z0 + 1.5, z0 + 18, 12)
+        cylinder(x0: -156, x1: 96, yc: 288, zc: z0 + 9, r: 7, material: 12)  // the rolled bead along the top wall
+        // The hold switch: a dark steel bracket, its small flex strip and the slider on top.
+        bx6(-160, -40, 274, 296, z0 + 8, z0 + 17, 44)
+        bx(-136, -98, 290, 296, z0 + 17, z0 + 18.2, 44)
+        bx6(-118, -104, 292, 296, z0 + 18.2, z0 + 21, 12)
+        let gs = circle(-52, 290, 3.6, 16)
+        d(gs, z0 + 17.6, 15, -52, 290)
+        bd(gs, z0 + 17.6, z0 + 17, 15)
+        d(circle(-70, 290, 2, 12), z0 + 17.05, 15, -70, 290)
+        bx6(-34, 40, 286, 291, z0 + 2, z0 + 12, 44)  // the dark top opening
+        bx6(52, 70, 284, 290, z0 + 1.5, z0 + 14, 44)  // a knurled band
+        for (hx, hy) in [(82.0, 284.0), (146, 250)] {  // screw posts
+            let sp = circle(hx, hy, 6.5, 20)
+            d(sp, z0 + 12, 12, hx, hy)
+            bd(sp, z0 + 12, z0 + 1.5, 12)
+            d(circle(hx, hy, 3, 16), z0 + 12.05, 44, hx, hy)
         }
-        bx(91, 105, 240, 260, zb, zb + 5.6, 12)
-        bx(93, 103, 247, 253, zb + 5.6, zb + 5.68, 44)
-        bx(98, 103, 246.4, 253.6, zb + 5.68, zb + 7.6, 14)
-        for i in 0..<3 { bx(89.4, 91, 242 + Double(i) * 6.5, 244.6 + Double(i) * 6.5, zb, zb + 0.5, 15) }
-        bx(92, 104, 220, 232, zb, zb + 2.2, 14)
-        for i in 0..<4 {
-            let x = 93.2 + Double(i) * 2.8
-            bx(x, x + 1.4, 218.6, 220, zb, zb + 0.4, 15)
-            bx(x, x + 1.4, 232, 233.4, zb, zb + 0.4, 15)
+        for kx in [72.0, 148] { bx6(kx - 6, kx + 6, 282, 290, z0 + 1.5, z0 + 9, 12) }
+        // A thin steel clip rail inside each long wall: a rolled lip on top, 8 clips bent inward,
+        // a raised tab at the rail's top end.
+        for sx in [-1.0, 1] {
+            func X(_ a: Double, _ b: Double) -> (Double, Double) { (min(a, b), max(a, b)) }
+            func rail(_ x: (Double, Double), _ y0: Double, _ y1: Double, _ z0: Double, _ z1: Double, _ m: Int) {
+                bx6(x.0, x.1, y0, y1, z0, z1, m)
+            }
+            let xo = sx * 180.4, xi = sx * 177.6
+            rail(X(xo, xi), -252, 256, 2, 13.2, 34)
+            rail(X(xo, sx * 175.4), -252, 256, 13.2, 15.4, 34)
+            for k in 0..<8 {
+                let y = -226 + Double(k) * 62
+                rail(X(xi, sx * 173.2), y - 6, y + 6, 5.2, 10.8, 34)
+                rail(X(xi, sx * (177.6 - 0.12)), y - 6, y + 6, 10.8, 12.8, 44)
+                rail(X(sx * 173.2, sx * 172.2), y - 6, y + 6, 9.6, 10.8, 34)
+            }
+            rail(X(xo, sx * 176.4), 256, 263, 2, 19, 34)
+            rail(X(sx * 176.4, sx * 172.6), 256, 263, 17.6, 19, 34)
         }
-        for cy in [219.0, 225, 231] {
-            bx(85.5, 90, cy, cy + 3, zb, zb + 1.6, 45)
-            bx(85.5, 86.6, cy, cy + 3, zb + 1.6, zb + 1.66, 12)
-            bx(88.9, 90, cy, cy + 3, zb + 1.6, zb + 1.66, 12)
-        }
-        for (hx, hy) in [(-138.0, 273.0), (-24, 273)] {
-            let sc = circle(hx, hy, 3.6, 16)
-            d(sc, z0 + 8.6, 12, hx, hy)
-            bd(sc, z0 + 8.6, z0 + 8, 12)
-            bx(hx - 2.4, hx + 2.4, hy - 0.5, hy + 0.5, z0 + 8.6, z0 + 8.66, 14)
-            bx(hx - 0.5, hx + 0.5, hy - 2.4, hy + 2.4, z0 + 8.6, z0 + 8.66, 14)
+    }
+
+    /// A round bar along x (the mock's `cyl`): 12 faces round its axis at `yc`, `zc`.
+    private mutating func cylinder(x0: Double, x1: Double, yc: Double, zc: Double, r: Double, material m: Int) {
+        let k = 12
+        for i in 0..<k {
+            let a0 = Double(i) / Double(k) * 2 * .pi, a1 = Double(i + 1) / Double(k) * 2 * .pi
+            let p0 = (yc + r * cos(a0), zc + r * sin(a0)), p1 = (yc + r * cos(a1), zc + r * sin(a1))
+            let n0 = (0.0, cos(a0), sin(a0)), n1 = (0.0, cos(a1), sin(a1))
+            let q = [
+                vertex((x0, p0.0, p0.1), n0, uvOf(x0, p0.0), m), vertex((x1, p0.0, p0.1), n0, uvOf(x1, p0.0), m),
+                vertex((x1, p1.0, p1.1), n1, uvOf(x1, p1.0), m), vertex((x0, p1.0, p1.1), n1, uvOf(x0, p1.0), m),
+            ]
+            triangles([q[0], q[2], q[1], q[0], q[3], q[2]])  // wound outward
         }
     }
 }

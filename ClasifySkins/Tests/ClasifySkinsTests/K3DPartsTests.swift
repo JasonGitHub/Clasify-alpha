@@ -8,7 +8,7 @@ import Testing
 
 /// CLA-105: Take apart's parts in the mesh, checked against the mock's own geometry code
 /// (`k3d_src3.js` from design-review/beta-page/v3/k3d8, lines 11 to 226; CLA-129: about/k3d11/tools,
-/// the `D11` path of the drive, lines 212 to 233) run in Node. The mesh
+/// the `D11` path of the drive and the shell, lines 212 to 264) run in Node. The mesh
 /// puts the parts after the closed device, so the order differs from the mock's; the counts and
 /// the sums of the positions do not.
 struct K3DPartsTests {
@@ -17,15 +17,15 @@ struct K3DPartsTests {
     func value(_ i: Int, _ k: Int) -> Double { Double(mesh.vertices[i * K3DMesh.stride + k]) }
 
     @Test func theCountsMatchTheMock() {
-        #expect(mesh.vertexCount == 35352)
-        #expect(mesh.indices.count == 139746)
+        #expect(mesh.vertexCount == 36046)
+        #expect(mesh.indices.count == 140538)
         #expect(mesh.indices.count % 3 == 0)
     }
 
     /// Each part: its vertex count and the sums of its x, y and z (Node, to 3 places).
     @Test func eachPartMatchesTheMock() {
         let want: [Int: (n: Int, x: Double, y: Double, z: Double)] = [
-            0: (6435, 97297.000, 425110.000, -90769.827),
+            0: (7129, 22680.000, 285412.000, -53530.927),
             1: (8446, -0.000, 62303.000, 247089.541),
             2: (1766, -0.000, 284767.500, 57925.100),
             3: (1576, -82716.000, -195696.000, 47231.580),
@@ -54,9 +54,9 @@ struct K3DPartsTests {
     /// Each material's vertex count, as in the mock.
     @Test func eachMaterialMatchesTheMock() {
         let want: [Int: Int] = [
-            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4892, 13: 298, 14: 1452, 15: 1798, 16: 446, 17: 508,
+            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4529, 13: 298, 14: 1173, 15: 1720, 16: 446, 17: 508,
             19: 20, 20: 80, 21: 3901, 22: 588, 23: 295, 24: 349, 25: 129, 27: 207, 28: 448, 29: 256, 30: 1650, 32: 650,
-            34: 2301, 35: 402, 36: 308, 37: 3818, 38: 545, 39: 73, 40: 149, 41: 32, 42: 24, 43: 296, 44: 140, 45: 548,
+            34: 3261, 35: 418, 36: 288, 37: 3818, 38: 545, 39: 73, 40: 149, 41: 32, 42: 24, 43: 296, 44: 634, 45: 512,
         ]
         var got: [Int: Int] = [:]
         for i in 0..<mesh.vertexCount { got[Int(value(i, 11)), default: 0] += 1 }
@@ -179,6 +179,15 @@ struct K3DPartsTests {
         }
         for (angle, tilt) in [(125.0, 15.0), (150.0, 25.0), (210.0, -25.0), (330.0, 25.0), (30.0, -25.0)] {
             let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-drive-\(Int(angle))-\(Int(tilt))")
+            #expect(width(bytes, row: 300) > 100)
+        }
+    }
+
+    /// CLA-129 PR 3: the K.3D.11 shell parts. The PNGs show the open shell from front and side views, so
+    /// the battery, the rails, the jack corner and the hold switch can be checked with the mock.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theShellHasItsK3D11Parts() throws {
+        for (angle, tilt) in [(300.0, 25.0), (60.0, 25.0), (320.0, -30.0)] {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-shell-\(Int(angle))-\(Int(tilt))")
             #expect(width(bytes, row: 300) > 100)
         }
     }
