@@ -97,6 +97,45 @@ func sampleState() -> AppState {
     }
 
     /// Card BI v2: the beta screens' words (233, 234), the tag (279) and About's version (235).
+    /// Card BW, 319 to 327: the words, the small device's mark and its cable on each Activate screen.
+    @Test func activateScreensUseTheCardWords() {
+        var s = sampleState()
+        s.stack = [Frame(screen: .activate)]
+        func words() -> Labels.SetupWords? { Labels.setupWords(for: s.top, in: s) }
+        func device() -> PreviewScreen? { PreviewScreen.of(.activate, in: s)?.screen }
+        func cable() -> SyncCable.Plug? { PreviewScreen.of(.activate, in: s)?.cable }
+        #expect(Labels.title(.activate, in: s) == "Activate" && Labels.message(for: s.top, in: s) == nil)
+        #expect(words() == .init(headline: "Join the beta", line: "Add your email\nin your browser.", footnote: "No password. One click in a mail."))
+        #expect(device() == .badge(.mail, word: "Join") && cable() == .on)  // 319
+        s.activateOpenMail = 0; s.activateStopAt = 1000
+        #expect(words() == .init(headline: "Take your time", line: "Your browser is open.\nAdd your email there."))
+        #expect(device() == .badge(.mail, word: "Join") && cable() == .light)  // 320
+        s.activateOpenMail = nil; s.activation = .waiting(email: "sam@example.com", mail: 1)
+        #expect(words() == .init(headline: "Check your mail", line: "We sent a link to", email: "sam@example.com"))
+        #expect(device() == .badge(.mail, word: "Sent") && cable() == .light)  // 321
+        s.activateStopAt = 0
+        #expect(words() == .init(headline: "Check your mail", line: "Click the link we sent to", email: "sam@example.com"))
+        #expect(device() == .badge(.mailRests, word: "Sent") && cable() == .on)  // 322
+        s.activation = .active
+        #expect(words() == .init(headline: "Welcome to the beta", line: "Thanks for joining us."))
+        #expect(device() == .mark(ok: true, word: "Activated") && cable() == .light)  // 323
+        let others: [(Activation, Labels.SetupWords, PreviewScreen)] = [
+            (.mailBusy, .init(headline: "Mail is busy", line: "Many people are joining.\nPlease try again later."), .badge(.clock, word: "Busy")),
+            (.full, .init(headline: "The beta is full", line: "You’re on the list.\nWe’ll write to you."), .badge(.people, word: "Full")),
+            (.off, .init(headline: "Activation is off", line: "Write to us at\nfeedback@getmypod.app"), .badge(.power, word: "Off")),
+            (.offline, .init(headline: "That didn’t work", line: "No problem, it happens."), .mark(ok: false, word: "Offline")),
+        ]
+        for (answer, text, mark) in others {  // 324 to 327
+            s.activation = answer
+            #expect(words() == text && device() == mark && cable() == .on)
+        }
+        let rows: [(Row, String)] = [
+            (.openActivate, "Open browser"), (.openActivateAgain, "Open browser again"), (.cancelActivate, "Cancel"),
+            (.sendAgain, "Send again"), (.useAnotherEmail, "Use another email"), (.checkMail, "Check again"), (.tryActivateAgain, "Try again"),
+        ]
+        for (row, label) in rows { #expect(Labels.row(row, on: .activate, in: s) == .init(label: label)) }
+    }
+
     @Test func betaScreensUseTheCardWords() throws {
         var s = sampleState()
         let end = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 12, day: 14, hour: 12)))

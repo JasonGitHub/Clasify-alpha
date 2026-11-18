@@ -17,6 +17,11 @@ enum PreviewScreen: Equatable {
     case names([String], from: Double, songs: Int?, late: Double?)
     /// Card BI v2, change 233: a blue download arrow over the word "New beta".
     case download(word: String)
+    /// Card BW: a mark over its word on the Activate screens. A blue envelope ("Join", "Sent"),
+    /// a gray one when the checks stopped, a clock ("Busy"), two people ("Full"), a power mark ("Off").
+    case badge(Badge, word: String)
+
+    enum Badge: Equatable { case mail, mailRests, clock, people, power }
 
     /// The small device's screen and its sync cable on a setup screen. Nil on other screens.
     static func of(_ screen: Screen, in state: AppState) -> (screen: PreviewScreen, cable: SyncCable.Plug?)? {
@@ -47,6 +52,21 @@ enum PreviewScreen: Equatable {
         case .betaSoon: return (screen: PreviewScreen.download(word: "New beta"), cable: SyncCable.Plug.light)
         case .betaNew: return (screen: PreviewScreen.download(word: "Beta \(state.newBetaNow ?? 0)"), cable: SyncCable.Plug.light)
         case .betaEnded: return (screen: PreviewScreen.mark(ok: false, word: "Ended"), cable: SyncCable.Plug.off)
+        // Card BW: the cable stays plugged in (connected to your music); the light flows on 320, 321 and 323.
+        case .activate:
+            let step = state.activateStep
+            let light = step == .browserOpen || step == .checkMail || step == .confirmed
+            let shown: PreviewScreen = switch step {
+            case .join, .browserOpen: .badge(.mail, word: "Join")
+            case .checkMail: .badge(.mail, word: "Sent")
+            case .stopped: .badge(.mailRests, word: "Sent")
+            case .confirmed: .mark(ok: true, word: "Activated")
+            case .mailBusy: .badge(.clock, word: "Busy")
+            case .full: .badge(.people, word: "Full")
+            case .off: .badge(.power, word: "Off")
+            case .offline: .mark(ok: false, word: "Offline")
+            }
+            return (screen: shown, cable: light ? SyncCable.Plug.light : SyncCable.Plug.on)
         default: return nil
         }
     }
@@ -69,6 +89,10 @@ struct SetupMessage: View {
                 .font(.helvetica(11))
                 .lineSpacing(2)
                 .foregroundStyle(Color(hex: 0x5d6772))
+            if !words.email.isEmpty {  // card BW: a long address fades at the end, as every cut line
+                FadeLine(Text(words.email).font(.helvetica(11)).foregroundStyle(Color(hex: 0x5d6772)))
+                    .padding(.top, -1)
+            }
         }
         .fixedSize(horizontal: false, vertical: true)
         .padding(EdgeInsets(top: 9, leading: 9, bottom: 0, trailing: 9))
@@ -97,6 +121,7 @@ struct PreviewScreenContent: View {
         case .mark(let ok, _): ok ? 2 : 1
         case .names: 3
         case .download: 4
+        case .badge: 5
         default: 0
         }
         ZStack {
@@ -105,6 +130,7 @@ struct PreviewScreenContent: View {
             mark(ok: false, word: Self.failWord(screen)).opacity(shown == 1 ? 1 : 0)
             mark(ok: true, word: Self.okWord(screen)).opacity(shown == 2 ? 1 : 0)
             if case .download(let word) = screen { download(word) }
+            if case .badge(let badge, let word) = screen { self.badge(badge, word: word) }
         }
         .animation(.easeInOut(duration: 0.3), value: shown)
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
@@ -181,6 +207,52 @@ struct PreviewScreenContent: View {
                 .font(.helvetica(38, bold: true))
                 .kerning(-0.5)
                 .foregroundStyle(Color(hex: 0x1f6fd1))
+        }
+    }
+
+    /// Card BW: the Activate marks, drawn as in the card (110 point box, shown at 84). Blue
+    /// (#3f8fd8, word #1f6fd1) while something goes on, else gray (#9aa4ae, word #5d6772).
+    private func badge(_ badge: PreviewScreen.Badge, word: String) -> some View {
+        let blue = badge == .mail
+        let ink = Color(hex: blue ? 0x3f8fd8 : 0x9aa4ae)
+        let round = StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round)
+        return VStack(spacing: 6) {
+            ZStack {
+                switch badge {
+                case .mail, .mailRests:
+                    RoundedRectangle(cornerRadius: 9).stroke(ink, lineWidth: 10).frame(width: 82, height: 58).position(x: 55, y: 55)
+                    Path { p in p.move(to: CGPoint(x: 18, y: 32)); p.addLine(to: CGPoint(x: 55, y: 60)); p.addLine(to: CGPoint(x: 92, y: 32)) }
+                        .stroke(ink, style: round)
+                case .clock:
+                    Circle().stroke(ink, lineWidth: 10).frame(width: 76, height: 76).position(x: 55, y: 55)
+                    Path { p in p.move(to: CGPoint(x: 55, y: 34)); p.addLine(to: CGPoint(x: 55, y: 56)); p.addLine(to: CGPoint(x: 69, y: 65)) }
+                        .stroke(ink, style: round)
+                case .people:
+                    ForEach([40.0, 72], id: \.self) { x in Circle().stroke(ink, lineWidth: 9).frame(width: 30, height: 30).position(x: x, y: 40) }
+                    Path { p in
+                        p.move(to: CGPoint(x: 14, y: 92))
+                        p.addCurve(to: CGPoint(x: 40, y: 64), control1: CGPoint(x: 14, y: 74), control2: CGPoint(x: 26, y: 64))
+                        p.addCurve(to: CGPoint(x: 66, y: 92), control1: CGPoint(x: 54, y: 64), control2: CGPoint(x: 66, y: 74))
+                        p.move(to: CGPoint(x: 50, y: 74))
+                        p.addCurve(to: CGPoint(x: 72, y: 64), control1: CGPoint(x: 56, y: 67), control2: CGPoint(x: 63, y: 64))
+                        p.addCurve(to: CGPoint(x: 96, y: 92), control1: CGPoint(x: 86, y: 64), control2: CGPoint(x: 96, y: 74))
+                    }
+                    .stroke(ink, style: StrokeStyle(lineWidth: 9, lineCap: .round))
+                case .power:
+                    // The ring is open at the top: 46 of its 214 points, centred on the line.
+                    Circle().trim(from: 23.0 / 214, to: 191.0 / 214)
+                        .stroke(ink, style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                        .rotationEffect(.degrees(-90)).frame(width: 68, height: 68).position(x: 55, y: 58)
+                    Path { p in p.move(to: CGPoint(x: 55, y: 16)); p.addLine(to: CGPoint(x: 55, y: 52)) }.stroke(ink, style: round)
+                }
+            }
+            .frame(width: 110, height: 110)
+            .scaleEffect(84.0 / 110)
+            .frame(width: 84, height: 84)
+            Text(word)
+                .font(.helvetica(38, bold: true))
+                .kerning(-0.5)
+                .foregroundStyle(Color(hex: blue ? 0x1f6fd1 : 0x5d6772))
         }
     }
 

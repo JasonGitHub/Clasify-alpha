@@ -1546,6 +1546,38 @@ import Testing
     /// Card BI v2: the warning (233) and the end (234) are split setup screens with two rows,
     /// the first selected. The small device shows a blue download arrow, or the gray cross.
     /// The grey BETA pill (279) shows on song lists of a beta only.
+    /// Card BW, 319 to 327: the same split screen as AX and BB. The rows start at the same
+    /// place (the first one selected), 323 has none, and its mark is the green check.
+    @Test func theActivateScreens() throws {
+        var s = AppState()
+        s.stack = [Frame(screen: .activate)]
+        func any(_ shot: Snapshot, x: ClosedRange<Int>, y: ClosedRange<Int>, _ test: (Int, Int, Int) -> Bool) -> Bool {
+            for py in y { for px in x { let c = shot.rgb(px, py); if test(c.r, c.g, c.b) { return true } } }
+            return false
+        }
+        let firstRow = Self.rowCenter(0) + 77
+        let steps: [(String, (inout AppState) -> Void)] = [
+            ("319-join", { _ in }),
+            ("320-browser-open", { $0.activateOpenMail = 0; $0.activateStopAt = 1000 }),
+            ("321-check-mail", { $0.activation = .waiting(email: "sam.longname.example@example.com", mail: 1); $0.activateStopAt = 1000 }),
+            ("322-stopped", { $0.activation = .waiting(email: "sam@example.com", mail: 1) }),
+            ("323-confirmed", { $0.activation = .active }),
+            ("324-mail-busy", { $0.activation = .mailBusy }),
+            ("325-full", { $0.activation = .full }),
+            ("326-off", { $0.activation = .off }),
+            ("327-offline", { $0.activation = .offline }),
+        ]
+        for (name, set) in steps {
+            var step = s
+            set(&step)
+            let shot = try render(step, "activate-\(name)", time: 10)
+            #expect(any(shot, x: 42...120, y: 60...74) { r, g, b in max(r, g, b) < 100 }, "\(name): headline")
+            let green = any(shot, x: 225...300, y: 60...120) { r, g, b in g > r + 60 && g > b + 30 }
+            #expect(green == (step.activateStep == .confirmed), "\(name): green check")
+            #expect(shot.isBlue(175, firstRow) == (step.activateStep != .confirmed), "\(name): first row")
+        }
+    }
+
     @Test func theBetaScreensAndTheBetaTag() throws {
         var s = sampleState()
         s.beta = BetaBuild(signed: 0)
