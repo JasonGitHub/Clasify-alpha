@@ -112,9 +112,14 @@ enum Labels {
         case .getNewBeta: return RowText(label: "Get New Beta")
         case .later: return RowText(label: "Later")
         case .quit: return RowText(label: "Quit")
-        // CLA-128: plain words until card 1 (PR3) draws the Activate screen.
-        case .activate: return RowText(label: state.activation == .locked ? "Activate" : "Try again")
+        // CLA-128, card BW: the Activate rows.
+        case .openActivate: return RowText(label: "Open browser")  // card BW
+        case .openActivateAgain: return RowText(label: "Open browser again")
+        case .cancelActivate: return RowText(label: "Cancel")
+        case .sendAgain: return RowText(label: "Send again")
+        case .useAnotherEmail: return RowText(label: "Use another email")
         case .checkMail: return RowText(label: "Check again")
+        case .tryActivateAgain: return RowText(label: "Try again")
         }
     }
 

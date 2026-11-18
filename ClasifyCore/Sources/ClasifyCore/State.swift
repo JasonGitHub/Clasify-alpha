@@ -220,17 +220,19 @@ public enum Row: Equatable, Sendable {
     /// Card BI v2: the beta screens' rows. "Get New Beta" opens the download page, "Later"
     /// closes the warning, and "Quit" quits the app (changes 233 and 234).
     case getNewBeta, later, quit
-    /// CLA-128: "Activate" starts the activation (also "Try again"); "Check again" asks if the
-    /// mail link was clicked.
-    case activate, checkMail
+    /// CLA-128, card BW: the Activate rows. "Open browser" (319), "Open browser again" and
+    /// "Cancel" (320), "Send again" and "Use another email" (321, 322), "Check again" (322,
+    /// 325, 326) and "Try again" (324, 327).
+    case openActivate, openActivateAgain, cancelActivate, sendAgain, useAnotherEmail, checkMail, tryActivateAgain
 }
 
 /// CLA-128: where this Mac's activation stands, as the server last said.
 public enum Activation: Equatable, Sendable {
     /// Not activated: the Activate step shows in setup.
     case locked
-    /// The mail is sent; the server waits for the click on its link.
-    case waiting
+    /// Mail number `mail` went to `email`; the server waits for the click on its link. The
+    /// email lives in memory only: never saved, never logged.
+    case waiting(email: String, mail: Int)
     case active
     /// The beta cap is reached: no new accounts now.
     case full
@@ -238,6 +240,15 @@ public enum Activation: Equatable, Sendable {
     case off
     /// The mail limit is hit: try again later.
     case mailBusy
+    /// Card BW, 327: no answer from our server.
+    case offline
+}
+
+/// CLA-128, card BW: which Activate screen shows.
+public enum ActivateStep: Equatable, Sendable {
+    /// 319 "Join the beta", 320 the browser is open, 321 the mail is out, 322 the checks
+    /// stopped after 15 minutes, 323 "Welcome to the beta", 324 to 327 the other answers.
+    case join, browserOpen, checkMail, stopped, confirmed, mailBusy, full, off, offline
 }
 
 
@@ -376,6 +387,30 @@ public struct AppState: Equatable, Sendable {
     public var activation = Activation.locked
     /// The newest request to the activation server; an older answer is dropped.
     public var activateRequest = 0
+    /// Card BW: the newest request that a press sent. Only its "no connection" shows (327);
+    /// a timer check that failed waits for the next one.
+    public var activatePressed = 0
+    /// Card BW, 320: the browser page is open, and the server had sent this many mails then. nil: not on 320.
+    public var activateOpenMail: Int?
+    /// Card BW: the next 30 s check, and the end of the checks (15 minutes after the last
+    /// open, send or "Check again"). 0: no checks.
+    public var activateCheckAt = 0.0, activateStopAt = 0.0
+    /// Card BW, 323: when "Welcome to the beta" showed. Your Music follows after `activateBeat`.
+    public var activatedAt = 0.0
+
+    /// Card BW: the Activate screen that shows now.
+    public var activateStep: ActivateStep {
+        if activation == .active { return .confirmed }
+        if activateOpenMail != nil { return .browserOpen }
+        switch activation {
+        case .locked, .active: return .join
+        case .waiting: return activateStopAt > 0 ? .checkMail : .stopped
+        case .mailBusy: return .mailBusy
+        case .full: return .full
+        case .off: return .off
+        case .offline: return .offline
+        }
+    }
     /// The device arrived at the first launch ever (card BR, change 288): until then the skin
     /// shows it turning in, and the reducer takes no input. Saved with the settings.
     public var arrived = true
@@ -943,10 +978,15 @@ public struct AppState: Equatable, Sendable {
         case .pickMusic: (appleMusicFirst ? [.appleMusic, .spotify] : MusicService.allCases).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
         case .betaSoon, .betaNew: [.getNewBeta, .later]
-        case .activate:  // card 1 (PR3) adds rows, such as "Send again" while waiting
-            switch activation {
-            case .waiting: [.checkMail]
-            case .locked, .active, .full, .off, .mailBusy: [.activate]
+        case .activate:  // card BW
+            switch activateStep {
+            case .join: [.openActivate]
+            case .browserOpen: [.openActivateAgain, .cancelActivate]
+            case .checkMail: [.sendAgain, .useAnotherEmail]
+            case .stopped: [.checkMail, .sendAgain, .useAnotherEmail]
+            case .confirmed: []  // a press goes on to Your Music
+            case .full, .off: [.checkMail]
+            case .mailBusy, .offline: [.tryActivateAgain]
             }
         case .betaEnded: [.getNewBeta, .quit]
         case .licenses: License.all.indices.map { .license($0) }

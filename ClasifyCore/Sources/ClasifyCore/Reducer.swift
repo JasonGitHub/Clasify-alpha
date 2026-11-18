@@ -85,8 +85,8 @@ public enum Action: Equatable, Sendable {
     /// CLA-128: the activation server answered request number `request`. nil: the app's stored
     /// activation, sent before `.launch`.
     case activation(Activation, request: Int?)
-    /// CLA-128: ask the server again while the mail is out: the app came back, or its 30 s
-    /// timer ran. Only on the Activate screen.
+    /// CLA-128: the app came back to the front. On the Activate screen, while its checks run
+    /// (320 and 321), it asks the server again.
     case checkActivation
     /// The skin's first-launch arrival ended, or did not run (card BR, change 288). Hello starts
     /// from now. A second one does nothing.
@@ -146,8 +146,11 @@ public enum Effect: Equatable, Sendable {
     /// Card BV (CLA-125): read the newest beta's build number, once. A newer number comes back
     /// as `.latestBeta`; offline, no answer in 5 s or a bad file send nothing (change 314).
     case checkLatestBeta
-    /// CLA-128: start the activation; check it. The answer comes back as `.activation` with this request number.
-    case startActivation(request: Int), checkActivation(request: Int)
+    /// CLA-128, card BW: open getmypod.app/?d=ID in the browser, where the person types the email.
+    case openActivatePage
+    /// CLA-128: ask where the activation stands; send the mail again. The answer comes back
+    /// as `.activation` with this request number.
+    case checkActivation(request: Int), sendActivationAgain(request: Int)
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -187,6 +190,9 @@ public let sliderTimeout = 6.0
 public let staleAfter = 120.0
 /// Seconds after a read when the app coming to the front reads that list again.
 public let activationStaleAfter = 30.0
+/// Card BW: the Activate screen asks the server every 30 s, for 15 minutes; "Welcome to the
+/// beta" shows for 1.5 s before Your Music.
+public let activateCheckEvery = 30.0, activateChecksFor = 900.0, activateBeat = 1.5
 /// The most tracks from outside the library that `AppState.extraTracks` keeps.
 public let extraTrackLimit = 50
 /// Seconds that a list's scroll bar shows after a wheel step or a screen change.
@@ -357,6 +363,34 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         guard n > 0 && now < shown else { return false }
         s.namesHold = shown
         return true
+    }
+    /// Card BW: one request to the activation server; its answer comes back as `.activation`.
+    func askActivation(_ effect: (Int) -> Effect, pressed: Bool) {
+        s.activateRequest += 1
+        if pressed { s.activatePressed = s.activateRequest }
+        s.activateCheckAt = now + activateCheckEvery
+        fx.append(effect(s.activateRequest))
+    }
+    func startActivateChecks() { s.activateStopAt = now + activateChecksFor; s.activateCheckAt = now + activateCheckEvery }
+    /// Card BW, 320 and 321: "Cancel" and MENU go back to 319 and stop the checks.
+    func cancelActivate() {
+        showActivateStep { s.activateOpenMail = nil; s.activation = .locked; s.activateStopAt = 0 }
+    }
+    /// Card BW: the 1.5 s beat on 323, the 30 s checks, and their end after 15 minutes (322).
+    func activateTick() {
+        if s.activatedAt > 0 {
+            if now >= s.activatedAt + activateBeat { s.activatedAt = 0; setupNext() }
+        } else if s.activateStopAt > 0 && now >= s.activateStopAt {
+            showActivateStep { s.activateStopAt = 0 }
+        } else if s.activateStopAt > 0 && now >= s.activateCheckAt {
+            askActivation(Effect.checkActivation, pressed: false)
+        }
+    }
+    /// Card BW: a new Activate screen starts on its first row.
+    func showActivateStep(_ change: () -> Void) {
+        let before = s.activateStep
+        change()
+        if s.top.screen == .activate && s.activateStep != before { s.stack[s.stack.count - 1].sel = 0; s.stack[s.stack.count - 1].off = 0 }
     }
     /// The next setup step after the login: the Spotify app screen if Spotify needs the app and
     /// it is missing, else the first library read, else the main menu. Apple Music does not need it.
@@ -619,6 +653,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 }
                 return
             }
+            if s.top.screen == .activate && s.activateStep == .confirmed { s.activatedAt = 0; return setupNext() }  // 323: a press goes on
             if s.top.screen == .now {
                 s.nowMode = s.nowMode.next  // volume, scrub, shuffle, repeat, then volume again
                 s.overlayUntil = now + (s.nowMode == .volume ? 1.5 : sliderTimeout)
@@ -737,8 +772,20 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fx.append(.getNewBeta)
                 if s.top.screen == .betaSoon || s.top.screen == .betaNew { s.stack.removeLast() }
             case .later: s.stack.removeLast()
-            case .activate: s.activateRequest += 1; fx.append(.startActivation(request: s.activateRequest))
-            case .checkMail: s.activateRequest += 1; fx.append(.checkActivation(request: s.activateRequest))
+            // The `where` holds for "Try again" only: on 324 (mail busy) it opens the page again.
+            case .openActivate, .openActivateAgain, .useAnotherEmail, .tryActivateAgain where s.activation != .offline:
+                // Card BW: the page opens (320). The checks run for 15 minutes from now.
+                showActivateStep {
+                    if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
+                    startActivateChecks()
+                }
+                fx.append(.openActivatePage)
+            case .tryActivateAgain: askActivation(Effect.checkActivation, pressed: true)  // 327
+            case .sendAgain: startActivateChecks(); askActivation(Effect.sendActivationAgain, pressed: true)
+            case .checkMail:
+                if s.activateStep == .stopped { startActivateChecks() }  // 322: the checks start again
+                askActivation(Effect.checkActivation, pressed: true)
+            case .cancelActivate: cancelActivate()
             case .quit: fx.append(.quit)
             case .useSpotify: switchService(to: .spotify)  // change 262
             case .about:
@@ -759,6 +806,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
             if s.top.screen == .auth { s.stack.removeLast(); fx.append(.cancelLogIn); return }
             if s.top.screen == .spotifyApp || s.top.screen == .accessOff { return }  // cards BB, BM: MENU does nothing
+            if s.top.screen == .activate {  // card BW: like "Cancel" on 320 and 321, else nothing
+                if s.activateStep == .browserOpen || s.activateStep == .checkMail { cancelActivate() }
+                return
+            }
             if s.top.screen == .premium { return leavePremium() }  // card AX: back to the login
             if s.top.screen == .color && !s.setupDone {
                 // CLA-62 (Jason, 12:47 JST 11-10): back to Hello, which starts again. A color
@@ -822,6 +873,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 if s.top.screen == .premium && s.premiumFound { setupNext() }
                 if s.top.screen == .yourMusic && s.setupDone { s.stack = [Frame(screen: .main)] }
             }
+            if s.top.screen == .activate { activateTick() }
             if s.artUntil > 0 && now > s.artUntil {  // the covers follow the row
                 s.artUntil = 0
                 if let row = s.halfRow { s.artRow = row }
@@ -1118,13 +1170,22 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
 
         case .activation(let activation, let request):
             guard request == nil || request == s.activateRequest else { return }  // an older request
-            s.activation = activation
-            if activation == .active && s.top.screen == .activate { setupNext() }
+            // Card BW: a timer check with no connection waits for the next one; a press shows 327.
+            if activation == .offline && request != s.activatePressed { return }
+            showActivateStep {
+                s.activation = activation
+                switch activation {
+                case .waiting(_, let mail): if let open = s.activateOpenMail, mail > open { s.activateOpenMail = nil }  // a new mail: 321
+                case .locked: break  // no mail yet: 320 stays
+                case .active, .full, .off, .mailBusy, .offline: s.activateOpenMail = nil; s.activateStopAt = 0
+                }
+                if activation == .active && s.top.screen == .activate { s.activatedAt = now }  // 323, then Your Music
+            }
 
         case .checkActivation:
-            guard s.top.screen == .activate, s.activation == .waiting else { return }
-            s.activateRequest += 1
-            fx.append(.checkActivation(request: s.activateRequest))
+            guard s.top.screen == .activate, s.activateStopAt > 0,
+                  s.activateStep == .browserOpen || s.activateStep == .checkMail else { return }
+            askActivation(Effect.checkActivation, pressed: false)
 
         case .latestBeta(let build):
             // Every answer is saved ("never miss"); only one before the first key may show now.

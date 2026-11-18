@@ -31,13 +31,13 @@ public protocol BetaFeed: Sendable {
     func latestBuild() async -> Int?
 }
 
-/// CLA-128: the activation server. PR2 makes it real; tests use a fake. Each call answers
-/// with where the activation stands.
+/// CLA-128: the activation server. A later PR makes it real; tests use a fake. Each call
+/// answers with where the activation stands, `.offline` when the server does not answer.
 public protocol Activator: Sendable {
-    /// Start: the person types their email on getmypod.app. Usually `.waiting`.
-    func start() async -> Activation
-    /// Was the mail link clicked?
+    /// Where does it stand: no mail yet, mail out, or the link clicked?
     func status() async -> Activation
+    /// Send the mail again, to the same address (card BW, "Send again").
+    func sendAgain() async -> Activation
 }
 
 /// How a login ended.
@@ -163,6 +163,8 @@ public final class Store {
     /// Opens the beta download page, and quits the app (card BI v2). The app sets them.
     @ObservationIgnored public var onGetNewBeta: (@MainActor () -> Void)?
     @ObservationIgnored public var onQuit: (@MainActor () -> Void)?
+    /// Card BW: opens getmypod.app/?d=ID in the browser. The app sets it.
+    @ObservationIgnored public var onOpenActivatePage: (@MainActor () -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
     /// Card BV: the launch check's source. With none, the check finds nothing.
@@ -280,10 +282,11 @@ public final class Store {
             case .openPrivacy: onOpenPrivacy?()
             case .getNewBeta: onGetNewBeta?()
             case .quit: onQuit?()
-            case .startActivation(let request):
+            case .openActivatePage: onOpenActivatePage?()
+            case .sendActivationAgain(let request):
                 guard let activator else { break }
                 Task { [weak self] in
-                    let answer = await activator.start()
+                    let answer = await activator.sendAgain()
                     self?.send(.activation(answer, request: request))
                 }
             case .checkActivation(let request):
