@@ -38,7 +38,7 @@ public protocol Activator: Sendable {
     func status() async -> Activation
     /// Send the mail again, to the same address (card BW, "Send again").
     func sendAgain() async -> Activation
-    /// The page to open, with a new one-time code (getmypod.app/?d=CODE); nil with no connection.
+    /// The page to open, with a new one-time code (getmypod.app/activate/?d=CODE); nil with no connection.
     func pageURL() async -> String?
 }
 
@@ -165,7 +165,7 @@ public final class Store {
     /// Opens the beta download page, and quits the app (card BI v2). The app sets them.
     @ObservationIgnored public var onGetNewBeta: (@MainActor () -> Void)?
     @ObservationIgnored public var onQuit: (@MainActor () -> Void)?
-    /// Card BW: opens the activator's page URL (getmypod.app/?d=CODE) in the browser. The app sets it.
+    /// Card BW: opens the activator's page URL (getmypod.app/activate/?d=CODE) in the browser. The app sets it.
     @ObservationIgnored public var onOpenActivatePage: (@MainActor (String) -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?

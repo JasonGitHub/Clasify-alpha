@@ -96,7 +96,6 @@ func sampleState() -> AppState {
         #expect(words == Labels.SetupWords(headline: "Not subscribed", line: "To play music, we need Apple Music."))
     }
 
-    /// Card BI v2: the beta screens' words (233, 234), the tag (279) and About's version (235).
     /// Card BW, 319 to 327: the words, the small device's mark and its cable on each Activate screen.
     @Test func activateScreensUseTheCardWords() {
         var s = sampleState()
@@ -136,6 +135,7 @@ func sampleState() -> AppState {
         for (row, label) in rows { #expect(Labels.row(row, on: .activate, in: s) == .init(label: label)) }
     }
 
+    /// Card BI v2: the beta screens' words (233, 234), the tag (279) and About's version (235).
     @Test func betaScreensUseTheCardWords() throws {
         var s = sampleState()
         let end = try #require(Calendar.current.date(from: DateComponents(year: 2026, month: 12, day: 14, hour: 12)))

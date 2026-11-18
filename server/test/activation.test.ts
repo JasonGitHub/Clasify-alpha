@@ -53,7 +53,7 @@ describe("activation", () => {
     expect(await status(mac(1))).toEqual({ state: "locked" });
     expect(await join(mac(1), "  Sam@Example.com ")).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
     expect(mail.sent[0]).toMatchObject({ to: "sam@example.com" });
-    expect(mail.sent[0].link).toMatch(/^https:\/\/getmypod\.app\/\?c=[A-Za-z0-9_-]{43}$/);
+    expect(mail.sent[0].link).toMatch(/^https:\/\/getmypod\.app\/activate\/\?c=[A-Za-z0-9_-]{43}$/);
     expect(await confirm(mail.token)).toBe("ok");
     expect(await status(mac(1))).toMatchObject({ state: "active", account: expect.any(String) });
     expect(await confirm(mail.token)).toBe("ok");  // a second press

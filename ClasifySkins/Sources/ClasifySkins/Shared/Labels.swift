@@ -170,8 +170,6 @@ enum Labels {
         var email = ""
     }
 
-    /// Also the Spotify App screen's words (card BB, change 131). Nil on other screens, and
-    /// while a stored login is restored.
     /// Card BW, 319 to 327: the Activate screens' words. Calm, no tech words.
     static func activateWords(_ state: AppState) -> SetupWords {
         let address = if case .waiting(let email, _) = state.activation { email } else { "" }
@@ -189,6 +187,8 @@ enum Labels {
         }
     }
 
+    /// Also the Spotify App screen's words (card BB, change 131). Nil on other screens, and
+    /// while a stored login is restored.
     static func setupWords(for frame: Frame, in state: AppState) -> SetupWords? {
         switch frame.screen {
         case .login where !state.restoring && state.sessionEnded:  // card AX, change 181
