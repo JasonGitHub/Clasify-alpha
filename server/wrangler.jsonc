@@ -8,7 +8,8 @@
     { "binding": "DB", "database_name": "mypod-activation", "database_id": "00000000-0000-0000-0000-000000000000" }
   ],
   // The beta cap (accounts), the Mac limit per account, and link mails a day (Resend free: 100).
-  // Secrets that Jason adds with `wrangler secret put`: RESEND_KEY, ALERT_TO.
-  "vars": { "CAP": "100", "MACS": "2", "MAIL_DAY": "95" },
+  // MAIL_HOUR and MAIL_DAY_EACH: link mails per address and per device, an hour and a day.
+  // Secrets that Jason adds with `wrangler secret put`: RESEND_KEY, ALERT_TO, TURNSTILE_SECRET.
+  "vars": { "CAP": "100", "MACS": "2", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5" },
   "observability": { "enabled": false }
 }

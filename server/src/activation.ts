@@ -7,11 +7,14 @@ import type { Mailer } from "./mailer";
 export interface Deps {
   now: () => number;
   mailer: Mailer;
+  /** The page's bot check (Turnstile): true only for a person. */
+  human: (token: string) => Promise<boolean>;
 }
 
 const page = "https://getmypod.app";
 const codeLife = 15 * 60_000;
 const linkLife = 60 * 60_000;
+const hour = 60 * 60_000;
 
 type Account = { id: string; email: string; state: string; off: number };
 type Mac = { device_hash: string; account_id: string | null; state: string; mails: number; mail_state: string };
@@ -59,15 +62,34 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       const waits = await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ? AND state != 'active'").bind(a.id).run();
       if (waits.meta.changes) return { state: "full" };
     }
+    // The guard: per address and per device, MAIL_HOUR an hour and MAIL_DAY_EACH a day. The
+    // mail row is written first, in one statement with the counts, so sends at once cannot pass.
     const link = token();
+    const linkHash = await sha256(link);
+    const within = (column: string) =>
+      `(SELECT COUNT(*) FROM mails WHERE ${column} = ? AND sent_at > ?) < ? AND (SELECT COUNT(*) FROM mails WHERE ${column} = ? AND sent_at > ?) < ?`;
+    const perHour = Number(env.MAIL_HOUR), perDay = Number(env.MAIL_DAY_EACH);
+    const room = await db.prepare(
+      `INSERT INTO mails (token_hash, device_hash, account_id, sent_at, expires_at) SELECT ?, ?, ?, ?, ?
+       WHERE ${within("account_id")} AND ${within("device_hash")}`,
+    ).bind(linkHash, hash, a.id, now, now + linkLife,
+      a.id, now - hour, perHour, a.id, now - 24 * hour, perDay,
+      hash, now - hour, perHour, hash, now - 24 * hour, perDay).run();
+    if (!room.meta.changes) {
+      // Over a limit. A mail still out to this account stays "sent"; with none, the app sees busy.
+      await db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND account_id = ? AND state != 'active' AND mail_state != 'sent'")
+        .bind(hash, a.id).run();
+      return { state: "busy" };
+    }
     if ((await deps.mailer.send(email, `${page}/?c=${link}`)) === "busy") {
-      await db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND account_id = ? AND state != 'active'").bind(hash, a.id).run();
+      await db.batch([
+        db.prepare("DELETE FROM mails WHERE token_hash = ?").bind(linkHash),
+        db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND account_id = ? AND state != 'active'").bind(hash, a.id),
+      ]);
       return { state: "busy" };
     }
     await db.batch([
       db.prepare("UPDATE accounts SET state = 'pending' WHERE id = ? AND state = 'waitlist'").bind(a.id),
-      db.prepare("INSERT INTO mails (token_hash, device_hash, account_id, sent_at, expires_at) VALUES (?, ?, ?, ?, ?)")
-        .bind(await sha256(link), hash, a.id, now, now + linkLife),
       db.prepare("UPDATE macs SET mails = mails + 1, mail_state = 'sent' WHERE device_hash = ? AND account_id = ?").bind(hash, a.id),
     ]);
     return status(hash);
@@ -93,6 +115,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       }
       const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply({ error: "email" }, 400, cors);
+      if (typeof body.turnstile !== "string" || !(await deps.human(body.turnstile))) return reply({ error: "bot" }, 400, cors);
       const code = typeof body.code === "string" ? await sha256(body.code) : "";
       // One statement uses the code, so two pages with the same code cannot both go on.
       const owner = await db.prepare(
