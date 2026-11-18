@@ -147,7 +147,7 @@ public enum Effect: Equatable, Sendable {
     /// as `.latestBeta`; offline, no answer in 5 s or a bad file send nothing (change 314).
     case checkLatestBeta
     /// CLA-128, card BW: open getmypod.app/?d=ID in the browser, where the person types the email.
-    case openActivatePage
+    case openActivatePage(request: Int)
     /// CLA-128: ask where the activation stands; send the mail again. The answer comes back
     /// as `.activation` with this request number.
     case checkActivation(request: Int), sendActivationAgain(request: Int)
@@ -375,16 +375,19 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// Card BW: the page opens (320). The checks run for 15 minutes from now.
     func openActivatePage() {
         s.activateRequest += 1  // an answer to the flow before is dropped
+        s.activatePressed = s.activateRequest  // a page that cannot open shows 327
+        s.activateFlow += 1
         showActivateStep {
             if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
             startActivateChecks()
         }
-        fx.append(.openActivatePage)
+        fx.append(.openActivatePage(request: s.activateRequest))
     }
     /// Card BW, 320 and 321: "Cancel" and MENU go back to 319 and stop the checks.
     func cancelActivate() {
         showActivateStep { s.activateOpenMail = nil; s.activation = .locked; s.activateStopAt = 0 }
         s.activateRequest += 1  // an answer still on its way is dropped
+        s.activateFlow += 1  // and a page URL still on its way
     }
     /// Card BW: the 1.5 s beat on 323, the 30 s checks, and their end after 15 minutes (322).
     func activateTick() {

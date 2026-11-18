@@ -174,7 +174,15 @@ final class AppModel {
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
         let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
-        let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive())
+        let activator = ServerActivator()
+        let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(), activator: activator)
+        // CLA-128: behind the activate.on switch (off by default). A Mac that has activated
+        // before skips the step.
+        if store.state.activateOn && DeviceIDStore.read() != nil { store.checkActivationAtLaunch() }
+        // Card BW: the page with its one-time code opens in the browser.
+        store.onOpenActivatePage = { page in
+            if let url = URL(string: page) { NSWorkspace.shared.open(url) }
+        }
         // Leaving Settings with another service (card BM, change 260). The reducer sends this
         // before the new service logs in, so every later call goes to the new one.
         store.onSetService = { [weak services, weak libraries, weak player, weak store] service in
