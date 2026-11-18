@@ -78,7 +78,8 @@ import Testing
         s.activateOn = true
         send(&s, .activation(.active, request: nil))
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)
-        send(&s, .select, .select, .select, .authDone(token: 2, ok: true), .tick, now: 101.5)
+        send(&s, .select, .select, .select, .authDone(token: 2, ok: true))
+        send(&s, .tick, now: 101.5)  // after the login screen's wait
         #expect(s.top.screen == .yourMusic)
     }
 
