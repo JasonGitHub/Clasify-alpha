@@ -208,7 +208,7 @@ extension K3DMesh {
         let gs = circle(-52, 290, 3.6, 16)
         d(gs, z0 + 17.6, 15, -52, 290)
         bd(gs, z0 + 17.6, z0 + 17, 15)
-        d(circle(-70, 290, 2, 12), z0 + 17.05, 10, -70, 290)  // material 10 as in the mock
+        d(circle(-70, 290, 2, 12), z0 + 17.05, 15, -70, 290)
         bx6(-34, 40, 286, 291, z0 + 2, z0 + 12, 44)  // the dark top opening
         bx6(52, 70, 284, 290, z0 + 1.5, z0 + 14, 44)  // a knurled band
         for (hx, hy) in [(82.0, 284.0), (146, 250)] {  // screw posts
@@ -250,7 +250,7 @@ extension K3DMesh {
                 vertex((x0, p0.0, p0.1), n0, uvOf(x0, p0.0), m), vertex((x1, p0.0, p0.1), n0, uvOf(x1, p0.0), m),
                 vertex((x1, p1.0, p1.1), n1, uvOf(x1, p1.0), m), vertex((x0, p1.0, p1.1), n1, uvOf(x0, p1.0), m),
             ]
-            triangles([q[0], q[1], q[2], q[0], q[2], q[3]])
+            triangles([q[0], q[2], q[1], q[0], q[3], q[2]])  // wound outward
         }
     }
 }

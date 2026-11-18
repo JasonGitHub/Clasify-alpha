@@ -54,7 +54,7 @@ struct K3DPartsTests {
     /// Each material's vertex count, as in the mock.
     @Test func eachMaterialMatchesTheMock() {
         let want: [Int: Int] = [
-            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 844, 12: 4529, 13: 298, 14: 1173, 15: 1707, 16: 446, 17: 508,
+            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4529, 13: 298, 14: 1173, 15: 1720, 16: 446, 17: 508,
             19: 20, 20: 80, 21: 3901, 22: 588, 23: 295, 24: 349, 25: 129, 27: 207, 28: 448, 29: 256, 30: 1650, 32: 650,
             34: 3261, 35: 418, 36: 288, 37: 3818, 38: 545, 39: 73, 40: 149, 41: 32, 42: 24, 43: 296, 44: 634, 45: 512,
         ]
@@ -86,24 +86,16 @@ struct K3DPartsTests {
     }
 
     /// Nothing new draws on the closed device: everything after it is a Take apart material (above
-    /// 10.5), or the screen module, which the opaque window hides. K.3D.11: one exception, the
-    /// small disc on the hold bracket (13 vertices in material 10, as the mock), deep inside the
-    /// shell; the closed device draws only its own indices, so it never draws closed.
+    /// 10.5), or the screen module, which the opaque window hides.
     @Test func thePartsComeAfterTheClosedDevice() {
         #expect(mesh.closedVertexCount < mesh.vertexCount && mesh.closedIndexCount < mesh.indices.count)
-        var disc = 0
         for i in mesh.closedVertexCount..<mesh.vertexCount {
             let material = value(i, 11), part = value(i, 12)
-            if part == 0 && material == 10 && value(i, 1) > 286 && value(i, 0) < -66 {
-                disc += 1
-                continue
-            }
             if !(material > 10.5 || part == 4) {
                 Issue.record("vertex \(i): material \(material), part \(part)")
                 break
             }
         }
-        #expect(disc == 13, "the hold bracket's disc: \(disc) vertices")
         #expect(mesh.indices[..<mesh.closedIndexCount].allSatisfy { Int($0) < mesh.closedVertexCount })
     }
 }
