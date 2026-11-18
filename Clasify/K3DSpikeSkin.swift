@@ -27,6 +27,11 @@ import SwiftUI
 /// CLA-105 D, change 308 (the showroom trial): on the back, a press held 1.2 s with no move
 /// takes the device apart. Apart, a drag turns and tilts it, and a click puts it together and
 /// turns it to the front. While it opens or closes, input waits.
+///
+/// CLA-130 (card BT row 4, changes 351-354): on any screen, Cmd + a two-finger swipe turns the
+/// device (`K3DTurn`, `K3DTurnInput`), and Cmd + a pinch takes it apart or puts it together.
+/// Cmd up turns it to the front. Until it is back on its front, input does nothing
+/// (`Action.deviceTurned`).
 struct K3DSpikeSkin: View {
     let store: Store
     let artwork: Artwork
@@ -57,6 +62,9 @@ struct K3DSpikeSkin: View {
     @Environment(\.roomSplit) private var split
     /// CLA-119: the last change that input sent and `colorChanged` already handled.
     @State private var handledCue: ColorCue?
+    /// CLA-130: the Cmd turn's pinch, and the landing that sends `.deviceTurned(false)`.
+    @State private var cmdTurn = K3DTurn()
+    @State private var landing: Task<Void, Never>?
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -84,6 +92,7 @@ struct K3DSpikeSkin: View {
             }
         ) {
             PocketSkin(state: store.state) { action in
+                if store.state.deviceTurned { return }  // CLA-130: the screen faces away
                 // CLA-117: the full arrival takes no input until it lands. The short one lands in
                 // 0.25 s at most, and the input still does its job.
                 if flip.holdsInput(at: .now) { return }
@@ -117,6 +126,7 @@ struct K3DSpikeSkin: View {
                 }
             }
             .environment(\.artwork, artwork)
+            .background(K3DTurnInput(onSwipe: swiped, onPinch: pinched, onEnd: turnEnded))
         }
         .overlay { if showroom { handle } }
         // CLA-119: the room goes round the device, and the window grows by the same amount on
@@ -131,6 +141,7 @@ struct K3DSpikeSkin: View {
                 drag = nil
                 endHold()
                 K3DFlip.releaseApart()
+                if store.state.deviceTurned { backOnFront() }
             }
         }
         .onChange(of: cue) { old, new in
@@ -245,7 +256,7 @@ struct K3DSpikeSkin: View {
     /// stops where it is at the press.
     private func dragged(_ translation: CGSize) {
         let now = Date.now
-        if holdOpened || (self.drag == nil && flip.apartRuns(at: now)) { return }
+        if holdOpened || store.state.deviceTurned || (self.drag == nil && flip.apartRuns(at: now)) { return }
         if self.drag == nil, K3DShowroom.canHold(flip: flip, at: now) { startHold() }
         var drag = self.drag ?? K3DShowroom(flip: flip, at: now)
         if self.drag == nil, !flip.isResting(at: now) {
@@ -298,7 +309,7 @@ struct K3DSpikeSkin: View {
     /// Change 304: a click on the 3D body where the handle is not (the screen or the wheel during
     /// a turn to the front) turns it over too.
     private func click() {
-        guard drag == nil, !flip.apartRuns(at: .now) else { return }
+        guard drag == nil, !store.state.deviceTurned, !flip.apartRuns(at: .now) else { return }
         flip = K3DShowroom(flip: flip, at: .now).ended(flip: flip, reduceMotion: reduceMotion, at: .now)
     }
 
@@ -314,8 +325,57 @@ struct K3DSpikeSkin: View {
         flip = flip.nudge(at: .now)
     }
 
+    /// Change 351: the swipe turns and tilts the device. A turn that runs stops where it is.
+    private func swiped(_ dx: Double, _ dy: Double) {
+        guard startTurn() else { return }
+        flip = cmdTurn.swiped(dx: dx, dy: dy, flip: flip, at: .now)
+    }
+
+    /// Change 354: the pinch takes the device apart or puts it together.
+    private func pinched(_ amount: Double, began: Bool) {
+        if began, !flip.isApart(at: .now) { K3DFlip.prepareApart() }
+        guard startTurn() else { return }
+        flip = cmdTurn.pinched(amount, flip: flip, at: .now)
+    }
+
+    /// The turn takes the device: the 3D front shows the screen as it is now, and input stops.
+    private func startTurn() -> Bool {
+        let now = Date.now
+        guard K3DFlip.canDraw, drag == nil, K3DTurn.canTurn(flip, at: now) else { return false }
+        landing?.cancel()
+        landing = nil
+        if flip.restsOnFront(at: now) { flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork)) }
+        if !store.state.deviceTurned { store.send(.deviceTurned(true)) }
+        return true
+    }
+
+    /// Change 353: Cmd up, or the app went to the back. The device goes to its front, once a
+    /// take-apart that runs has ended, and input works again when it is there.
+    private func turnEnded() {
+        cmdTurn = K3DTurn()
+        guard store.state.deviceTurned, landing == nil else { return }
+        flip = K3DTurn.ended(flip: flip, reduceMotion: reduceMotion, at: .now)
+        landing = Task { @MainActor in
+            while !flip.restsOnFront(at: .now) {
+                do { try await Task.sleep(for: .seconds(max(0.02, flip.ends.timeIntervalSinceNow))) } catch { return }
+                // The take-apart that ran at Cmd up has ended: now the device closes.
+                if flip.isResting(at: .now) { flip = K3DTurn.ended(flip: flip, reduceMotion: reduceMotion, at: .now) }
+            }
+            backOnFront()
+        }
+    }
+
+    /// The device is on its front again: all input works.
+    private func backOnFront() {
+        landing?.cancel()
+        landing = nil
+        cmdTurn = K3DTurn()
+        if store.state.top.screen != .about { K3DFlip.releaseApart() }
+        store.send(.deviceTurned(false))
+    }
+
     private func turn() {
-        guard !flip.arriving, !flip.isSpinning(at: .now) else { return }  // no flip during an arrival or a spin
+        guard !flip.arriving, !flip.isSpinning(at: .now), !store.state.deviceTurned else { return }  // no flip during an arrival or a spin
         // The 3D front shows the screen as it is now. The snapshot is made before the turn starts.
         flip.turn { K3DSpike.snapshot(store.state, artwork: artwork) }
     }

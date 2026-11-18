@@ -1,0 +1,104 @@
+import AppKit
+import ClasifySkins
+import SwiftUI
+
+/// CLA-130 (card BT row 4): Cmd + a two-finger swipe, a mouse wheel or a pinch on the device.
+/// SwiftUI has no scroll or magnify events outside a ScrollView, so this is a small AppKit view,
+/// as `ScrollCatcher`. Put it in the background of the device. It never takes clicks: it watches
+/// the window's events, and `K3DTurnGesture` says which ones are the turn's.
+struct K3DTurnInput: NSViewRepresentable {
+    /// One mouse-wheel line, in points of finger travel.
+    static let line = 20.0
+
+    let onSwipe: @MainActor (_ dx: Double, _ dy: Double) -> Void
+    let onPinch: @MainActor (_ amount: Double, _ began: Bool) -> Void
+    let onEnd: @MainActor () -> Void
+
+    func makeNSView(context: Context) -> CatcherView {
+        let view = CatcherView()
+        updateNSView(view, context: context)
+        return view
+    }
+
+    func updateNSView(_ view: CatcherView, context: Context) {
+        (view.onSwipe, view.onPinch, view.onEnd) = (onSwipe, onPinch, onEnd)
+    }
+
+    final class CatcherView: NSView {
+        var onSwipe: @MainActor (Double, Double) -> Void = { _, _ in }
+        var onPinch: @MainActor (Double, Bool) -> Void = { _, _ in }
+        var onEnd: @MainActor () -> Void = {}
+        private var gesture = K3DTurnGesture()
+        private var monitor: Any?
+        private var observers: [NSObjectProtocol] = []
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }  // clicks and drags go to SwiftUI
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            if let monitor { NSEvent.removeMonitor(monitor) }
+            for observer in observers { NotificationCenter.default.removeObserver(observer) }
+            (monitor, observers) = (nil, [])
+            guard let window else { return resign() }
+            // AppKit calls local monitors on the main thread.
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify, .flagsChanged]) { [weak self] event in
+                let taken = MainActor.assumeIsolated { self?.take(event) ?? false }
+                return taken ? nil : event
+            }
+            // The CTO's safety exit: Clasify or the device window goes to the back. The plain
+            // window cannot become key (CLA-83), so the app's own notice counts most.
+            let center = NotificationCenter.default
+            observers = [
+                center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.resign() }
+                },
+                center.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.resign() }
+                },
+            ]
+        }
+
+        private func resign() {
+            if gesture.resign() { onEnd() }
+        }
+
+        /// Returns true to take the event, false to pass it on.
+        private func take(_ event: NSEvent) -> Bool {
+            let command = event.modifierFlags.contains(.command)
+            if event.type == .flagsChanged {
+                if gesture.command(down: command) { onEnd() }
+                return false  // Cmd itself is not the turn's: shortcuts keep working
+            }
+            guard event.window === window else { return false }
+            let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+            if event.type == .magnify {
+                guard gesture.pinch(command: command, inside: inside) else { return false }
+                onPinch(event.magnification, event.phase == .began)
+                return true
+            }
+            switch gesture.scroll(Self.kind(event), command: command, inside: inside) {
+            case .pass: return false
+            case .swallow: return true
+            case .end: onEnd()
+            case .turn:
+                if event.hasPreciseScrollingDeltas {
+                    // Follow the fingers, not the natural scrolling setting (CLA-48): with it on,
+                    // fingers right and down give positive deltas.
+                    let sign = event.isDirectionInvertedFromDevice ? 1.0 : -1.0
+                    onSwipe(sign * event.scrollingDeltaX, sign * event.scrollingDeltaY)
+                } else {
+                    onSwipe(event.scrollingDeltaY * Self.line, 0)  // a mouse wheel turns only
+                }
+            }
+            return true
+        }
+
+        private static func kind(_ event: NSEvent) -> K3DTurnGesture.Scroll {
+            if event.momentumPhase.contains(.ended) || event.momentumPhase.contains(.cancelled) { return .glideEnd }
+            if !event.momentumPhase.isEmpty { return .glide }
+            if event.phase.contains(.began) { return .begin }
+            if event.phase.contains(.ended) || event.phase.contains(.cancelled) { return .lift }
+            return event.phase.isEmpty ? .wheel : .move
+        }
+    }
+}
