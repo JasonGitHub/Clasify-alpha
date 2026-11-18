@@ -344,8 +344,10 @@ struct K3DSpikeSkin: View {
         guard K3DFlip.canDraw, drag == nil, K3DTurn.canTurn(flip, at: now) else { return false }
         landing?.cancel()
         landing = nil
+        // Once per turn: a slow pinch sends many events before the device moves.
+        guard !store.state.deviceTurned else { return true }
         if flip.restsOnFront(at: now) { flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork)) }
-        if !store.state.deviceTurned { store.send(.deviceTurned(true)) }
+        store.send(.deviceTurned(true))
         return true
     }
 
