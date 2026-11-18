@@ -52,7 +52,9 @@ struct ScrollCatcher: NSViewRepresentable {
             guard event.window === window else { return false }
             // CLA-130: a scroll with Cmd turns the 3D device (`K3DTurnGesture`), with its glide.
             if event.phase == .began { cmdScroll = event.modifierFlags.contains(.command) }
-            if cmdScroll || event.modifierFlags.contains(.command) { return false }
+            // A mouse wheel has no phases: the latch is for the trackpad gesture and its glide only.
+            let trackpad = !event.phase.isEmpty || !event.momentumPhase.isEmpty
+            if cmdScroll && trackpad || event.modifierFlags.contains(.command) { return false }
             let point = convert(event.locationInWindow, from: nil)
             let radius = min(bounds.width, bounds.height) / 2
             guard hypot(point.x - bounds.midX, point.y - bounds.midY) <= radius else { return false }

@@ -356,11 +356,14 @@ struct K3DSpikeSkin: View {
         guard store.state.deviceTurned, landing == nil else { return }
         flip = K3DTurn.ended(flip: flip, reduceMotion: reduceMotion, at: .now)
         landing = Task { @MainActor in
-            while !flip.restsOnFront(at: .now) {
+            // A guard so input can never stay dead: a take-apart and the close take 4.5 s at most.
+            let deadline = Date.now.addingTimeInterval(6)
+            while !flip.restsOnFront(at: .now), Date.now < deadline {
                 do { try await Task.sleep(for: .seconds(max(0.02, flip.ends.timeIntervalSinceNow))) } catch { return }
                 // The take-apart that ran at Cmd up has ended: now the device closes.
                 if flip.isResting(at: .now) { flip = K3DTurn.ended(flip: flip, reduceMotion: reduceMotion, at: .now) }
             }
+            if !flip.restsOnFront(at: .now) { flip = K3DFlip() }
             backOnFront()
         }
     }
