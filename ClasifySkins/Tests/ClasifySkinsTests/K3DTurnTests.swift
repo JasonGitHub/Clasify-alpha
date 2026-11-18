@@ -20,6 +20,24 @@ import Testing
         #expect(turn.swiped(dx: 0, dy: -9000, flip: more, at: t0).tilt(at: t0) == -K3DTurn.maxTilt)
     }
 
+    /// Build 308: from the resting front, the first 0.05 s hold at the front, where the 2D device
+    /// covers the 3D body while the window grows its room. Then the device turns by all of it.
+    @Test func aSwipeFromTheFrontWaitsWhileTheRoomGrows() {
+        var turn = K3DTurn()
+        let first = turn.swipe(dx: 100, dy: 0, flip: K3DFlip(), at: t0)
+        #expect(first.angle(at: t0) == 0 && !first.restsOnFront(at: t0))  // the room grows now
+        #expect(first.flatOpacity(at: t0) == 1)  // the 2D device covers the 3D body
+        let soon = t0.addingTimeInterval(0.03)
+        let second = turn.swipe(dx: 20, dy: 10, flip: first, at: soon)
+        #expect(second.angle(at: soon) == 0 && second.flatOpacity(at: soon) == 1)
+        let later = t0.addingTimeInterval(K3DTurn.settle + 0.01)
+        let third = turn.swipe(dx: 10, dy: 0, flip: second, at: later)
+        #expect(third.angle(at: later) == 65)  // 130 points
+        #expect(abs(third.tilt(at: later) - 3) < 1e-9)  // 10 points
+        let fourth = turn.swipe(dx: 2, dy: 0, flip: third, at: later)
+        #expect(fourth.angle(at: later) == 66)  // the travel that waited counts once
+    }
+
     /// Change 352: with no more swipe events, the device stays at its angle.
     @Test func liftedFingersLeaveTheDeviceAtItsAngle() {
         let held = K3DTurn().swiped(dx: 260, dy: 0, flip: K3DFlip(), at: t0)

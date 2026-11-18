@@ -329,7 +329,7 @@ struct K3DSpikeSkin: View {
     /// Change 351: the swipe turns and tilts the device. A turn that runs stops where it is.
     private func swiped(_ dx: Double, _ dy: Double) {
         guard startTurn() else { return }
-        flip = cmdTurn.swiped(dx: dx, dy: dy, flip: flip, at: .now)
+        flip = cmdTurn.swipe(dx: dx, dy: dy, flip: flip, at: .now)
     }
 
     /// Change 354: the pinch takes the device apart or puts it together.
