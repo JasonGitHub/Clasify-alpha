@@ -8,7 +8,7 @@ import Testing
 
 /// CLA-105: Take apart's parts in the mesh, checked against the mock's own geometry code
 /// (`k3d_src3.js` from design-review/beta-page/v3/k3d8, lines 11 to 226; CLA-129: about/k3d11/tools,
-/// the `D11` path of the shield, the board, the drive and the shell, lines 170 to 264) run in Node. The mesh
+/// all of the `D11` path) run in Node. The mesh
 /// puts the parts after the closed device, so the order differs from the mock's; the counts and
 /// the sums of the positions do not.
 struct K3DPartsTests {
@@ -29,7 +29,7 @@ struct K3DPartsTests {
             1: (8446, -0.000, 62303.000, 247089.541),
             2: (1766, -0.000, 284767.500, 57925.100),
             3: (1576, -82716.000, -195696.000, 47231.580),
-            4: (1664, -328.000, 264071.000, 41878.820),
+            4: (1664, -520.000, 264071.000, 41878.820),
             5: (770, -0.000, -97790.000, 23139.150),
             6: (1766, -478.000, -51364.180, 38125.380),
             7: (5058, -3942.632, -307736.341, 55804.800),
@@ -54,8 +54,8 @@ struct K3DPartsTests {
     /// Each material's vertex count, as in the mock.
     @Test func eachMaterialMatchesTheMock() {
         let want: [Int: Int] = [
-            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4673, 13: 298, 14: 1221, 15: 7192, 16: 398, 17: 508,
-            19: 20, 20: 200, 21: 3901, 22: 588, 23: 295, 24: 349, 25: 129, 27: 207, 28: 448, 29: 256, 30: 1650, 32: 650,
+            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4673, 13: 298, 14: 1221, 15: 7192, 16: 406, 17: 508,
+            19: 20, 20: 192, 21: 3901, 22: 588, 23: 295, 24: 349, 25: 129, 27: 207, 28: 448, 29: 256, 30: 1650, 32: 650,
             34: 3261, 35: 418, 36: 288, 37: 3818, 38: 545, 39: 73, 40: 149, 41: 32, 42: 24, 43: 296, 44: 802, 45: 536,
         ]
         var got: [Int: Int] = [:]
@@ -211,6 +211,16 @@ struct K3DPartsTests {
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theBoardHasItsK3D11Ports() throws {
         for (angle, tilt) in [(160.0, 30.0), (200.0, -30.0)] {
             let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-board-\(Int(angle))-\(Int(tilt))")
+            #expect(width(bytes, row: 300) > 100)
+        }
+    }
+
+    /// CLA-129 PR 6: the screen cable as on Jason's screen photo. The PNGs look at the screen
+    /// module's back, apart, where the cable bends down to the board.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theScreenCableHasItsK3D11Look() throws {
+        #expect(K3DShader.source.contains("float ft = o.x < 42.5 ? 36.0 : 31.5;"))
+        for (angle, tilt) in [(180.0, 35.0), (150.0, 15.0)] {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-cable-\(Int(angle))-\(Int(tilt))")
             #expect(width(bytes, row: 300) > 100)
         }
     }
