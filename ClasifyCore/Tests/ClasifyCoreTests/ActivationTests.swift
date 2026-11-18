@@ -208,7 +208,7 @@ import Testing
             tries += 1
             try? await Task.sleep(for: .milliseconds(10))
         }
-        #expect(opened.n == 1 && opened.url == "https://getmypod.app/?d=code")
+        #expect(opened.n == 1 && opened.url == "https://getmypod.app/activate/?d=code")
         #expect(store.state.activation == .waiting(email: "sam@example.com", mail: 1))
         store.send(.select)  // "Send again"
         tries = 0
@@ -277,7 +277,7 @@ import Testing
 @MainActor final class Count { var n = 0; var url = "" }
 
 struct FakeActivator: Activator {
-    var page: String? = "https://getmypod.app/?d=code"
+    var page: String? = "https://getmypod.app/activate/?d=code"
     func pageURL() async -> String? { page }
     func status() async -> Activation { .waiting(email: "sam@example.com", mail: 1) }
     func sendAgain() async -> Activation { .waiting(email: "sam@example.com", mail: 2) }

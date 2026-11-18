@@ -11,7 +11,7 @@ const send: SendMail = async (mail) => {
 const noon = Date.UTC(2026, 10, 18, 12, 0);  // 21:00 JST
 const mailer = (perDay = 3, alertTo: string | undefined = "alert@example.com", now = noon) =>
   linkMailer(env.DB, send, perDay, alertTo, () => now);
-const link = "https://getmypod.app/?c=abc";
+const link = "https://getmypod.app/activate/?c=abc";
 
 beforeEach(async () => {
   sent.length = 0;

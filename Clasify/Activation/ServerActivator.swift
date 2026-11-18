@@ -24,7 +24,7 @@ struct ServerActivator: Activator {
 
     func pageURL() async -> String? {
         guard let answer = await call("POST", "/v1/open"), (200..<300).contains(answer.status), let code = answer.json?["code"] as? String,
-              var page = URLComponents(string: "https://getmypod.app/") else { return nil }
+              var page = URLComponents(string: "https://getmypod.app/activate/") else { return nil }
         page.queryItems = [URLQueryItem(name: "d", value: code)]
         return page.url?.absoluteString
     }

@@ -1543,9 +1543,6 @@ import Testing
         #expect(headline(allSet) && !allSet.isBlue(85, bar) && check(allSet))
     }
 
-    /// Card BI v2: the warning (233) and the end (234) are split setup screens with two rows,
-    /// the first selected. The small device shows a blue download arrow, or the gray cross.
-    /// The grey BETA pill (279) shows on song lists of a beta only.
     /// Card BW, 319 to 327: the same split screen as AX and BB. The rows start at the same
     /// place (the first one selected), 323 has none, and its mark is the green check.
     @Test func theActivateScreens() throws {
@@ -1578,6 +1575,9 @@ import Testing
         }
     }
 
+    /// Card BI v2: the warning (233) and the end (234) are split setup screens with two rows,
+    /// the first selected. The small device shows a blue download arrow, or the gray cross.
+    /// The grey BETA pill (279) shows on song lists of a beta only.
     @Test func theBetaScreensAndTheBetaTag() throws {
         var s = sampleState()
         s.beta = BetaBuild(signed: 0)

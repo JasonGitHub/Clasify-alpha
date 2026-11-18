@@ -146,7 +146,7 @@ public enum Effect: Equatable, Sendable {
     /// Card BV (CLA-125): read the newest beta's build number, once. A newer number comes back
     /// as `.latestBeta`; offline, no answer in 5 s or a bad file send nothing (change 314).
     case checkLatestBeta
-    /// CLA-128, card BW: open getmypod.app/?d=ID in the browser, where the person types the email.
+    /// CLA-128, card BW: open getmypod.app/activate/?d=ID in the browser, where the person types the email.
     case openActivatePage(request: Int)
     /// CLA-128: ask where the activation stands; send the mail again. The answer comes back
     /// as `.activation` with this request number.

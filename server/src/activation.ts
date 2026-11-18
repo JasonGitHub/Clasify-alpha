@@ -11,7 +11,8 @@ export interface Deps {
   human: (token: string) => Promise<boolean>;
 }
 
-const page = "https://getmypod.app";
+const page = "https://getmypod.app";  // the Origin of the page
+const pagePath = `${page}/activate/`;  // the Launch website owns the rest of getmypod.app
 const codeLife = 15 * 60_000;
 const linkLife = 60 * 60_000;
 const hour = 60 * 60_000;
@@ -81,7 +82,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
         .bind(hash, a.id).run();
       return { state: "busy" };
     }
-    if ((await deps.mailer.send(email, `${page}/?c=${link}`)) === "busy") {
+    if ((await deps.mailer.send(email, `${pagePath}?c=${link}`)) === "busy") {
       await db.batch([
         db.prepare("DELETE FROM mails WHERE token_hash = ?").bind(linkHash),
         db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND account_id = ? AND state != 'active'").bind(hash, a.id),
