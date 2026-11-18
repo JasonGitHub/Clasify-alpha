@@ -298,9 +298,10 @@ public final class Store {
             case .quit: onQuit?()
             case .openActivatePage(let request):
                 guard let activator else { break }
+                let flow = state.activateFlow
                 Task { [weak self] in
                     let url = await activator.pageURL()
-                    guard let self, self.state.activateRequest == request else { return }  // Cancel or MENU came first
+                    guard let self, self.state.activateFlow == flow else { return }  // Cancel or MENU came first
                     if let url { self.onOpenActivatePage?(url) } else { self.send(.activation(.offline, request: request)) }
                 }
             case .sendActivationAgain(let request):

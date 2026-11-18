@@ -376,6 +376,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func openActivatePage() {
         s.activateRequest += 1  // an answer to the flow before is dropped
         s.activatePressed = s.activateRequest  // a page that cannot open shows 327
+        s.activateFlow += 1
         showActivateStep {
             if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
             startActivateChecks()
@@ -386,6 +387,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     func cancelActivate() {
         showActivateStep { s.activateOpenMail = nil; s.activation = .locked; s.activateStopAt = 0 }
         s.activateRequest += 1  // an answer still on its way is dropped
+        s.activateFlow += 1  // and a page URL still on its way
     }
     /// Card BW: the 1.5 s beat on 323, the 30 s checks, and their end after 15 minutes (322).
     func activateTick() {

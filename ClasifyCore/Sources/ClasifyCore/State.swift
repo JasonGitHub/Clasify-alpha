@@ -406,6 +406,8 @@ public struct AppState: Equatable, Sendable {
     /// Card BW: the newest request that a press sent. Only its "no connection" shows (327);
     /// a timer check that failed waits for the next one.
     public var activatePressed = 0
+    /// Card BW: counts page opens and cancels, so a page URL that comes after Cancel or MENU is dropped.
+    public var activateFlow = 0
     /// Card BW, 320: the browser page is open, and the server had sent this many mails then. nil: not on 320.
     public var activateOpenMail: Int?
     /// Card BW: the next 30 s check, and the end of the checks (15 minutes after the last
