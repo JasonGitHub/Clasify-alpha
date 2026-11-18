@@ -37,8 +37,8 @@ import simd
         var outside = 0
         for i in 0..<(pose.ex > 0 ? mesh.vertexCount : mesh.closedVertexCount) {
             let e = i * K3DMesh.stride
-            var p = SIMD3(mesh.vertices[e], mesh.vertices[e + 1], mesh.vertices[e + 2])
             let mat = mesh.vertices[e + 11], pt = mesh.vertices[e + 12]
+            var p = K3DShader.turnsDrive(SIMD3(mesh.vertices[e], mesh.vertices[e + 1], mesh.vertices[e + 2]), part: pt)
             p.z += ex * (K3DShader.apart[Int(min(max(pt + 0.5, 0), 9))] - K3DShader.apartBack)
             let cable = pt > 2.5 && pt < 3.5 && ((mat > 13.5 && mat < 16.5) || (mat > 40.5 && mat < 41.5))
             if (ex < 0.06 && mat > 10.5) || (cable && ex < 0.14) { continue }  // hidden, as the vertex shader hides them

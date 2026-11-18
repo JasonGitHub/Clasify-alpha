@@ -147,10 +147,10 @@ extension K3DMesh {
         for ax in [-1.0, 1] { D(ax * 44 - 3, ax * 44 + 3, -285, -279, 7.6, 14) }
     }
 
-    /// 7 the drive: a metal box with grey rubber rails, its board side to the front and its label
-    /// side to the back. 8 the foam pad on it.
+    /// 7 the drive: a metal box with grey rubber rails. K.3D.11: the vertex shader turns it 180°
+    /// about y, so its label side, with the connector, faces the board under 8 the foam pad. Its
+    /// other side is a closed steel lid under a U of blue foam (`addDriveLidFoam`).
     mutating func addDrive() {
-        let circle = Self.circle
         part = 7
         slab(Self.rr(0, -80, 156, 208, 9, 12), 0, -80, -12, 14, 12, 40)
         for sx in [-1.0, 1] {
@@ -164,49 +164,21 @@ extension K3DMesh {
             bx6(top.0, top.1, 124, 133, -14.5, 16.5, 36)
             bx6(top.0, top.1, -293, -284, -14.5, 16.5, 36)
         }
-        bx(-140, 140, -272, -66, 14, 14.5, 13)
-        bx(-60, 40, -200, -120, 14.5, 15.6, 14)
-        bx(64, 124, -150, -90, 14.5, 15.4, 14)
-        lab(-60, 40, -200, -120, 15.62, back: false)
-        lab(64, 124, -150, -90, 15.42, back: false, 1)
         bx6(-128, 128, 101, 128, -12.7, -12, 14)  // the connector, on the label side
         bx6(-70, 70, 106, 125, -15.2, -12.7, 20)
         bx6(-60, 60, 112, 120, -15.3, -15.2, 14)
         for i in 0..<20 { bx6(-58.5 + Double(i) * 6, -55.5 + Double(i) * 6, 101.5, 106, -13.4, -12.7, 15) }
         bx6(-118, -104, 106, 120, -13.3, -12.7, 45)
-        let mb = circle(0, 34, 58, 56), mi = circle(0, 34, 16, 28)  // the motor
-        d(mb, 14.9, 12, 0, 34)
-        bd(mb, 14.9, 14, 12)
-        d(mi, 15.7, 12, 0, 34)
-        bd(mi, 15.7, 14.9, 12)
-        for k in 0..<3 {
-            let a = Double(k) * 2.094 + 0.5, hx = 38 * cos(a), hy = 34 + 38 * sin(a)
-            d(circle(hx, hy, 2.8, 14), 14.95, 14, hx, hy)
-        }
-        d(circle(-112, 96, 5, 20), 14.05, 12, -112, 96)
-        d(circle(-112, 96, 2.2, 14), 14.1, 14, -112, 96)
-        for (hx, hy) in [(-130.0, -76.0), (130, -76), (-130, -262), (130, -262)] {
-            let sc = circle(hx, hy, 4.2, 18)
-            d(sc, 15.1, 12, hx, hy)
-            bd(sc, 15.1, 14.5, 12)
-            bx(hx - 2.8, hx + 2.8, hy - 0.55, hy + 0.55, 15.1, 15.16, 14)
-            bx(hx - 0.55, hx + 0.55, hy - 2.8, hy + 2.8, 15.1, 15.16, 14)
-        }
-        for i in 0..<6 {
-            let y = -196 + Double(i) * 12
-            bx(50, 52, y, y + 5, 14.5, 15.3, 12)
-            bx(52, 57, y, y + 5, 14.5, 15.5, 45)
-            bx(57, 59, y, y + 5, 14.5, 15.3, 12)
-        }
-        bx(-122, -100, -112, -98, 14.5, 16.2, 12)
-        bx(-13, 13, -66, -20, 14.2, 14.6, 16)
+        addDriveLidFoam()
 
-        part = 8  // a step-shaped cut-out and a cut top corner
+        // K.3D.11 (CLA-129): a step cut-out over the label's model, S/N and barcode lines, a wide
+        // lower part and a narrow upper part on the right, and a cut top corner.
+        part = 8
         let pads: [(Double, Double, Double, Double)] = [
-            (-140, -72, 86, 110), (75, 140, 86, 110), (-140, 140, -9, 86), (-140, 23, -65, -9), (96, 140, -65, -9),
-            (-140, -75, -129, -65), (96, 140, -129, -65), (-140, 140, -270, -129),
+            (-140, -72, 86, 110), (75, 140, 86, 110), (-140, 140, 0, 86), (-140, 18, -60, 0), (88, 140, -60, 0),
+            (-140, -75, -150, -60), (88, 140, -150, -60), (-140, 140, -270, -150),
         ]
-        for (x0, x1, y0, y1) in pads { bx6(x0, x1, y0, y1, 15.8, 18.4, 37) }
+        for (x0, x1, y0, y1) in pads { bx6(x0, x1, y0, y1, 15.8, 20.6, 37) }
     }
 
     /// A screw head with a cross slot (the mock's `scr`), on a surface at `z`.

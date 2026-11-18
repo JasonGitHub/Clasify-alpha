@@ -571,7 +571,7 @@ final class K3DLayerView: MTKView {
         let count = apart ? mesh.vertexCount : mesh.closedVertexCount
         for i in 0..<count {
             let e = i * K3DMesh.stride
-            let p = SIMD3(mesh.vertices[e], mesh.vertices[e + 1], mesh.vertices[e + 2])
+            let p = K3DShader.turnsDrive(SIMD3(mesh.vertices[e], mesh.vertices[e + 1], mesh.vertices[e + 2]), part: mesh.vertices[e + 12])
             lo = simd_min(lo, p)
             hi = simd_max(hi, p)
             guard apart else { continue }
@@ -592,7 +592,7 @@ final class K3DLayerView: MTKView {
     }
 
     /// CLA-119: the frame's rect holds the parts' moves only from `ex` 0.002. Below it every
-    /// part is less than 0.35 pt from its closed place (the most is the device's move back, 172
+    /// part is less than 0.4 pt from its closed place (the most is the shell's move back, 192
     /// pt at `ex` 1), inside the closed rect's 2 px margin; the parts' own faces and the cable are
     /// hidden there (K3DShader). So a frame a hair apart is drawn in the same rect as the closed
     /// one, and looks the same (K3DApartRenderTests).
