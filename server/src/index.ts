@@ -8,6 +8,6 @@ export default {
     // Until Jason adds the RESEND_KEY secret, nothing is sent and people see "Mail is busy".
     const mailer = env.RESEND_KEY ? linkMailer(env.DB, resend(env.RESEND_KEY), Number(env.MAIL_DAY), env.ALERT_TO, now) : noMail;
     // Until Jason adds the TURNSTILE_SECRET secret, every page start is refused as a bot.
-    return handle(request, env, { now, mailer, human: turnstile(env.TURNSTILE_SECRET) });
+    return handle(request, env, { now, mailer, human: turnstile(env.TURNSTILE_SECRET, new URL(env.PAGE_ORIGIN || "https://getmypod.app").hostname) });
   },
 } satisfies ExportedHandler<Env>;
