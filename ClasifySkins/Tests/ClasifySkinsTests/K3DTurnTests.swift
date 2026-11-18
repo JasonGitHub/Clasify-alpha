@@ -71,6 +71,12 @@ import Testing
         turn = K3DTurn()
         flip = turn.pinched(-0.2, flip: flip, at: open)
         #expect(flip.apartRuns(at: open))
+        // Closed, it stays at the open angle and tilt until Cmd up (354).
+        let closed = open.addingTimeInterval(K3DFlip.apartTime + K3DFlip.closeTurn + 0.1)
+        #expect(!flip.isApart(at: closed) && !flip.restsOnFront(at: closed))
+        #expect(abs(flip.angle(at: closed) - flip.angle(at: open)) < 1e-6)
+        #expect(abs(flip.tilt(at: closed) - flip.tilt(at: open)) < 1e-6)
+        #expect(K3DTurn.ended(flip: flip, reduceMotion: false, at: closed).restsOnFront(at: closed.addingTimeInterval(1)))
     }
 
     /// Change 354: Cmd up on the open device closes it.

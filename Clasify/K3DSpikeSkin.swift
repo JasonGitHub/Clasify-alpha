@@ -126,7 +126,8 @@ struct K3DSpikeSkin: View {
                 }
             }
             .environment(\.artwork, artwork)
-            .background(K3DTurnInput(onSwipe: swiped, onPinch: pinched, onEnd: turnEnded))
+            .background(K3DTurnInput(
+                onSwipe: swiped, onPinch: pinched, onEnd: turnEnded, onPress: cmdPressed, onHold: cmdHeld, onClick: cmdClicked))
         }
         .overlay { if showroom { handle } }
         // CLA-119: the room goes round the device, and the window grows by the same amount on
@@ -336,6 +337,28 @@ struct K3DSpikeSkin: View {
         if began, !flip.isApart(at: .now) { K3DFlip.prepareApart() }
         guard startTurn() else { return }
         flip = cmdTurn.pinched(amount, flip: flip, at: .now)
+    }
+
+    /// Change 355: a Cmd press with the mouse. The prints get ready, so a hold opens with no wait.
+    private func cmdPressed() {
+        if !flip.isApart(at: .now) { K3DFlip.prepareApart() }
+    }
+
+    /// Change 355: a Cmd hold of 1.2 s with no move takes the device apart (the 308 motion).
+    private func cmdHeld() {
+        guard !flip.isApart(at: .now), startTurn() else { return }
+        flip = flip.apart(at: .now)
+    }
+
+    /// Change 355: a Cmd click puts the open device together where it is. Only Cmd up turns it
+    /// to the front (353). A click on the closed device does nothing.
+    private func cmdClicked() {
+        guard flip.isApart(at: .now), !flip.apartRuns(at: .now) else {
+            if !store.state.deviceTurned, !flip.isApart(at: .now) { K3DFlip.releaseApart() }
+            return
+        }
+        guard startTurn() else { return }
+        flip = flip.apart(at: .now, staysTurned: true)
     }
 
     /// The turn takes the device: the 3D front shows the screen as it is now, and input stops.

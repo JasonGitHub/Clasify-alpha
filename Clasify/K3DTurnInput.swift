@@ -3,6 +3,8 @@ import ClasifySkins
 import SwiftUI
 
 /// CLA-130 (card BT row 4): Cmd + a two-finger swipe, a mouse wheel or a pinch on the device.
+/// Change 355: Cmd + a mouse drag turns it too, a hold takes it apart, a click puts it together.
+/// Without Cmd, a drag moves the window as before.
 /// SwiftUI has no scroll or magnify events outside a ScrollView, so this is a small AppKit view,
 /// as `ScrollCatcher`. Put it in the background of the device. It never takes clicks: it watches
 /// the window's events, and `K3DTurnGesture` says which ones are the turn's.
@@ -13,6 +15,10 @@ struct K3DTurnInput: NSViewRepresentable {
     let onSwipe: @MainActor (_ dx: Double, _ dy: Double) -> Void
     let onPinch: @MainActor (_ amount: Double, _ began: Bool) -> Void
     let onEnd: @MainActor () -> Void
+    /// Change 355: a Cmd press on the device (the prints get ready), its hold, and its click.
+    let onPress: @MainActor () -> Void
+    let onHold: @MainActor () -> Void
+    let onClick: @MainActor () -> Void
 
     func makeNSView(context: Context) -> CatcherView {
         let view = CatcherView()
@@ -22,12 +28,22 @@ struct K3DTurnInput: NSViewRepresentable {
 
     func updateNSView(_ view: CatcherView, context: Context) {
         (view.onSwipe, view.onPinch, view.onEnd) = (onSwipe, onPinch, onEnd)
+        (view.onPress, view.onHold, view.onClick) = (onPress, onHold, onClick)
     }
 
     final class CatcherView: NSView {
         var onSwipe: @MainActor (Double, Double) -> Void = { _, _ in }
         var onPinch: @MainActor (Double, Bool) -> Void = { _, _ in }
         var onEnd: @MainActor () -> Void = {}
+        var onPress: @MainActor () -> Void = {}
+        var onHold: @MainActor () -> Void = {}
+        var onClick: @MainActor () -> Void = {}
+        /// Change 355: the Cmd press, from mouse down to up: where it is, whether it moved past
+        /// the slop, and the hold that waits for 1.2 s.
+        private var press: NSPoint?
+        private var moved = false
+        private var last = NSPoint.zero
+        private var hold: Task<Void, Never>?
         private var gesture = K3DTurnGesture()
         private var monitor: Any?
         private var observers: [NSObjectProtocol] = []
@@ -41,7 +57,7 @@ struct K3DTurnInput: NSViewRepresentable {
             (monitor, observers) = (nil, [])
             guard let window else { return resign() }
             // AppKit calls local monitors on the main thread.
-            monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify, .flagsChanged]) { [weak self] event in
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify, .flagsChanged, .leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
                 let taken = MainActor.assumeIsolated { self?.take(event) ?? false }
                 return taken ? nil : event
             }
@@ -59,7 +75,47 @@ struct K3DTurnInput: NSViewRepresentable {
         }
 
         private func resign() {
+            endPress()
             if gesture.resign() { onEnd() }
+        }
+
+        private func endPress() {
+            hold?.cancel()
+            (hold, press, moved) = (nil, nil, false)
+        }
+
+        /// Change 355: a Cmd press, drag or release with the mouse. True: the event is the turn's.
+        private func mouse(_ event: NSEvent, command: Bool, inside: Bool) -> Bool {
+            let point = convert(event.locationInWindow, from: nil)
+            switch event.type {
+            case .leftMouseDown:
+                guard gesture.scroll(.begin, command: command, inside: inside) == .turn else { return false }
+                (press, moved) = (point, false)
+                onPress()
+                hold = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(for: .seconds(K3DTurn.holdTime)) } catch { return }
+                    guard let self, self.press != nil, !self.moved else { return }
+                    self.hold = nil
+                    self.onHold()
+                }
+            case .leftMouseDragged:
+                guard let start = press, gesture.scroll(.move, command: command, inside: inside) == .turn else { return false }
+                if !moved {
+                    guard Double(hypot(point.x - start.x, point.y - start.y)) > K3DTurn.slop else { return true }
+                    hold?.cancel()
+                    (moved, hold, last) = (true, nil, start)
+                }
+                // The view is not flipped: up is +y, so a drag down is a positive dy.
+                onSwipe(point.x - last.x, last.y - point.y)
+                last = point
+            default:
+                guard press != nil else { return false }
+                let click = !moved && hold != nil
+                endPress()
+                if click { onClick() }
+                if gesture.scroll(.lift, command: command, inside: inside) == .end { onEnd() }
+            }
+            return true
         }
 
         /// Returns true to take the event, false to pass it on.
@@ -71,6 +127,9 @@ struct K3DTurnInput: NSViewRepresentable {
             }
             guard event.window === window else { return false }
             let inside = bounds.contains(convert(event.locationInWindow, from: nil))
+            if [.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(event.type) {
+                return mouse(event, command: command, inside: inside)
+            }
             if event.type == .magnify {
                 guard gesture.pinch(command: command, inside: inside) else { return false }
                 onPinch(event.magnification, event.phase == .began)
