@@ -252,6 +252,13 @@ enum K3DShader {
     // The mock's `bxf`: a printed outline box.
     float printBox(float2 o, float x0, float x1, float y0, float y1) { return ss(0.5, 0.15, abs(rIn(o, x0, x1, y0, y1))); }
     float hash2(float2 p, float2 k, float m) { return fract(sin(dot(p, k)) * m); }
+    // K.3D.11 (CLA-129): the battery's blue shrink film: soft wrinkles, an overlap seam at x 50
+    // (the right end is two layers), diagonal tuck folds at the left end.
+    float3 film(float2 o) {
+        return float3(0.065, 0.28, 0.74) * (1.0 + 0.035 * sin(o.x * 0.055 + 1.6 * sin(o.y * 0.07 + o.x * 0.013)) * sin(o.y * 0.09 + o.x * 0.021) + 0.05 * (o.y - 212.0) / 48.0)
+            * (o.x > 50.0 ? 1.07 : 1.0) * (1.0 - 0.22 * ss(1.4, 0.0, abs(o.x - 50.0)))
+            * (1.0 - 0.16 * ss(1.2, 0.0, abs(o.x + 160.0 - (abs(o.y - 212.0) - 24.0))) * step(o.x, -136.0));
+    }
     // The distance from p to the segment a b (the mock's `hkS`).
     float hkS(float2 p, float2 a, float2 b) { float2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
     // K.3D.11 (CLA-129): the drive lid's pressed band (`hook11`): in from the right edge, round
@@ -337,7 +344,10 @@ enum K3DShader {
             c = float3(0.90, 0.90, 0.88);
             float2 l = o - float2(-38.0, 210.0);
             float2 q = float2((l.x + 102.0) / 204.0 * 0.59765625, (820.0 + (34.0 - l.y) / 68.0 * 204.0) / 1024.0);
-            if (pt < 0.5) c = mix(float3(0.13, 0.36, 0.78), tl.sample(sm, q).rgb, pk);  // no print yet: the wrap's blue
+            if (pt < 0.5) {  // K.3D.11: the print sits on the film, with no lighter label panel
+                float tx = ss(0.30, 0.08, dot(tl.sample(sm, q).rgb, float3(0.30, 0.59, 0.11))) * pk;
+                c = film(o) * (1.0 - 0.72 * tx);
+            }
         }
         else if (id == 20.0) c = float3(0.80, 0.78, 0.70) * (0.96 + 0.04 * sin(o.x * 5.0)) + 0.12 * sp;
         else if (id == 45.0) c = float3(0.52, 0.40, 0.26) + 0.14 * sp;  // connector latch
@@ -363,7 +373,10 @@ enum K3DShader {
         else if (id == 28.0) c = blk > 0.5 ? float3(0.13) : float3(0.92, 0.93, 0.94);  // wheel side and center hole wall
         else if (id == 29.0) c = blk > 0.5 ? float3(0.16) : float3(0.62, 0.63, 0.65);  // button side
         else if (id == 34.0) c = float3(0.80, 0.81, 0.83) * (0.985 + 0.015 * sin(o.y * 1.3)) + 0.12 * sp;  // shell inner wall: brushed steel
-        else if (id == 35.0) c = float3(0.13, 0.36, 0.78);  // battery wrap
+        else if (id == 35.0) {  // battery: blue shrink film on its faces, plain darker sides
+            c = float3(0.13, 0.36, 0.78);
+            if (pt < 0.5) c = abs(von.z) > 0.9 ? film(o) : float3(0.06, 0.25, 0.64) * (1.0 + 0.04 * (o.y - 212.0) / 48.0);
+        }
         else if (id == 36.0) {  // drive bumpers: grey foam
             float fh = fract(sin(dot(floor(vo * 1.9), float3(12.9898, 78.233, 37.719))) * 43758.5453);
             float fh2 = fract(sin(dot(floor(vo * 0.7), float3(39.3, 11.1, 57.7))) * 4375.5);
@@ -429,14 +442,43 @@ enum K3DShader {
         else if (id == 30.0 || id == 31.0) mt = 0.55;
         // CLA-105 B2: the mock's real materials.
         if (id == 16.0 && pt < 0.5) c = float3(0.84, 0.66, 0.24);
+        // K.3D.11 jack corner: orange-brown flex; the jack body in moulded red-brown plastic with a
+        // raised ring round its black hole; the chip in black epoxy with its white print (tq
+        // green); the hold-switch bracket in dark steel with its green flex strip.
+        if (pt < 0.5 && id == 16.0 && o.x > 95.0 && o.x < 135.0 && o.y > 183.0 && o.y < 217.0) c = float3(0.66, 0.32, 0.10) * (0.92 + 0.08 * step(0.5, fract(o.x * 0.7)));
+        float4 jq = tq.sample(sm, float2(1248.0 + (o.x + 160.0) * 2.5, (290.0 - o.y) * 2.5) / 2048.0) * pk;
+        float jst = jq.g * (1.0 - jq.r) * (1.0 - jq.b);
+        if (pt < 0.5 && id == 45.0 && o.x > 99.0 && o.x < 131.0 && o.y > 215.0 && o.y < 241.0) {
+            float hl = length(o - float2(115.0, 228.0)), je = min(min(o.x - 100.0, 130.0 - o.x), min(o.y - 218.0, 244.0 - o.y));
+            c = float3(0.30, 0.11, 0.065) * (1.0 + 0.35 * ss(1.4, 0.4, je) * fz) * (0.80 + 0.20 * fz);
+            c = mix(c, float3(0.55, 0.30, 0.20), 0.5 * ss(1.2, 0.0, abs(hl - 7.0)) * fz);
+            c = mix(c, float3(0.02), ss(6.5, 5.7, hl) * fz);
+            mt = 0.15;
+        }
+        if (pt < 0.5 && id == 44.0 && o.x > 103.0 && o.x < 127.0 && o.y > 188.0 && o.y < 211.0) {
+            c = float3(0.055, 0.055, 0.06) * (1.0 + 0.25 * fz * ss(0.8, 0.0, min(min(o.x - 104.0, 126.0 - o.x), min(o.y - 189.0, 210.0 - o.y))));
+            c = mix(c, float3(0.78, 0.78, 0.74), jst * fz);
+            mt = 0.0;
+        }
+        if (pt < 0.5 && id == 44.0 && o.y > 273.0 && o.x < -39.0) {
+            c = float3(0.36, 0.37, 0.38) * (1.0 + 0.25 * ss(292.0, 296.0, o.y) * fz);
+            mt = 0.9;
+            if (o.x > -137.0 && o.x < -97.0 && o.y > 289.5 && fz > 0.5 && vo.z > -16.5) { c = float3(0.12, 0.30, 0.20); mt = 0.2; }
+        }
         if (pt < 0.5 && id == 16.0 && o.x > 79.0 && o.y > 195.0)
             c = float3(0.80, 0.46, 0.13) * (0.90 + 0.10 * step(0.5, fract(o.x * 0.9))) * (0.94 + 0.06 * step(0.5, fract(o.y * 0.45)));
-        if (pt < 0.5 && id == 12.0 && o.x > 83.0 && o.y > 213.0) {  // the jack and hold block: brushed steel, a round sleeve, screw heads
-            float bs = fract(sin(floor(o.x * 9.0) * 12.9898) * 43758.5453);
-            c *= (0.80 + 0.10 * bs) * (0.86 + 0.30 * ss(214.0, 284.0, o.y));
-            if (o.y > 264.0 && o.x > 118.0 && o.x < 136.0 && fz > 0.5) c *= 0.55 + 0.75 * pow(sin(3.14159 * (o.x - 118.0) / 18.0), 1.5);
-            float ds = min(length(o - float2(93.0, 275.0)), length(o - float2(143.0, 275.0)));
-            if (ds < 3.5) c *= 0.78 + 0.22 * ss(1.5, 3.4, ds); else c *= 1.0 - 0.25 * (1.0 - ss(3.5, 4.6, ds));
+        if (pt < 0.5 && id == 12.0 && o.x > 83.0 && o.y > 213.0) {  // K.3D.11 jack corner steel
+            c *= 0.85 * (0.86 + 0.30 * ss(214.0, 284.0, o.y));
+            if (o.x > 91.0 && o.x < 139.0 && o.y > 243.0) {  // the jack can: brushed stainless, a bright rolled top edge, the stamped code
+                float e = min(min(o.x - 92.0, 138.0 - o.x), o.y - 244.0), br = fract(sin(floor(o.x * 2.3) * 78.233) * 43758.5453);
+                if (fz > 0.5) c *= float3(1.0, 0.985, 0.95) * (0.84 + 0.08 * ss(244.0, 293.0, o.y)) * (0.93 + 0.07 * br) * (1.0 + 0.30 * ss(1.6, 0.5, e) * step(0.5, e))
+                    * (1.0 - 0.40 * ss(0.5, 0.0, e)) * (1.0 - 0.42 * jst);
+                else c *= 0.64 * (0.94 + 0.06 * br);
+            }
+            if (fz > 0.5) {  // screw posts: turned steel, a groove round the hole, a dark outer edge
+                float pd = min(length(o - float2(82.0, 284.0)), length(o - float2(146.0, 250.0)));
+                if (pd < 6.6) c *= mix(0.72, 1.12, ss(3.2, 4.6, pd)) * (1.0 - 0.30 * ss(5.6, 6.5, pd));
+            }
         }
         if (id == 16.0 && pt > 3.5 && pt < 4.5 && o.y < 24.0 && o.y > 5.0 && o.x > -66.0 && o.x < 84.0) c = float3(0.46, 0.63, 0.86);
         if (id == 37.0) {  // the foam's sparkles and dark pores
@@ -445,7 +487,10 @@ enum K3DShader {
             c += float3(0.16) * step(0.965, hash2(floor(o * 1.7), float2(39.3, 11.1), 4375.5));
         }
         if (id == 16.0 || id == 18.0 || id == 26.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
-        if (id == 35.0) c += 0.15 * pow(nh, 8.0) + 0.05 * ss(-0.3, 0.8, r.y);
+        if ((id == 35.0 || id == 19.0) && pt < 0.5) {  // the film: a broad soft sheen and small sharp glints that break up on the wrinkles
+            float wk = sin(o.x * 0.055 + 1.6 * sin(o.y * 0.07 + o.x * 0.013)) * sin(o.y * 0.09 + o.x * 0.021);
+            c += float3(0.06, 0.08, 0.12) * pow(nh, 5.0) + float3(0.30, 0.33, 0.38) * pow(nh, 70.0) * (0.6 + 0.4 * wk) + 0.035 * ss(-0.2, 0.9, r.y) * (1.0 + 0.5 * wk);
+        }
         if (id == 16.0 || id == 18.0) c += float3(0.14, 0.11, 0.06) * pow(nh, 10.0);
         if (id == 26.0) c += 0.06 * pow(nh, 6.0);
         // The print under this point: the board's (tp), the drive board's or the shell floor's (tq).
@@ -482,7 +527,11 @@ enum K3DShader {
         if (pt > 6.5 && pt < 7.5 && fr0 > 0.5) {  // the drive: white print on its board, dark ink on its metal
             if (id == 13.0) c = mix(c, float3(0.76, 0.78, 0.76), 0.74 * tpx.r);
         }
-        if (id == 34.0 && pt < 0.5 && fz > 0.5 && fr0 > 0.5) c *= 1.0 - 0.42 * tpx.r;  // the shell floor: etched text and marks
+        if (id == 34.0 && pt < 0.5 && fz > 0.5 && fr0 > 0.5) {  // the shell floor: its code etched as dots, soft smudges
+            float2 g = fract(o * 0.42) - 0.5;
+            c *= 1.0 - 0.80 * tpx.r * ss(0.40, 0.26, length(g));
+            c *= 0.965 + 0.025 * sin(o.x * 0.031 + 1.7 * sin(o.y * 0.023)) + 0.018 * sin(o.y * 0.047 + o.x * 0.013 + 2.0 * sin(o.x * 0.019));
+        }
         if (id == 21.0 && abs(o.x) < 100.0 && o.y < -252.0 && o.y > -264.0) {  // the plate's back: pale print on the brown sheet
             float pr2 = pk * tq.sample(sm, float2((100.0 - o.x) * 6.0, 1790.0 + (-252.0 - o.y) * 6.0) / 2048.0).r;
             c = mix(c, c * 1.7 + 0.08, 0.75 * pr2);
@@ -514,7 +563,7 @@ enum K3DShader {
             float2 gd = e2.x > e2.y ? float2(sign(o.x), 0.0) : float2(0.0, sign(o.y - 161.5));
             c *= 1.0 + 0.09 * ss(1.6, 0.0, abs(max(e2.x, e2.y))) * dot(gd, float2(-0.4, 0.9));
         }
-        if (id == 35.0 && fz > 0.5) ed = rIn(o, -156.0, 80.0, 164.0, 256.0);
+        if (id == 35.0 && fz > 0.5) ed = rIn(o, -160.0, 80.0, 164.0, 260.0);
         if (id == 13.0 && fz > 0.5) {  // the board: its edge, and the shadows of the parts on it
             if (pt > 6.5 && pt < 7.5) {
                 ed = rIn(o, -140.0, 140.0, -272.0, -66.0);
@@ -552,10 +601,14 @@ enum K3DShader {
             sh *= mix(0.70, 1.0, ss(0.0, 5.0, -rIn(o, 104.0, 146.0, 180.0, 214.0)));
         }
         if (id == 34.0 && fz > 0.5 && fr0 > 0.5) {  // the shell's wide flat ribbon (Jason 00:18 JST 11-14), its white print (tl)
-            float dB = ribbon(o);
-            sh *= mix(0.70, 1.0, ss(10.3, 14.0, dB));
-            float cbw = ss(10.5, 9.7, dB);
-            float3 rc = float3(1.30, 0.74, 0.20) * (0.88 + 0.12 * ss(0.4, 1.4, abs(dB - 7.6)));
+            // K.3D.11: thinner ribbons, and the battery cable from under the battery's left end to
+            // the bottom-left corner (Jason's pins, 16:53 and 22:46 JST 11-17).
+            float hw = 7.5, dC = min(min(hkS(o, float2(-150.0, 154.0), float2(-92.0, 154.0)), hkS(o, float2(-92.0, 154.0), float2(-92.0, -204.0))),
+                                     min(hkS(o, float2(-92.0, -204.0), float2(-150.0, -204.0)), hkS(o, float2(-150.0, -204.0), float2(-150.0, -252.0))));
+            float dB = min(ribbon(o), dC + 2.0);
+            sh *= mix(0.70, 1.0, ss(hw + 0.3, hw + 4.0, dB));
+            float cbw = ss(hw + 0.5, hw - 0.3, dB);
+            float3 rc = float3(1.18, 0.64, 0.17) * (0.80 + 0.20 * ss(0.4, 1.6, abs(dB - hw + 1.2))) * (0.78 + 0.30 * c);
             const float4 runs[4] = { float4(-116.0, 179.0, 74.0, 0.0), float4(-20.0, 151.0, 140.0, 1.0), float4(-5.0, 129.0, 130.0, 2.0), float4(0.0, 10.0, 75.0, 3.0) };
             float pm = 0.0;
             for (int i = 0; i < 4; i++) {
@@ -564,7 +617,15 @@ enum K3DShader {
                 if (q.x > 0.0 && q.x < 1.0 && q.y > 0.0 && q.y < 1.0) pm = tl.sample(sm, float2((640.0 + q.x * 384.0) / 1024.0, (768.0 + (R.w + q.y) * 64.0) / 1024.0)).r;
             }
             c = mix(c, mix(rc, float3(1.9, 1.8, 1.6), pm * pk), cbw);
-            mt *= 1.0 - cbw;
+            c *= 1.0 - 0.28 * ss(0.5, 0.0, abs(dC - 2.0)) * step(dC, 5.5);  // the battery cable's printed line
+            mt *= 1.0 - cbw * 0.75;
+            // Thin black tape beside the jack, partly under the battery; the ribbon under it shows
+            // as a raised band.
+            float2 tq2 = o - float2(98.0, 160.0);
+            float tb = max(abs(tq2.x) - 36.0, abs(tq2.y) - 30.0), tk = ss(0.5, -0.5, tb);
+            c = mix(c, float3(0.075, 0.075, 0.08) * (1.0 + 0.9 * cbw) + 0.10 * cbw * ss(1.6, 0.2, abs(dB - hw + 0.8)), tk);
+            mt *= 1.0 - 0.8 * tk;
+            sh *= mix(0.86, 1.0, ss(0.0, 2.5, tb));
         }
         if (id == 21.0) {
             float2 d = abs(o) - float2(149.0, 272.5);
@@ -576,12 +637,13 @@ enum K3DShader {
         float sr = 0.46 + 0.30 * ss(-0.7, 0.7, r.y) + 0.42 * pow(max(dot(r, normalize(float3(-0.45, 0.5, 0.75))), 0.0), 5.0)
             + 0.10 * ss(0.2, 0.95, dot(r, normalize(float3(0.7, 0.1, 0.7))));
         float mm = 0.60 * mt;
-        if (id == 34.0) { sr = mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.7); mm = 0.85; }
+        float fl = (id == 34.0 && pt < 0.5) ? 1.0 : 0.0;  // K.3D.11: the shell floor and walls are polished mirror steel
+        if (id == 34.0) { sr = fl > 0.5 ? mix(sr, 0.40 + 0.70 * studioF(r, vp), 0.85) : mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.7); mm = fl > 0.5 ? 0.92 : 0.85; }
         if (id == 12.0 && pt > 6.5 && pt < 7.5) {  // K.3D.11: the lid is satin, the sides stay bright
             if (von.z > 0.9) { sr = mix(sr, 0.66 + 0.36 * studioF(r, vp), 0.40); mm = 0.66; }
             else { sr = mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.65); mm = 0.82; }
         }
-        return c * mix(float3(g), float3(sr * 1.18), mm) * (1.0 + 0.045 * mt * (brl - 0.5)) * sh * (1.0 + eg);
+        return c * mix(float3(g), float3(sr * 1.18), mm) * (1.0 + 0.045 * mt * (brl - 0.5) * (1.0 - fl)) * sh * (1.0 + eg);
     }
 
     // The front parts (material 3) as lit at the pose: `front`, then the window apart, the gap
