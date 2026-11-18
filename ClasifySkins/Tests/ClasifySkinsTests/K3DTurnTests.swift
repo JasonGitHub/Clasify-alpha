@@ -144,6 +144,18 @@ struct K3DTurnGestureTests {
         #expect(g.scroll(.glide, command: false, inside: true) == .pass)
     }
 
+    /// Cmd up after the lift, before the glide's first event: the glide still goes nowhere.
+    @Test func aGlideAfterCmdUpBetweenLiftAndGlideIsSwallowed() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        _ = g.scroll(.lift, command: true, inside: true)
+        #expect(g.command(down: false))
+        #expect(g.scroll(.glide, command: false, inside: true) == .swallow)
+        #expect(g.scroll(.glideEnd, command: false, inside: true) == .swallow)
+        #expect(g.scroll(.begin, command: false, inside: true) == .pass)
+        #expect(g.scroll(.glide, command: false, inside: true) == .pass)
+    }
+
     /// The CTO's safety exit: the app or the window goes to the back during a turn.
     @Test func resignEndsTheTurn() {
         var g = K3DTurnGesture()

@@ -77,7 +77,7 @@ public struct K3DTurnGesture: Equatable {
     private(set) var fingers = false, gliding = false
     /// Cmd went up during the swipe or the glide: the turn ends when they end.
     private(set) var endPending = false
-    /// The glide of a turn that ended: it goes nowhere, not to the wheel.
+    /// The glide after a turn that ended: it goes nowhere, not to the wheel. A new swipe clears it.
     private(set) var swallowGlide = false
 
     public init() {}
@@ -95,7 +95,7 @@ public struct K3DTurnGesture: Equatable {
         case .lift:
             guard fingers else { return .pass }
             fingers = false
-            return endPending ? end(glideFollows: true) : .turn
+            return endPending ? end() : .turn
         case .glide:
             if swallowGlide { return .swallow }
             guard turning else { return .pass }
@@ -105,7 +105,7 @@ public struct K3DTurnGesture: Equatable {
             if swallowGlide { swallowGlide = false; return .swallow }
             guard gliding else { return .pass }
             gliding = false
-            return endPending ? end(glideFollows: false) : .turn
+            return endPending ? end() : .turn
         case .wheel:
             guard command && inside || turning && command else { return .pass }
             turning = true
@@ -128,18 +128,20 @@ public struct K3DTurnGesture: Equatable {
             endPending = true
             return false
         }
-        return end(glideFollows: false) == .end
+        return end() == .end
     }
 
     /// The app or the window is no longer in front: a lost Cmd up must not leave input dead.
     /// True when a turn ran.
     public mutating func resign() -> Bool {
         guard turning else { return false }
-        return end(glideFollows: fingers || gliding) == .end
+        return end() == .end
     }
 
-    private mutating func end(glideFollows: Bool) -> Answer {
-        (turning, fingers, gliding, endPending, swallowGlide) = (false, false, false, false, glideFollows)
+    /// Ends the turn. A glide may still come after it, also when Cmd went up between the lift
+    /// and the glide's first event, so any glide until the next swipe goes nowhere.
+    private mutating func end() -> Answer {
+        (turning, fingers, gliding, endPending, swallowGlide) = (false, false, false, false, true)
         return .end
     }
 }
