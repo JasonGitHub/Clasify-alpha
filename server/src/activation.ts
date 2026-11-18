@@ -44,18 +44,17 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
 
   /** Puts the Mac on the account and sends a new link, unless the beta is full or the account off. */
   async function start(hash: string, email: string) {
-    const m = await mac(hash);
-    if (m?.state === "active") return status(hash);
-    let a = await db.prepare("SELECT * FROM accounts WHERE email = ?").bind(email).first<Account>();
-    if (!a) {
-      a = { id: token(), email, state: "pending", off: 0 };
-      await db.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'pending', ?)").bind(a.id, email, now).run();
-    }
-    await db.prepare("UPDATE macs SET account_id = ? WHERE device_hash = ?").bind(a.id, hash).run();
+    await db.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'pending', ?) ON CONFLICT (email) DO NOTHING")
+      .bind(token(), email, now).run();
+    const a = (await db.prepare("SELECT * FROM accounts WHERE email = ?").bind(email).first<Account>())!;
+    // An active Mac keeps its account, even when a Confirm lands while this runs.
+    const moved = await db.prepare("UPDATE macs SET account_id = ? WHERE device_hash = ? AND state != 'active'").bind(a.id, hash).run();
+    if (!moved.meta.changes) return status(hash);
     if (a.off) return { state: "off" };
     if (a.state !== "active" && (await activeCount()) >= Number(env.CAP)) {
-      await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ?").bind(a.id).run();
-      return { state: "full" };
+      // Never over an account that a Confirm has just made active.
+      const waits = await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ? AND state != 'active'").bind(a.id).run();
+      if (waits.meta.changes) return { state: "full" };
     }
     const link = token();
     if ((await deps.mailer.send(email, `${page}/?c=${link}`)) === "busy") return { state: "busy" };
@@ -110,15 +109,18 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
          AND (state = 'active' OR (SELECT COUNT(*) FROM accounts WHERE state = 'active') < ?)`,
       ).bind(now, a.id, Number(env.CAP)).run();
       if (!won.meta.changes) {
-        await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ?").bind(a.id).run();
+        await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ? AND state != 'active'").bind(a.id).run();
         return reply({ result: "full" }, 200, cors);
       }
-      // A new account has no active Mac yet, so only an account that was already active can fail here.
+      // The Mac must still be on this mail's account. A new account has no active Mac yet.
       const fits = await db.prepare(
-        `UPDATE macs SET state = 'active' WHERE device_hash = ?
+        `UPDATE macs SET state = 'active' WHERE device_hash = ? AND account_id = ?
          AND (SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active') < ?`,
-      ).bind(m.device_hash, a.id, Number(env.MACS)).run();
-      if (!fits.meta.changes) return reply({ result: "macs" }, 200, cors);
+      ).bind(m.device_hash, a.id, a.id, Number(env.MACS)).run();
+      if (!fits.meta.changes) {
+        const moved = (await mac(m.device_hash))?.account_id !== a.id;  // "Use another email" came first
+        return reply({ result: moved ? "expired" : "macs" }, 200, cors);
+      }
       await db.prepare("UPDATE mails SET used_at = ? WHERE token_hash = ?").bind(now, hash).run();
       return reply({ result: "ok" }, 200, cors);
     }

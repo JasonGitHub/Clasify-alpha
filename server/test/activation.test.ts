@@ -121,6 +121,30 @@ describe("activation", () => {
     expect((await Promise.all([confirm(two), confirm(three)])).sort()).toEqual(["macs", "ok"]);
   });
 
+  it("two Macs that join at once with a new email share one account", async () => {
+    const both = await Promise.all([join(mac(1), "new@example.com"), join(mac(2), "new@example.com")]);
+    expect(both).toEqual([1, 1].map((mail) => ({ state: "waiting", email: "new@example.com", mail })));
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM accounts").first("n")).toBe(1);
+  });
+
+  it("an active Mac keeps its account, and a full beta never moves an active account to the waitlist", async () => {
+    await activate(mac(1), "sam@example.com");
+    expect(await join(mac(1), "kim@example.com")).toMatchObject({ state: "active" });
+    const cap1 = { ...env, CAP: "1" };
+    const code = await open(mac(2));
+    const r = await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com" }) }), cap1, { now: () => clock, mailer: mail });
+    expect(await r.json()).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
+    expect(await env.DB.prepare("SELECT state FROM accounts WHERE email = 'sam@example.com'").first("state")).toBe("active");
+  });
+
+  it("a link for an old email does not activate the Mac after Use another email", async () => {
+    await join(mac(1), "sam@example.com");
+    const old = mail.token;
+    await join(mac(1), "kim@example.com");
+    expect(await confirm(old)).toBe("expired");
+    expect(await status(mac(1))).toEqual({ state: "waiting", email: "kim@example.com", mail: 2 });
+  });
+
   it("an account that is off stays off", async () => {
     await activate(mac(1), "sam@example.com");
     await env.DB.prepare("UPDATE accounts SET off = 1").run();
