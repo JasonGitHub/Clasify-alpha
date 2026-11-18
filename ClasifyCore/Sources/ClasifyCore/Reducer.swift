@@ -91,6 +91,10 @@ public enum Action: Equatable, Sendable {
     /// The skin's first-launch arrival ended, or did not run (card BR, change 288). Hello starts
     /// from now. A second one does nothing.
     case arrived
+    /// CLA-130 (card BT row 4): Cmd + a two-finger swipe turned the 3D device off its front
+    /// (true), or it is back on its front (false). While it is turned, the wheel, the buttons
+    /// and the keys do nothing. The angle itself stays in the skin (`K3DTurn`).
+    case deviceTurned(Bool)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -586,7 +590,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         // Change 234: the ended beta takes only the wheel and its rows.
         if s.top.screen == .betaEnded {
             switch action {
-            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived: break
+            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived, .deviceTurned: break
             default: return
             }
         }
@@ -1218,6 +1222,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // screen says "Log in again", and after the login the main menu opens (change 181).
             if s.signedIn { signOut(); s.sessionEnded = true; fx.append(.logOut) }
 
+        case .deviceTurned(let turned):
+            s.deviceTurned = turned
+
         case .arrived:
             guard !s.arrived else { return }
             s.arrived = true
@@ -1239,8 +1246,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let playHintDone = s.hintsDone.contains(.playPause)
     let tourShown = s.hint?.isTour == true && s.hintTip ? s.hint : nil  // its words showed
     // Change 288: while the device arrives, the wheel, the buttons and the keys do nothing,
-    // and the tour and hints do not see them either.
-    if !s.arrived {
+    // and the tour and hints do not see them either. CLA-130: the same while it is turned.
+    if !s.arrived || s.deviceTurned {
         switch action {
         case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: return []
         default: break
