@@ -372,6 +372,14 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
         fx.append(effect(s.activateRequest))
     }
     func startActivateChecks() { s.activateStopAt = now + activateChecksFor; s.activateCheckAt = now + activateCheckEvery }
+    /// Card BW: the page opens (320). The checks run for 15 minutes from now.
+    func openActivatePage() {
+        showActivateStep {
+            if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
+            startActivateChecks()
+        }
+        fx.append(.openActivatePage)
+    }
     /// Card BW, 320 and 321: "Cancel" and MENU go back to 319 and stop the checks.
     func cancelActivate() {
         showActivateStep { s.activateOpenMail = nil; s.activation = .locked; s.activateStopAt = 0 }
@@ -772,15 +780,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fx.append(.getNewBeta)
                 if s.top.screen == .betaSoon || s.top.screen == .betaNew { s.stack.removeLast() }
             case .later: s.stack.removeLast()
-            // The `where` holds for "Try again" only: on 324 (mail busy) it opens the page again.
-            case .openActivate, .openActivateAgain, .useAnotherEmail, .tryActivateAgain where s.activation != .offline:
-                // Card BW: the page opens (320). The checks run for 15 minutes from now.
-                showActivateStep {
-                    if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
-                    startActivateChecks()
-                }
-                fx.append(.openActivatePage)
-            case .tryActivateAgain: askActivation(Effect.checkActivation, pressed: true)  // 327
+            case .openActivate, .openActivateAgain, .useAnotherEmail: openActivatePage()
+            case .tryActivateAgain:  // 324 (mail busy) opens the page again, because the email is typed there; 327 asks
+                if s.activation == .offline { askActivation(Effect.checkActivation, pressed: true) } else { openActivatePage() }
             case .sendAgain: startActivateChecks(); askActivation(Effect.sendActivationAgain, pressed: true)
             case .checkMail:  // 322, 325, 326: the checks start again
                 startActivateChecks(); askActivation(Effect.checkActivation, pressed: true)
