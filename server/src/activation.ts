@@ -75,7 +75,12 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     ).bind(linkHash, hash, a.id, now, now + linkLife,
       a.id, now - hour, perHour, a.id, now - 24 * hour, perDay,
       hash, now - hour, perHour, hash, now - 24 * hour, perDay).run();
-    if (!room.meta.changes) return { state: "busy" };  // the app's earlier mail state stays as it was
+    if (!room.meta.changes) {
+      // Over a limit. A mail still out to this account stays "sent"; with none, the app sees busy.
+      await db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND account_id = ? AND state != 'active' AND mail_state != 'sent'")
+        .bind(hash, a.id).run();
+      return { state: "busy" };
+    }
     if ((await deps.mailer.send(email, `${page}/?c=${link}`)) === "busy") {
       await db.batch([
         db.prepare("DELETE FROM mails WHERE token_hash = ?").bind(linkHash),

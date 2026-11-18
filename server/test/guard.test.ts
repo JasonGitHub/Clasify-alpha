@@ -16,6 +16,10 @@ async function call(path: string, opts: { device?: string; body?: object }) {
   const response = await handle(request, env, { now: () => clock, mailer, human: async (t) => t === "person" });
   return { status: response.status, json: await response.json() as Record<string, unknown> };
 }
+async function status(device: string) {
+  const request = new Request("https://api.example/v1/status", { headers: { Authorization: `Device ${device}` } });
+  return (await handle(request, env, { now: () => clock, mailer, human: async () => true })).json();
+}
 async function join(device: string, email: string, bot = "person") {
   const code = (await call("/v1/open", { device })).json.code;
   return (await call("/v1/start", { body: { code, email, turnstile: bot } })).json;
@@ -32,6 +36,9 @@ describe("mail limits", () => {
     for (const n of [1, 2, 3]) expect((await join(mac(n), "sam@example.com")).state).toBe("waiting");
     expect(await join(mac(4), "sam@example.com")).toEqual({ state: "busy" });
     expect(sent).toBe(3);
+    expect(await status(mac(4))).toEqual({ state: "busy" });  // the app sees "Mail is busy"
+    await call("/v1/start", { device: mac(1) });  // Send again over the limit
+    expect(await status(mac(1))).toMatchObject({ state: "waiting", mail: 1 });  // its mail is still out
     clock += hour;
     expect((await join(mac(4), "sam@example.com")).state).toBe("waiting");
   });
