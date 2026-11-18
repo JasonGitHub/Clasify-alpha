@@ -7,7 +7,8 @@
     // Placeholder: the real database ID goes here before the first deploy.
     { "binding": "DB", "database_name": "mypod-activation", "database_id": "00000000-0000-0000-0000-000000000000" }
   ],
-  // The beta cap (accounts) and the Mac limit per account.
-  "vars": { "CAP": "100", "MACS": "2" },
+  // The beta cap (accounts), the Mac limit per account, and link mails a day (Resend free: 100).
+  // Secrets that Jason adds with `wrangler secret put`: RESEND_KEY, ALERT_TO.
+  "vars": { "CAP": "100", "MACS": "2", "MAIL_DAY": "95" },
   "observability": { "enabled": false }
 }
