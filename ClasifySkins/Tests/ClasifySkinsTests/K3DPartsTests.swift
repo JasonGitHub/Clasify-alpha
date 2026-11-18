@@ -115,6 +115,7 @@ struct K3DPartsTests {
         #expect(K3DShader.source.contains("constant float apart[10] = { -40.0, 240.0, 285.0, 277.0, 196.0, 313.0, 130.0, 62.0, 62.0, 140.5 };"))
         #expect(K3DShader.source.contains("pp.z -= u.ex * 152.0;"))
         #expect(K3DShader.source.contains("if (pt > 6.5 && pt < 7.5) { pp.x = -pp.x; pp.z = 2.0 - pp.z; nn.x = -nn.x; nn.z = -nn.z; }"))
+        #expect(K3DShader.source.contains("in.vo.z < 31.8"))  // the wheel hole's collar, T/2 − 2.2
     }
 
     /// K.3D.11: the drive is turned 180° about y; nothing else is.
@@ -122,7 +123,6 @@ struct K3DPartsTests {
         let p = SIMD3<Float>(10, 20, 5)
         #expect(K3DShader.turnsDrive(p, part: 7) == SIMD3(-10, 20, -3))
         for part in [0, 6, 8, 9] { #expect(K3DShader.turnsDrive(p, part: Float(part)) == p) }
-        #expect(K3DShader.source.contains("in.vo.z < 31.8"))  // the wheel hole's collar, T/2 − 2.2
     }
 
     /// The mock's `draw`: closed, one pass of the closed device with back faces culled.
