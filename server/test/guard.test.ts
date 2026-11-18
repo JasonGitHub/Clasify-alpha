@@ -22,7 +22,8 @@ async function status(device: string) {
 }
 async function join(device: string, email: string, bot = "person") {
   const code = (await call("/v1/open", { device })).json.code;
-  return (await call("/v1/start", { body: { code, email, turnstile: bot } })).json;
+  const { code: _next, ...answer } = (await call("/v1/start", { body: { code, email, turnstile: bot } })).json;
+  return answer;
 }
 
 beforeEach(async () => {
@@ -81,15 +82,15 @@ describe("bot check", () => {
       body = String(init?.body);
       return new Response(JSON.stringify(json), { status });
     }) as typeof fetch;
-    expect(await turnstile("sec", answer({ success: true, hostname: "getmypod.app" }))("tok")).toBe(true);
+    expect(await turnstile("sec", "getmypod.app", answer({ success: true, hostname: "getmypod.app" }))("tok")).toBe(true);
     expect(new URLSearchParams(body).toString()).toBe("secret=sec&response=tok");
-    expect(await turnstile("sec", answer({ success: true, hostname: "evil.example" }))("tok")).toBe(false);
-    expect(await turnstile("sec", answer({ success: false, hostname: "getmypod.app" }))("tok")).toBe(false);
-    expect(await turnstile("sec", answer({ success: true, hostname: "getmypod.app" }, 500))("tok")).toBe(false);
-    expect(await turnstile("sec", (async () => { throw new Error("timeout"); }) as typeof fetch)("tok")).toBe(false);
+    expect(await turnstile("sec", "getmypod.app", answer({ success: true, hostname: "evil.example" }))("tok")).toBe(false);
+    expect(await turnstile("sec", "getmypod.app", answer({ success: false, hostname: "getmypod.app" }))("tok")).toBe(false);
+    expect(await turnstile("sec", "getmypod.app", answer({ success: true, hostname: "getmypod.app" }, 500))("tok")).toBe(false);
+    expect(await turnstile("sec", "getmypod.app", (async () => { throw new Error("timeout"); }) as typeof fetch)("tok")).toBe(false);
     let asked = false;
     const never = (async () => { asked = true; return new Response("{}"); }) as typeof fetch;
-    expect(await turnstile(undefined, never)("tok")).toBe(false);
+    expect(await turnstile(undefined, "getmypod.app", never)("tok")).toBe(false);
     expect(asked).toBe(false);
   });
 });

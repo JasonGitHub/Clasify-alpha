@@ -8,6 +8,8 @@ declare namespace Cloudflare {
     /** Link mails per address and per device: an hour, and a day. */
     MAIL_HOUR: string;
     MAIL_DAY_EACH: string;
+    /** The Origin of the activation page; its path is /activate/. Default https://getmypod.app. */
+    PAGE_ORIGIN?: string;
     /** Worker secrets that Jason adds. Never in the repo. */
     TURNSTILE_SECRET?: string;
     RESEND_KEY?: string;

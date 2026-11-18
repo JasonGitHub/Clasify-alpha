@@ -11,8 +11,6 @@ export interface Deps {
   human: (token: string) => Promise<boolean>;
 }
 
-const page = "https://getmypod.app";  // the Origin of the page
-const pagePath = `${page}/activate/`;  // the Launch website owns the rest of getmypod.app
 const codeLife = 15 * 60_000;
 const linkLife = 60 * 60_000;
 const hour = 60 * 60_000;
@@ -22,8 +20,10 @@ type Mac = { device_hash: string; account_id: string | null; state: string; mail
 
 export async function handle(request: Request, env: Env, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
-  const cors = request.headers.get("Origin") === page;
-  if (request.method === "OPTIONS" && cors) return reply(null, 204, true);
+  // The page's Origin (PAGE_ORIGIN, default getmypod.app). The Launch website owns the rest of that site.
+  const page = env.PAGE_ORIGIN || "https://getmypod.app";
+  const cors = request.headers.get("Origin") === page ? page : null;
+  if (request.method === "OPTIONS" && cors) return reply(null, 204, cors);
   const route = `${request.method} ${url.pathname}`;
   const now = deps.now();
   const db = env.DB;
@@ -82,7 +82,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
         .bind(hash, a.id).run();
       return { state: "busy" };
     }
-    if ((await deps.mailer.send(email, `${pagePath}?c=${link}`)) === "busy") {
+    if ((await deps.mailer.send(email, `${page}/activate/?c=${link}`)) === "busy") {
       await db.batch([
         db.prepare("DELETE FROM mails WHERE token_hash = ?").bind(linkHash),
         db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND account_id = ? AND state != 'active'").bind(hash, a.id),
@@ -118,12 +118,23 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return reply({ error: "email" }, 400, cors);
       if (typeof body.turnstile !== "string" || !(await deps.human(body.turnstile))) return reply({ error: "bot" }, 400, cors);
       const code = typeof body.code === "string" ? await sha256(body.code) : "";
-      // One statement uses the code, so two pages with the same code cannot both go on.
+      // One statement uses the code and puts a new one in its place, so two pages with the same
+      // code cannot both go on. The new code lets the page "Send again" or "Use another email".
+      const next = token();
       const owner = await db.prepare(
-        "UPDATE macs SET code_hash = NULL, code_expires_at = NULL WHERE code_hash = ? AND code_expires_at > ? RETURNING device_hash",
-      ).bind(code, now).first<{ device_hash: string }>();
+        "UPDATE macs SET code_hash = ?, code_expires_at = ? WHERE code_hash = ? AND code_expires_at > ? RETURNING device_hash",
+      ).bind(await sha256(next), now + codeLife, code, now).first<{ device_hash: string }>();
       if (!owner) return reply({ error: "code" }, 400, cors);
-      return reply(await start(owner.device_hash, email), 200, cors);
+      return reply({ ...await start(owner.device_hash, email), code: next }, 200, cors);
+    }
+    case "POST /v1/peek": {  // the page, when it opens from the mail: whose link is it? It changes nothing.
+      const hash = typeof body.token === "string" ? await sha256(body.token) : "";
+      // One answer for a used, an old and an unknown link, so nobody can tell them apart.
+      const live = await db.prepare(
+        `SELECT accounts.email FROM mails JOIN macs ON macs.device_hash = mails.device_hash AND macs.account_id = mails.account_id
+         JOIN accounts ON accounts.id = mails.account_id WHERE mails.token_hash = ? AND mails.used_at IS NULL AND mails.expires_at > ?`,
+      ).bind(hash, now).first<{ email: string }>();
+      return reply(live ? { email: live.email } : { result: "expired" }, 200, cors);
     }
     case "POST /v1/confirm": {  // the page, when the person presses Confirm
       const hash = typeof body.token === "string" ? await sha256(body.token) : "";
@@ -176,10 +187,10 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function reply(body: unknown, status = 200, cors = false): Response {
+function reply(body: unknown, status = 200, cors: string | null = null): Response {
   const headers: Record<string, string> = { "Content-Type": "application/json", "Cache-Control": "no-store" };
   if (cors) {
-    headers["Access-Control-Allow-Origin"] = page;
+    headers["Access-Control-Allow-Origin"] = cors;
     headers["Access-Control-Allow-Methods"] = "POST";
     headers["Access-Control-Allow-Headers"] = "Content-Type";
     headers["Vary"] = "Origin";

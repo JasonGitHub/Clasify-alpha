@@ -35,7 +35,8 @@ const open = async (device: string) => (await call("POST", "/v1/open", { device 
 const status = async (device: string) => (await call("GET", "/v1/status", { device })).json;
 const confirm = async (token: string) => (await call("POST", "/v1/confirm", { body: { token } })).json.result;
 async function join(device: string, email: string) {
-  return (await call("POST", "/v1/start", { body: { code: await open(device), email } })).json;
+  const { code: _next, ...answer } = (await call("POST", "/v1/start", { body: { code: await open(device), email } })).json;
+  return answer;
 }
 async function activate(device: string, email: string) {
   await join(device, email);
@@ -137,7 +138,7 @@ describe("activation", () => {
     const cap1 = { ...env, CAP: "1" };
     const code = await open(mac(2));
     const r = await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com", turnstile: "person" }) }), cap1, deps());
-    expect(await r.json()).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
+    expect(await r.json()).toMatchObject({ state: "waiting", email: "sam@example.com", mail: 1 });
     expect(await env.DB.prepare("SELECT state FROM accounts WHERE email = 'sam@example.com'").first("state")).toBe("active");
   });
 
@@ -200,6 +201,45 @@ describe("activation", () => {
     const code = await open(mac(1));
     await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com", turnstile: "person" }) }), env, { ...deps(), mailer: slow });
     expect(await status(mac(1))).toEqual({ state: "busy" });  // kim's send was busy; sam's late mail must not say "sent" for kim
+  });
+
+  it("gives the page a new code in place of the used one, for Send again and Use another email", async () => {
+    const first = await call("POST", "/v1/start", { body: { code: await open(mac(1)), email: "sam@example.com" } });
+    const next = first.json.code as string;
+    expect(next).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const again = await call("POST", "/v1/start", { body: { code: next, email: "kim@example.com" } });
+    expect(again.json).toMatchObject({ state: "waiting", email: "kim@example.com", mail: 2 });
+    expect((await call("POST", "/v1/start", { body: { code: next, email: "kim@example.com" } })).json).toEqual({ error: "code" });
+    const late = again.json.code as string;
+    clock += 15 * 60_000;
+    expect((await call("POST", "/v1/start", { body: { code: late, email: "kim@example.com" } })).json).toEqual({ error: "code" });
+  });
+
+  it("peek tells the page whose link it is, changes nothing, and has one answer for every dead link", async () => {
+    const peek = async (token: string) => (await call("POST", "/v1/peek", { body: { token }, origin: "https://getmypod.app" }));
+    await join(mac(1), "sam@example.com");
+    const live = await peek(mail.token);
+    expect(live.json).toEqual({ email: "sam@example.com" });
+    expect(live.headers.get("Access-Control-Allow-Origin")).toBe("https://getmypod.app");
+    expect(await status(mac(1))).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
+    expect(await peek(mail.token)).toMatchObject({ json: { email: "sam@example.com" } });  // still live
+    const used = mail.token;
+    expect(await confirm(used)).toBe("ok");
+    await join(mac(2), "kim@example.com");
+    const old = mail.token;
+    clock += 60 * 60_000;
+    for (const token of [used, old, "not-a-token"]) expect((await peek(token)).json).toEqual({ result: "expired" });
+  });
+
+  it("uses PAGE_ORIGIN for the mail link and for CORS", async () => {
+    const other = { ...env, PAGE_ORIGIN: "https://beta.example" };
+    const code = await open(mac(1));
+    const start = (origin: string) => handle(new Request("https://api.example/v1/start", { method: "POST", headers: { Origin: origin },
+      body: JSON.stringify({ code, email: "sam@example.com", turnstile: "person" }) }), other, deps());
+    const r = await start("https://beta.example");
+    expect(r.headers.get("Access-Control-Allow-Origin")).toBe("https://beta.example");
+    expect(mail.sent[0].link).toMatch(/^https:\/\/beta\.example\/activate\/\?c=/);
+    expect((await start("https://getmypod.app")).headers.get("Access-Control-Allow-Origin")).toBeNull();
   });
 
   it("answers the page from getmypod.app only", async () => {
