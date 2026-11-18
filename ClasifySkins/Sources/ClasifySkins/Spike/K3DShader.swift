@@ -252,6 +252,18 @@ enum K3DShader {
     // The mock's `bxf`: a printed outline box.
     float printBox(float2 o, float x0, float x1, float y0, float y1) { return ss(0.5, 0.15, abs(rIn(o, x0, x1, y0, y1))); }
     float hash2(float2 p, float2 k, float m) { return fract(sin(dot(p, k)) * m); }
+    // The distance from p to the segment a b (the mock's `hkS`).
+    float hkS(float2 p, float2 a, float2 b) { float2 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0)); }
+    // K.3D.11 (CLA-129): the drive lid's pressed band (`hook11`): in from the right edge, round
+    // the hub over the top, down the left, hooked out to the left edge. Below 0 inside the band.
+    float hook11(float2 o) {
+        float2 q = o - float2(-3.0, -18.0);
+        float an = atan2(q.y, q.x), da = (an > 0.105 || an < -2.55) ? abs(length(q) - 57.0) : 1e3;
+        float d = min(da, min(hkS(o, float2(90.0, -52.0), float2(60.0, -30.0)), hkS(o, float2(60.0, -30.0), float2(53.7, -12.0))));
+        d = min(d, min(hkS(o, float2(-50.3, -49.9), float2(-31.0, -70.0)), hkS(o, float2(-31.0, -70.0), float2(-30.0, -82.0))));
+        d = min(d, min(hkS(o, float2(-30.0, -82.0), float2(-36.0, -110.0)), min(hkS(o, float2(-36.0, -110.0), float2(-48.0, -118.0)), hkS(o, float2(-48.0, -118.0), float2(-95.0, -104.0)))));
+        return d - 9.0;
+    }
     // The shell's flat ribbon (the mock's `dB`): its distance, square corners.
     float ribbon(float2 o) {
         float d = min(sdQ(o, float2(-158.0, 223.0), float2(-119.0, 223.0)), sdQ(o, float2(-12.0, 10.0), float2(173.0, 10.0)));
@@ -358,7 +370,17 @@ enum K3DShader {
             c = float3(0.50, 0.51, 0.49) * (0.86 + 0.14 * fh) * (0.95 + 0.05 * fh2);
             if (pt < 0.5) c *= 0.24;
         }
-        else if (id == 37.0) c = float3(0.50, 0.76, 0.90) * (0.94 + 0.06 * fract(sin(dot(floor(o * 0.6), float2(12.9898, 78.233))) * 43758.5453));  // blue foam
+        else if (id == 37.0) {  // blue foam (K.3D.11): deep turquoise with coarse pores, 2 to 3 pt
+            float g1 = hash2(floor(o * 1.1), float2(12.9898, 78.233), 43758.5453), g2 = hash2(floor(o * 2.9), float2(26.1, 7.7), 4375.5);
+            float g3 = hash2(floor(o * 0.42 + 0.5), float2(41.3, 9.1), 4375.5);
+            c = float3(0.24, 0.62, 0.90) * (0.80 + 0.10 * g1 + 0.07 * g2 + 0.12 * g3);
+            if (pt > 7.5) {  // the pad: the label under it shows through 9%
+                float2 l8 = float2(-o.x, o.y + 80.0);
+                float in8 = step(abs(l8.x), 132.0) * step(abs(l8.y), 165.0) * pk;
+                float3 lc = tl.sample(sm, float2((132.0 - l8.x) / 264.0 * 0.625, (165.0 - l8.y) / 330.0 * 0.78125)).rgb;
+                c = mix(c, c * (0.35 + 0.85 * lc), 0.09 * in8);
+            } else c = mix(c, c * 1.18 + 0.05, 0.08);  // the lid's U: the steel under it lifts it a little
+        }
         else if (id == 38.0) {  // gold switch with its dark center
             float d = min(min(length(w), length(abs(w) - float2(78.0, 0.0))), length(abs(w) - float2(0.0, 78.0)));
             c = mix(float3(0.05, 0.045, 0.04), float3(0.86, 0.61, 0.13) * (0.80 + 0.30 * ss(8.0, 11.5, d)) * (1.0 - 0.42 * ss(12.5, 14.0, d)), ss(7.2, 8.1, d)) + 0.28 * sp;
@@ -380,6 +402,7 @@ enum K3DShader {
         else if (id == 40.0) {  // drive back: metal with its label (tl)
             float2 l = o - float2(0.0, -80.0);
             float inL = step(abs(l.x), 132.0) * step(abs(l.y), 165.0) * pk;
+            l -= float2(-49.0, -49.0);  // K.3D.11: the print moved with the foam pad's lower cut-out
             float2 q = float2((132.0 - l.x) / 264.0 * 0.625, (165.0 - l.y) / 330.0 * 0.78125);
             c = mix(float3(0.72, 0.73, 0.75), tl.sample(sm, q).rgb, inL);
         }
@@ -415,8 +438,12 @@ enum K3DShader {
             if (ds < 3.5) c *= 0.78 + 0.22 * ss(1.5, 3.4, ds); else c *= 1.0 - 0.25 * (1.0 - ss(3.5, 4.6, ds));
         }
         if (id == 16.0 && pt > 3.5 && pt < 4.5 && o.y < 24.0 && o.y > 5.0 && o.x > -66.0 && o.x < 84.0) c = float3(0.46, 0.63, 0.86);
-        if (id == 37.0) c += float3(0.16) * step(0.965, hash2(floor(o * 1.7), float2(39.3, 11.1), 4375.5));
-        if (id == 16.0 || id == 18.0 || id == 26.0 || id == 37.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
+        if (id == 37.0) {  // the foam's sparkles and dark pores
+            c += float3(0.18) * step(0.965, hash2(floor(o * 1.4), float2(17.3, 61.7), 4375.5)) + float3(0.34) * step(0.985, hash2(floor(o * 0.75), float2(7.1, 33.9), 4375.5))
+                - float3(0.10, 0.14, 0.16) * step(0.90, hash2(floor(o * 0.9 + 0.3), float2(3.7, 19.9), 4375.5));
+            c += float3(0.16) * step(0.965, hash2(floor(o * 1.7), float2(39.3, 11.1), 4375.5));
+        }
+        if (id == 16.0 || id == 18.0 || id == 26.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
         if (id == 35.0) c += 0.15 * pow(nh, 8.0) + 0.05 * ss(-0.3, 0.8, r.y);
         if (id == 16.0 || id == 18.0) c += float3(0.14, 0.11, 0.06) * pow(nh, 10.0);
         if (id == 26.0) c += 0.06 * pow(nh, 6.0);
@@ -439,14 +466,20 @@ enum K3DShader {
             c += 0.035 * ss(-0.4, 0.8, r.y);
         }
         if (id == 13.0 && pt > 8.5 && fz > 0.5) c = boardDetail(c, o, w, rho, fr0, tpx.r, ko);
-        if (id == 12.0 && pt > 6.5 && pt < 7.5) {  // the drive: fine brushing and a pressed ring
-            c *= 0.93 + 0.05 * sin(o.y * 8.3) + 0.03 * sin(o.y * 21.7 + o.x * 0.02);
-            float rb = length(o - float2(0.0, 34.0));
-            c *= 1.0 + 0.10 * ss(1.4, 0.0, abs(rb - 57.0)) * step(0.9, von.z) - 0.06 * ss(1.4, 0.0, abs(rb - 59.6)) * step(0.9, von.z);
+        if (id == 12.0 && pt > 6.5 && pt < 7.5) {  // the drive: fine brushing on its sides; K.3D.11 lid
+            if (von.z < 0.9) c *= 0.93 + 0.05 * sin(o.y * 8.3) + 0.03 * sin(o.y * 21.7 + o.x * 0.02);
+            // The lid: satin warm steel with a fine bead-blast grain, the pressed band and hub as
+            // drawn lines (a dark groove, a bright rolled edge), and a small light hole.
+            float lz = step(0.9, von.z), bd = hook11(o), hc = length(o - float2(-3.0, -18.0)) - 48.0;
+            c = mix(c, float3(0.84, 0.82, 0.76), lz);
+            c *= 1.0 + 0.03 * lz * step(bd, 0.0) + lz * (0.035 * (hash2(floor(o * 2.2), float2(12.9898, 78.233), 43758.5453) - 0.5)
+                + 0.025 * (hash2(floor(o * 0.7), float2(5.3, 41.9), 4375.5) - 0.5));
+            float hd = length(o - float2(-31.0, -181.0));
+            c = mix(c, mix(float3(0.62, 0.61, 0.58), float3(0.97, 0.97, 0.95), ss(14.0, 10.5, hd)), ss(15.5, 14.0, hd) * lz);
+            c *= 1.0 + lz * (-0.58 * ss(1.9, 0.4, abs(bd)) + 0.10 * ss(1.4, 0.0, abs(abs(bd) - 1.9)) - 0.10 * ss(1.2, 0.0, abs(hc)) * step(0.5, bd));
         }
         if (pt > 6.5 && pt < 7.5 && fr0 > 0.5) {  // the drive: white print on its board, dark ink on its metal
             if (id == 13.0) c = mix(c, float3(0.76, 0.78, 0.76), 0.74 * tpx.r);
-            if (id == 12.0 && fz > 0.5) c = mix(c, float3(0.17, 0.18, 0.19), 0.8 * tpx.r);
         }
         if (id == 34.0 && pt < 0.5 && fz > 0.5 && fr0 > 0.5) c *= 1.0 - 0.42 * tpx.r;  // the shell floor: etched text and marks
         if (id == 21.0 && abs(o.x) < 100.0 && o.y < -252.0 && o.y > -264.0) {  // the plate's back: pale print on the brown sheet
@@ -543,7 +576,10 @@ enum K3DShader {
             + 0.10 * ss(0.2, 0.95, dot(r, normalize(float3(0.7, 0.1, 0.7))));
         float mm = 0.60 * mt;
         if (id == 34.0) { sr = mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.7); mm = 0.85; }
-        if (id == 12.0 && pt > 6.5 && pt < 7.5) { sr = mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.65); mm = 0.82; }
+        if (id == 12.0 && pt > 6.5 && pt < 7.5) {  // K.3D.11: the lid is satin, the sides stay bright
+            if (von.z > 0.9) { sr = mix(sr, 0.66 + 0.36 * studioF(r, vp), 0.40); mm = 0.66; }
+            else { sr = mix(sr, 0.50 + 0.75 * studioF(r, vp), 0.65); mm = 0.82; }
+        }
         return c * mix(float3(g), float3(sr * 1.18), mm) * (1.0 + 0.045 * mt * (brl - 0.5)) * sh * (1.0 + eg);
     }
 

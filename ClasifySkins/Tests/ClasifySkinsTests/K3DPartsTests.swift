@@ -170,6 +170,19 @@ struct K3DPartsTests {
         }
     }
 
+    /// CLA-129 PR 2: the drive's K.3D.11 colors are in the shader: the lid's pressed band, the
+    /// turquoise foam, and the label moved with the pad's cut-out. The PNGs show both of the
+    /// drive's sides apart, for the design check against the mock.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theDriveHasItsK3D11Colors() throws {
+        for line in ["float hook11(float2 o)", "c = float3(0.24, 0.62, 0.90)", "l -= float2(-49.0, -49.0);", "mm = 0.66;"] {
+            #expect(K3DShader.source.contains(line), "\(line)")
+        }
+        for (angle, tilt) in [(150.0, 25.0), (210.0, -25.0), (330.0, 25.0), (30.0, -25.0)] {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-drive-\(Int(angle))-\(Int(tilt))")
+            #expect(width(bytes, row: 300) > 100)
+        }
+    }
+
     /// Apart, the plate comes 68 pt toward the eye, so the device is wider on screen. The PNGs
     /// show the open pose of PR C (305°, tilt 20°) for the design check.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func apartThePlateComesForward() throws {
