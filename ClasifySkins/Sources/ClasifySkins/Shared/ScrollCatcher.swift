@@ -29,6 +29,8 @@ struct ScrollCatcher: NSViewRepresentable {
         var onDetent: @MainActor (Int) -> Void = { _ in }
         var movesBar = false
         private var distance: CGFloat = 0
+        /// This swipe began with Cmd: none of it, its glide too, is the wheel's.
+        private var cmdScroll = false
         private var monitor: Any?
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }  // clicks and drags go to SwiftUI
@@ -48,6 +50,11 @@ struct ScrollCatcher: NSViewRepresentable {
         /// Turns the event into detents if it is over the circle. Returns false to pass it on.
         private func take(_ event: NSEvent) -> Bool {
             guard event.window === window else { return false }
+            // CLA-130: a scroll with Cmd turns the 3D device (`K3DTurnGesture`), with its glide.
+            if event.phase == .began { cmdScroll = event.modifierFlags.contains(.command) }
+            // A mouse wheel has no phases: the latch is for the trackpad gesture and its glide only.
+            let trackpad = !event.phase.isEmpty || !event.momentumPhase.isEmpty
+            if cmdScroll && trackpad || event.modifierFlags.contains(.command) { return false }
             let point = convert(event.locationInWindow, from: nil)
             let radius = min(bounds.width, bounds.height) / 2
             guard hypot(point.x - bounds.midX, point.y - bounds.midY) <= radius else { return false }
