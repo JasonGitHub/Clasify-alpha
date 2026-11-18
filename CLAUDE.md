@@ -11,7 +11,8 @@ Maintainer notes (stripped before Claude sees this file):
 
 Native macOS player for Spotify and Apple Music playlists and liked songs, styled after early-2000s pocket players. Apple Music is in 1.0 (Jason decided 2026-11-13 23:53 JST).
 
-Design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjogMQiJGJjKdAjpoY8
+App design doc (scope, decisions, open questions): https://claude.ai/artifact/HaQUjogMQiJGJjKdAjpoY8
+Server design doc (what it does, allowed tools and services): https://claude.ai/artifact/TfhRKR83y9g2NYAFHwVLyC
 
 ## Build and test
 
@@ -27,7 +28,8 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 
 ## Hard constraints
 
-- IMPORTANT: no dependencies beyond Apple frameworks and librespot. Don't add a Swift package, CocoaPod or Rust crate without asking first.
+- IMPORTANT: the app ships only Apple frameworks and librespot. Ask before adding any package. Reasons: the app design doc.
+- The server (`server/`) runs on Cloudflare Workers with no packages in its running code. Allowed services: Cloudflare, Resend. Allowed tools are listed in the server design doc. Ask before adding any package, tool or service.
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
 - Login tokens live only in the Keychain. Crash reports and usage analytics are allowed.
 - Album covers come only from Spotify's image CDN, `https://i.scdn.co/image/<coverID>`, Apple's image server (`*.mzstatic.com`, from MusicKit `Artwork` URLs), and Apple's iTunesLibrary framework for Apple Music library songs (`AppleMusicArt`). Clasify keeps them in memory only and never writes a cover to disk: `ArtworkLoader` uses an NSCache and a URLSession with no URL cache, and reads library covers in memory. Skins get covers through the `artwork` environment value and never load them.
