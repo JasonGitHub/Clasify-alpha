@@ -273,6 +273,17 @@ enum K3DPrints {
         x.text("CP-WHEEL 01   >PC+ABS<", 0, 67.6, align: .center)
         x.setTransform(6, 6, 600, 278)
         x.text("CP-PLATE 01    ANODIZED ALUMINIUM    THIS SIDE IN", 0, 260.4, align: .center)
+        // K.3D.11 (CLA-129): the stamp on the jack can and the print on the jack chip, in the shell
+        // floor's place: green = read only there.
+        x.setTransform(2.5, 2.5, 1648, 725)
+        x.fill("#00ff00")
+        x.font(800, 7.5)
+        x.text("CJ-01", 115, -262, align: .center)
+        x.font(700, 4.2)
+        x.text("CAPPYAI", 115, -254, align: .center)
+        x.font(700, 5.2)
+        x.text("CP7", 115, -201, align: .center)
+        x.text("J01", 115, -194, align: .center)
         return x.bytes()
     }
 }

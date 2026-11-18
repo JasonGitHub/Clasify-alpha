@@ -192,6 +192,20 @@ struct K3DPartsTests {
         }
     }
 
+    /// CLA-129 PR 4: the K.3D.11 shell colors are in the shader: the battery film, the mirror
+    /// floor, the thinner ribbons with the battery cable, the black tape and the jack corner. The
+    /// PNGs show the shell's inside from the front, near the jack corner and the battery, and
+    /// straight on (0°, tilt 20°) for the hold bracket's gold disc.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theShellHasItsK3D11Colors() throws {
+        for line in ["float3 film(float2 o)", "float hw = 7.5", "float2 tq2 = o - float2(98.0, 160.0);", "float jst = jq.g"] {
+            #expect(K3DShader.source.contains(line), "\(line)")
+        }
+        for (angle, tilt) in [(345.0, 35.0), (15.0, 35.0), (0.0, 20.0)] {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-shell-colors-\(Int(angle))-\(Int(tilt))")
+            #expect(width(bytes, row: 300) > 100)
+        }
+    }
+
     /// Apart, the plate comes 68 pt toward the eye, so the device is wider on screen. The PNGs
     /// show the open pose of PR C (305°, tilt 20°) for the design check.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func apartThePlateComesForward() throws {

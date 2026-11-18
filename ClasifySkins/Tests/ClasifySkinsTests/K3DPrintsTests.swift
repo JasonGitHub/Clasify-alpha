@@ -67,7 +67,7 @@ import Testing
     }
 
     /// The other parts: white text, and the shield's stamp in red only (no blue pen tick: Jason
-    /// 15:13 JST 11-14, so no green).
+    /// 15:13 JST 11-14). Green only for the K.3D.11 jack can's stamp and chip print, in their box.
     @Test func thePartsPrintIsDrawn() throws {
         let s = K3DPrints.partsSize
         let bytes = try #require(K3DPrints.parts())
@@ -75,9 +75,17 @@ import Testing
         save(bytes, s, s, "parts")
         let text = count(bytes, s, s) { r, _, _ in r > 128 }
         let stamp = count(bytes, s, s) { r, g, _ in r > 128 && g < 64 }
-        let tick = count(bytes, s, s) { r, g, _ in g > 128 && r < 64 }
+        var tick = 0, jack = 0
+        for y in stride(from: 0, to: s, by: 2) {
+            for x in stride(from: 0, to: s, by: 2) {
+                let i = (y * s + x) * 4
+                guard bytes[i + 1] > 128 && bytes[i] < 64 else { continue }  // green, not red
+                if (1880..<2010).contains(x) && (40..<260).contains(y) { jack += 1 } else { tick += 1 }
+            }
+        }
         #expect(text > 500 && stamp > 50, "text \(text), stamp \(stamp)")
         #expect(tick == 0, "no pen tick")
+        #expect(jack > 20, "the jack can's stamp: \(jack)")
     }
 
     /// The time to draw all three, for the log (they are drawn off the main actor).
