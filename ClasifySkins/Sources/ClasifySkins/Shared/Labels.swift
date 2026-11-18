@@ -166,10 +166,29 @@ enum Labels {
         var headline: String
         var line: String
         var footnote = ""
+        /// Card BW, 321 and 322: the address the mail went to, on its own line. A long one fades at the end.
+        var email = ""
     }
 
     /// Also the Spotify App screen's words (card BB, change 131). Nil on other screens, and
     /// while a stored login is restored.
+    /// Card BW, 319 to 327: the Activate screens' words. Calm, no tech words.
+    static func activateWords(_ state: AppState) -> SetupWords {
+        let address = if case .waiting(let email, _) = state.activation { email } else { "" }
+        return switch state.activateStep {
+        case .join:
+            SetupWords(headline: "Join the beta", line: "Add your email\nin your browser.", footnote: "No password. One click in a mail.")
+        case .browserOpen: SetupWords(headline: "Take your time", line: "Your browser is open.\nAdd your email there.")
+        case .checkMail: SetupWords(headline: "Check your mail", line: "We sent a link to", email: address)
+        case .stopped: SetupWords(headline: "Check your mail", line: "Click the link we sent to", email: address)
+        case .confirmed: SetupWords(headline: "Welcome to the beta", line: "Thanks for joining us.")
+        case .mailBusy: SetupWords(headline: "Mail is busy", line: "Many people are joining.\nPlease try again later.")
+        case .full: SetupWords(headline: "The beta is full", line: "You’re on the list.\nWe’ll write to you.")
+        case .off: SetupWords(headline: "Activation is off", line: "Write to us at\nfeedback@getmypod.app")
+        case .offline: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")  // as 171
+        }
+    }
+
     static func setupWords(for frame: Frame, in state: AppState) -> SetupWords? {
         switch frame.screen {
         case .login where !state.restoring && state.sessionEnded:  // card AX, change 181
@@ -194,6 +213,7 @@ enum Labels {
         case .betaEnded: SetupWords(headline: "Thanks for testing", line: "Get the new beta to keep listening.")
         // Card BV, change 312: the same headline, and this build's number.
         case .betaNew: SetupWords(headline: "A fresh beta is out", line: "You have Beta \(state.beta?.number ?? 0). Get the new one any time.")
+        case .activate: activateWords(state)
         default: nil
         }
     }

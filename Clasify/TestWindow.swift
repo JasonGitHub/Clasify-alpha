@@ -83,6 +83,15 @@ private struct TestPanel: View {
 
     private var controls: some View {
         VStack(spacing: 6) {
+            if state.top.screen == .activate {  // card BW: picks the server's answer, as the mock's "Activate: …" button
+                HStack {
+                    button("Mail out", .activation(.waiting(email: "test@example.com", mail: state.activateOpenMail.map { $0 + 1 } ?? 1), request: nil))
+                    button("Active", .activation(.active, request: nil))
+                    button("Busy", .activation(.mailBusy, request: nil))
+                    button("Full", .activation(.full, request: nil))
+                    button("Off", .activation(.off, request: nil))
+                }
+            }
             HStack {
                 button("Menu", .menu)
                 button("Wheel −", .wheel(-1))
@@ -116,6 +125,7 @@ private struct TestPanel: View {
         case .about: return "myPod test build"
         case .hello: return "Press Select to begin."
         case .spotifyApp: return state.spotifyApp == true ? "Linked." : "We also need the Spotify app on this Mac."
+        case .activate: return "Activate: \(String(describing: state.activateStep))"
         default: return nil
         }
     }
