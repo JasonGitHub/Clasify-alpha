@@ -180,6 +180,24 @@ describe("activation", () => {
     expect(await join(mac(1), "kim@example.com")).toEqual({ state: "waiting", email: "kim@example.com", mail: 2 });
   });
 
+  it("a send to the old email that ends late does not change the new email's state", async () => {
+    let moveFirst = true;
+    const slow: Mailer = {
+      async send(to, link) {
+        if (moveFirst) {  // "Use another email" lands while the mail to sam is on its way
+          moveFirst = false;
+          mail.busy = true;
+          await join(mac(1), "kim@example.com");
+          mail.busy = false;  // then the mail to sam goes out
+        }
+        return mail.send(to, link);
+      },
+    };
+    const code = await open(mac(1));
+    await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com" }) }), env, { now: () => clock, mailer: slow });
+    expect(await status(mac(1))).toEqual({ state: "busy" });  // kim's send was busy; sam's late mail must not say "sent" for kim
+  });
+
   it("answers the page from getmypod.app only", async () => {
     const preflight = await call("OPTIONS", "/v1/start", { origin: "https://getmypod.app" });
     expect(preflight.status).toBe(204);

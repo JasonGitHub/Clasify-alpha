@@ -61,14 +61,14 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     }
     const link = token();
     if ((await deps.mailer.send(email, `${page}/?c=${link}`)) === "busy") {
-      await db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND state != 'active'").bind(hash).run();
+      await db.prepare("UPDATE macs SET mail_state = 'busy' WHERE device_hash = ? AND account_id = ? AND state != 'active'").bind(hash, a.id).run();
       return { state: "busy" };
     }
     await db.batch([
       db.prepare("UPDATE accounts SET state = 'pending' WHERE id = ? AND state = 'waitlist'").bind(a.id),
       db.prepare("INSERT INTO mails (token_hash, device_hash, account_id, sent_at, expires_at) VALUES (?, ?, ?, ?, ?)")
         .bind(await sha256(link), hash, a.id, now, now + linkLife),
-      db.prepare("UPDATE macs SET mails = mails + 1, mail_state = 'sent' WHERE device_hash = ?").bind(hash),
+      db.prepare("UPDATE macs SET mails = mails + 1, mail_state = 'sent' WHERE device_hash = ? AND account_id = ?").bind(hash, a.id),
     ]);
     return status(hash);
   }
