@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { linkMailer, resend, type SendMail } from "../src/mailer";
+import { linkMail, linkMailer, resend, type SendMail } from "../src/mailer";
 
 const sent: Parameters<SendMail>[0][] = [];
 let resendWorks = true;
@@ -44,12 +44,15 @@ describe("resend", () => {
 });
 
 describe("link mailer", () => {
-  it("sends the link with its 1-hour note", async () => {
+  it("sends the link mail of card BX", async () => {
     expect(await mailer().send("sam@example.com", link)).toBe("sent");
-    expect(sent[0].to).toBe("sam@example.com");
-    expect(sent[0].text).toContain(link);
-    expect(sent[0].text).toContain("1 hour");
+    expect(sent[0]).toMatchObject({ to: "sam@example.com", subject: "Your myPod link" });
+    expect(sent[0].text).toBe(`Hi there,\n\nClick the button to start the myPod beta. The link works for 1 hour.\n\n${link}\n\n` +
+      "Did not ask for this? You can ignore this mail.\nmyPod by Cappy · © 2026 CappyAI Ltd");
     expect(sent[0].html).toContain(`href="${link}"`);
+    expect(sent[0].html).toContain(">Confirm my email</a>");
+    expect(sent[0].html).toContain("background:#f6f5f1");
+    expect(linkMail('https://x/?c=a"b').html).toContain('href="https://x/?c=a&quot;b"');
   });
 
   it("stops at the day limit, sends one alert, and starts again the next day", async () => {

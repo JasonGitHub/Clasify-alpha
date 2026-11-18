@@ -21,6 +21,25 @@ export function resend(key: string, fetcher: typeof fetch = fetch): SendMail {
   };
 }
 
+/** The link mail of card BX (334). */
+export function linkMail(link: string) {
+  const a = escape(link);
+  const font = "-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif";
+  return {
+    subject: "Your myPod link",
+    text: `Hi there,\n\nClick the button to start the myPod beta. The link works for 1 hour.\n\n${link}\n\n` +
+      "Did not ask for this? You can ignore this mail.\nmyPod by Cappy · © 2026 CappyAI Ltd",
+    html: `<body style="margin:0;background:#f6f5f1"><div style="padding:26px 34px 22px;font-family:${font}">` +
+      `<div style="font-weight:bold;font-size:13px;color:#111317">myPod</div>` +
+      `<div style="font-weight:bold;font-size:20px;color:#111317;margin:18px 0 8px">Hi there,</div>` +
+      `<div style="font-size:14px;line-height:1.5;color:#4a525c;margin-bottom:18px">Click the button to start the myPod beta.<br>The link works for 1 hour.</div>` +
+      `<table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="height:34px;padding:0 20px;border-radius:17px;background:#1f6fd1;background-image:linear-gradient(#5aa3f0,#1f6fd1)">` +
+      `<a href="${a}" style="display:inline-block;line-height:34px;color:#ffffff;font-weight:bold;font-size:13px;text-decoration:none">Confirm my email</a></td></tr></table>` +
+      `<div style="font-size:11px;line-height:1.5;color:#7a838d;margin-top:20px">Did not ask for this? You can ignore this mail.<br>myPod by Cappy · © 2026 CappyAI Ltd</div>` +
+      `</div></body>`,
+  };
+}
+
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
 /**
@@ -39,9 +58,7 @@ export function linkMailer(db: D1Database, send: SendMail, perDay: number, alert
       if (slot) {
         const ok = await send({
           to,
-          subject: "Activate myPod",
-          text: `Open this link and press Confirm to activate myPod:\n\n${link}\n\nThe link works for 1 hour. If you did not ask for this, you can ignore this mail.`,
-          html: `<p>Open this link and press Confirm to activate myPod:</p><p><a href="${escape(link)}">Activate myPod</a></p><p>The link works for 1 hour. If you did not ask for this, you can ignore this mail.</p>`,
+          ...linkMail(link),
         });
         if (ok) return "sent";
       }
