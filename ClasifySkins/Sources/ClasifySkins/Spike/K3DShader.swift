@@ -480,13 +480,24 @@ enum K3DShader {
                 if (pd < 6.6) c *= mix(0.72, 1.12, ss(3.2, 4.6, pd)) * (1.0 - 0.30 * ss(5.6, 6.5, pd));
             }
         }
-        if (id == 16.0 && pt > 3.5 && pt < 4.5 && o.y < 24.0 && o.y > 5.0 && o.x > -66.0 && o.x < 84.0) c = float3(0.46, 0.63, 0.86);
+        if (id == 16.0 && pt > 3.5 && pt < 4.5) {  // K.3D.11 screen flex: a gold bonded end with fine traces, a clear light-blue film in an L, an orange tail with gold fingers
+            float tr = 0.5 + 0.5 * sin(o.x * (o.y > 31.5 ? 7.2 : 3.6));
+            float3 gd = float3(0.96, 0.78, 0.28) * (0.82 + 0.18 * tr), og = float3(0.90, 0.50, 0.13) * (0.90 + 0.10 * tr);
+            c = (o.y > 31.5 && o.x < 42.5 ? gd * (1.0 - 0.30 * step(0.5, fract(o.x * 1.1)) * step(abs(o.y - 34.2), 0.9) - 0.18 * step(abs(o.y - 39.0), 0.35)) : og) * 1.2;
+            float ft = o.x < 42.5 ? 36.0 : 31.5;
+            float fm = max(step(4.0, o.y) * step(o.y, ft) * step(o.x, 84.5), step(o.x, -5.0) * step(-9.0, o.y) * step(o.y, 4.0));
+            float fe = min(min(abs(o.y - ft), (o.x > -5.0 ? abs(o.y - 4.0) : abs(o.y + 9.0))), o.x < -5.0 && o.y < 4.0 ? abs(o.x + 5.0) : 99.0);
+            // The clear film: what is under it shows through, tinted; bright cut edges and a gloss.
+            c = mix(c, (mix(float3(0.56, 0.75, 0.93), c, o.y > 31.5 ? 0.42 : 0.18) * float3(0.92, 1.0, 1.06) + float3(0.28, 0.30, 0.30) * ss(1.4, 0.2, fe) + 0.30 * sp) * 1.55, fm);
+            if (o.y < -9.0 && o.y >= -17.0) c = mix(og * 0.95, float3(0.96, 0.78, 0.34), 0.55 * step(0.62, fract(o.x * 0.55)));  // gold traces down the tail
+            if (o.y < -17.0) c = mix(og * 0.72, float3(0.94, 0.76, 0.34), step(0.42, fract(o.x * 0.55)));
+        }
         if (id == 37.0) {  // the foam's sparkles and dark pores
             c += float3(0.18) * step(0.965, hash2(floor(o * 1.4), float2(17.3, 61.7), 4375.5)) + float3(0.34) * step(0.985, hash2(floor(o * 0.75), float2(7.1, 33.9), 4375.5))
                 - float3(0.10, 0.14, 0.16) * step(0.90, hash2(floor(o * 0.9 + 0.3), float2(3.7, 19.9), 4375.5));
             c += float3(0.16) * step(0.965, hash2(floor(o * 1.7), float2(39.3, 11.1), 4375.5));
         }
-        if (id == 16.0 || id == 18.0 || id == 26.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
+        if ((id == 16.0 && !(pt > 3.5 && pt < 4.5)) || id == 18.0 || id == 26.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
         if ((id == 35.0 || id == 19.0) && pt < 0.5) {  // the film: a broad soft sheen and small sharp glints that break up on the wrinkles
             float wk = sin(o.x * 0.055 + 1.6 * sin(o.y * 0.07 + o.x * 0.013)) * sin(o.y * 0.09 + o.x * 0.021);
             c += float3(0.06, 0.08, 0.12) * pow(nh, 5.0) + float3(0.30, 0.33, 0.38) * pow(nh, 70.0) * (0.6 + 0.4 * wk) + 0.035 * ss(-0.2, 0.9, r.y) * (1.0 + 0.5 * wk);

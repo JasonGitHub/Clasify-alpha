@@ -157,8 +157,10 @@ extension K3DMesh {
         }
         for i in 0..<10 {
             let (y0, z0) = ribbon[i], (y1, z1) = ribbon[i + 1], l = hypot(y1 - y0, z1 - z0)
-            let n = (0.0, (z1 - z0) / l, -(y1 - y0) / l), m = i > 7 ? 20 : 16
-            let xa = i > 5 ? -63.0 : -66, xb = i > 5 ? -5.0 : 84
+            // K.3D.11 (CLA-129, Jason's screen photo 15:04 JST 11-18): one flex, its gold bonded end
+            // narrowed to x 42 at the panel, the tail straight at x -66 on the left; no side tail.
+            let n = (0.0, (z1 - z0) / l, -(y1 - y0) / l), m = 16
+            let xa = -66.0, xb = i > 5 ? -5.0 : i < 2 ? 42 : 84
             let a = vertex((xa, y0, z0), n, (0, 0), m), b = vertex((xb, y0, z0), n, (1, 0), m)
             let c = vertex((xb, y1, z1), n, (1, 1), m), e = vertex((xa, y1, z1), n, (0, 1), m)
             triangles([a, b, c, a, c, e, a, c, b, a, e, c])
