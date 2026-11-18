@@ -80,7 +80,8 @@ enum DeviceWindow {
     }
 
     /// Card AN.1: the device window that the menu bar icon hid. It keeps its place and screen.
-    private static weak var hidden: NSWindow?
+    /// A strong reference: off the screen, nothing else may keep the window.
+    private static var hidden: NSWindow?
     static var isHidden: Bool { hidden != nil }
     /// The fade in and out (345).
     private static let fade = 0.15
@@ -108,10 +109,11 @@ enum DeviceWindow {
             guard hidden === window else { return }  // a click showed it again during the fade
             window.orderOut(nil)
             window.alphaValue = 1
-            // With no other myPod window on screen, the app gives up the front too, so the
-            // app under it becomes active, as after Cmd+H.
+            // With no other myPod window on screen, the app gives up the front, so the app
+            // under it becomes active. Not NSApp.hide: an unhide brings back only the windows
+            // that were on screen at the hide, so the device window stayed away (build 308).
             let others = NSApp.windows.contains { !($0 is NSPanel) && $0.level == .normal && $0.isVisible }
-            if !others { NSApp.hide(nil) }
+            if !others { NSApp.deactivate() }
         }
     }
 
@@ -125,10 +127,16 @@ enum DeviceWindow {
             return
         }
         hidden = nil
-        if NSApp.isHidden { NSApp.unhide(nil) }  // hide() hid the app with the window
+        if NSApp.isHidden { NSApp.unhide(nil) }  // after Cmd+H
         if !window.isVisible { window.alphaValue = 0 }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        guard window.isVisible else {
+            // The window did not come back: show any device window, or open a new one.
+            window.alphaValue = 1
+            if !raise() { open?() }
+            return
+        }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = fade
             window.animator().alphaValue = 1
