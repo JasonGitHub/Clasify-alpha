@@ -183,6 +183,18 @@ struct K3DTurnGestureTests {
         #expect(a27 == .pass)
     }
 
+    /// Cmd up and down again during the swipe: the turn goes on after the lift.
+    @Test func cmdDownAgainKeepsTheTurn() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        _ = g.command(down: false)
+        _ = g.command(down: true)
+        let lift = g.scroll(.lift, command: true, inside: true)
+        #expect(lift == .turn && g.turning)
+        let up = g.command(down: false)
+        #expect(up && !g.turning)
+    }
+
     /// The CTO's safety exit: the app or the window goes to the back during a turn.
     @Test func resignEndsTheTurn() {
         var g = K3DTurnGesture()

@@ -123,7 +123,11 @@ public struct K3DTurnGesture: Equatable {
     /// Cmd changed. True: the turn ends now. With the fingers down or a glide running, it ends
     /// when they end (352: a flick glides first).
     public mutating func command(down: Bool) -> Bool {
-        guard !down, turning else { return false }
+        guard turning else { return false }
+        if down {
+            endPending = false  // Cmd down again before the swipe or glide ended: the turn goes on
+            return false
+        }
         if fingers || gliding {
             endPending = true
             return false
