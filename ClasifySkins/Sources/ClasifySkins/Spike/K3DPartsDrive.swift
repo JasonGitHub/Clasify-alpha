@@ -60,4 +60,52 @@ extension K3DMesh {
             quad(v(b.i, z0, bi), v(a.i, z0, ai), v(a.i, z1 - ch, ai), v(b.i, z1 - ch, bi))
         }
     }
+
+    /// K.3D.11 (Jason 22:19 JST 11-17, his board photo): the board's three ports as flex
+    /// connectors, with a cream housing, a dark slot, fine gold contacts, a lock bar and metal
+    /// end tabs, on the board's back at `zc`.
+    mutating func addBoardPorts(zc: Double) {
+        func D(_ x0: Double, _ x1: Double, _ y0: Double, _ y1: Double, _ h: Double, _ m: Int) { bx6(x0, x1, y0, y1, zc - h, zc, m) }
+        // J3 DISPLAY: a wide flip-lock connector, its slot open toward the board's centre.
+        D(-85, -15, -101, -88, 2.4, 20)
+        D(-85, -82, -112, -101, 2.4, 20)
+        D(-18, -15, -112, -101, 2.4, 20)
+        D(-82, -18, -112, -101, 0.9, 44)
+        D(-82, -18, -102.2, -101, 1.7, 20)
+        for i in 0..<39 {
+            let x = -81 + Double(i) * 1.6
+            D(x, x + 0.75, -111.5, -102.2, 1.1, 15)
+            D(x, x + 0.75, -88, -85.8, 0.45, 15)
+        }
+        D(-84, -16, -117, -112, 1.8, 14)
+        for x in [-80.0, -21.6] { D(x, x + 1.6, -93.6, -92, 2.42, 45) }
+        for x in [-88.2, -15] { D(x, x + 3.2, -109, -95, 1.1, 12) }
+        // J6 WHEEL: a small upright connector.
+        D(-156, -152, -58, -25, 2.2, 20)
+        D(-141, -137, -58, -25, 2.2, 20)
+        D(-152, -141, -29, -25, 2.2, 20)
+        D(-152, -141, -58, -29, 0.9, 44)
+        for i in 0..<15 {
+            let y = -56.6 + Double(i) * 1.9
+            D(-151.8, -146, y, y + 0.85, 1.05, 15)
+            D(-137, -134.6, y, y + 0.85, 0.45, 15)
+        }
+        D(-157, -136, -63, -58, 1.8, 14)
+        for x in [-159.2, -137] { D(x, x + 2.2, -50, -36, 1, 12) }
+        // J2 DRIVE: a low black connector, two rows of fine gold contacts round a centre tongue.
+        D(-31, 31, -243, -240.6, 2.4, 44)
+        D(-31, 31, -229.4, -227, 2.4, 44)
+        D(-31, -28, -240.6, -229.4, 2.4, 44)
+        D(28, 31, -240.6, -229.4, 2.4, 44)
+        D(-28, 28, -240.6, -229.4, 0.8, 44)
+        D(-26, 26, -236.6, -233.4, 1.9, 14)
+        for i in 0..<37 {
+            let x = -25.6 + Double(i) * 1.4
+            D(x, x + 0.7, -240.6, -238, 1.5, 15)
+            D(x, x + 0.7, -232, -229.4, 1.5, 15)
+            D(x, x + 0.7, -245.2, -243, 0.45, 15)
+            D(x, x + 0.7, -227, -224.8, 0.45, 15)
+        }
+        for x in [-34.0, 31] { D(x, x + 3, -239, -231, 1, 12) }
+    }
 }
