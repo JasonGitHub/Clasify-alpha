@@ -139,6 +139,10 @@ import Testing
             #expect(s.top.screen == .activate && s.rows(for: s.top) == row && s.activateStopAt == 0)
             let fx = send(&s, .select, now: 400)
             #expect(fx == (answer == .mailBusy ? [.openActivatePage] : [.checkActivation(request: 3)]))
+            if answer != .mailBusy {  // the checks run again: a mail still out shows 321
+                send(&s, .activation(sam, request: 3), now: 401)
+                #expect(s.activateStep == .checkMail)
+            }
         }
     }
 

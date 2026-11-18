@@ -783,7 +783,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .later: s.stack.removeLast()
             case .openActivate, .openActivateAgain, .useAnotherEmail: openActivatePage()
             case .tryActivateAgain:  // 324 (mail busy) opens the page again, because the email is typed there; 327 asks
-                if s.activation == .offline { askActivation(Effect.checkActivation, pressed: true) } else { openActivatePage() }
+                if s.activation == .offline { startActivateChecks(); askActivation(Effect.checkActivation, pressed: true) } else { openActivatePage() }
             case .sendAgain: showActivateStep { startActivateChecks() }; askActivation(Effect.sendActivationAgain, pressed: true)
             case .checkMail:  // 322, 325, 326: the checks start again
                 showActivateStep { startActivateChecks() }; askActivation(Effect.checkActivation, pressed: true)
