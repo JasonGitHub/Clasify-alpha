@@ -13,6 +13,12 @@ struct MainArt: View {
     @Environment(\.artwork) private var artwork
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
+    /// Build 308 (the 3D front showed a yellow box with a red "no" sign for the cover): the 3D
+    /// front's picture (`K3DSpike.snapshot`) cannot draw an AppKit view, so it draws the covers
+    /// in SwiftUI, at the time of the menu that shows (`liveStart`).
+    @Environment(\.pocketSnapshot) private var snapshot
+    /// When the main menu that shows on the screen appeared, for the 3D front's picture.
+    @MainActor static var liveStart: Double?
     /// When this view appeared. Leaving the main menu ends the view, so a return starts over.
     @State private var start = Date.timeIntervalSinceReferenceDate
 
@@ -124,10 +130,11 @@ struct MainArt: View {
         // SwiftUI snapped it to whole pixels, so it stepped.
         // Core Animation draws the pan instead (`PanningCover`).
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
-            let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - start
+            let base = snapshot ? Self.liveStart ?? start : start
+            let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate - base
             // Asking for each large cover also starts its load, in the background.
             let images = tracks.indices.map { i in
-                let turnStart = start + Self.motion(at: t, index: i, count: tracks.count).start
+                let turnStart = base + Self.motion(at: t, index: i, count: tracks.count).start
                 let id = Self.coverID(
                     for: tracks[i], turnStart: turnStart,
                     loaded: { artwork.lookup($0) != nil }, loadedAt: { artwork.loadedAt($0) })
@@ -163,6 +170,7 @@ struct MainArt: View {
             }
         }
         .clipped()
+        .onAppear { if !snapshot { Self.liveStart = start } }
     }
 
     /// The new view fades in, and the old one stays fully shown until the fade ends, so the
@@ -176,7 +184,7 @@ struct MainArt: View {
     /// same pose in SwiftUI.
     @ViewBuilder
     private func cover(_ i: Int, image: CGImage?, pose f: Pose, t: Double, count: Int) -> some View {
-        if fixedTime == nil, let image {
+        if fixedTime == nil, !snapshot, let image {
             let m = Self.motion(at: t, index: i, count: count)
             PanningCover(image: image, side: Self.coverSide, pan: reduceMotion ? nil : m, elapsed: t - m.start)
         } else {
@@ -257,4 +265,14 @@ extension EnvironmentValues {
         get { self[AnimationTimeKey.self] }
         set { self[AnimationTimeKey.self] = newValue }
     }
+
+    /// The skin draws the 3D front's picture (`K3DSpike.snapshot`), with no AppKit views.
+    var pocketSnapshot: Bool {
+        get { self[PocketSnapshotKey.self] }
+        set { self[PocketSnapshotKey.self] = newValue }
+    }
+}
+
+private struct PocketSnapshotKey: EnvironmentKey {
+    static let defaultValue = false
 }
