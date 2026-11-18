@@ -115,7 +115,9 @@ enum DeviceWindow {
     /// brings the window to the front, or opens one.
     static func show() {
         guard let window = hidden else {
-            if !raise() { open?() }
+            // Already in front: do nothing, so a show at launch changes nothing. A window
+            // behind other apps or in the Dock comes to the front.
+            if !isShown && !raise() { open?() }
             return
         }
         hidden = nil
