@@ -93,6 +93,18 @@ import Testing
         #expect(s.activateStep == .checkMail && s.activation == .waiting(email: "kim@example.com", mail: 3))
     }
 
+    /// An answer on its way when MENU cancels is dropped; "Send again" on 322 shows 321 on its first row.
+    @Test func cancelDropsTheAnswerAndSendAgainStartsOnTheFirstRow() {
+        var s = mailOut()
+        send(&s, .tick, now: 240)  // request 2 is out
+        send(&s, .menu, .activation(sam, request: 2), now: 241)
+        #expect(s.activateStep == .join)
+        var stopped = mailOut()
+        send(&stopped, .tick, .wheel(1), now: 2000)
+        #expect(send(&stopped, .select, now: 2001) == [.sendActivationAgain(request: 2)])
+        #expect(stopped.activateStep == .checkMail && stopped.top.sel == 0)
+    }
+
     /// MENU on 320 and 321 is "Cancel" (to 319). On 319 and 322 to 327 it does nothing.
     @Test func menuCancelsOnlyWhileTheChecksRun() {
         var open = join()

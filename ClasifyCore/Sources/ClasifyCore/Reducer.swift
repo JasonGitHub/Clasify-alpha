@@ -383,6 +383,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     /// Card BW, 320 and 321: "Cancel" and MENU go back to 319 and stop the checks.
     func cancelActivate() {
         showActivateStep { s.activateOpenMail = nil; s.activation = .locked; s.activateStopAt = 0 }
+        s.activateRequest += 1  // an answer still on its way is dropped
     }
     /// Card BW: the 1.5 s beat on 323, the 30 s checks, and their end after 15 minutes (322).
     func activateTick() {
@@ -783,9 +784,9 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .openActivate, .openActivateAgain, .useAnotherEmail: openActivatePage()
             case .tryActivateAgain:  // 324 (mail busy) opens the page again, because the email is typed there; 327 asks
                 if s.activation == .offline { askActivation(Effect.checkActivation, pressed: true) } else { openActivatePage() }
-            case .sendAgain: startActivateChecks(); askActivation(Effect.sendActivationAgain, pressed: true)
+            case .sendAgain: showActivateStep { startActivateChecks() }; askActivation(Effect.sendActivationAgain, pressed: true)
             case .checkMail:  // 322, 325, 326: the checks start again
-                startActivateChecks(); askActivation(Effect.checkActivation, pressed: true)
+                showActivateStep { startActivateChecks() }; askActivation(Effect.checkActivation, pressed: true)
             case .cancelActivate: cancelActivate()
             case .quit: fx.append(.quit)
             case .useSpotify: switchService(to: .spotify)  // change 262
