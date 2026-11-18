@@ -19,12 +19,16 @@ let clock = 1_000_000;
 let mail: FakeMailer;
 const mac = (n: number) => `device-${n}`.padEnd(40, "x");
 
+/** The fake bot check passes only the token "person". */
+const deps = () => ({ now: () => clock, mailer: mail as Mailer, human: async (t: string) => t === "person" });
+
 async function call(method: string, path: string, opts: { device?: string; body?: unknown; origin?: string } = {}) {
   const headers: Record<string, string> = {};
   if (opts.device) headers.Authorization = `Device ${opts.device}`;
   if (opts.origin) headers.Origin = opts.origin;
-  const request = new Request(`https://api.example${path}`, { method, headers, body: opts.body ? JSON.stringify(opts.body) : undefined });
-  const response = await handle(request, env, { now: () => clock, mailer: mail });
+  const body = opts.body && path === "/v1/start" ? { turnstile: "person", ...opts.body as object } : opts.body;
+  const request = new Request(`https://api.example${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const response = await handle(request, env, deps());
   return { status: response.status, json: await response.json().catch(() => null) as Record<string, unknown>, headers: response.headers };
 }
 const open = async (device: string) => (await call("POST", "/v1/open", { device })).json.code as string;
@@ -132,7 +136,7 @@ describe("activation", () => {
     expect(await join(mac(1), "kim@example.com")).toMatchObject({ state: "active" });
     const cap1 = { ...env, CAP: "1" };
     const code = await open(mac(2));
-    const r = await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com" }) }), cap1, { now: () => clock, mailer: mail });
+    const r = await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com", turnstile: "person" }) }), cap1, deps());
     expect(await r.json()).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
     expect(await env.DB.prepare("SELECT state FROM accounts WHERE email = 'sam@example.com'").first("state")).toBe("active");
   });
@@ -194,7 +198,7 @@ describe("activation", () => {
       },
     };
     const code = await open(mac(1));
-    await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com" }) }), env, { now: () => clock, mailer: slow });
+    await handle(new Request("https://api.example/v1/start", { method: "POST", body: JSON.stringify({ code, email: "sam@example.com", turnstile: "person" }) }), env, { ...deps(), mailer: slow });
     expect(await status(mac(1))).toEqual({ state: "busy" });  // kim's send was busy; sam's late mail must not say "sent" for kim
   });
 
