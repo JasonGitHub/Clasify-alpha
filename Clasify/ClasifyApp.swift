@@ -141,6 +141,12 @@ enum DeviceWindow {
             context.duration = fade
             window.animator().alphaValue = 1
         }
+        // The fade's end: the window is fully on, even when the animation did not run.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(fade))
+            guard hidden !== window else { return }  // a click hid it again during the fade
+            window.alphaValue = 1
+        }
     }
 
     /// Puts the device window in front and makes Clasify active: back from the Dock when it
