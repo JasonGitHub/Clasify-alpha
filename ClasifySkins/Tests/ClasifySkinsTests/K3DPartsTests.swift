@@ -177,7 +177,7 @@ struct K3DPartsTests {
         for line in ["float hook11(float2 o)", "c = float3(0.24, 0.62, 0.90)", "l -= float2(-49.0, -49.0);", "mm = 0.66;"] {
             #expect(K3DShader.source.contains(line), "\(line)")
         }
-        for (angle, tilt) in [(150.0, 25.0), (210.0, -25.0), (330.0, 25.0), (30.0, -25.0)] {
+        for (angle, tilt) in [(125.0, 15.0), (150.0, 25.0), (210.0, -25.0), (330.0, 25.0), (30.0, -25.0)] {
             let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-drive-\(Int(angle))-\(Int(tilt))")
             #expect(width(bytes, row: 300) > 100)
         }
