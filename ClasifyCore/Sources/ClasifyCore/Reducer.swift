@@ -91,6 +91,9 @@ public enum Action: Equatable, Sendable {
     /// The skin's first-launch arrival ended, or did not run (card BR, change 288). Hello starts
     /// from now. A second one does nothing.
     case arrived
+    /// Card AN.1 (CLA-43, 344): a click or right-click on the menu bar icon. `shown`: the device
+    /// window shows now. The answer is `.showWindow` or `.hideWindow`.
+    case menuBarClick(shown: Bool)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -151,6 +154,9 @@ public enum Effect: Equatable, Sendable {
     /// CLA-128: ask where the activation stands; send the mail again. The answer comes back
     /// as `.activation` with this request number.
     case checkActivation(request: Int), sendActivationAgain(request: Int)
+    /// Card AN.1 (CLA-43, 344-345): fade the device window in where it was last, or out. The
+    /// music goes on.
+    case showWindow, hideWindow
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -207,8 +213,19 @@ public let letterTime = 1.0
 
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { max(lo, min(hi, v)) }
 
+/// Card AN.1 (CLA-43, 348): screens that show myPod when it is hidden by the menu bar icon.
+let showsWindow: [Screen] = [.betaSoon, .betaEnded, .betaNew, .activate]
+
 @discardableResult
 public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -> [Effect] {
+    let top = s.top.screen
+    var fx = reduceAction(&s, action, env)
+    // 348: a beta notice or Activate that opens shows a hidden myPod.
+    if s.top.screen != top && showsWindow.contains(s.top.screen) && !fx.contains(.showWindow) { fx.append(.showWindow) }
+    return fx
+}
+
+private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependencies) -> [Effect] {
     let now = env.now()
     var fx: [Effect] = []
     /// A status toast. While a hint shows, it waits until the hint ends (card BA).
@@ -762,6 +779,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
             case .nowPlayingBar: s.nowPlayingBar.toggle()
+            case .menuBar: s.menuBar.toggle()  // card AN.1, 346: the app adds or takes away the icon
             case .color(let color):  // card AW: a press saves the color, then the music pick (card BM, 257)
                 s.deviceColor = color
                 if s.signedIn { setupNext() } else { s.stack.append(pickMusic()) }
@@ -1217,6 +1235,10 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
             // Forget the stored login too, so that a later .launch does not restore it. The login
             // screen says "Log in again", and after the login the main menu opens (change 181).
             if s.signedIn { signOut(); s.sessionEnded = true; fx.append(.logOut) }
+
+        case .menuBarClick(let shown):
+            // 348: the first setup always shows in the window, so the icon does not hide it.
+            fx.append(shown && s.setupDone ? .hideWindow : .showWindow)
 
         case .arrived:
             guard !s.arrived else { return }

@@ -91,6 +91,7 @@ enum Labels {
         case .deviceColor: return RowText(label: "Color", value: state.deviceColor.rawValue)  // change 169
         case .clicker: return RowText(label: "Clicker", value: onOff(state.clicker))
         case .nowPlayingBar: return RowText(label: "Now Playing Bar", value: onOff(state.nowPlayingBar))
+        case .menuBar: return RowText(label: "Menu Bar", value: onOff(state.menuBar))
         case .about: return RowText(label: "About", opens: true)
         case .logOut: return RowText(label: "Log out", opens: true)
         case .cancel: return RowText(label: "Cancel")

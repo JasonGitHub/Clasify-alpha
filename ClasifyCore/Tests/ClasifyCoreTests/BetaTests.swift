@@ -20,7 +20,7 @@ import Testing
         #expect(s.top.screen == .main && s.betaDue == beta.warnsAt)
         send(&s, .tick, now: beta.warnsAt - 1)
         #expect(s.top.screen == .main)
-        send(&s, .tick, now: day27)
+        #expect(send(&s, .tick, now: day27) == [.showWindow])  // card AN.1, 348: a hidden myPod shows
         #expect(s.top.screen == .betaSoon && s.stack.count == 2)
         #expect(s.rows(for: s.top) == [.getNewBeta, .later])
         #expect(s.betaWarned == beta.signed && s.betaDue == beta.endsAt)
@@ -92,7 +92,7 @@ import Testing
     @Test func anEndedBetaStopsPlaybackAndTakesOnlyItsRows() {
         var s = playing()
         s.beta = beta
-        #expect(send(&s, .tick, now: day30) == [.stop])
+        #expect(send(&s, .tick, now: day30) == [.stop, .showWindow])  // card AN.1, 348: a hidden myPod shows
         #expect(s.stack == [Frame(screen: .betaEnded)] && s.current == nil && !s.isPlaying)
         #expect(s.rows(for: s.top) == [.getNewBeta, .quit] && s.betaDue == 0)
         for action in [Action.menu, .play, .next, .prev, .toggleShuffle, .launch, .spotifyAppFound(false), .expire] {

@@ -59,7 +59,7 @@ import Testing
     /// (Codex on #254).
     @Test func aLogOutWhileRestoringDropsTheLateRestore() {
         var s = afterSetup()
-        send(&s, .spotifyAppFound(true), .launch, .wheel(5), .select, .wheel(8), .select, .wheel(1), .select)
+        send(&s, .spotifyAppFound(true), .launch, .wheel(5), .select, .wheel(9), .select, .wheel(1), .select)
         #expect(s.stack == [Frame(screen: .login)] && !s.restoring)
         #expect(send(&s, .restored(token: 1, ok: true)).isEmpty)
         #expect(s.stack == [Frame(screen: .login)] && !s.signedIn)

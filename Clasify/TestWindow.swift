@@ -179,6 +179,7 @@ private struct TestPanel: View {
         case .deviceColor: "Color: \(state.deviceColor.rawValue)"
         case .clicker: "Clicker: \(state.clicker ? "On" : "Off")"
         case .nowPlayingBar: "Now Playing Bar: \(state.nowPlayingBar ? "On" : "Off")"
+        case .menuBar: "Menu Bar: \(state.menuBar ? "On" : "Off")"
         case .about: "About"
         case .logOut: "Log Out"
         case .cancel: "Cancel"

@@ -10,6 +10,7 @@ final class FakeSettings: SettingsStore {
 }
 
 @Test func settingsLoadTheDefaultsWhenNothingIsSaved() {
+    #expect(Settings().menuBar)  // card AN.1, 346: the menu bar icon is On by default
     var fresh = Settings()
     fresh.arrived = false  // a new Mac has not seen the arrival (change 288)
     #expect(Settings(from: FakeSettings()) == fresh)
@@ -21,6 +22,7 @@ final class FakeSettings: SettingsStore {
     var saved = Settings()
     saved.shuffle = true; saved.repeatMode = .one; saved.albumArt = .nowPlaying; saved.deviceColor = .black; saved.clicker = false
     saved.nowPlayingBar = true
+    saved.menuBar = false
     saved.service = .appleMusic
     saved.setupDone = true
     saved.hintsDone = [.menu]
@@ -29,14 +31,14 @@ final class FakeSettings: SettingsStore {
     #expect(store.values == [
         "settings.shuffle": "true", "settings.repeat": "One",
         "settings.albumArt": "Now Playing", "settings.deviceColor": "Black", "settings.clicker": "false",
-        "settings.nowPlayingBar": "true", "settings.service": "Apple Music", "setup.done": "true", "hints.done": "menu",
+        "settings.nowPlayingBar": "true", "settings.menuBar": "false", "settings.service": "Apple Music", "setup.done": "true", "hints.done": "menu",
         "hints.tour": "true", "hints.hides": "tour.next:1,tour.play:2", "arrive.done": "true",
         "activate.on": "false",
     ])
     #expect(Settings(from: store) == saved)
     store.values = [
         "settings.shuffle": "yes", "settings.repeat": "Twice", "settings.albumArt": "On", "settings.deviceColor": "Gold",
-        "settings.clicker": "1", "settings.service": "Tidal", "setup.done": "yes", "hints.done": "later",
+        "settings.clicker": "1", "settings.menuBar": "no", "settings.service": "Tidal", "setup.done": "yes", "hints.done": "later",
         "hints.tour": "yes", "hints.hides": "later:2,tour.play:x", "arrive.done": "yes",
     ]
     var defaults = Settings()

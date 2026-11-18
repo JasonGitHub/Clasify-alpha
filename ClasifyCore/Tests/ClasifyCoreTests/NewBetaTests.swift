@@ -35,7 +35,8 @@ import Testing
     /// page and closes it; the notice does not show again for that build.
     @Test func aNewerBuildShowsTheNoticeOnce() {
         var s = launched()
-        send(&s, .betaBuild(beta), .latestBeta(290))
+        send(&s, .betaBuild(beta))
+        #expect(send(&s, .latestBeta(290)).contains(.showWindow))  // card AN.1, 348: a hidden myPod shows
         #expect(s.top.screen == .betaNew && s.stack.count == 2 && s.newBeta == 290 && s.betaNoticed == 290)
         #expect(s.rows(for: s.top) == [.getNewBeta, .later] && s.betaDue == beta.endsAt)  // the warning waits for the main screens
         #expect(send(&s, .select) == [.getNewBeta])

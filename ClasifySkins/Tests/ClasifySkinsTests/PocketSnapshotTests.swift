@@ -367,7 +367,7 @@ import Testing
     @Test func onlyTheSelectedRowShowsAChevron() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 7  // About; Log out under it also opens a screen
+        s.top.sel = 8  // About; Log out under it also opens a screen
         let shot = try render(s, "settings-chevron")
         // The chevron is 8 points wide, 10 points in from the right edge of the list.
         let xs = Self.screenLeft + Self.screenWidth - 20...Self.screenLeft + Self.screenWidth - 8
@@ -375,8 +375,8 @@ import Testing
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
         }
-        #expect(box(8).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Log out
-        #expect(box(7).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+        #expect(box(7).allSatisfy { shot.isLight($0.0, $0.1) })  // no chevron on Menu Bar (card AN.1)
+        #expect(box(8).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
     }
 
     @Test func songListShowsArtistsAndTheScrollBar() throws {
@@ -704,6 +704,16 @@ import Testing
         }
         #expect(rows(0) { shot.isBlue($0, $1) })  // "Spotify" on the Service row (card BM)
         #expect(rows(2) { shot.isLight($0, $1) })  // the selected row's value
+    }
+
+    /// Card AN.1 (CLA-43, 346): the 10th row, "Menu Bar: On", after Now Playing Bar.
+    @Test func settingsMenuBarRow() throws {
+        var s = sampleState()
+        s.stack.append(Frame(screen: .settings))
+        s.top.sel = 7
+        let shot = try render(s, "settings-menu-bar")
+        #expect(shot.isBlue(100, Self.rowCenter(7)))
+        #expect(!shot.isBlue(100, Self.rowCenter(6)))
     }
 
     @Test func nowPlayingShowsTheCover() throws {
