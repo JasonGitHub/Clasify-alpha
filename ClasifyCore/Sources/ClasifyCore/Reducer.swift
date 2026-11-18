@@ -782,9 +782,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
                 fx.append(.openActivatePage)
             case .tryActivateAgain: askActivation(Effect.checkActivation, pressed: true)  // 327
             case .sendAgain: startActivateChecks(); askActivation(Effect.sendActivationAgain, pressed: true)
-            case .checkMail:
-                if s.activateStep == .stopped { startActivateChecks() }  // 322: the checks start again
-                askActivation(Effect.checkActivation, pressed: true)
+            case .checkMail:  // 322, 325, 326: the checks start again
+                startActivateChecks(); askActivation(Effect.checkActivation, pressed: true)
             case .cancelActivate: cancelActivate()
             case .quit: fx.append(.quit)
             case .useSpotify: switchService(to: .spotify)  // change 262
