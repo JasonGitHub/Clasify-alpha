@@ -1,0 +1,13 @@
+// myPod activation server (CLA-128). No secrets here: Jason adds them as Worker secrets.
+{
+  "name": "mypod-activation",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "d1_databases": [
+    // Placeholder: the real database ID goes here before the first deploy.
+    { "binding": "DB", "database_name": "mypod-activation", "database_id": "00000000-0000-0000-0000-000000000000" }
+  ],
+  // The beta cap (accounts) and the Mac limit per account.
+  "vars": { "CAP": "100", "MACS": "2" },
+  "observability": { "enabled": false }
+}
