@@ -1,15 +1,32 @@
 import Testing
 @testable import ClasifyCore
 
-/// CLA-128 PR1: setup's Activate step, behind the `activate.on` switch (off by default).
-/// Order: Hello, Color, Pick Your Music, Log In, Activate, Your Music.
+/// CLA-128 card BW: setup's Activate screens 319 to 327, behind the `activate.on` switch (off
+/// by default). Order: Hello, Color, Pick Your Music, Log In, Activate, Your Music.
 @Suite struct ActivationTests {
+    let sam = Activation.waiting(email: "sam@example.com", mail: 1)
+
     /// The first launch on "You’re in", after the login; the switch as given.
     func loggedIn(switchOn: Bool) -> AppState {
         var s = AppState()
         s.activateOn = switchOn
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)  // on the color pick
         send(&s, .select, .select, .select, .authDone(token: 2, ok: true))  // the color, Spotify, Log In
+        return s
+    }
+
+    /// On 319 "Join the beta" at time 200.
+    func join() -> AppState {
+        var s = loggedIn(switchOn: true)
+        send(&s, .tick, now: 101.5)
+        return s
+    }
+
+    /// On 321 "Check your mail": the page opened at 200 and the mail went out.
+    func mailOut() -> AppState {
+        var s = join()
+        send(&s, .select, now: 200)
+        send(&s, .checkActivation, .activation(sam, request: 2), now: 210)
         return s
     }
 
@@ -20,56 +37,139 @@ import Testing
         #expect(s.top.screen == .yourMusic)
     }
 
-    /// Activate comes after the login, before Your Music. "Activate" starts it; the mail is
-    /// out; "Check again" asks; an active answer goes on to Your Music.
+    /// 319, 320, 321, 323, then Your Music after 1.5 s.
     @Test func activateComesBeforeYourMusic() {
-        var s = loggedIn(switchOn: true)
-        send(&s, .tick, now: 101.5)
-        #expect(s.stack == [Frame(screen: .activate)] && s.rows(for: s.top) == [.activate])
-        #expect(send(&s, .select) == [.startActivation(request: 1)])
-        send(&s, .activation(.waiting, request: 1))
-        #expect(s.activation == .waiting && s.top.screen == .activate && s.rows(for: s.top) == [.checkMail])
-        #expect(send(&s, .select) == [.checkActivation(request: 2)])
-        let fx = send(&s, .activation(.active, request: 2))
-        #expect(s.activation == .active && s.top.screen == .yourMusic && s.top.loading)
-        #expect(fx.contains(.fetchTracks(token: s.top.token, playlist: Playlist.likedSongsID)))
+        var s = join()
+        #expect(s.stack == [Frame(screen: .activate)] && s.activateStep == .join && s.rows(for: s.top) == [.openActivate])
+        #expect(send(&s, .select, now: 200) == [.openActivatePage])
+        #expect(s.activateStep == .browserOpen && s.rows(for: s.top) == [.openActivateAgain, .cancelActivate])
+        #expect(send(&s, .checkActivation, now: 210) == [.checkActivation(request: 2)])  // the app came back
+        send(&s, .activation(.locked, request: 2), now: 211)  // no mail yet
+        #expect(s.activateStep == .browserOpen)
+        send(&s, .wheel(1), .checkActivation, .activation(sam, request: 3), now: 212)
+        #expect(s.activateStep == .checkMail && s.top.sel == 0 && s.rows(for: s.top) == [.sendAgain, .useAnotherEmail])
+        send(&s, .checkActivation, .activation(.active, request: 4), now: 220)
+        #expect(s.activateStep == .confirmed && s.rows(for: s.top).isEmpty)
+        send(&s, .tick, now: 221.4)
+        #expect(s.top.screen == .activate)
+        let fx = send(&s, .tick, now: 221.5)
+        #expect(s.top.screen == .yourMusic && fx.contains(.fetchTracks(token: s.top.token, playlist: Playlist.likedSongsID)))
     }
 
-    /// The app asks again when the person comes back or its timer runs: only while the mail
-    /// is out and the Activate screen shows.
-    @Test func checkActivationAsksOnlyWhileWaiting() {
-        var s = loggedIn(switchOn: true)
-        send(&s, .tick, now: 101.5)
-        #expect(send(&s, .checkActivation).isEmpty)  // locked: nothing to check
-        send(&s, .select, .activation(.waiting, request: 1))
-        #expect(send(&s, .checkActivation) == [.checkActivation(request: 2)])
-        var main = mainMenu()
-        main.activation = .waiting
-        #expect(send(&main, .checkActivation).isEmpty)  // not on the Activate screen
+    @Test func aPressOnConfirmedGoesOnAtOnce() {
+        var s = mailOut()
+        send(&s, .checkActivation, .activation(.active, request: 3), .select, now: 220)
+        #expect(s.top.screen == .yourMusic && s.activatedAt == 0)
     }
 
-    /// An answer to an older request is dropped. The stored activation (no request number)
-    /// always lands.
-    @Test func anOlderAnswerIsDropped() {
-        var s = loggedIn(switchOn: true)
-        send(&s, .tick, now: 101.5)
-        send(&s, .select, .activation(.waiting, request: 1), .select)  // request 2 is out
-        send(&s, .activation(.active, request: 1))
-        #expect(s.activation == .waiting && s.top.screen == .activate)
+    /// The 30 s timer asks on 320 and 321; after 15 minutes the checks stop (322). An app
+    /// return then asks nothing; "Check again" asks and starts the checks again.
+    @Test func theChecksRunEvery30sFor15Minutes() {
+        var s = join()
+        send(&s, .select, now: 200)
+        #expect(send(&s, .tick, now: 229).isEmpty)
+        #expect(send(&s, .tick, now: 230) == [.checkActivation(request: 2)])
+        send(&s, .activation(sam, request: 2), now: 231)
+        #expect(send(&s, .tick, now: 259).isEmpty && send(&s, .tick, now: 260) == [.checkActivation(request: 3)])
+        send(&s, .activation(sam, request: 3), now: 261)
+        send(&s, .tick, now: 1100)
+        #expect(s.activateStep == .stopped && s.rows(for: s.top) == [.checkMail, .sendAgain, .useAnotherEmail])
+        #expect(send(&s, .checkActivation, now: 1200).isEmpty && send(&s, .tick, now: 1300).isEmpty)
+        #expect(send(&s, .select, now: 1400) == [.checkActivation(request: 4)])
+        #expect(s.activateStep == .checkMail && s.activateStopAt == 1400 + activateChecksFor)
+    }
+
+    /// "Send again" asks the server and starts the 15 minutes again; "Use another email"
+    /// opens the page (320) until a newer mail is out.
+    @Test func sendAgainAndUseAnotherEmail() {
+        var s = mailOut()
+        #expect(send(&s, .select, now: 500) == [.sendActivationAgain(request: 3)])
+        #expect(s.activateStopAt == 500 + activateChecksFor && s.activatePressed == 3)
+        send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), .wheel(1), now: 501)
+        #expect(send(&s, .select, now: 502) == [.openActivatePage] && s.activateStep == .browserOpen)
+        send(&s, .checkActivation, .activation(.waiting(email: "sam@example.com", mail: 2), request: 5), now: 510)
+        #expect(s.activateStep == .browserOpen)  // the old mail
+        send(&s, .checkActivation, .activation(.waiting(email: "kim@example.com", mail: 3), request: 6), now: 520)
+        #expect(s.activateStep == .checkMail && s.activation == .waiting(email: "kim@example.com", mail: 3))
+    }
+
+    /// An answer on its way when MENU cancels is dropped; "Send again" on 322 shows 321 on its first row.
+    @Test func cancelDropsTheAnswerAndSendAgainStartsOnTheFirstRow() {
+        var s = mailOut()
+        send(&s, .tick, now: 240)  // request 3 is out
+        send(&s, .menu, .activation(sam, request: 3), now: 241)
+        #expect(s.activateStep == .join)
+        var stopped = mailOut()
+        send(&stopped, .tick, .wheel(1), now: 2000)
+        #expect(send(&stopped, .select, now: 2001) == [.sendActivationAgain(request: 3)])
+        #expect(stopped.activateStep == .checkMail && stopped.top.sel == 0)
+    }
+
+    /// "Use another email" drops the answer to a "Send again" still on its way. The app's
+    /// ticker sends `.tick` when a check, the end of the checks or the beat is due.
+    @Test func useAnotherEmailDropsTheResendAndTheTickerKnowsTheDeadlines() {
+        var s = mailOut()
+        #expect(!s.activateDue(at: 239) && s.activateDue(at: 240))
+        send(&s, .select, .wheel(1), .select, now: 300)  // "Send again", then "Use another email"
+        send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), now: 301)
+        #expect(s.activateStep == .browserOpen)
+        send(&s, .checkActivation, .activation(.active, request: 5), now: 310)
+        #expect(!s.activateDue(at: 311.4) && s.activateDue(at: 311.5) && !join().activateDue(at: 1000))
+    }
+
+    /// MENU on 320 and 321 is "Cancel" (to 319). On 319 and 322 to 327 it does nothing.
+    @Test func menuCancelsOnlyWhileTheChecksRun() {
+        var open = join()
+        send(&open, .select, now: 200)
+        send(&open, .menu, now: 201)
+        #expect(open.activateStep == .join && open.activateStopAt == 0)
+        var out = mailOut()
+        send(&out, .menu, now: 220)
+        #expect(out.activateStep == .join && out.activation == .locked)
+        var cancel = join()
+        send(&cancel, .select, .wheel(1), .select, now: 200)  // "Cancel"
+        #expect(cancel.activateStep == .join)
+        for answer in [Activation.mailBusy, .full, .off, .offline] {
+            var s = mailOut()
+            send(&s, .select, .activation(answer, request: 3), .menu, now: 300)  // "Send again"
+            #expect(s.activation == answer && s.top.screen == .activate)
+        }
+        var stopped = mailOut()
+        send(&stopped, .tick, .menu, now: 2000)
+        #expect(stopped.activateStep == .stopped)
+        var first = join()
+        send(&first, .menu, now: 200)
+        #expect(first.activateStep == .join)
+    }
+
+    /// 324 and 327 have "Try again", 325 and 326 "Check again"; their checks stop.
+    @Test func theOtherAnswersKeepTheScreen() {
+        let rows: [(Activation, [Row])] = [(.mailBusy, [.tryActivateAgain]), (.full, [.checkMail]), (.off, [.checkMail]), (.offline, [.tryActivateAgain])]
+        for (answer, row) in rows {
+            var s = mailOut()
+            send(&s, .select, .activation(answer, request: 3), now: 300)  // "Send again"
+            #expect(s.top.screen == .activate && s.rows(for: s.top) == row && s.activateStopAt == 0)
+            let fx = send(&s, .select, now: 400)
+            #expect(fx == (answer == .mailBusy ? [.openActivatePage] : [.checkActivation(request: 4)]))
+            if answer != .mailBusy {  // the checks run again: a mail still out shows 321
+                send(&s, .activation(sam, request: 4), now: 401)
+                #expect(s.activateStep == .checkMail)
+            }
+        }
+    }
+
+    /// An answer to an older request is dropped, and a timer check with no connection is
+    /// not shown. The stored activation (no request number) always lands.
+    @Test func anOlderAnswerAndAFailedTimerCheckAreDropped() {
+        var s = mailOut()
+        send(&s, .select, now: 300)  // request 3 is out
+        send(&s, .activation(.active, request: 2), now: 301)
+        #expect(s.activateStep == .checkMail)
+        send(&s, .tick, .activation(.offline, request: 4), now: 330)
+        #expect(s.activateStep == .checkMail)
         var launch = AppState()
         send(&launch, .activation(.active, request: nil))
         #expect(launch.activation == .active)
-    }
-
-    /// Full, turned off and mail busy keep the screen, with one row to try again.
-    @Test func fullOffAndMailBusyStayOnTheScreen() {
-        for answer in [Activation.full, .off, .mailBusy, .locked] {
-            var s = loggedIn(switchOn: true)
-            send(&s, .tick, now: 101.5)
-            send(&s, .select, .activation(answer, request: 1))
-            #expect(s.activation == answer && s.top.screen == .activate && s.rows(for: s.top) == [.activate])
-            #expect(send(&s, .select) == [.startActivation(request: 2)])
-        }
     }
 
     /// Already active (the stored activation, sent before the launch): no Activate step.
@@ -79,36 +179,49 @@ import Testing
         send(&s, .activation(.active, request: nil))
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)
         send(&s, .select, .select, .select, .authDone(token: 2, ok: true))
-        send(&s, .tick, now: 101.5)  // after the login screen's wait
+        send(&s, .tick, now: 101.5)
         #expect(s.top.screen == .yourMusic)
     }
 
-    @Test func theSwitchIsSavedWithTheSettings() {
+    /// The switch is saved; the email never is.
+    @Test func theSwitchIsSavedAndTheEmailIsNot() {
         let store = FakeSettings()
         #expect(!Settings(from: store).activateOn)
-        var saved = Settings()
-        saved.activateOn = true
-        saved.save(to: store)
+        var s = mailOut()
+        s.activateOn = true
+        s.settings.save(to: store)
         #expect(Settings(from: store).activateOn)
+        #expect(!store.values.keys.contains { $0.contains("mail") } && !store.values.values.contains { $0.contains("@") })
     }
 
-    /// The store asks the server and sends its answer back with the request number.
+    /// The store asks the server and sends its answer back with the request number, and
+    /// opens the page through the app.
     @MainActor @Test func theStoreAsksTheActivator() async {
-        var state = loggedIn(switchOn: true)
-        send(&state, .tick, now: 101.5)
-        let env = Dependencies(now: { 101.5 }, random: { _ in 0 })
-        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: state, env: env, activator: FakeActivator())
+        let env = Dependencies(now: { 200 }, random: { _ in 0 })
+        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: join(), env: env, activator: FakeActivator())
+        let opened = Count()
+        store.onOpenActivatePage = { opened.n += 1 }
         store.send(.select)
+        store.send(.checkActivation)
         var tries = 0
-        while tries < 200, store.state.activation != .waiting {
+        while tries < 200, store.state.activateStep != .checkMail {
             tries += 1
             try? await Task.sleep(for: .milliseconds(10))
         }
-        #expect(store.state.activation == .waiting && store.state.activateRequest == 1)
+        #expect(opened.n == 1 && store.state.activation == .waiting(email: "sam@example.com", mail: 1))
+        store.send(.select)  // "Send again"
+        tries = 0
+        while tries < 200, store.state.activation != .waiting(email: "sam@example.com", mail: 2) {
+            tries += 1
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(store.state.activation == .waiting(email: "sam@example.com", mail: 2) && store.state.activateRequest == 3)
     }
 }
 
+@MainActor final class Count { var n = 0 }
+
 struct FakeActivator: Activator {
-    func start() async -> Activation { .waiting }
-    func status() async -> Activation { .active }
+    func status() async -> Activation { .waiting(email: "sam@example.com", mail: 1) }
+    func sendAgain() async -> Activation { .waiting(email: "sam@example.com", mail: 2) }
 }
