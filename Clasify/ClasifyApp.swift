@@ -177,13 +177,8 @@ final class AppModel {
         let activator = ServerActivator()
         let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(), activator: activator)
         // CLA-128: behind the activate.on switch (off by default). A Mac that has activated
-        // before skips the step; the answer comes with no request number.
-        if store.state.activateOn && DeviceIDStore.read() != nil {
-            Task { [weak store] in
-                let answer = await activator.status()
-                store?.send(.activation(answer, request: nil))
-            }
-        }
+        // before skips the step.
+        if store.state.activateOn && DeviceIDStore.read() != nil { store.checkActivationAtLaunch() }
         // Card BW: the page with its one-time code opens in the browser.
         store.onOpenActivatePage = { page in
             if let url = URL(string: page) { NSWorkspace.shared.open(url) }

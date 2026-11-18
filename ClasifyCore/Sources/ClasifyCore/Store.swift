@@ -199,6 +199,18 @@ public final class Store {
         while let task = fetches.values.first { await task.value }
     }
 
+    /// CLA-128: at launch, the stored activation of a Mac that has a device ID. The answer comes
+    /// with no request number, so it is dropped here when a newer request started meanwhile.
+    public func checkActivationAtLaunch() {
+        guard let activator else { return }
+        let request = state.activateRequest
+        Task { [weak self] in
+            let answer = await activator.status()
+            guard let self, self.state.activateRequest == request else { return }
+            self.send(.activation(answer, request: nil))
+        }
+    }
+
     public func send(_ action: Action) {
         let before = state
         let effects = reduce(&state, action, env)
@@ -287,7 +299,9 @@ public final class Store {
             case .openActivatePage(let request):
                 guard let activator else { break }
                 Task { [weak self] in
-                    if let url = await activator.pageURL() { self?.onOpenActivatePage?(url) } else { self?.send(.activation(.offline, request: request)) }
+                    let url = await activator.pageURL()
+                    guard let self, self.state.activateRequest == request else { return }  // Cancel or MENU came first
+                    if let url { self.onOpenActivatePage?(url) } else { self.send(.activation(.offline, request: request)) }
                 }
             case .sendActivationAgain(let request):
                 guard let activator else { break }

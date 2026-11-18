@@ -250,6 +250,28 @@ import Testing
         #expect(store.state.activateStep == .offline && opened.n == 0)
         #expect(store.state.rows(for: store.state.top) == [.tryActivateAgain])
     }
+
+    @MainActor @Test func cancelBeforeThePageAnswersOpensNoPage() async {
+        let env = Dependencies(now: { 200 }, random: { _ in 0 })
+        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: join(), env: env, activator: FakeActivator())
+        let opened = Count()
+        store.onOpenActivatePage = { _ in opened.n += 1 }
+        store.send(.select)
+        store.send(.menu)  // Cancel before /v1/open answers
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(opened.n == 0 && store.state.activation == .locked)
+    }
+
+    @MainActor @Test func aLateLaunchAnswerDoesNotUndoACancel() async {
+        let env = Dependencies(now: { 200 }, random: { _ in 0 })
+        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: join(), env: env, activator: FakeActivator())
+        store.onOpenActivatePage = { _ in }
+        store.checkActivationAtLaunch()
+        store.send(.select)
+        store.send(.menu)
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(store.state.activation == .locked)
+    }
 }
 
 @MainActor final class Count { var n = 0; var url = "" }
