@@ -246,7 +246,6 @@ extension K3DMesh {
                 dB(circle(sx * 162, y + 6, 2.1, 12), zs + 0.26, 14, sx * 162, y + 6)
             }
         }
-        bx6(-34, 30, 36, 50, zs - 0.25, zs, 16)
-        bx6(60, 96, 270, 288, zs - 0.25, zs, 16)
+        // K.3D.11 (CLA-129, Jason 22:22 JST 11-17 "yes remove"): no tape on the shield.
     }
 }

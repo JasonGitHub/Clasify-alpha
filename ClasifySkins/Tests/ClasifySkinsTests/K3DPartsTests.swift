@@ -8,7 +8,7 @@ import Testing
 
 /// CLA-105: Take apart's parts in the mesh, checked against the mock's own geometry code
 /// (`k3d_src3.js` from design-review/beta-page/v3/k3d8, lines 11 to 226; CLA-129: about/k3d11/tools,
-/// the `D11` path of the drive and the shell, lines 212 to 264) run in Node. The mesh
+/// the `D11` path of the shield, the board, the drive and the shell, lines 170 to 264) run in Node. The mesh
 /// puts the parts after the closed device, so the order differs from the mock's; the counts and
 /// the sums of the positions do not.
 struct K3DPartsTests {
@@ -17,8 +17,8 @@ struct K3DPartsTests {
     func value(_ i: Int, _ k: Int) -> Double { Double(mesh.vertices[i * K3DMesh.stride + k]) }
 
     @Test func theCountsMatchTheMock() {
-        #expect(mesh.vertexCount == 36046)
-        #expect(mesh.indices.count == 140538)
+        #expect(mesh.vertexCount == 41974)
+        #expect(mesh.indices.count == 149430)
         #expect(mesh.indices.count % 3 == 0)
     }
 
@@ -29,12 +29,12 @@ struct K3DPartsTests {
             1: (8446, -0.000, 62303.000, 247089.541),
             2: (1766, -0.000, 284767.500, 57925.100),
             3: (1576, -82716.000, -195696.000, 47231.580),
-            4: (1712, 1496.000, 271799.000, 42952.820),
+            4: (1664, -328.000, 264071.000, 41878.820),
             5: (770, -0.000, -97790.000, 23139.150),
             6: (1766, -478.000, -51364.180, 38125.380),
             7: (5058, -3942.632, -307736.341, 55804.800),
             8: (192, 1464.000, -5784.000, 3494.400),
-            9: (7631, -52018.000, -1110323.200, 154814.190),
+            9: (13607, -228004.000, -2167861.600, 255451.110),
         ]
         var got: [Int: (n: Int, x: Double, y: Double, z: Double)] = [:]
         for i in 0..<mesh.vertexCount {
@@ -54,9 +54,9 @@ struct K3DPartsTests {
     /// Each material's vertex count, as in the mock.
     @Test func eachMaterialMatchesTheMock() {
         let want: [Int: Int] = [
-            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4529, 13: 298, 14: 1173, 15: 1720, 16: 446, 17: 508,
-            19: 20, 20: 80, 21: 3901, 22: 588, 23: 295, 24: 349, 25: 129, 27: 207, 28: 448, 29: 256, 30: 1650, 32: 650,
-            34: 3261, 35: 418, 36: 288, 37: 3818, 38: 545, 39: 73, 40: 149, 41: 32, 42: 24, 43: 296, 44: 634, 45: 512,
+            0: 844, 1: 1600, 2: 400, 3: 4973, 4: 101, 10: 831, 12: 4673, 13: 298, 14: 1221, 15: 7192, 16: 398, 17: 508,
+            19: 20, 20: 200, 21: 3901, 22: 588, 23: 295, 24: 349, 25: 129, 27: 207, 28: 448, 29: 256, 30: 1650, 32: 650,
+            34: 3261, 35: 418, 36: 288, 37: 3818, 38: 545, 39: 73, 40: 149, 41: 32, 42: 24, 43: 296, 44: 802, 45: 536,
         ]
         var got: [Int: Int] = [:]
         for i in 0..<mesh.vertexCount { got[Int(value(i, 11)), default: 0] += 1 }
@@ -202,6 +202,15 @@ struct K3DPartsTests {
         }
         for (angle, tilt) in [(345.0, 35.0), (15.0, 35.0), (0.0, 20.0)] {
             let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-shell-colors-\(Int(angle))-\(Int(tilt))")
+            #expect(width(bytes, row: 300) > 100)
+        }
+    }
+
+    /// CLA-129 PR 5: the board's back with its K.3D.11 ports J3, J6 and J2, and the shield with no
+    /// tape. The PNGs look at the board's back and the shield from behind, apart.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theBoardHasItsK3D11Ports() throws {
+        for (angle, tilt) in [(160.0, 30.0), (200.0, -30.0)] {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d-apart-board-\(Int(angle))-\(Int(tilt))")
             #expect(width(bytes, row: 300) > 100)
         }
     }
