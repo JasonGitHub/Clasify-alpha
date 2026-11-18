@@ -15,12 +15,16 @@ import Foundation
 ///   front); else it turns 0.8 s to the nearest front with the 3° soft landing (306). With
 ///   Reduce Motion it changes side as the About drag does today (the 302 swap).
 /// - 354: Cmd + a pinch out past `pinch` takes the device apart (the 308 motion); a pinch in
-///   past it puts the device together.
+///   past it puts the device together where it is: only Cmd up turns it to the front.
+/// - 355: with a mouse, Cmd + a drag turns it, Cmd + a hold of `holdTime` with no move past
+///   `slop` takes it apart, and Cmd + a click puts it together where it is.
 public struct K3DTurn: Equatable {
     public static let perPoint = K3DShowroom.perPoint, tiltPerPoint = K3DShowroom.tiltPerPoint
     public static let maxTilt = K3DShowroom.maxTilt
     /// The pinch's sum of magnification that opens (+) or closes (−) the device.
     public static let pinch = 0.15
+    /// Change 355: the mouse hold that takes the device apart, and the move that is not a hold.
+    public static let holdTime = 1.2, slop = 4.0
 
     /// The pinch since the last open or close, or since Cmd went down.
     public private(set) var magnified = 0.0
@@ -43,7 +47,7 @@ public struct K3DTurn: Equatable {
         let apart = flip.isApart(at: now)
         guard magnified >= Self.pinch && !apart || magnified <= -Self.pinch && apart else { return flip }
         magnified = 0
-        return flip.apart(at: now)
+        return flip.apart(at: now, staysTurned: apart)
     }
 
     /// Cmd up, once the swipe and its glide have ended: the device goes back to its front.

@@ -352,7 +352,8 @@ public struct K3DFlip {
     /// `open` and `close`): opening, the device turns to 305° and tilts to 20° in 0.7 s on a
     /// quad in-out, then the parts move apart in 1.6 s on a cubic in-out (mock K.3D.8
     /// `explode`). Closing, the parts move together in 1.6 s where the device is, then it turns
-    /// to the front by the short way and levels out in 0.6 s.
+    /// to the front by the short way and levels out in 0.6 s. CLA-130 (354, 355): the Cmd turn's
+    /// close (`staysTurned`) keeps the angle and the tilt: only Cmd up turns it to the front.
     public static let apartTurn = 0.7, apartTime = 1.6, closeTurn = 0.6
     static let apartAngle = 305.0, apartTilt = 20.0
 
@@ -512,7 +513,7 @@ public struct K3DFlip {
     /// Nothing happens while the apart script runs (the trial's `busy`). Opening starts from the
     /// angle now, as 0° to 360°; closing turns from the angle now, as -180° to 180°, so the turn
     /// to the front is the short way.
-    public func apart(at now: Date) -> K3DFlip {
+    public func apart(at now: Date, staysTurned: Bool = false) -> K3DFlip {
         if script == .apart && !isResting(at: now) { return self }
         var flip = self
         let current = pose(at: now).angle, tilt = self.tilt(at: now)
@@ -521,8 +522,9 @@ public struct K3DFlip {
         flip.fromRest = restsOnFront(at: now)
         flip.script = .apart
         (flip.start, flip.tilt0, flip.hurriedAt) = (now, tilt, nil)
-        (flip.from, flip.to) = opens ? (turn, Self.apartAngle) : (turn > 180 ? turn - 360 : turn, 0)
-        flip.tiltTo = opens ? Self.apartTilt : 0
+        let short = turn > 180 ? turn - 360 : turn
+        (flip.from, flip.to) = opens ? (turn, Self.apartAngle) : (short, staysTurned ? short : 0)
+        flip.tiltTo = opens ? Self.apartTilt : staysTurned ? tilt : 0
         (flip.ex0, flip.exTo) = opens ? (0, 1) : (1, 0)
         flip.oldScreen = nil
         return flip
