@@ -242,6 +242,22 @@ public enum Activation: Equatable, Sendable {
     case mailBusy
     /// Card BW, 327: no answer from our server.
     case offline
+
+    /// The server's answer (server/, `/v1/status` and `/v1/start`) as an `Activation`. No
+    /// answer, a status code outside 200 to 299, or an unknown answer is `.offline`.
+    public init(status: Int, json: [String: Any]?) {
+        guard (200..<300).contains(status), let json else { self = .offline; return }
+        switch json["state"] as? String {
+        case "locked": self = .locked
+        case "waiting":
+            if let email = json["email"] as? String, let mail = json["mail"] as? Int { self = .waiting(email: email, mail: mail) } else { self = .offline }
+        case "active": self = .active
+        case "full": self = .full
+        case "off": self = .off
+        case "busy": self = .mailBusy
+        default: self = .offline
+        }
+    }
 }
 
 /// CLA-128, card BW: which Activate screen shows.

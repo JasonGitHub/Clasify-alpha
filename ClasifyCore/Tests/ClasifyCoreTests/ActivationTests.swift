@@ -41,7 +41,7 @@ import Testing
     @Test func activateComesBeforeYourMusic() {
         var s = join()
         #expect(s.stack == [Frame(screen: .activate)] && s.activateStep == .join && s.rows(for: s.top) == [.openActivate])
-        #expect(send(&s, .select, now: 200) == [.openActivatePage])
+        #expect(send(&s, .select, now: 200) == [.openActivatePage(request: 1)])
         #expect(s.activateStep == .browserOpen && s.rows(for: s.top) == [.openActivateAgain, .cancelActivate])
         #expect(send(&s, .checkActivation, now: 210) == [.checkActivation(request: 2)])  // the app came back
         send(&s, .activation(.locked, request: 2), now: 211)  // no mail yet
@@ -86,7 +86,7 @@ import Testing
         #expect(send(&s, .select, now: 500) == [.sendActivationAgain(request: 3)])
         #expect(s.activateStopAt == 500 + activateChecksFor && s.activatePressed == 3)
         send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), .wheel(1), now: 501)
-        #expect(send(&s, .select, now: 502) == [.openActivatePage] && s.activateStep == .browserOpen)
+        #expect(send(&s, .select, now: 502) == [.openActivatePage(request: 4)] && s.activateStep == .browserOpen)
         send(&s, .checkActivation, .activation(.waiting(email: "sam@example.com", mail: 2), request: 5), now: 510)
         #expect(s.activateStep == .browserOpen)  // the old mail
         send(&s, .checkActivation, .activation(.waiting(email: "kim@example.com", mail: 3), request: 6), now: 520)
@@ -150,7 +150,7 @@ import Testing
             send(&s, .select, .activation(answer, request: 3), now: 300)  // "Send again"
             #expect(s.top.screen == .activate && s.rows(for: s.top) == row && s.activateStopAt == 0)
             let fx = send(&s, .select, now: 400)
-            #expect(fx == (answer == .mailBusy ? [.openActivatePage] : [.checkActivation(request: 4)]))
+            #expect(fx == (answer == .mailBusy ? [.openActivatePage(request: 4)] : [.checkActivation(request: 4)]))
             if answer != .mailBusy {  // the checks run again: a mail still out shows 321
                 send(&s, .activation(sam, request: 4), now: 401)
                 #expect(s.activateStep == .checkMail)
@@ -200,7 +200,7 @@ import Testing
         let env = Dependencies(now: { 200 }, random: { _ in 0 })
         let store = Store(player: FakePlayer(), library: FakeLibrary(), state: join(), env: env, activator: FakeActivator())
         let opened = Count()
-        store.onOpenActivatePage = { opened.n += 1 }
+        store.onOpenActivatePage = { url in opened.n += 1; opened.url = url }
         store.send(.select)
         store.send(.checkActivation)
         var tries = 0
@@ -208,7 +208,8 @@ import Testing
             tries += 1
             try? await Task.sleep(for: .milliseconds(10))
         }
-        #expect(opened.n == 1 && store.state.activation == .waiting(email: "sam@example.com", mail: 1))
+        #expect(opened.n == 1 && opened.url == "https://getmypod.app/?d=code")
+        #expect(store.state.activation == .waiting(email: "sam@example.com", mail: 1))
         store.send(.select)  // "Send again"
         tries = 0
         while tries < 200, store.state.activation != .waiting(email: "sam@example.com", mail: 2) {
@@ -217,11 +218,45 @@ import Testing
         }
         #expect(store.state.activation == .waiting(email: "sam@example.com", mail: 2) && store.state.activateRequest == 3)
     }
+
+    /// The server's answers map 1:1; anything else, a 4xx or a 5xx is 327 (offline).
+    @Test func theServerAnswersMapToActivation() {
+        #expect(Activation(status: 200, json: ["state": "locked"]) == .locked)
+        #expect(Activation(status: 200, json: ["state": "waiting", "email": "sam@example.com", "mail": 2]) == .waiting(email: "sam@example.com", mail: 2))
+        #expect(Activation(status: 200, json: ["state": "active", "account": "a1"]) == .active)
+        #expect(Activation(status: 200, json: ["state": "full"]) == .full)
+        #expect(Activation(status: 200, json: ["state": "off"]) == .off)
+        #expect(Activation(status: 200, json: ["state": "busy"]) == .mailBusy)
+        #expect(Activation(status: 200, json: ["state": "waiting"]) == .offline)  // no email or number
+        #expect(Activation(status: 200, json: ["state": "new"]) == .offline)
+        #expect(Activation(status: 200, json: nil) == .offline)
+        #expect(Activation(status: 400, json: ["error": "email"]) == .offline)
+        #expect(Activation(status: 401, json: ["state": "active"]) == .offline)
+        #expect(Activation(status: 503, json: nil) == .offline)
+    }
+
+    /// A page that cannot get its code (no connection) shows 327 and opens nothing.
+    @MainActor @Test func aPageWithNoCodeShowsOffline() async {
+        let env = Dependencies(now: { 200 }, random: { _ in 0 })
+        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: join(), env: env, activator: FakeActivator(page: nil))
+        let opened = Count()
+        store.onOpenActivatePage = { _ in opened.n += 1 }
+        store.send(.select)
+        var tries = 0
+        while tries < 200, store.state.activateStep != .offline {
+            tries += 1
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(store.state.activateStep == .offline && opened.n == 0)
+        #expect(store.state.rows(for: store.state.top) == [.tryActivateAgain])
+    }
 }
 
-@MainActor final class Count { var n = 0 }
+@MainActor final class Count { var n = 0; var url = "" }
 
 struct FakeActivator: Activator {
+    var page: String? = "https://getmypod.app/?d=code"
+    func pageURL() async -> String? { page }
     func status() async -> Activation { .waiting(email: "sam@example.com", mail: 1) }
     func sendAgain() async -> Activation { .waiting(email: "sam@example.com", mail: 2) }
 }

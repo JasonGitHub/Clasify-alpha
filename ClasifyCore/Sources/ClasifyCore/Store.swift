@@ -38,6 +38,8 @@ public protocol Activator: Sendable {
     func status() async -> Activation
     /// Send the mail again, to the same address (card BW, "Send again").
     func sendAgain() async -> Activation
+    /// The page to open, with a new one-time code (getmypod.app/?d=CODE); nil with no connection.
+    func pageURL() async -> String?
 }
 
 /// How a login ended.
@@ -163,8 +165,8 @@ public final class Store {
     /// Opens the beta download page, and quits the app (card BI v2). The app sets them.
     @ObservationIgnored public var onGetNewBeta: (@MainActor () -> Void)?
     @ObservationIgnored public var onQuit: (@MainActor () -> Void)?
-    /// Card BW: opens getmypod.app/?d=ID in the browser. The app sets it.
-    @ObservationIgnored public var onOpenActivatePage: (@MainActor () -> Void)?
+    /// Card BW: opens the activator's page URL (getmypod.app/?d=CODE) in the browser. The app sets it.
+    @ObservationIgnored public var onOpenActivatePage: (@MainActor (String) -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
     /// Card BV: the launch check's source. With none, the check finds nothing.
@@ -282,7 +284,11 @@ public final class Store {
             case .openPrivacy: onOpenPrivacy?()
             case .getNewBeta: onGetNewBeta?()
             case .quit: onQuit?()
-            case .openActivatePage: onOpenActivatePage?()
+            case .openActivatePage(let request):
+                guard let activator else { break }
+                Task { [weak self] in
+                    if let url = await activator.pageURL() { self?.onOpenActivatePage?(url) } else { self?.send(.activation(.offline, request: request)) }
+                }
             case .sendActivationAgain(let request):
                 guard let activator else { break }
                 Task { [weak self] in
