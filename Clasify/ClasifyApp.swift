@@ -87,17 +87,20 @@ enum DeviceWindow {
     private static let fade = 0.15
 
     /// The device window shows: Clasify is in front, and the window is on screen, not in the
-    /// Dock. A window behind other apps counts as not shown, so a click brings it forward.
+    /// Dock. A window behind other apps counts as not shown, so a click brings it forward. A
+    /// window on another Space counts as not shown too, so a click moves it here (356).
     static var isShown: Bool {
         NSApp.isActive && hidden == nil && NSApp.windows.contains {
-            !($0 is NSPanel) && $0.level == .normal && $0.isVisible && !$0.isMiniaturized && !isHelp($0)
+            !($0 is NSPanel) && $0.level == .normal && $0.isVisible && !$0.isMiniaturized && $0.isOnActiveSpace && !isHelp($0)
         }
     }
 
     /// Card AN.1, 344-345: fades the device window out, then takes it off the screen. The music
     /// goes on.
     static func hide() {
-        let windows = NSApp.windows.filter { !($0 is NSPanel) && $0.level == .normal && $0.isVisible && !isHelp($0) }
+        let windows = NSApp.windows.filter {
+            !($0 is NSPanel) && $0.level == .normal && $0.isVisible && $0.isOnActiveSpace && !isHelp($0)
+        }
         guard let window = windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return }
         hidden = window
         NSAnimationContext.runAnimationGroup { context in
