@@ -54,8 +54,9 @@ function form() {
   const input = el("input", "field");
   Object.assign(input, { type: "email", name: "email", required: true, autocomplete: "email", maxLength: 254, value: email });
   input.setAttribute("aria-label", "Email");
-  f.append(input, el("button", "button", "Send link"));
-  f.addEventListener("submit", (e) => { e.preventDefault(); send(input.value.trim().toLowerCase()); });  // as the server stores it
+  const go = el("button", "button", "Send link");
+  f.append(input, go);
+  f.addEventListener("submit", (e) => { e.preventDefault(); go.disabled = true; send(input.value.trim().toLowerCase()); });  // as the server stores it
   const box = el("div");
   box.append(f, el("p", "note", "One email per person. No password."));
   queueMicrotask(() => input.focus());
@@ -64,7 +65,11 @@ function form() {
 const button = (label, act) => { const b = el("button", "button", label); b.addEventListener("click", () => { b.disabled = true; act(); }); return b; };
 function links(items) {
   const row = el("div", "links");
-  for (const [label, act] of items) { const b = el("button", "link", label); b.addEventListener("click", act); row.append(b); }
+  for (const [label, act] of items) {
+    const b = el("button", "link", label);
+    b.addEventListener("click", () => { for (const other of row.children) other.disabled = true; act(); });
+    row.append(b);
+  }
   return row;
 }
 
@@ -88,7 +93,14 @@ function human() {
   });
 }
 
+// One send at a time: each one uses up the page code, so a second click would get "code".
+let sending = false;
 async function send(address) {
+  if (sending) return;
+  sending = true;
+  try { await sendOnce(address); } finally { sending = false; }
+}
+async function sendOnce(address) {
   email = address;
   retry = () => send(address);
   if (!code) return show(screen("pageExpired"));
