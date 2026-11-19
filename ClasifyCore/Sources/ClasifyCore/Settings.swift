@@ -61,6 +61,9 @@ public struct Settings: Equatable, Sendable {
         // Before the beta build it becomes a build setting, or it goes away.
         static let activateOn = "activate.on"
         static let activated = "activate.done"
+        // CLA-145: NOT for testers; removed before the real beta (CLA-134), when the hardware ID
+        // is always on. Read only; the app never writes it. See `DeviceID.current`.
+        static let activateHardwareID = "activate.hardwareID"
         static let arrived = "arrive.done"
     }
 
@@ -92,6 +95,12 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.activateOn).flatMap({ Bool($0) }) { activateOn = v }
         activated = store.string(forKey: Key.activated).flatMap { Bool($0) } ?? false
         arrived = store.string(forKey: Key.arrived).flatMap { Bool($0) } ?? false
+    }
+
+    /// CLA-145: `activate.hardwareID` "true" makes the device ID from the hardware. Off by
+    /// default (Jason's choice, 18:30 JST 11-19): then the random Keychain ID stays in use.
+    public static func hardwareIDOn(from store: some SettingsStore) -> Bool {
+        store.string(forKey: Key.activateHardwareID).flatMap { Bool($0) } ?? false
     }
 
     public func save(to store: some SettingsStore) {

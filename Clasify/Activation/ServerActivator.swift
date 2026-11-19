@@ -10,7 +10,10 @@ struct ServerActivator: Activator {
     static let host = URL(string: "https://api.getmypod.app")!
 
     var session: URLSession = ServerActivator.ephemeral
-    var deviceID: @Sendable () -> String? = { DeviceIDStore.readOrMake() }
+    var deviceID: @Sendable () -> String? = {
+        // CLA-145: the hardware ID behind `activate.hardwareID` (off by default), else the Keychain ID.
+        DeviceID.current(from: UserDefaults.standard, hardware: HardwareID.deviceID, keychain: DeviceIDStore.readOrMake)
+    }
 
     static let ephemeral: URLSession = {
         let config = URLSessionConfiguration.ephemeral  // no cache, no cookies, nothing on disk
