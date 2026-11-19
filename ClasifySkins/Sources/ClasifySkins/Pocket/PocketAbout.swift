@@ -4,12 +4,12 @@ import SwiftUI
 
 /// The About screen, card BF (About J1, Jason 23:05 JST 11-10, changes 207, 208, 211 and 212):
 /// one page that scrolls 4 wheel steps (card BS, changes 294 and 295; card BF.2). The headphone capybara on its ground shadow,
-/// "myPod", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version, Status
+/// "myPod", the tagline and "Made with ♥ by Cappy" in engraved steel, the Version, Status
 /// (card BF.2, change 360) and Licenses rows, then the legal text. The points are from the top
 /// of the 344.4 pt page.
 /// The capybara waves, thinks, drinks boba and sleeps as `AppState.aboutPose(at:)` says, and
 /// the tagline's glint runs with each wave (changes 209, 210). Card BF.1 (J1.3, changes 214-216)
-/// set the front page: two text styles, and "Made with ♥ by CappyAI" before the tagline.
+/// set the front page: two text styles, and "Made with ♥ by Cappy" before the tagline.
 struct PocketAbout: View {
     let state: AppState
     /// The scroll bar waits 0.3 s after About opens.
@@ -164,7 +164,7 @@ struct PocketAbout: View {
         .accessibilityLabel("myPod. Made with love by Cappy. AI-native craftsmanship.")
     }
 
-    /// "Made with ♥ by CappyAI" in steel. The glint sweeps the whole line as one, from the start
+    /// "Made with ♥ by Cappy" in steel. The glint sweeps the whole line as one, from the start
     /// of each wave; the red heart has none (change 218, Jason 00:14 JST 11-11).
     private var signature: some View {
         func words(heart: Bool) -> some View {

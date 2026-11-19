@@ -1115,7 +1115,7 @@ import Testing
         // The capybara: not plain glass in its 88 pt box, 18 pt down.
         let art = (top + 26..<top + 102).filter { !near(first.rgb(x, $0), glass) }
         #expect(art.count > 40)
-        // The heart: red pixels in the "Made with ♥ by CappyAI" line, 153 to 169 pt down.
+        // The heart: red pixels in the "Made with ♥ by Cappy" line, 153 to 169 pt down.
         let red = (left + 60..<left + 240).filter { x in
             (top + 153...top + 169).contains { y in let c = first.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
         }
@@ -1184,7 +1184,7 @@ import Testing
         }
         #expect(differ(wave, stand) > 40)
         #expect(differ(sleep, stand) > 40)
-        // Change 218: the band is in the middle of "Made with ♥ by CappyAI" (153 to 169 pt down)
+        // Change 218: the band is in the middle of "Made with ♥ by Cappy" (153 to 169 pt down)
         // 0.9 s into the wave, and of the tagline (172 to 188 pt down) 0.15 s later.
         func light(_ c: (r: Int, g: Int, b: Int)) -> Int { c.r + c.g + c.b }
         func brighter(_ a: Snapshot, _ ys: ClosedRange<Int>) -> Int {
