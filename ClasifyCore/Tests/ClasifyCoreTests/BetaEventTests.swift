@@ -116,4 +116,58 @@ import Testing
         #expect(store.values["analytics.firstLaunch"] == "12.5" && store.values["analytics.firstSong"] == "true")
         #expect(Settings(from: store).firstLaunchAt == 12.5 && Settings(from: store).firstSongSent)
     }
+
+    // A2a
+
+    @Test func aSetUpMacThatMustActivateSendsTheStepWithNoSeconds() {
+        var s = afterSetup()
+        s.activateOn = true
+        #expect(events(&s, .launch, now: 100) == [.setupStep(.activate, seconds: nil, service: .spotify)])
+        #expect(BetaEvent.setupStep(.activate, seconds: nil, service: .spotify).properties == ["step": .text("activate"), "service": .text("spotify")])
+    }
+
+    @Test func controlLostOnceThenControlBackWithTheSeconds() {
+        var s = mainMenu()
+        #expect(events(&s, .controlBack, now: 100).isEmpty)  // nothing was lost
+        #expect(events(&s, .controlLost(.otherDevice), now: 100) == [.controlLost(.otherDevice, service: .spotify)])
+        #expect(events(&s, .controlLost(.timeout), now: 101).isEmpty)  // one loss until control comes back
+        #expect(events(&s, .controlBack, now: 112) == [.controlBack(seconds: 12, service: .spotify)])
+        #expect(events(&s, .controlBack, now: 113).isEmpty && s.controlLostAt == nil)
+        #expect(BetaEvent.controlLost(.stoppedInSpotify, service: .appleMusic).properties
+            == ["reason": .text("stopped_in_spotify"), "service": .text("apple_music")])
+    }
+
+    @Test func aBetaNoticeSaysWhenItShowsAndWhenItsButtonIsPressed() {
+        let beta = BetaBuild(signed: 1000, number: 7)
+        var s = mainMenu()
+        #expect(events(&s, .betaBuild(beta), now: beta.warnsAt + 1).contains(.betaRenewal(.warning, pressed: false, daysLeft: 3)))
+        #expect(events(&s, .select, now: beta.warnsAt + 1) == [.betaRenewal(.warning, pressed: true, daysLeft: 3)])
+        var ended = mainMenu()
+        #expect(events(&ended, .betaBuild(beta), now: beta.endsAt + 1).contains(.betaRenewal(.end, pressed: false, daysLeft: 0)))
+        #expect(BetaEvent.betaRenewal(.update, pressed: true, daysLeft: 2).properties
+            == ["notice": .text("update"), "pressed": .flag(true), "days_left": .number(2)])
+    }
+
+    @Test func aNewBuildSendsAppUpdatedOnceAtItsFirstStart() {
+        var s = mainMenu()
+        #expect(events(&s, .betaBuild(BetaBuild(signed: 0, number: 350)), now: 10).isEmpty && s.lastBuild == 350)  // the first build: no update
+        var next = mainMenu()
+        next.lastBuild = 350
+        let fresh = BetaBuild(signed: 1000, number: 352)
+        #expect(events(&next, .betaBuild(fresh), now: 1000 + 2.5 * BetaBuild.day) == [.appUpdated(from: 350, to: 352, days: 2)])
+        #expect(next.lastBuild == 352 && next.settings.lastBuild == 352)
+        var again = next
+        again.beta = nil
+        #expect(events(&again, .betaBuild(fresh), now: 1000 + 3 * BetaBuild.day).isEmpty)  // the same build
+        var adHoc = mainMenu()
+        adHoc.lastBuild = 350
+        #expect(events(&adHoc, .betaBuild(nil), now: 10).isEmpty && adHoc.lastBuild == 350)
+        #expect(BetaEvent.appUpdated(from: 350, to: 352, days: 2).properties
+            == ["old_build": .number(350), "new_build": .number(352), "days": .number(2)])
+        let store = FakeSettings()
+        var saved = Settings()
+        saved.lastBuild = 352
+        saved.save(to: store)
+        #expect(store.values["analytics.lastBuild"] == "352" && Settings(from: store).lastBuild == 352)
+    }
 }
