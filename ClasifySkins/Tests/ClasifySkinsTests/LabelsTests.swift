@@ -556,8 +556,6 @@ func sampleState() -> AppState {
     @Test func theStatusRowAndActivationRow() {
         var s = AppState()
         #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Not activated", grayValue: true))
-        s.activateOn = true
-        #expect(Labels.statusRow(in: s).value == "Not activated")
         s.activated = true
         #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Activated"))  // no info: no chevron
         s.activation = .active(ActiveInfo(email: "s***@example.com", since: 1_795_014_000, macs: 1, limit: 2))

@@ -451,12 +451,10 @@ public struct AppState: Equatable, Sendable {
     public var betaWarnedNow = false
     /// The notice showed on this launch: a newer answer shows nothing more. Not saved.
     public var betaNoticedNow = false
-    /// CLA-128: setup has the Activate step. Off by default, until the server is live; saved
-    /// with the settings (UserDefaults key `activate.on`), so a test Mac can turn it on.
-    public var activateOn = false
     /// CLA-140: this Mac activated, as the app remembers it (UserDefaults key `activate.done`).
-    /// Set by the answer `.active`, cleared by `.locked`, `.waiting` and `.off`. With the gate on
-    /// and this false, the launch shows Activate before anything else. Log Out keeps it.
+    /// Set by the answer `.active`, cleared by `.locked`, `.waiting` and `.off`. While this is
+    /// false, the launch shows Activate before anything else (CLA-156: the gate is always on).
+    /// Log Out keeps it.
     public var activated = false
     /// CLA-97: the first launch with setup, in `Dependencies.now` time, and the first song
     /// event went out once. Saved with the settings. A Mac set up before CLA-97 has no time.
@@ -728,7 +726,7 @@ public struct AppState: Equatable, Sendable {
 
     /// CLA-141, card BF.2: About's Status row. In memory only: the app saves no email.
     public var aboutStatus: AboutStatus {
-        guard activateOn && activated else { return .notActivated }
+        guard activated else { return .notActivated }
         if case .active(let info) = activation { return .activated(info) }
         return .activated(nil)
     }
@@ -850,8 +848,8 @@ public struct AppState: Equatable, Sendable {
     /// Cover Flow's song panel shows the bar inside its bottom edge (change 112).
     public var showsPanelBar: Bool { nowPlayingBar && current != nil }
 
-    /// CLA-140: the gate is on and this Mac is not activated.
-    var activateGated: Bool { activateOn && !activated }
+    /// CLA-140: this Mac is not activated. CLA-156: the gate is always on, in every build.
+    var activateGated: Bool { !activated }
 
     /// The warning (change 233) may open now: on the main screens, signed in, after setup. It
     /// waits while a list loads, because a load ends only on its own frame.

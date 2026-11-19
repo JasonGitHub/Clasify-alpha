@@ -38,7 +38,16 @@ extension Effect {
 func afterSetup() -> AppState {
     var s = AppState()
     s.setupDone = true
+    s.activated = true  // CLA-156: the gate is always on; this Mac activated before
     s.hintsDone = Set(Hint.allCases)
+    return s
+}
+
+/// CLA-156: a new state on a Mac that activated before (the gate is always on), for tests of
+/// the first setup that are not about Activate.
+func activatedMac() -> AppState {
+    var s = AppState()
+    s.activated = true
     return s
 }
 

@@ -10,7 +10,6 @@ import Testing
     /// After setup, at launch, with the gate on.
     func gated(remembered: Bool) -> AppState {
         var s = afterSetup()
-        s.activateOn = true
         s.activated = remembered
         send(&s, .spotifyAppFound(true))
         return s
@@ -19,7 +18,6 @@ import Testing
     /// Playing on Now Playing, on a remembered Mac with the gate on.
     func rememberedPlaying() -> AppState {
         var s = playing()
-        s.activateOn = true
         s.activated = true
         return s
     }
@@ -58,15 +56,6 @@ import Testing
     @Test func aRememberedLaunchOpensMainAsToday() {
         var s = gated(remembered: true)
         #expect(send(&s, .launch) == [.restoreSession(token: 1)])
-        #expect(s.stack == [Frame(screen: .main)])
-    }
-
-    @Test func theGateOffChangesNothing() {
-        var s = gated(remembered: false)
-        s.activateOn = false
-        #expect(send(&s, .launch) == [.restoreSession(token: 1)])
-        #expect(s.stack == [Frame(screen: .main)])
-        send(&s, .activation(.off, request: nil))
         #expect(s.stack == [Frame(screen: .main)])
     }
 

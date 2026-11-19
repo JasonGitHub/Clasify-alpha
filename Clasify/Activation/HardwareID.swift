@@ -3,8 +3,8 @@ import CryptoKit
 import Foundation
 import IOKit
 
-/// CLA-145: the activation device ID from this Mac's hardware UUID (IOKit, Apple only), used
-/// when `activate.hardwareID` is on. It is computed at each request and stored nowhere. The raw
+/// CLA-145: the activation device ID from this Mac's hardware UUID (IOKit, Apple only). CLA-156:
+/// it is the only device ID, in every build. It is computed at each request and stored nowhere. The raw
 /// UUID never leaves this file.
 enum HardwareID {
     static func deviceID() -> String? {

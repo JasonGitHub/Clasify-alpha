@@ -21,7 +21,7 @@ import Testing
     }
 
     @Test func setupSendsEachStepOnceWithTheSecondsSinceTheFirstLaunch() {
-        var s = AppState()
+        var s = activatedMac()
         #expect(events(&s, .spotifyAppFound(true), .launch, now: 100) == [.setupStep(.hello, seconds: 0, service: .spotify)])
         #expect(s.firstLaunchAt == 100 && s.settings.firstLaunchAt == 100)
         #expect(events(&s, .restored(token: 1, ok: false), .select, now: 110) == [.setupStep(.color, seconds: 10, service: .spotify)])
@@ -80,7 +80,6 @@ import Testing
         let answers: [(Activation, SetupError)] = [(.mailBusy, .mailBusy), (.full, .betaFull), (.off, .accountOff), (.offline, .noConnection)]
         for (answer, error) in answers {
             var s = AppState()
-            s.activateOn = true
             _ = events(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select, now: 100)
             _ = events(&s, .select, .select, .select, .authDone(token: 2, ok: true), now: 100)
             #expect(events(&s, .tick, now: 101.5) == [.setupStep(.activate, seconds: 2, service: .spotify)])
@@ -121,7 +120,7 @@ import Testing
 
     @Test func aSetUpMacThatMustActivateSendsTheStepWithNoSeconds() {
         var s = afterSetup()
-        s.activateOn = true
+        s.activated = false  // CLA-156: the gate is always on
         #expect(events(&s, .launch, now: 100) == [.setupStep(.activate, seconds: nil, service: .spotify)])
         #expect(BetaEvent.setupStep(.activate, seconds: nil, service: .spotify).properties == ["step": .text("activate"), "service": .text("spotify")])
     }
