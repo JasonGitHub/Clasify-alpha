@@ -301,7 +301,14 @@ struct K3DMetalView: NSViewRepresentable {
         view.screen = screen
         view.oldScreen = oldScreen
         view.deviceCenter = center
-        view.needsDisplay = true
+        // CLA-132 (build 323: a pale box round the body in a fast Cmd drag): the frame is drawn
+        // now, in this SwiftUI update, so it shows in the same transaction as `K3DShadow`'s cut
+        // for this pose. Marked for display only, it was drawn in the next display pass: one
+        // frame after the cut (frames: the cut of frame n was the body of frame n + 1). The
+        // trail hid that in timed turns; a Cmd drag's held poses have no trail. Once per changed
+        // input: the guard above returns when nothing drawn changed. When nothing could be drawn
+        // yet (no size), the next display pass draws it.
+        if !view.drawNow() { view.needsDisplay = true }
     }
 }
 
@@ -373,7 +380,24 @@ final class K3DLayerView: MTKView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let renderer = K3DRenderer.shared else { return }
-        if renderer.draw(in: self) { drewOnce = true }
+        if renderer.draw(in: self) { (drewOnce, drewLast) = (true, true) }
+        preparePrintsIfNeeded(renderer)
+    }
+
+    /// The last `draw(_:)` drew a frame.
+    private var drewLast = false
+
+    /// Draws and presents one frame now, in the current transaction, through MTKView's own
+    /// `draw()`: it gives the frame a new drawable and lets go of it after the draw, as in a
+    /// display pass. Returns false when it drew nothing. It changes no SwiftUI state: the first
+    /// frame's call and the prints' redraw come later, from their own tasks.
+    func drawNow() -> Bool {
+        drewLast = false
+        draw()
+        return drewLast
+    }
+
+    private func preparePrintsIfNeeded(_ renderer: K3DRenderer) {
         // CLA-105: apart before the prints are bound, the parts show plain. Draw again once
         // they are, as the device may rest and SwiftUI then asks for no new frame.
         if pose.ex > 0, !renderer.printsReady, !waitsForPrints {
