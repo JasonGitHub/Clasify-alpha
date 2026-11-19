@@ -330,6 +330,7 @@ final class AppModel {
     @ObservationIgnored private var battery: BatteryWatcher?
     /// CLA-97: the beta events to PostHog.
     @ObservationIgnored private var sender: BetaSender?
+    @ObservationIgnored private var diagnostics: BetaDiagnostics?
     /// Card AN.1 (CLA-43): the menu bar icon that shows and hides myPod.
     @ObservationIgnored private var menuBarIcon: MenuBarIcon?
 
@@ -374,6 +375,7 @@ final class AppModel {
         appleMusic.send = { [weak store] action in store?.send(action) }
         self.store = store
         self.sender = sender
+        diagnostics = BetaDiagnostics { [weak store] in store?.send($0) }  // CLA-97 (A4): crash and hang reports
         let haptics = Haptics(store: store)
         store.onWheelStep = { [weak haptics] in haptics?.step() }
         // Card BB: "Get Spotify App" opens Spotify's download page in the browser.

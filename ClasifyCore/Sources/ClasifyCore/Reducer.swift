@@ -117,6 +117,9 @@ public enum Action: Equatable, Sendable {
     /// CLA-97: the sender takes events: a PostHog key is in the build and `analytics.on` is on.
     /// The app sends it at start and when the switch changes.
     case analyticsOn(Bool)
+    /// CLA-97 (A4): MetricKit reported crashes or hangs of earlier runs. Only the first
+    /// `AppProblem.maxPerLaunch` become events. With `analytics.on` off, the sender drops them.
+    case appProblems([AppProblem])
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -1379,6 +1382,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .used, .willQuit, .view3D: break  // only for `day_active` (dayEvents)
         case .analyticsOn(let on): s.analyticsOn = on
+        case .appProblems(let problems):
+            for problem in problems.prefix(AppProblem.maxPerLaunch) { fx.append(.track(.appProblem(problem, service: s.service))) }
         case .appStarted(let ms): s.startMs = ms
 
         case .controlBack:
