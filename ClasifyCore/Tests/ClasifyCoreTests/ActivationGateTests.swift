@@ -84,6 +84,19 @@ import Testing
         }
     }
 
+    /// A lock while the launch restore still runs: its late results are stale, and Activate
+    /// stays (Codex on #325). After 323 a new restore starts.
+    @Test func aLockDropsTheRestoreOnItsWay() {
+        var s = gated(remembered: true)
+        send(&s, .launch, .activation(.off, request: nil))
+        #expect(!s.restoring && s.stack == [Frame(screen: .activate)])
+        send(&s, .accessDenied(token: 1), .notPremium(token: 1), .restored(token: 1, ok: true), .activated)
+        #expect(s.stack == [Frame(screen: .activate)] && !s.signedIn && !s.restoring)
+        send(&s, .activation(.active, request: nil), now: 100)
+        #expect(send(&s, .tick, now: 101.5) == [.restoreSession(token: 3)])
+        #expect(s.stack == [Frame(screen: .main)])
+    }
+
     /// No connection, a full beta, a busy mail limit, or active: the remembered Mac stays open.
     @Test func theOtherLaunchAnswersKeepARememberedMacOpen() {
         for answer: Activation in [.offline, .full, .mailBusy, .active] {

@@ -458,6 +458,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// moved out by a newer Mac, or a new mail flow). Playback stops and only Activate shows.
     func lockToActivate(_ answer: Activation) {
         stop()
+        // A restore still on its way is stale: its result must not replace Activate (Codex on
+        // #325). After 323, setupNext() starts a new one.
+        if s.restoring { s.restoring = false; s.authAttempt += 1 }
         if s.hint != nil { endHint(done: false) }
         s.beatUntil = 0; s.toast = ""; s.toastUntil = 0
         s.stack = [Frame(screen: .activate)]
@@ -1176,7 +1179,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 let login = (s.top.screen == .auth || s.top.screen == .pickMusic) && s.top.token == token
                 guard login || (s.restoring && s.authAttempt == token) else { return }
             } else {
-                guard s.signedIn else { return }
+                guard s.signedIn, !(s.activateGated && s.stack.first?.screen == .activate) else { return }  // CLA-140
             }
             s.restoring = false
             s.authAttempt += 1  // a late result of this login is stale
