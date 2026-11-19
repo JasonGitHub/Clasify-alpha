@@ -24,6 +24,8 @@ import Foundation
     private var task: Task<Void, Never>?
     /// The next try, and the failed tries in a row: 30 s, 1 min, 2 min, … at most 10 min (CTO).
     private var nextTry = Date.distantPast, failures = 0
+    /// PostHog refused the batch (400) this many times in a row (CTO 00:25 JST 11-20).
+    private var refused = 0
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral  // no cache, no cookies, nothing on disk
@@ -73,12 +75,16 @@ import Foundation
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = BetaQueue.body(batch, key: key, person: person)
         let status = (try? await Self.session.data(for: request)).flatMap { ($0.1 as? HTTPURLResponse)?.statusCode }
-        if status == 200 {
-            failures = 0
+        if status == 200 || (status == 400 && refused >= 1) {
+            // A batch that PostHog refuses twice goes: it can never be sent (CTO 00:25 JST).
+            (failures, refused) = (0, 0)
             queue.remove(Set(batch.map(\.id)))
             save()
             nextTry = queue.events.isEmpty ? Date() + 30 : Date()
-        } else {
+        } else if status == 400 {
+            refused += 1
+            nextTry = Date() + 30
+        } else {  // no network, a timeout or a 5xx: keep and wait longer
             failures += 1
             nextTry = Date() + min(600, 30 * pow(2, Double(failures - 1)))
         }
