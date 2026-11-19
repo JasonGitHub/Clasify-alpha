@@ -15,7 +15,7 @@ struct ScrollCatcher: NSViewRepresentable {
     /// the natural scrolling setting (CLA-48): with it on, fingers down give a positive delta.
     /// Fingers down are +1 on every screen: the next row in a list, and more on a Now Playing bar
     /// (CLA-131, Jason: "Fingers down = more").
-    static func fingersDown(_ deltaY: CGFloat, natural: Bool) -> CGFloat { natural ? deltaY : -deltaY }
+    nonisolated static func fingersDown(_ deltaY: CGFloat, natural: Bool) -> CGFloat { natural ? deltaY : -deltaY }
 
     func makeNSView(context: Context) -> CatcherView {
         let view = CatcherView()
