@@ -227,10 +227,10 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
-    var used = b.used
-    if s.top.screen == .coverFlow { used = .coverFlow }
-    if b.screen == .settings && s.settings.choices != b.choices { used = .settings }
-    if let used, s.today?.features.contains(used) != true { count { $0.features.insert(used) } }
+    var used: Set<Feature> = b.used.map { [$0] } ?? []
+    if s.top.screen == .coverFlow { used.insert(.coverFlow) }
+    if b.screen == .settings && s.settings.choices != b.choices { used.insert(.settings) }
+    if !used.isSubset(of: s.today?.features ?? []) { count { $0.features.formUnion(used) } }
     return fx
 }
 
