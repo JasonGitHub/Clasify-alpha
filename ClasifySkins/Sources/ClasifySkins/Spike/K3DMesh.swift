@@ -511,8 +511,9 @@ public struct K3DFlip {
 
     /// CLA-105: takes the device apart if it is closed, or puts it together if it is apart.
     /// Nothing happens while the apart script runs (the trial's `busy`). Opening starts from the
-    /// angle now, as 0° to 360°; closing turns from the angle now, as -180° to 180°, so the turn
-    /// to the front is the short way.
+    /// angle now, as 0° to 360°, and turns the short way to 305° (CLA-157: from the front it goes
+    /// to -55°, not +305°); closing turns from the angle now, as -180° to 180°, so the turn to
+    /// the front is the short way too.
     public func apart(at now: Date, staysTurned: Bool = false) -> K3DFlip {
         if script == .apart && !isResting(at: now) { return self }
         var flip = self
@@ -523,7 +524,9 @@ public struct K3DFlip {
         flip.script = .apart
         (flip.start, flip.tilt0, flip.hurriedAt) = (now, tilt, nil)
         let short = turn > 180 ? turn - 360 : turn
-        (flip.from, flip.to) = opens ? (turn, Self.apartAngle) : (short, staysTurned ? short : 0)
+        var way = Self.apartAngle - turn  // -55° to 305°
+        if way > 180 { way -= 360 }  // CLA-157: at most 180°
+        (flip.from, flip.to) = opens ? (turn, turn + way) : (short, staysTurned ? short : 0)
         flip.tiltTo = opens ? Self.apartTilt : staysTurned ? tilt : 0
         (flip.ex0, flip.exTo) = opens ? (0, 1) : (1, 0)
         flip.oldScreen = nil

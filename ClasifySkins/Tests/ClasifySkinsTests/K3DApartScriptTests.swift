@@ -40,6 +40,27 @@ struct K3DApartScriptTests {
         #expect(near(flip.angle(at: at(0)), 180) && near(flip.angle(at: at(0.7)), 305))
     }
 
+    /// CLA-157: opening turns the short way to the 305° pose, at most 180°, in the same 0.7 s
+    /// with the same 20° tilt. From the front it goes to -55°, not +305°.
+    @Test func openingTurnsTheShortWay() {
+        for start in [0.0, 180, 300, 350] {
+            let flip = K3DFlip().held(angle: start, tilt: 0).apart(at: t0)
+            let end = flip.angle(at: at(0.7))
+            #expect(near(flip.angle(at: at(0)), start) && abs(end - start) <= 180, "from \(start)°")
+            #expect(near((end.truncatingRemainder(dividingBy: 360) + 360).truncatingRemainder(dividingBy: 360), 305), "from \(start)°")
+            #expect(near(flip.tilt(at: at(0.7)), 20) && near(flip.angle(at: at(2.3)), end), "from \(start)°")
+        }
+        #expect(near(K3DFlip().apart(at: t0).angle(at: at(0.7)), -55))
+        #expect(near(K3DFlip().apart(at: t0).angle(at: at(0.35)), -27.5))
+    }
+
+    /// CLA-157: from the front, closing turns back from -55° to 0° (the short way).
+    @Test func closingFromAFrontOpeningTurnsBack() {
+        let close = K3DFlip().apart(at: t0).apart(at: at(3))
+        #expect(near(close.angle(at: at(4.6)), -55) && near(close.angle(at: at(5.2)), 0))
+        #expect(close.restsOnFront(at: after(5.2)))
+    }
+
     /// While it opens and apart, only the 3D parts show: no 2D device, not at rest on the front.
     @Test func apartTheTwoDDeviceDoesNotShow() {
         let flip = onBack.apart(at: t0)
