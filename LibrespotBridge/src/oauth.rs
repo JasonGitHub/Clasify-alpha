@@ -35,6 +35,34 @@ pub const OAUTH_SCOPES: &[&str] = &[
 /// links and nothing to load.
 pub(crate) const OAUTH_PAGE: &str = include_str!("oauth_page.html");
 
+/// CLA-143, card BY (335, 336): the same page, which then takes the tab on to the activate page.
+/// It has one link and one small inline script, both to `NEXT_URL` only. The script waits
+/// 1.2 s and moves on only when the redirect carries `?code=`: a denied or cancelled login
+/// stays. The text is fixed. The only input that reaches the page is the URL, and only one
+/// that passes `next_url` (a fixed address and a one-time page code). No device ID, token or
+/// email is ever on the page.
+const OAUTH_PAGE_NEXT: &str = include_str!("oauth_page_next.html");
+const NEXT_PREFIX: &str = "https://getmypod.app/activate/?d=";
+
+/// The activate page address, if it is exactly `NEXT_PREFIX` and a page code of 20 to 64
+/// URL-safe Base64 characters. Anything else gives None, and the login shows today's page.
+pub(crate) fn next_url(url: &str) -> Option<&str> {
+    let code = url.strip_prefix(NEXT_PREFIX)?;
+    let ok = (20..=64).contains(&code.len())
+        && code
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    ok.then_some(url)
+}
+
+/// The page after the login: with a valid activate address, the 335 hand-over page; else 182.
+pub(crate) fn login_page(next: Option<&str>) -> String {
+    match next.and_then(next_url) {
+        Some(url) => OAUTH_PAGE_NEXT.replace("NEXT_URL", url),
+        None => OAUTH_PAGE.to_owned(),
+    }
+}
+
 /// Matches `LsbToken` in the header. The strings are valid only during the callback.
 #[repr(C)]
 pub struct LsbToken {
@@ -55,12 +83,12 @@ struct Target {
 // from any thread. The bridge never reads through `context` itself.
 unsafe impl Send for Target {}
 
-fn client() -> Result<OAuthClient, String> {
+fn client(page: &str) -> Result<OAuthClient, String> {
     // librespot's CLI uses the session's default client ID for OAuth.
     let client_id = SessionConfig::default().client_id;
     OAuthClientBuilder::new(&client_id, OAUTH_REDIRECT_URI, OAUTH_SCOPES.to_vec())
         .open_in_browser()
-        .with_custom_message(OAUTH_PAGE)
+        .with_custom_message(page)
         .build()
         .map_err(|error| error.to_string())
 }
@@ -219,12 +247,12 @@ pub(crate) struct Login {
     pub state: Arc<LoginState>,
 }
 
-fn start_login(target: Target) -> Login {
+fn start_login(target: Target, page: String) -> Login {
     let state = LoginState::new();
     let thread_state = state.clone();
     let handle = run(target, TokenResult::new, move || {
         // `finish` must run on every path, so that the login stops counting as listening.
-        let result = client().and_then(|c| c.get_access_token().map_err(|e| e.to_string()));
+        let result = client(&page).and_then(|c| c.get_access_token().map_err(|e| e.to_string()));
         thread_state.finish(result)
     });
     Login { handle, state }
@@ -275,18 +303,23 @@ fn listen_address() -> SocketAddr {
 
 /// Opens the Spotify login page in the browser and waits on the loopback redirect,
 /// on a new thread. The result comes once through `on_result`. A login that still
-/// runs is stopped first, as with `lsb_oauth_cancel`.
+/// runs is stopped first, as with `lsb_oauth_cancel`. `next_url` is NULL, or the activate page
+/// (CLA-143): the page after the login then takes the tab on to it. An address that does not
+/// pass `next_url` is ignored.
 ///
 /// # Safety
-/// `context` and `on_result` must be safe to call from any thread.
+/// `context` and `on_result` must be safe to call from any thread. `next_url` is NULL or a
+/// NUL-terminated string.
 #[no_mangle]
-pub extern "C" fn lsb_oauth_login(
+pub unsafe extern "C" fn lsb_oauth_login(
     on_result: Option<LsbTokenCallback>,
     context: *mut c_void,
+    next_url: *const c_char,
 ) -> i32 {
     let Some(callback) = on_result else {
         return LSB_ERR_INVALID_ARGUMENT;
     };
+    let page = login_page(read_str(next_url));
     loop {
         if let Some(older) = take_login() {
             stop_login(older, listen_address());
@@ -294,7 +327,7 @@ pub extern "C" fn lsb_oauth_login(
         let mut login = lock_login();
         // Another call can start a login while the older one stops. Then stop that too.
         if login.is_none() {
-            *login = Some(start_login(Target { callback, context }));
+            *login = Some(start_login(Target { callback, context }, page.clone()));
             return LSB_OK;
         }
     }
@@ -340,7 +373,11 @@ pub unsafe extern "C" fn lsb_oauth_refresh(
     run(
         Target { callback, context },
         TokenResult::refreshed,
-        move || client()?.refresh_token(&token).map_err(|e| e.to_string()),
+        move || {
+            client(OAUTH_PAGE)?
+                .refresh_token(&token)
+                .map_err(|e| e.to_string())
+        },
     );
     LSB_OK
 }
