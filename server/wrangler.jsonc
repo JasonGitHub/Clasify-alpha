@@ -11,8 +11,9 @@
   ],
   // The beta cap (accounts), the Mac limit per account, and link mails a day (Resend free: 100).
   // MAIL_HOUR and MAIL_DAY_EACH: link mails per address and per device, an hour and a day.
+  // SWAPS and SWAP_DAYS (CLA-133): a 3rd Mac replaces the least used one, at most SWAPS times in SWAP_DAYS days.
   // PAGE_ORIGIN: where the page is (path /activate/). It sets the mail link, CORS and the bot check.
   // Secrets that Jason adds with `wrangler secret put`: RESEND_KEY, ALERT_TO, TURNSTILE_SECRET.
-  "vars": { "CAP": "100", "MACS": "2", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "PAGE_ORIGIN": "https://getmypod.app" },
+  "vars": { "CAP": "100", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "PAGE_ORIGIN": "https://getmypod.app" },
   "observability": { "enabled": false }
 }

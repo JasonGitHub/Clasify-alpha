@@ -14,6 +14,7 @@ export interface Deps {
 const codeLife = 15 * 60_000;
 const linkLife = 60 * 60_000;
 const hour = 60 * 60_000;
+const day = 24 * hour;
 
 type Account = { id: string; email: string; state: string; off: number };
 type Mac = { device_hash: string; account_id: string | null; state: string; mails: number; mail_state: string };
@@ -101,13 +102,17 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       if (!device) return reply({ error: "device" }, 401);
       const code = token();
       await db.prepare(
-        `INSERT INTO macs (device_hash, state, code_hash, code_expires_at, created_at) VALUES (?, 'waiting', ?, ?, ?)
-         ON CONFLICT (device_hash) DO UPDATE SET code_hash = excluded.code_hash, code_expires_at = excluded.code_expires_at`,
-      ).bind(device, await sha256(code), now + codeLife, now).run();
+        `INSERT INTO macs (device_hash, state, code_hash, code_expires_at, created_at, last_seen_at) VALUES (?, 'waiting', ?, ?, ?, ?)
+         ON CONFLICT (device_hash) DO UPDATE SET code_hash = excluded.code_hash, code_expires_at = excluded.code_expires_at,
+         last_seen_at = excluded.last_seen_at`,
+      ).bind(device, await sha256(code), now + codeLife, now, now).run();
       return reply({ code });
     }
-    case "GET /v1/status":  // the app
-      return device ? reply(await status(device)) : reply({ error: "device" }, 401);
+    case "GET /v1/status":  // the app, at each start
+      if (!device) return reply({ error: "device" }, 401);
+      // CLA-133: when the Mac was last used, so a 3rd Mac replaces the least used one.
+      await db.prepare("UPDATE macs SET last_seen_at = ? WHERE device_hash = ?").bind(now, device).run();
+      return reply(await status(device));
     case "POST /v1/start": {  // the page with {code, email}, or the app's "Send again" with no email
       if (device) {
         const a = (await mac(device))?.account_id;
@@ -147,13 +152,35 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       // One transaction (D1 batch). The Mac becomes active only while it is still on this account,
       // is already active or fits the Mac limit, and the account is active or gets a cap slot.
       // The account and the link follow the Mac, so a refused press never keeps a slot.
+      // CLA-133: a Mac over the limit first turns off the account's least used active Mac, at most
+      // SWAPS times in SWAP_DAYS days. The swap row is written only when the Mac is still on the
+      // account, not active, and the account already has MACS active Macs (so it is active and
+      // the cap does not change). Then the Mac fits, and the activation below passes too.
+      const swap = token();
+      const activeMacs = "(SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active')";
       const isActive = "EXISTS (SELECT 1 FROM macs WHERE device_hash = ? AND account_id = ? AND state = 'active')";
-      const [step] = await db.batch([
+      const oldest = `SELECT device_hash FROM macs WHERE account_id = ? AND state = 'active' AND device_hash != ?
+             ORDER BY COALESCE(last_seen_at, created_at), device_hash LIMIT 1`;
+      const [, , , step] = await db.batch([
         db.prepare(
-          `UPDATE macs SET state = 'active' WHERE device_hash = ? AND account_id = ?
-           AND (state = 'active' OR (SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active') < ?)
+          `INSERT INTO swaps (id, account_id, at) SELECT ?, ?, ?
+           WHERE EXISTS (SELECT 1 FROM macs WHERE device_hash = ? AND account_id = ? AND state != 'active')
+           AND ${activeMacs} >= ? AND (SELECT COUNT(*) FROM swaps WHERE account_id = ? AND at > ?) < ?
+           AND (SELECT state FROM accounts WHERE id = ?) = 'active'`,
+        ).bind(swap, a.id, now, m.device_hash, a.id, a.id, Number(env.MACS), a.id, now - Number(env.SWAP_DAYS) * day, Number(env.SWAPS), a.id),
+        // The turned-off Mac's unused links are used up, so they stay dead if it joins again.
+        db.prepare(`UPDATE mails SET used_at = ? WHERE used_at IS NULL AND EXISTS (SELECT 1 FROM swaps WHERE id = ?) AND device_hash = (${oldest})`)
+          .bind(now, swap, a.id, m.device_hash),
+        // The turned-off Mac has no account, so /v1/status answers "locked".
+        db.prepare(
+          `UPDATE macs SET state = 'waiting', account_id = NULL, mail_state = 'none'
+           WHERE EXISTS (SELECT 1 FROM swaps WHERE id = ?) AND device_hash = (${oldest})`,
+        ).bind(swap, a.id, m.device_hash),
+        db.prepare(
+          `UPDATE macs SET state = 'active', last_seen_at = ? WHERE device_hash = ? AND account_id = ?
+           AND (state = 'active' OR ${activeMacs} < ?)
            AND ((SELECT state FROM accounts WHERE id = ?) = 'active' OR (SELECT COUNT(*) FROM accounts WHERE state = 'active') < ?)`,
-        ).bind(m.device_hash, a.id, a.id, Number(env.MACS), a.id, Number(env.CAP)),
+        ).bind(now, m.device_hash, a.id, a.id, Number(env.MACS), a.id, Number(env.CAP)),
         db.prepare(`UPDATE accounts SET state = 'active', confirmed_at = COALESCE(confirmed_at, ?) WHERE id = ? AND ${isActive}`)
           .bind(now, a.id, m.device_hash, a.id),
         db.prepare(`UPDATE mails SET used_at = ? WHERE token_hash = ? AND ${isActive}`).bind(now, hash, m.device_hash, a.id),

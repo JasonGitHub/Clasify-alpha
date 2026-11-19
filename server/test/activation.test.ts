@@ -46,7 +46,7 @@ async function activate(device: string, email: string) {
 beforeEach(async () => {
   clock = 1_000_000;
   mail = new FakeMailer();
-  await env.DB.batch(["mails", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
 describe("activation", () => {
@@ -111,19 +111,141 @@ describe("activation", () => {
     expect(await activate(mac(4), "sam@example.com")).toBe("ok");  // an active account still adds a Mac
   });
 
-  it("allows 2 Macs per account; a 3rd stays waiting", async () => {
+  const activeMacs = async () =>
+    (await env.DB.prepare("SELECT device_hash FROM macs WHERE state = 'active' ORDER BY device_hash").all<{ device_hash: string }>()).results.length;
+  const swaps = (n: number) => ({ ...env, SWAPS: String(n) });
+  /** Past the link mail limits (3 an hour, 5 a day per address), so each join sends a mail. */
+  const later = 7 * 60 * 60_000;
+
+  it("allows 2 Macs per account; a 3rd replaces the one not used for the longest time (CLA-133)", async () => {
     expect(await activate(mac(1), "sam@example.com")).toBe("ok");
+    clock += 1000;
     expect(await activate(mac(2), "SAM@example.com")).toBe("ok");
-    expect(await activate(mac(3), "sam@example.com")).toBe("macs");
-    expect(await status(mac(3))).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
+    clock += 1000;
+    await status(mac(1));  // Mac 1 starts later than Mac 2: Mac 2 is now the least used
+    clock += 1000;
+    expect(await activate(mac(3), "sam@example.com")).toBe("ok");
+    expect(await status(mac(2))).toEqual({ state: "locked" });
+    expect(await status(mac(1))).toMatchObject({ state: "active" });
+    expect(await status(mac(3))).toMatchObject({ state: "active" });
+    expect(await activeMacs()).toBe(2);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM swaps").first("n")).toBe(1);
   });
 
-  it("two Macs that confirm at once cannot pass the limit together", async () => {
+  it("a new Mac made long ago still replaces the oldest active Mac, never itself (CLA-133)", async () => {
+    await open(mac(3));  // the new Mac has the oldest created_at
+    clock += 1000;
+    await activate(mac(1), "sam@example.com");
+    clock += 1000;
+    await activate(mac(2), "sam@example.com");
+    clock += 1000;
+    expect(await activate(mac(3), "sam@example.com")).toBe("ok");
+    expect(await status(mac(1))).toEqual({ state: "locked" });
+    expect(await status(mac(2))).toMatchObject({ state: "active" });
+    expect(await status(mac(3))).toMatchObject({ state: "active" });
+  });
+
+  it("a turned-off Mac sees locked, its old link is dead, and it can join again (CLA-133)", async () => {
+    await activate(mac(1), "sam@example.com");
+    const first = mail.token;
+    clock += 1000;
+    await activate(mac(2), "sam@example.com");
+    clock += later;
+    expect(await activate(mac(3), "sam@example.com")).toBe("ok");
+    expect(await status(mac(1))).toEqual({ state: "locked" });
+    expect(await confirm(first)).toBe("expired");
+    expect(await (await call("POST", "/v1/peek", { body: { token: first } })).json).toEqual({ result: "expired" });
+    clock += later;
+    expect(await activate(mac(1), "sam@example.com")).toBe("ok");  // it replaces Mac 2 now
+    expect(await status(mac(2))).toEqual({ state: "locked" });
+    expect(await activeMacs()).toBe(2);
+  });
+
+  it("an unused link of a turned-off Mac stays dead when the Mac joins again (CLA-133)", async () => {
+    const hourLimit = env.MAIL_HOUR;
+    env.MAIL_HOUR = "10";
+    try {
+      await join(mac(1), "sam@example.com");
+      const unused = mail.token;
+      await call("POST", "/v1/start", { device: mac(1) });  // Send again
+      expect(await confirm(mail.token)).toBe("ok");  // only the second link is used
+      clock += 1000;
+      await activate(mac(2), "sam@example.com");
+      clock += 1000;
+      await activate(mac(3), "sam@example.com");
+      expect(await status(mac(1))).toEqual({ state: "locked" });
+      await join(mac(1), "sam@example.com");  // the Mac is on the account again, the old link has not run out
+      expect(await (await call("POST", "/v1/peek", { body: { token: unused } })).json).toEqual({ result: "expired" });
+      expect(await confirm(unused)).toBe("expired");
+      expect(await status(mac(2))).toMatchObject({ state: "active" });
+    } finally {
+      env.MAIL_HOUR = hourLimit;
+    }
+  });
+
+  it("allows SWAPS swaps in SWAP_DAYS days, then answers macs, and again after the days (CLA-133)", async () => {
+    await activate(mac(1), "sam@example.com");
+    clock += 1000;
+    await activate(mac(2), "sam@example.com");
+    const first = clock + later;
+    for (const n of [3, 4, 5]) {
+      clock += later;
+      expect(await activate(mac(n), "sam@example.com")).toBe("ok");
+    }
+    clock += later;
+    expect(await activate(mac(6), "sam@example.com")).toBe("macs");
+    expect(await status(mac(6))).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
+    expect(await activeMacs()).toBe(2);
+    clock = first + 30 * 24 * 60 * 60_000;  // the first swap is now 30 days old
+    await call("POST", "/v1/start", { device: mac(6) });  // Send again: the old link is past its hour
+    expect(await confirm(mail.token)).toBe("ok");
+    expect(await activeMacs()).toBe(2);
+  });
+
+  it("two Macs that confirm at once cannot pass the Mac limit or the swap limit together", async () => {
     await activate(mac(1), "sam@example.com");
     await join(mac(2), "sam@example.com");
     await join(mac(3), "sam@example.com");
     const [two, three] = mail.sent.slice(1).map((s) => new URL(s.link).searchParams.get("c")!);
-    expect((await Promise.all([confirm(two), confirm(three)])).sort()).toEqual(["macs", "ok"]);
+    // With no swap left, only one fits.
+    const answer = async (token: string) =>
+      (await (await handle(new Request("https://api.example/v1/confirm", { method: "POST", body: JSON.stringify({ token }) }), swaps(0), deps())).json() as { result: string }).result;
+    expect((await Promise.all([answer(two), answer(three)])).sort()).toEqual(["macs", "ok"]);
+    expect(await activeMacs()).toBe(2);
+  });
+
+  it("two 3rd Macs that confirm at once with 1 swap left: one replaces, the other gets macs (CLA-133)", async () => {
+    await activate(mac(1), "sam@example.com");
+    clock += 1000;
+    await activate(mac(2), "sam@example.com");
+    clock += later;
+    await join(mac(3), "sam@example.com");
+    await join(mac(4), "sam@example.com");
+    const [three, four] = mail.sent.slice(2).map((s) => new URL(s.link).searchParams.get("c")!);
+    const answer = async (token: string) =>
+      (await (await handle(new Request("https://api.example/v1/confirm", { method: "POST", body: JSON.stringify({ token }) }), swaps(1), deps())).json() as { result: string }).result;
+    expect((await Promise.all([answer(three), answer(four)])).sort()).toEqual(["macs", "ok"]);
+    expect(await activeMacs()).toBe(2);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM swaps").first("n")).toBe(1);
+  });
+
+  it("a swap in a full beta works and keeps the count of active accounts (CLA-133)", async () => {
+    await activate(mac(1), "sam@example.com");
+    await activate(mac(2), "sam@example.com");
+    await env.DB.batch(Array.from({ length: 99 }, (_, i) =>
+      env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'active', 0)").bind(`a${i}`, `p${i}@example.com`)));
+    clock += 1000;
+    expect(await activate(mac(3), "sam@example.com")).toBe("ok");
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM accounts WHERE state = 'active'").first("n")).toBe(100);
+    expect(await activeMacs()).toBe(2);
+  });
+
+  it("status and open note when the Mac was last used", async () => {
+    await open(mac(1));
+    expect(await env.DB.prepare("SELECT last_seen_at FROM macs").first("last_seen_at")).toBe(clock);
+    clock += 5000;
+    await status(mac(1));
+    expect(await env.DB.prepare("SELECT last_seen_at FROM macs").first("last_seen_at")).toBe(clock);
   });
 
   it("two Macs that join at once with a new email share one account", async () => {

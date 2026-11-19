@@ -3,6 +3,9 @@ declare namespace Cloudflare {
     DB: D1Database;
     CAP: string;
     MACS: string;
+    /** CLA-133: a 3rd Mac may replace the least used one SWAPS times in SWAP_DAYS days per account. */
+    SWAPS: string;
+    SWAP_DAYS: string;
     /** Link mails a day; Resend's free plan allows 100 for the whole account. */
     MAIL_DAY: string;
     /** Link mails per address and per device: an hour, and a day. */
