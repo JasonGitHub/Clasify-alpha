@@ -168,9 +168,10 @@ public struct K3DTurnGesture: Equatable {
     /// So a turn can start while another app is active, and its Cmd up never comes. A system
     /// shortcut can also take the Cmd up. Cmd seen up counts as the Cmd up. True: the turn
     /// ends now. With the fingers down or a glide running, it ends when they end, as for Cmd up.
+    /// Cmd seen down again before they end keeps the turn, as a Cmd down does.
     public mutating func sync(command: Bool) -> Bool {
-        guard turning, !command, !endPending else { return false }
-        return self.command(down: false)
+        guard turning, command == endPending else { return false }
+        return self.command(down: command)
     }
 
     /// The app or the window is no longer in front: a lost Cmd up must not leave input dead.

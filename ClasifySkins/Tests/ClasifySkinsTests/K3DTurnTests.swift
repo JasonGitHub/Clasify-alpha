@@ -171,6 +171,19 @@ struct K3DTurnGestureTests {
         #expect(a4 == .end)
     }
 
+    /// Build 317: Cmd seen up, then down again with the fingers down: the lift keeps the turn.
+    @Test func cmdSeenDownAgainKeepsTheTurnAtTheLift() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        let a1 = g.sync(command: false)
+        #expect(!a1)
+        let a2 = g.sync(command: true)
+        #expect(!a2)
+        let a3 = g.scroll(.lift, command: true, inside: true)
+        #expect(a3 == .turn)
+        #expect(g.turning)
+    }
+
     /// Build 317: a wheel or pinch turn whose Cmd up was lost ends at the next event without Cmd.
     @Test func aWheelOrPinchEventWithoutCmdEndsTheTurn() {
         var g = K3DTurnGesture()
