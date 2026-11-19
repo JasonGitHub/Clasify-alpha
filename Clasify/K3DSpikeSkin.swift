@@ -67,6 +67,8 @@ struct K3DSpikeSkin: View {
     @State private var landing: Task<Void, Never>?
     /// Build 308: applies the travel that waited at the turn's start, if no event comes after it.
     @State private var settling: Task<Void, Never>?
+    /// CLA-97: the 3D views that this skin last reported open, for `watchViews`.
+    @State private var viewsOpen: Set<View3D> = []
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -156,6 +158,31 @@ struct K3DSpikeSkin: View {
             colorChanged(from: old, to: new)
         }
         .task { await arrive() }
+        .task { await watchViews() }
+    }
+
+    /// CLA-97: twice a second, reports each 3D view that opened or closed, so the day counts its
+    /// seconds. A window that closes or is fully covered counts as all views closed.
+    private func watchViews() async {
+        while !Task.isCancelled {
+            let now = Date.now
+            var open: Set<View3D> = []
+            if window.window?.occlusionState.contains(.visible) == true {
+                if store.state.deviceTurned { open.insert(.turn) }
+                if flip.isApart(at: now) || flip.apartRuns(at: now) { open.insert(.apart) }
+                if showroom && !flip.restsOnFront(at: now) && !store.state.deviceTurned { open.insert(.aboutFlip) }
+            }
+            report(open)
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        report([])  // the window closed
+    }
+
+    private func report(_ open: Set<View3D>) {
+        for view in View3D.allCases where open.contains(view) != viewsOpen.contains(view) {
+            store.send(.view3D(view, open: open.contains(view)))
+        }
+        viewsOpen = open
     }
 
     /// The first launch ever has its arrival with Hello (change 288). A later launch has the
