@@ -88,7 +88,10 @@ typedef void (*LsbTokenCallback)(void *context, const LsbToken *result);
 // Opens the Spotify login page in the browser and waits for the redirect to
 // http://127.0.0.1:8898/login. The result comes once, on a bridge thread.
 // A login that still runs is stopped first, as with lsb_oauth_cancel.
-int32_t lsb_oauth_login(LsbTokenCallback on_result, void *context);
+// next_url is NULL, or the activate page https://getmypod.app/activate/?d=<page code>
+// (CLA-143): the page after the login then takes the tab on to it. Any other value is
+// ignored, and the page is the one without the hand-over.
+int32_t lsb_oauth_login(LsbTokenCallback on_result, void *context, const char *next_url);
 // Stops the running lsb_oauth_login. Its callback sends LSB_ERR_OAUTH before this
 // returns, also when the browser already sent the code, and port 8898 is free again.
 // Only a login whose token exchange had already finished still sends its token. Does nothing if no login runs.

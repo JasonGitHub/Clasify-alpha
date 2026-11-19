@@ -171,7 +171,7 @@ final class LibrespotClient: @unchecked Sendable {
             let address = UInt(bitPattern: Unmanaged.passRetained(ResultBox(continuation)).toOpaque())
             Task.detached {
                 let box = UnsafeMutableRawPointer(bitPattern: address)!
-                let status = lsb_oauth_login(tokenCallback, box)
+                let status = lsb_oauth_login(tokenCallback, box, nil)
                 if status != LSB_OK {
                     Unmanaged<ResultBox<OAuthTokens>>.fromOpaque(box).takeRetainedValue()
                         .resume(.failure(BridgeError(status: status, message: "login did not start")))

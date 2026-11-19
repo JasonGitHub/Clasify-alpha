@@ -982,7 +982,10 @@ mod library_tests {
             );
             lsb_free(bridge);
         }
-        assert_eq!(lsb_oauth_login(None, ctx), LSB_ERR_INVALID_ARGUMENT);
+        assert_eq!(
+            unsafe { lsb_oauth_login(None, ctx, std::ptr::null()) },
+            LSB_ERR_INVALID_ARGUMENT
+        );
         assert!(recorder.events.lock().unwrap().is_empty());
     }
 
@@ -1659,6 +1662,51 @@ fn the_login_page_loads_nothing() {
     for banned in [
         "<script", "<link", "<img", "<iframe", "src=", "href=", "url(", "@import",
     ] {
+        assert!(!page.contains(banned), "{banned}");
+    }
+}
+
+/// CLA-143, card BY: only the fixed activate address with a page code is taken. Anything else
+/// gives today's page, byte for byte.
+#[test]
+fn the_login_page_takes_only_the_activate_address() {
+    use crate::oauth::{login_page, next_url, OAUTH_PAGE};
+    let code = "Ab3_-9xYz0Ab3_-9xYz0Ab3_-9xYz0Ab3_-9xYz0Ab3";
+    let good = format!("https://getmypod.app/activate/?d={code}");
+    assert_eq!(next_url(&good), Some(good.as_str()));
+    let short = "https://getmypod.app/activate/?d=".to_owned() + &"a".repeat(19);
+    let long = "https://getmypod.app/activate/?d=".to_owned() + &"a".repeat(65);
+    let bad = [
+        format!("https://evil.app/activate/?d={code}"),
+        format!("https://getmypod.app.evil.app/activate/?d={code}"),
+        format!("http://getmypod.app/activate/?d={code}"),
+        format!("https://getmypod.app/activate/x?d={code}"),
+        format!("https://getmypod.app/activate/?d={code}&x=1"),
+        format!("https://getmypod.app/activate/?d={code}\""),
+        format!("https://getmypod.app/activate/?d={code}'"),
+        format!("https://getmypod.app/activate/?d={code}<script>"),
+        format!("https://getmypod.app/activate/?d={code}>"),
+        format!("https://getmypod.app/activate/?d={code} "),
+        short,
+        long,
+        String::new(),
+    ];
+    for url in &bad {
+        assert_eq!(next_url(url), None, "{url}");
+        assert_eq!(login_page(Some(url)), OAUTH_PAGE, "{url}");
+    }
+    assert_eq!(login_page(None), OAUTH_PAGE);
+    let page = login_page(Some(&good));
+    assert!(
+        page.contains("You’re in") && page.contains("One more step. Taking you to getmypod.app…")
+    );
+    assert!(page.contains("Not moving? <a href=\"https://getmypod.app/activate/?d="));
+    assert!(page.contains("Go to getmypod.app</a>") && page.contains("animation:fill 1.2s"));
+    assert!(page.contains("prefers-reduced-motion") && page.contains("#7db7f5"));
+    assert!(page.contains(".has(\"code\")") && page.contains("},1200)"));
+    assert!(!page.contains("NEXT_URL"));
+    assert_eq!(page.matches(good.as_str()).count(), 2); // the link and the script, nothing else
+    for banned in ["<link", "<img", "<iframe", "src=", "url(", "@import"] {
         assert!(!page.contains(banned), "{banned}");
     }
 }
