@@ -24,19 +24,22 @@ import Testing
         #expect(back.events.map(\.id) == ["a", "b"] && back.events[1] == q.events[1])
         #expect(back.events[0].properties["service"] == .text("apple_music") && back.events[0].properties["used_settings"] == .flag(false))
         #expect(BetaQueue(saved: "not json").events.isEmpty && BetaQueue(saved: nil).events.isEmpty)
-        let decimal = QueuedEvent(.appSpeed(startMs: 3, libraryMs: 4), at: 0, id: "c")
-        var d = BetaQueue(); d.add(decimal)
-        #expect(BetaQueue(saved: d.saved).events == [decimal])
+        var use = DayUse(day: 20261119, weekday: 5)
+        use.bands = [90, 0, 60, 0]  // 1.5 and 1 minutes: one with a fraction, one whole
+        var d = BetaQueue(); d.add(QueuedEvent(.dayActive(use, service: .spotify), at: 0, id: "c"))
+        let p = BetaQueue(saved: d.saved).events[0].properties
+        #expect(p["minutes_night"] == .decimal(1.5) && p["minutes"] == .decimal(2.5))
+        #expect(p["minutes_work"] == .number(1))  // a whole decimal reads back as a number: the same in PostHog
     }
 
     @Test func theBodyHasTheKeyThePersonAndEachEvent() throws {
-        let e = QueuedEvent(song, at: 0, id: "u1")
+        let e = QueuedEvent(song, at: 816_789_600, id: "u1")  // 2026-11-19 14:00 UTC (from 2001)
         let body = BetaQueue.body([e], key: "phc_test", person: "acct-1")
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         #expect(json["api_key"] as? String == "phc_test")
         let item = try #require((json["batch"] as? [[String: Any]])?.first)
         #expect(item["event"] as? String == "first_song" && item["uuid"] as? String == "u1")
-        #expect(item["timestamp"] as? String == "1970-01-01T00:00:00.000Z")
+        #expect(item["timestamp"] as? String == "2026-11-19T14:00:00.000Z")
         let p = try #require(item["properties"] as? [String: Any])
         #expect(p["distinct_id"] as? String == "acct-1" && p["seconds"] as? Int == 60 && p["service"] as? String == "spotify")
     }
@@ -55,5 +58,8 @@ import Testing
         for word in ["device", "hardware", "token", "email", "mail\"", "@"] {
             #expect(!body.contains(word), "\(word)")
         }
+        // No 43-character base64url string, the form of the activation device ID.
+        let long = body.split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }).filter { $0.count >= 43 }
+        #expect(long.isEmpty, "\(long)")
     }
 }

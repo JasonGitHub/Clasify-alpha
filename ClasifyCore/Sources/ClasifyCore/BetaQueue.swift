@@ -3,7 +3,9 @@ import Foundation
 /// CLA-97: one event that waits for PostHog. `id` is PostHog's `uuid`, so an event sent twice
 /// (the answer was lost) counts once. No account ID, token or email: the ID goes in at send time.
 public struct QueuedEvent: Codable, Equatable, Sendable {
-    public var id: String, name: String, time: Double
+    public var id: String, name: String
+    /// As `Dependencies.now`: seconds since 2001-01-01 UTC.
+    public var time: Double
     public var properties: [String: BetaValue]
 
     public init(_ event: BetaEvent, at time: Double, id: String = UUID().uuidString) {
@@ -47,7 +49,7 @@ public struct BetaQueue: Equatable, Sendable {
         let batch = events.map { e in
             var properties = e.properties
             properties["distinct_id"] = .text(person)
-            return Item(event: e.name, uuid: e.id, timestamp: time.string(from: Date(timeIntervalSince1970: e.time)), properties: properties)
+            return Item(event: e.name, uuid: e.id, timestamp: time.string(from: Date(timeIntervalSinceReferenceDate: e.time)), properties: properties)
         }
         return (try? JSONEncoder().encode(Body(api_key: key, batch: batch))) ?? Data()
     }
@@ -56,7 +58,9 @@ public struct BetaQueue: Equatable, Sendable {
     private struct Item: Encodable { var event: String, uuid: String, timestamp: String, properties: [String: BetaValue] }
 }
 
-/// As plain JSON values: text, whole number, true or false, decimal.
+/// As plain JSON values: text, whole number, true or false, decimal. JSONEncoder writes a whole
+/// decimal (1200.0) as 1200, so after a save it reads back as `.number`: PostHog sees the same
+/// number, so nothing is lost (CTO 23:53 JST).
 extension BetaValue: Codable {
     public func encode(to encoder: Encoder) throws {
         var c = encoder.singleValueContainer()
