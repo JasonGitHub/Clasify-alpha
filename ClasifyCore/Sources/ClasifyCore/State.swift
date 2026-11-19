@@ -261,7 +261,7 @@ public enum Activation: Equatable, Sendable {
             // The server's times are milliseconds (Date.now()); ActiveInfo keeps seconds.
             let ms = (json["since"] as? Double) ?? (json["since"] as? Int).map(Double.init)
             let info = ActiveInfo(email: json["email"] as? String, since: ms.map { $0 / 1000 },
-                                  macs: json["macs"] as? Int, limit: json["limit"] as? Int)
+                                  macs: json["macs"] as? Int, limit: json["limit"] as? Int, account: json["account"] as? String)
             self = .active(info == ActiveInfo() ? nil : info)
         case "full": self = .full
         case "off": self = .off
@@ -273,6 +273,8 @@ public enum Activation: Equatable, Sendable {
 
 extension Activation {
     public var isActive: Bool { if case .active = self { true } else { false } }
+    /// CLA-97: the account ID of an active Mac, for the beta events.
+    public var account: String? { if case .active(let info) = self { info?.account } else { nil } }
 }
 
 /// CLA-141, card BF.2: what the server says about an active Mac, for About > Activation. In
@@ -283,9 +285,11 @@ public struct ActiveInfo: Equatable, Sendable {
     public var since: Double?
     /// Active Macs on the account, and the limit (change 362).
     public var macs: Int?, limit: Int?
+    /// CLA-97: the account ID, the person of the beta events (`distinct_id`). In memory only.
+    public var account: String?
 
-    public init(email: String? = nil, since: Double? = nil, macs: Int? = nil, limit: Int? = nil) {
-        (self.email, self.since, self.macs, self.limit) = (email, since, macs, limit)
+    public init(email: String? = nil, since: Double? = nil, macs: Int? = nil, limit: Int? = nil, account: String? = nil) {
+        (self.email, self.since, self.macs, self.limit, self.account) = (email, since, macs, limit, account)
     }
 
     /// The row's second line: "Activated on 19 Nov 2026 · 1 of 2 Macs", or the part that is

@@ -17,11 +17,14 @@ import Testing
     @Test func theActiveAnswerCarriesTheInfo() {
         // A real answer: `since` is Date.now() on the server, in milliseconds.
         let json: [String: Any] = ["state": "active", "account": "a1", "email": "s***@example.com", "since": 1_795_000_000_000, "macs": 1, "limit": 2]
-        #expect(Activation(status: 200, json: json) == .active(info))
+        var withAccount = info
+        withAccount.account = "a1"  // CLA-97: kept in memory for the beta events
+        #expect(Activation(status: 200, json: json) == .active(withAccount) && Activation.active(withAccount).account == "a1")
         let utc = TimeZone(identifier: "UTC")!
         #expect(ActiveInfo(since: 1_795_000_000).subtitle(in: utc) == "Activated on 18 Nov 2026")
         #expect(Activation(status: 200, json: ["state": "active", "since": 1500.0]) == .active(ActiveInfo(since: 1.5)))
-        #expect(Activation(status: 200, json: ["state": "active", "account": "a1"]) == .active(nil))  // an old server
+        #expect(Activation(status: 200, json: ["state": "active", "account": "a1"]) == .active(ActiveInfo(account: "a1")))  // an old server: only the account
+        #expect(Activation.locked.account == nil && Activation.active(nil).account == nil)
         #expect(Activation.active(info).isActive && !Activation.locked.isActive)
     }
 

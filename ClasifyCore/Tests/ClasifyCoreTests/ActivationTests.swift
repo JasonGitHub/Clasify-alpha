@@ -277,7 +277,7 @@ import Testing
     @Test func theServerAnswersMapToActivation() {
         #expect(Activation(status: 200, json: ["state": "locked"]) == .locked)
         #expect(Activation(status: 200, json: ["state": "waiting", "email": "sam@example.com", "mail": 2]) == .waiting(email: "sam@example.com", mail: 2))
-        #expect(Activation(status: 200, json: ["state": "active", "account": "a1"]) == .active())
+        #expect(Activation(status: 200, json: ["state": "active", "account": "a1"]) == .active(ActiveInfo(account: "a1")))
         #expect(Activation(status: 200, json: ["state": "full"]) == .full)
         #expect(Activation(status: 200, json: ["state": "off"]) == .off)
         #expect(Activation(status: 200, json: ["state": "busy"]) == .mailBusy)
