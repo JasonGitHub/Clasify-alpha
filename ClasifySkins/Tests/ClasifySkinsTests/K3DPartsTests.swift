@@ -225,6 +225,23 @@ struct K3DPartsTests {
         }
     }
 
+    /// CLA-150 PR 1 (K.3D.12 items 1 and 3): colour C, with the battery film in the photo's blue,
+    /// the battery print at 65% with its small lines and marks, and the drive label at 62%. The
+    /// PNGs are the frozen mock's reference poses (`ref_0..2.png`: 300° and 200° at tilt 25, and
+    /// 0°), and close views of the battery and the drive label, for the design check.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theK3D12ColoursAndPrints() throws {
+        for line in ["c *= float3(0.68, 1.32, 0.90);", "float2 l2 = l / 0.65;", "l = (l - float2(55.0, 24.0)) / 0.62 + float2(55.0, 24.0);"] {
+            #expect(K3DShader.source.contains(line), "\(line)")
+        }
+        for (i, (angle, tilt)) in [(300.0, 25.0), (200.0, 25.0), (0.0, 0.0)].enumerated() {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-ref-\(i)")
+            #expect(width(bytes, row: 300) > 100)
+        }
+        for (angle, tilt) in [(345.0, 35.0), (150.0, 25.0)] {
+            _ = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-print-\(Int(angle))-\(Int(tilt))")
+        }
+    }
+
     /// Apart, the plate comes 68 pt toward the eye, so the device is wider on screen. The PNGs
     /// show the open pose of PR C (305°, tilt 20°) for the design check.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func apartThePlateComesForward() throws {

@@ -345,8 +345,20 @@ enum K3DShader {
             float2 l = o - float2(-38.0, 210.0);
             float2 q = float2((l.x + 102.0) / 204.0 * 0.59765625, (820.0 + (34.0 - l.y) / 68.0 * 204.0) / 1024.0);
             if (pt < 0.5) {  // K.3D.11: the print sits on the film, with no lighter label panel
-                float tx = ss(0.30, 0.08, dot(tl.sample(sm, q).rgb, float3(0.30, 0.59, 0.11))) * pk;
-                c = film(o) * (1.0 - 0.72 * tx);
+                // K.3D.12 (CLA-150): the print at 65%, fine small lines under it, and three small marks.
+                float2 l2 = l / 0.65;
+                float2 q2 = float2((l2.x + 102.0) / 204.0 * 0.59765625, (820.0 + (34.0 - l2.y) / 68.0 * 204.0) / 1024.0);
+                float tx = ss(0.30, 0.08, dot(tl.sample(sm, q2).rgb, float3(0.30, 0.59, 0.11))) * step(abs(l2.x), 101.0) * step(abs(l2.y), 33.0);
+                float mr = (l.y + 33.0) / 2.6, ri = floor(mr), rf = fract(mr);
+                if (ri >= 0.0 && ri < 4.0 && l.x > -66.0 && l.x < 56.0 - ri * 16.0) {
+                    float wd = floor((l.x + 66.0) / 4.3), hh = fract(sin(wd * 12.99 + ri * 7.3) * 43758.5);
+                    tx = max(tx, 0.80 * step(0.28, rf) * step(rf, 0.72) * step(0.18, hh) * step(fract((l.x + 66.0) / 4.3), 0.80));
+                }
+                for (int k = 0; k < 3; k++) {
+                    float2 qq = l - float2(62.0 + float(k) * 8.0, -27.0);
+                    tx = max(tx, 0.85 * ss(0.55, 0.0, abs(max(abs(qq.x), abs(qq.y)) - 2.7)));
+                }
+                c = film(o) * (1.0 - 0.72 * tx * pk);
             }
         }
         else if (id == 20.0) c = float3(0.80, 0.78, 0.70) * (0.96 + 0.04 * sin(o.x * 5.0)) + 0.12 * sp;
@@ -391,6 +403,8 @@ enum K3DShader {
                 float2 l8 = float2(-o.x, o.y + 80.0);
                 float in8 = step(abs(l8.x), 132.0) * step(abs(l8.y), 165.0) * pk;
                 l8 -= float2(-49.0, -49.0);  // the label's print shift, as on the label itself (mock fix 11-18)
+                l8 = (l8 - float2(55.0, 24.0)) / 0.62 + float2(55.0, 24.0);  // K.3D.12: and its 62% size
+                in8 *= step(abs(l8.x), 132.0) * step(abs(l8.y), 165.0);
                 float3 lc = tl.sample(sm, float2((132.0 - l8.x) / 264.0 * 0.625, (165.0 - l8.y) / 330.0 * 0.78125)).rgb;
                 c = mix(c, c * (0.35 + 0.85 * lc), 0.09 * in8);
             } else c = mix(c, c * 1.18 + 0.05, 0.08);  // the lid's U: the steel under it lifts it a little
@@ -417,6 +431,8 @@ enum K3DShader {
             float2 l = o - float2(0.0, -80.0);
             float inL = step(abs(l.x), 132.0) * step(abs(l.y), 165.0) * pk;
             l -= float2(-49.0, -49.0);  // K.3D.11: the print moved with the foam pad's lower cut-out
+            l = (l - float2(55.0, 24.0)) / 0.62 + float2(55.0, 24.0);  // K.3D.12: the label's print at 62%
+            inL *= step(abs(l.x), 132.0) * step(abs(l.y), 165.0);
             float2 q = float2((132.0 - l.x) / 264.0 * 0.625, (165.0 - l.y) / 330.0 * 0.78125);
             c = mix(float3(0.72, 0.73, 0.75), tl.sample(sm, q).rgb, inL);
         }
@@ -498,6 +514,7 @@ enum K3DShader {
             c += float3(0.16) * step(0.965, hash2(floor(o * 1.7), float2(39.3, 11.1), 4375.5));
         }
         if ((id == 16.0 && !(pt > 3.5 && pt < 4.5)) || id == 18.0 || id == 26.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
+        if ((id == 19.0 || id == 35.0) && pt < 0.5) c *= float3(0.68, 1.32, 0.90);  // K.3D.12 colour C: the battery film in the photo's blue
         if ((id == 35.0 || id == 19.0) && pt < 0.5) {  // the film: a broad soft sheen and small sharp glints that break up on the wrinkles
             float wk = sin(o.x * 0.055 + 1.6 * sin(o.y * 0.07 + o.x * 0.013)) * sin(o.y * 0.09 + o.x * 0.021);
             c += float3(0.06, 0.08, 0.12) * pow(nh, 5.0) + float3(0.30, 0.33, 0.38) * pow(nh, 70.0) * (0.6 + 0.4 * wk) + 0.035 * ss(-0.2, 0.9, r.y) * (1.0 + 0.5 * wk);
