@@ -6,8 +6,14 @@
   "assets": { "directory": "./public" },
   "compatibility_date": "2026-11-01",
   "d1_databases": [
-    // Placeholder: the real database ID goes here before the first deploy.
-    { "binding": "DB", "database_name": "mypod-activation", "database_id": "00000000-0000-0000-0000-000000000000" }
+    { "binding": "DB", "database_name": "mypod-activation", "database_id": "45674323-433f-468e-be42-149642c17893" }
+  ],
+  // The app's API on its own host, and the page at getmypod.app/activate/. Every other path on
+  // getmypod.app stays with the Launch website. /activate (no slash) goes to /activate/ (the
+  // assets' trailing-slash rule); a path with no file under the route gets the Worker's 404.
+  "routes": [
+    { "pattern": "api.getmypod.app", "custom_domain": true },
+    { "pattern": "getmypod.app/activate*", "zone_name": "getmypod.app" }
   ],
   // The beta cap (accounts), the Mac limit per account, and link mails a day (Resend free: 100).
   // MAIL_HOUR and MAIL_DAY_EACH: link mails per address and per device, an hour and a day.
