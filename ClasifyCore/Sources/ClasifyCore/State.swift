@@ -464,6 +464,8 @@ public struct AppState: Equatable, Sendable {
     public var lastBuild: Int?
     /// CLA-97: today's use, for `day_active`. Saved with the settings.
     public var today: DayUse?
+    /// CLA-97: the copy of `today` that the settings save: about once a minute (Jason 23:07 JST).
+    public var savedToday: DayUse?
     /// CLA-97: the last position report while playing, and the track counted last. Not saved.
     public var dayPlayAt: Double?, dayTrack: String?, dayPosition: Double?
     /// CLA-97: when the player lost control, until it comes back. Not saved.

@@ -48,7 +48,46 @@ import Testing
         _ = events(&s, .tick, now: at(19) + 3)
         s.isPlaying = true
         _ = events(&s, .position(3, generation: s.playGen), now: at(19) + 100)  // after a pause: nothing for the gap
-        #expect(s.today?.bands == [0, 0, 3.5, 2] && s.settings.today == s.today)
+        #expect(s.today?.bands == [0, 0, 3.5, 2])
+    }
+
+    /// Codex on #348: a gap over a band start or midnight splits.
+    @Test func aGapOverABandStartOrMidnightSplits() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(17, 59) + 50)
+        _ = events(&s, .position(21, generation: s.playGen), now: at(18) + 10)
+        #expect(s.today?.bands == [0, 0, 10, 10])
+        var late = playing()
+        _ = events(&late, .position(1, generation: late.playGen), now: at(23, 59) + 50)
+        let sent = events(&late, .position(21, generation: late.playGen), now: at(0, day: 20) + 10)
+        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(old.bands == [0, 0, 0, 10] && old.day == 20261119)
+        #expect(late.today?.bands == [10, 0, 0, 0] && late.today?.day == 20261120 && late.today?.songs == 1)
+    }
+
+    /// Jason 23:07 JST: the saved copy follows about once a minute, at a pause and at a quit.
+    @Test func theDaySavesAboutOnceAMinuteAtAPauseAndAtAQuit() {
+        var s = playing()
+        var saves = 0
+        for i in 0..<30 {
+            let before = s.savedToday
+            _ = events(&s, .position(Double(i + 1), generation: s.playGen), now: at(10) + Double(i))
+            if s.savedToday != before { saves += 1 }
+        }
+        #expect(saves == 1 && s.today?.seconds == 29 && s.savedToday?.seconds == 0 && s.settings.today?.seconds == 0)
+        _ = events(&s, .position(31, generation: s.playGen), now: at(10) + 30)
+        _ = events(&s, .position(61, generation: s.playGen), now: at(10) + 60)  // the minute changes
+        #expect(s.savedToday?.seconds == 60)
+        _ = events(&s, .position(62, generation: s.playGen), now: at(10) + 61)
+        #expect(s.savedToday?.seconds == 60)
+        _ = events(&s, .play, now: at(10) + 61.5)  // a pause saves the exact count
+        #expect(!s.isPlaying && s.savedToday == s.today && s.savedToday?.seconds == 61)
+        var quit = playing()
+        _ = events(&quit, .position(1, generation: quit.playGen), .position(2, generation: quit.playGen), now: at(10))
+        _ = events(&quit, .position(3, generation: quit.playGen), now: at(10) + 1)
+        #expect(quit.savedToday?.seconds == 0)
+        _ = events(&quit, .willQuit, now: at(10) + 1)
+        #expect(quit.savedToday?.seconds == 1 && quit.settings.today == quit.today)
     }
 
     /// App Nap can slow the reports while myPod is hidden: the position says what played.

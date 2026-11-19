@@ -108,6 +108,8 @@ public enum Action: Equatable, Sendable {
     /// CLA-97: a skin feature that the reducer does not see (the About flip, the take-apart),
     /// for `day_active`.
     case used(Feature)
+    /// CLA-97: the app quits normally. The exact day count is saved (`AppState.savedToday`).
+    case willQuit
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -1365,7 +1367,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.controlLostAt = now
             fx.append(.track(.controlLost(reason, service: s.service)))
 
-        case .used: break  // only for `day_active` (dayEvents)
+        case .used, .willQuit: break  // only for `day_active` (dayEvents)
 
         case .controlBack:
             guard let lost = s.controlLostAt else { return }

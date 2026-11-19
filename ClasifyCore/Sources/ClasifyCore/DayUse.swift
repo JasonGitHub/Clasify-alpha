@@ -28,6 +28,17 @@ public struct DayUse: Equatable, Sendable {
         return ((c.year ?? 0) * 10_000 + (c.month ?? 0) * 100 + (c.day ?? 0), c.weekday ?? 0, band)
     }
 
+    /// The next start of a band after `t`: 6:00, 9:00, 18:00 or the next midnight.
+    static func nextBand(after t: Double, in timeZone: TimeZone) -> Double {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        let start = cal.startOfDay(for: Date(timeIntervalSinceReferenceDate: t))
+        for hour in [6, 9, 18, 24] {
+            if let next = cal.date(byAdding: .hour, value: hour, to: start)?.timeIntervalSinceReferenceDate, next > t { return next }
+        }
+        return t + 3600
+    }
+
     /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings|Spotify": the saved form.
     var saved: String {
         let b: [String] = bands.map { String($0) }

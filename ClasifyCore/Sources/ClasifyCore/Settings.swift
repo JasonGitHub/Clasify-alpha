@@ -152,7 +152,7 @@ extension AppState {
             (v.newBeta, v.betaNoticed) = (newBeta, betaNoticed)
             v.activated = activated
             v.arrived = arrived
-            (v.firstLaunchAt, v.firstSongSent, v.lastBuild, v.today) = (firstLaunchAt, firstSongSent, lastBuild, today)
+            (v.firstLaunchAt, v.firstSongSent, v.lastBuild, v.today) = (firstLaunchAt, firstSongSent, lastBuild, savedToday)
             return v
         }
         set {
@@ -168,6 +168,7 @@ extension AppState {
             activated = newValue.activated
             arrived = newValue.arrived
             (firstLaunchAt, firstSongSent, lastBuild, today) = (newValue.firstLaunchAt, newValue.firstSongSent, newValue.lastBuild, newValue.today)
+            savedToday = newValue.today
         }
     }
 }

@@ -148,12 +148,15 @@ struct BeforeEvents {
     /// The action is the engine's report of a position past 0 for the playing load: a
     /// confirmed play, not a scrub or the optimistic Play.
     var played = false, position = 0.0
+    /// Music played before the action, for the save of the day at a pause.
+    var playing: Bool
     /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
     var choices: [String], used: Feature?
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
         choices = s.settings.choices
+        playing = s.isPlaying
         if case .used(let feature) = action { used = feature }
         top = s.appleMusicFirst ? .appleMusic : .spotify
         pick = nil
@@ -210,14 +213,19 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
 /// A day starts with its first count, so an action with nothing to count changes nothing.
 func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
     var fx: [Effect] = []
-    let (day, weekday, band) = DayUse.at(now, in: timeZone)
-    if let old = s.today, old.day != day {
-        if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
-        s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
+    /// Ends the day before `t`'s day: `day_active` for it, if it had music.
+    func roll(_ t: Double) -> (day: Int, weekday: Int, band: Int) {
+        let at = DayUse.at(t, in: timeZone)
+        if let old = s.today, old.day != at.day {
+            if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
+            s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
+        }
+        return at
     }
-    func count(_ change: (inout DayUse) -> Void) {
-        var d = s.today ?? DayUse(day: day, weekday: weekday)
-        change(&d)
+    func count(at t: Double, _ change: (inout DayUse, Int) -> Void) {
+        let at = roll(t)
+        var d = s.today ?? DayUse(day: at.day, weekday: at.weekday)
+        change(&d, at.band)
         s.today = d
     }
     if b.played, s.isPlaying, let current = s.current {
@@ -231,19 +239,34 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
             if wall > dayGapLimit, s.dayTrack == current.track, let from = s.dayPosition, b.position > from {
                 add = min(wall, b.position - from)
             }
-            count { $0.bands[band] += add }
+            // The time goes to the band and the day of each part (Codex on #348).
+            var t = now - add
+            while t < now {
+                let end = min(now, DayUse.nextBand(after: t, in: timeZone)), from = t
+                count(at: t) { d, band in d.bands[band] += end - from }
+                t = end
+            }
         }
         (s.dayPlayAt, s.dayPosition) = (now, b.position)
-        if s.dayTrack != current.track { s.dayTrack = current.track; count { $0.songs += 1 } }
+        _ = roll(now)
+        if s.dayTrack != current.track { s.dayTrack = current.track; count(at: now) { d, _ in d.songs += 1 } }
         let service = s.service
-        count { $0.service = service }
+        count(at: now) { d, _ in d.service = service }
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
+    _ = roll(now)
     var used: Set<Feature> = b.used.map { [$0] } ?? []
     if s.top.screen == .coverFlow { used.insert(.coverFlow) }
     if b.screen == .settings && s.settings.choices != b.choices { used.insert(.settings) }
-    if !used.isSubset(of: s.today?.features ?? []) { count { $0.features.formUnion(used) } }
+    if !used.isSubset(of: s.today?.features ?? []) { count(at: now) { d, _ in d.features.formUnion(used) } }
+    // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
+    // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
+    let saved = s.savedToday, today = s.today
+    let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
+    let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
+        || saved?.service != today?.service || minute(saved) != minute(today)
+    if changed || (b.playing && !s.isPlaying) || action == .willQuit { s.savedToday = today }
     return fx
 }
 
