@@ -53,6 +53,8 @@ enum Pocket {
     static let offline = Color(hex: 0xa3261c)
     /// The title bar's play and pause mark.
     static let blue = Color(hex: 0x1f6fd1)
+    /// Card BF.2: "Not activated" on About's Status row.
+    static let grayValue = Color(hex: 0x8a949e)
 }
 
 /// The LCD: the header, then a list, a message or Now Playing, then the bar and the toast.
@@ -552,10 +554,11 @@ struct PocketRow: View {
                 }
             }
             Spacer(minLength: 0)
-            HStack(spacing: 4) {
+            HStack(spacing: text.opens && !text.value.isEmpty ? 6 : 4) {  // card BF.2: 6 pt from "Activated"
                 if !text.value.isEmpty {
-                    // A setting's value: bold and blue, or white on the selected row.
-                    Text(text.value).font(.helvetica(12, bold: true)).foregroundStyle(selected ? Color.white : Pocket.blue)
+                    // A setting's value: bold and blue (gray for "Not activated"), or white on the selected row.
+                    Text(text.value).font(.helvetica(12, bold: true))
+                        .foregroundStyle(selected ? Color.white : text.grayValue ? Pocket.grayValue : Pocket.blue)
                 }
                 if text.playing {
                     // The photo's soft blue, or white on the selected row.

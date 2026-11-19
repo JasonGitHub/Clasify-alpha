@@ -3,9 +3,10 @@ import ClasifyCore
 import SwiftUI
 
 /// The About screen, card BF (About J1, Jason 23:05 JST 11-10, changes 207, 208, 211 and 212):
-/// one page that scrolls 3 wheel steps (card BS, changes 294 and 295). The headphone capybara on its ground shadow,
-/// "myPod", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version and
-/// Licenses rows, then the legal text. The points are from the top of the 321.5 pt page.
+/// one page that scrolls 4 wheel steps (card BS, changes 294 and 295; card BF.2). The headphone capybara on its ground shadow,
+/// "myPod", the tagline and "Made with ♥ by CappyAI" in engraved steel, the Version, Status
+/// (card BF.2, change 360) and Licenses rows, then the legal text. The points are from the top
+/// of the 344.4 pt page.
 /// The capybara waves, thinks, drinks boba and sleeps as `AppState.aboutPose(at:)` says, and
 /// the tagline's glint runs with each wave (changes 209, 210). Card BF.1 (J1.3, changes 214-216)
 /// set the front page: two text styles, and "Made with ♥ by CappyAI" before the tagline.
@@ -16,10 +17,14 @@ struct PocketAbout: View {
     /// A fixed clock for snapshot tests, in the same time as `AppState.aboutAt`.
     @Environment(\.animationTime) private var fixedTime
 
-    static let page: CGFloat = 321.5
+    static let page: CGFloat = 344.4
     /// Card BS: the page's offset at each wheel step, so each stop ends on a whole row in the
-    /// 206 pt view. 1: Version whole. 2: Licenses whole, selected. 3: the end, the legal text whole.
-    static let stops: [CGFloat] = [0, 30.9, 53.8, 115.5]
+    /// 206 pt view. 1: Version whole. 2: Status whole, selected when it opens (card BF.2).
+    /// 3: Licenses whole, selected. 4: the end, the legal text whole.
+    static let stops: [CGFloat] = [0, 30.9, 53.8, 76.7, 138.4]
+
+    /// The thumb's part of the scroll track: the 206 pt view over the page.
+    static let thumb: CGFloat = 206 / page
 
     /// The page's offset at step `off`.
     static func stop(_ off: Int) -> CGFloat { stops[min(max(off, 0), stops.count - 1)] }
@@ -47,7 +52,7 @@ struct PocketAbout: View {
         ZStack(alignment: .topLeading) {
             // CLA-114: only the page's offset slides. The Licenses selection bar comes and goes
             // at once, so it never fades at the wrong place while the page moves.
-            page(licenses: off >= AppState.aboutLicensesStep)
+            page(status: off == AppState.aboutStatusStep && state.aboutStatus.opens, licenses: off >= AppState.aboutLicensesStep)
                 .frame(width: Pocket.screenWidth, height: Self.page, alignment: .top)
                 .animation(.easeOut(duration: 0.15)) { $0.offset(y: -Self.stop(off)) }
             scrollBar(off)
@@ -61,15 +66,18 @@ struct PocketAbout: View {
         }
     }
 
-    private func page(licenses: Bool) -> some View {
+    private func page(status: Bool, licenses: Bool) -> some View {
         ZStack(alignment: .top) {
             capybara.offset(y: 18)
             plate.offset(y: 116)
             PocketRow(text: .init(label: "Version", value: Labels.aboutVersion(in: state)), selected: false, scrolls: false)
                 .offset(y: 214)
-            PocketRow(text: .init(label: "Licenses", opens: true), selected: licenses, scrolls: false)
+            // Card BF.2: the Status row, then Licenses and the legal text 22.9 pt lower.
+            PocketRow(text: Labels.statusRow(in: state), selected: status, scrolls: false)
                 .offset(y: 236.9)
-            legal.offset(y: 270)
+            PocketRow(text: .init(label: "Licenses", opens: true), selected: licenses, scrolls: false)
+                .offset(y: 259.8)
+            legal.offset(y: 292.9)
         }
     }
 
@@ -227,14 +235,14 @@ struct PocketAbout: View {
         return line.hidden().overlay { steel.mask { line } }
     }
 
-    /// A 3 pt thumb, 64.1% of the track, on the right; the track is 2 pt in from the top and the
+    /// A 3 pt thumb, 206/344.4 of the track (card BF.2), on the right; the track is 2 pt in from the top and the
     /// bottom. It moves with the page and shows as the list scroll bars do.
     private func scrollBar(_ off: Int) -> some View {
         GeometryReader { geo in
             let track = geo.size.height
             Capsule().fill(Color(hex: 0x5d6772))
-                .frame(height: track * 0.641)
-                .offset(y: track * 0.359 * Self.stop(off) / Self.stops[Self.stops.count - 1])  // card BS: with the page
+                .frame(height: track * Self.thumb)
+                .offset(y: track * (1 - Self.thumb) * Self.stop(off) / Self.stops[Self.stops.count - 1])  // card BS: with the page
                 .animation(.easeOut(duration: 0.15), value: off)
         }
         .frame(width: 3)

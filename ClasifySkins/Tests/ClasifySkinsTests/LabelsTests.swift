@@ -115,7 +115,7 @@ func sampleState() -> AppState {
         s.activateStopAt = 0
         #expect(words() == .init(headline: "Check your mail", line: "Click the link we sent to", email: "sam@example.com"))
         #expect(device() == .badge(.mailRests, word: "Sent") && cable() == .on)  // 322
-        s.activation = .active
+        s.activation = .active()
         #expect(words() == .init(headline: "Welcome to the beta", line: "Thanks for joining us."))
         #expect(device() == .mark(ok: true, word: "Activated") && cable() == .light)  // 323
         let others: [(Activation, Labels.SetupWords, PreviewScreen)] = [
@@ -550,5 +550,22 @@ func sampleState() -> AppState {
         // With no cover there is room for all, so nothing scrolls.
         #expect(Labels.nowScroll(widths: widths, room: Labels.nowRoom(art: false), at: 5) == nil)
         #expect(Labels.nowScroll(widths: [60, 166.5], room: room, at: 0)?.line == 1)
+    }
+
+    /// CLA-141, card BF.2: the Status row (360) and Activation's row (361, 362).
+    @Test func theStatusRowAndActivationRow() {
+        var s = AppState()
+        #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Not activated", grayValue: true))
+        s.activateOn = true
+        #expect(Labels.statusRow(in: s).value == "Not activated")
+        s.activated = true
+        #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Activated"))  // no info: no chevron
+        s.activation = .active(ActiveInfo(email: "s***@example.com", since: 1_795_014_000, macs: 1, limit: 2))
+        #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Activated", opens: true))
+        #expect(Labels.title(.activation, in: s) == "Activation")
+        let row = Labels.row(.activatedAs, on: .activation, in: s)
+        #expect(row.label == "s***@example.com" && row.detail.hasPrefix("Activated on ") && row.detail.hasSuffix(" 2026 · 1 of 2 Macs"))
+        s.activation = .active(ActiveInfo(email: "s***@example.com"))
+        #expect(Labels.row(.activatedAs, on: .activation, in: s) == .init(label: "s***@example.com"))
     }
 }

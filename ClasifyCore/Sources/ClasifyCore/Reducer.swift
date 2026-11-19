@@ -718,15 +718,17 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .select:
             if s.top.screen == .about {
                 // Change 210: a press wakes the capybara, or near the top makes it wave. From
-                // `aboutLicensesStep` it opens Licenses (change 213; step 2 since card BS).
+                // `aboutLicensesStep` it opens Licenses (change 213); at `aboutStatusStep`,
+                // Activation when the Status row opens (card BF.2).
                 let pose = s.aboutPose(at: now)
                 if pose.pose == .sleep {
                     s.aboutWaveAt = now
-                } else if s.top.off >= AppState.aboutLicensesStep {
-                    // Change 213: the Licenses list. The pose waits as it is until About shows again.
-                    // A press while it waves leaves it standing, as the wave's end would.
+                } else if s.top.off >= AppState.aboutLicensesStep || (s.top.off == AppState.aboutStatusStep && s.aboutStatus.opens) {
+                    // Change 213: the Licenses list; card BF.2 (change 361): Activation. The pose
+                    // waits as it is until About shows again. A press while it waves leaves it
+                    // standing, as the wave's end would.
                     s.aboutIdleHold = pose.pose == .wave ? AboutPoseNow(pose: .stand, since: now, from: .wave, cut: true) : pose
-                    s.stack.append(Frame(screen: .licenses))
+                    s.stack.append(Frame(screen: s.top.off >= AppState.aboutLicensesStep ? .licenses : .activation))
                 } else if pose.pose != .wave {
                     s.aboutWaveAt = now
                 }
@@ -867,6 +869,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 s.aboutAt = now; s.scrollUntil = now + 0.3 + scrollBarTime
                 s.aboutWaveAt = now + AppState.aboutWaveDelay; s.aboutIdleAt = 0  // change 210: it waves hello
             case .license(let i): s.stack.append(Frame(screen: .license(i)))  // change 213: its text
+            case .activatedAs: break  // card BF.2: the one row of Activation does nothing
             case .logOut: s.stack.append(Frame(screen: .confirm))
             case .cancel:
                 if s.top.screen == .auth { fx.append(.cancelLogIn) }
@@ -897,7 +900,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             }
             if s.top.screen == .coverFlow { s.letterUntil = 0; s.coverFlowSteps = [] }
             s.stack.removeLast(); s.nowMode = .volume
-            // Change 213: back from Licenses, the idle clock starts again from the pose it left.
+            // Change 213: back from Licenses (or Activation), the idle clock starts again from the pose it left.
             if s.top.screen == .about { s.aboutIdleAt = now }
             // Card BA, change 151: the first MENU press back toward the main menu ends the MENU
             // hint for good, also before it shows.
@@ -1264,7 +1267,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 case .locked: break  // no mail yet: 320 stays
                 case .active, .full, .off, .mailBusy, .offline: s.activateOpenMail = nil; s.activateStopAt = 0
                 }
-                if activation == .active && s.top.screen == .activate { s.activatedAt = now }  // 323, then Your Music
+                if activation.isActive && s.top.screen == .activate { s.activatedAt = now }  // 323, then Your Music
             }
             if lock && !s.activated { lockToActivate(activation) }
 

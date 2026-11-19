@@ -86,7 +86,7 @@ private struct TestPanel: View {
             if state.top.screen == .activate {  // card BW: picks the server's answer, as the mock's "Activate: …" button
                 HStack {
                     button("Mail out", .activation(.waiting(email: "test@example.com", mail: state.activateOpenMail.map { $0 + 1 } ?? 1), request: nil))
-                    button("Active", .activation(.active, request: nil))
+                    button("Active", .activation(.active(), request: nil))
                     button("Busy", .activation(.mailBusy, request: nil))
                     button("Full", .activation(.full, request: nil))
                     button("Off", .activation(.off, request: nil))
@@ -152,6 +152,7 @@ private struct TestPanel: View {
         case .yourMusic: "Your Music"
         case .betaSoon, .betaEnded, .betaNew: "Beta"
         case .activate: "Activate"
+        case .activation: "Activation"
         }
     }
 
@@ -201,6 +202,7 @@ private struct TestPanel: View {
         case .useAnotherEmail: "Use another email"
         case .checkMail: "Check again"
         case .tryActivateAgain: "Try again"
+        case .activatedAs: "Activated"
         case .premiumLogOut: "Log out"
         case .confirmLogOut: "Log Out"
         case .color(let color): color.rawValue

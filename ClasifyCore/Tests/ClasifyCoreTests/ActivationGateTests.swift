@@ -47,7 +47,7 @@ import Testing
     @Test func activatingAtLaunchGoesToMainAndRestores() {
         var s = gated(remembered: false)
         send(&s, .launch)
-        send(&s, .activation(.active, request: nil), now: 100)
+        send(&s, .activation(.active(), request: nil), now: 100)
         #expect(s.activated && s.settings.activated && s.activateStep == .confirmed)
         #expect(send(&s, .tick, now: 101.5) == [.restoreSession(token: 1)])
         #expect(s.stack == [Frame(screen: .main)] && s.restoring)
@@ -92,7 +92,7 @@ import Testing
         #expect(!s.restoring && s.stack == [Frame(screen: .activate)])
         send(&s, .accessDenied(token: 1), .notPremium(token: 1), .restored(token: 1, ok: true), .activated)
         #expect(s.stack == [Frame(screen: .activate)] && !s.signedIn && !s.restoring)
-        send(&s, .activation(.active, request: nil), now: 100)
+        send(&s, .activation(.active(), request: nil), now: 100)
         #expect(send(&s, .tick, now: 101.5) == [.restoreSession(token: 3)])
         #expect(s.stack == [Frame(screen: .main)])
     }
@@ -110,7 +110,7 @@ import Testing
 
     /// No connection, a full beta, a busy mail limit, or active: the remembered Mac stays open.
     @Test func theOtherLaunchAnswersKeepARememberedMacOpen() {
-        for answer: Activation in [.offline, .full, .mailBusy, .active] {
+        for answer: Activation in [.offline, .full, .mailBusy, .active()] {
             var s = rememberedPlaying()
             let stack = s.stack
             #expect(send(&s, .activation(answer, request: nil)).isEmpty)
