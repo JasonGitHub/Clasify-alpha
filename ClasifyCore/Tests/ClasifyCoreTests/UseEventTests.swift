@@ -39,7 +39,12 @@ import Testing
         _ = events(&s, .launch, now: 100)
         #expect(s.launchedAt == 100 && s.startMs == 850)
         #expect(events(&s, .playlistsLoaded(token: 9, playlists: nil), now: 101).isEmpty)  // a failed read
-        #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 101.25) == [.appSpeed(startMs: 850, libraryMs: 1250)])
+        #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 101.1).isEmpty)  // not asked for: not taken
+        s.artReads[Playlist.likedSongsID] = 4  // the main menu's cover read (Codex on #350)
+        #expect(events(&s, .artTracksRead(token: 3, playlist: Playlist.likedSongsID, tracks: []), now: 101.2).isEmpty)  // stale
+        #expect(events(&s, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: []), now: 101.25)
+            == [.appSpeed(startMs: 850, libraryMs: 1250)])
+        s.refreshing.insert(AppState.readKey(.playlists))
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 102).isEmpty && s.speedSent)
         var setup = AppState()  // a launch in setup sends none
         _ = events(&setup, .launch)
