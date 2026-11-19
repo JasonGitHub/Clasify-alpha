@@ -31,6 +31,8 @@ public enum BetaEvent: Equatable, Sendable {
     case serviceSwitch(from: MusicService, to: MusicService)
     /// One day with music, a feature or a 3D view, sent on the first action of a later day.
     case dayActive(DayUse, service: MusicService)
+    /// A crash or a hang of an earlier run (A4, MetricKit).
+    case appProblem(AppProblem, service: MusicService)
 
     /// The event name in PostHog.
     public var name: String {
@@ -47,6 +49,7 @@ public enum BetaEvent: Equatable, Sendable {
         case .useError: "use_error"
         case .appSpeed: "app_speed"
         case .serviceSwitch: "service_switch"
+        case .appProblem: "app_problem"
         }
     }
 
@@ -81,6 +84,8 @@ public enum BetaEvent: Equatable, Sendable {
             return p
         case .serviceSwitch(let from, let to):
             return ["from": .text(from.eventName), "to": .text(to.eventName)]
+        case .appProblem(let problem, let service):
+            return problem.properties.merging(["service": .text(service.eventName)]) { old, _ in old }
         case .dayActive(let d, let service):
             var p: [String: BetaValue] = [
                 "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
