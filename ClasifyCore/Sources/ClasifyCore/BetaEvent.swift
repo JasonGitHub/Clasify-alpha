@@ -235,7 +235,8 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         }
         (s.dayPlayAt, s.dayPosition) = (now, b.position)
         if s.dayTrack != current.track { s.dayTrack = current.track; count { $0.songs += 1 } }
-        count { $0.service = s.service }
+        let service = s.service
+        count { $0.service = service }
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
