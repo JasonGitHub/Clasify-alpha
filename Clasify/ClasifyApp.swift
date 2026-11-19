@@ -103,8 +103,13 @@ enum DeviceWindow {
     /// active app does not count: a status item click does not activate it.
     static var isShown: Bool {
         guard !NSApp.isHidden, hiding == nil, let window = deviceWindow else { return false }
-        return window.isVisible && !window.isMiniaturized && window.isOnActiveSpace
-            && window.occlusionState.contains(.visible)
+        return window.isVisible && !window.isMiniaturized && window.isOnActiveSpace && isSeen(window)
+    }
+
+    /// The one rule for a partly covered myPod: any part that the person can see counts as
+    /// shown, so a click hides it. Change only this check if the rule changes.
+    private static func isSeen(_ window: NSWindow) -> Bool {
+        window.occlusionState.contains(.visible)
     }
 
     /// Card AN.1, 344-345: fades the device window out, then hides the app as Cmd+H does. The
