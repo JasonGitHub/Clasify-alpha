@@ -400,7 +400,10 @@ final class AppModel {
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
         ) { [weak store] _ in
             // The queue is .main, so this runs on the main actor.
-            MainActor.assumeIsolated { store?.send(.activated) }
+            MainActor.assumeIsolated {
+                store?.send(.activated)
+                store?.send(.checkActivation)  // CLA-146: back from the mail, the Activate screen asks at once
+            }
         }
         // Setup shows the Spotify App screen (card BB) only when the app is missing and Spotify
         // is the service. Pick Your Music puts Spotify on top only when it is found (CLA-103).
@@ -443,7 +446,7 @@ final class AppModel {
                 let hintDue = state.hintDue > 0 && now >= state.hintDue
                 // A beta's warning on day 27, or its end on day 30 (card BI v2).
                 let betaDue = state.betaDue > 0 && now >= state.betaDue
-                // Card BW: the Activate screen's 30 s checks, their 15-minute end, and the 1.5 s beat.
+                // Card BW, CLA-146: the Activate screen's timer checks, their 3-minute end, and the 1.5 s beat.
                 let activateDue = state.activateDue(at: now)
                 if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue {
                     store?.send(.tick)

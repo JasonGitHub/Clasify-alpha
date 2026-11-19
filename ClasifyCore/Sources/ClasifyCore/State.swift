@@ -318,7 +318,7 @@ public enum AboutStatus: Equatable, Sendable {
 /// CLA-128, card BW: which Activate screen shows.
 public enum ActivateStep: Equatable, Sendable {
     /// 319 "Join the beta", 320 the browser is open, 321 the mail is out, 322 the checks
-    /// stopped after 15 minutes, 323 "Welcome to the beta", 324 to 327 the other answers.
+    /// stopped after 3 minutes (CLA-146), 323 "Welcome to the beta", 324 to 327 the other answers.
     case join, browserOpen, checkMail, stopped, confirmed, mailBusy, full, off, offline
 }
 
@@ -471,18 +471,25 @@ public struct AppState: Equatable, Sendable {
     public var activateFlow = 0
     /// Card BW, 320: the browser page is open, and the server had sent this many mails then. nil: not on 320.
     public var activateOpenMail: Int?
-    /// Card BW: the next 30 s check, and the end of the checks (15 minutes after the last
-    /// open, send or "Check again"). 0: no checks.
+    /// Card BW: the next timer check, and the end of the checks (3 minutes after the last
+    /// open, send or "Check again", CLA-146). 0: no checks.
     public var activateCheckAt = 0.0, activateStopAt = 0.0
+    /// CLA-146: the request on its way to the server, and when it went. 0: none.
+    public var activateAsked = 0, activateAskedAt = 0.0
     /// Card BW, 323: when "Welcome to the beta" showed. Your Music follows after `activateBeat`.
     public var activatedAt = 0.0
 
-    /// Card BW: a `.tick` is due on the Activate screen: the 1.5 s beat ended, a 30 s check
-    /// is due, or the 15 minutes ended. The app's ticker sends `.tick` then.
+    /// Card BW: a `.tick` is due on the Activate screen: the 1.5 s beat ended, a timer check
+    /// is due and none is on its way, or the 3 minutes ended. The app's ticker sends `.tick` then.
     public func activateDue(at now: Double) -> Bool {
         guard top.screen == .activate else { return false }
         if activatedAt > 0 { return now >= activatedAt + activateBeat }
-        return activateStopAt > 0 && (now >= activateStopAt || now >= activateCheckAt)
+        return activateStopAt > 0 && (now >= activateStopAt || (now >= activateCheckAt && !activateAsking(at: now)))
+    }
+
+    /// CLA-146: a request to the server is on its way and is not yet `activateStuckAfter` old.
+    public func activateAsking(at now: Double) -> Bool {
+        activateAsked > 0 && now < activateAskedAt + activateStuckAfter
     }
 
     /// Card BW: the Activate screen that shows now.

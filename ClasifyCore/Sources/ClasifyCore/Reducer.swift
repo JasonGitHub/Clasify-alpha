@@ -88,8 +88,8 @@ public enum Action: Equatable, Sendable {
     /// CLA-143: the login with this token carries the activate page: after it, the tab goes on
     /// to the email page, so Activate opens on 320 and skips 319.
     case loginCarriesActivate(token: Int)
-    /// CLA-128: the app came back to the front. On the Activate screen, while its checks run
-    /// (320 and 321), it asks the server again.
+    /// CLA-128: the app came back to the front. On the Activate screen (320, 321 and 322) it
+    /// asks the server again (CLA-146), unless a check is on its way.
     case checkActivation
     /// The skin's first-launch arrival ended, or did not run (card BR, change 288). Hello starts
     /// from now. A second one does nothing.
@@ -207,9 +207,21 @@ public let sliderTimeout = 6.0
 public let staleAfter = 120.0
 /// Seconds after a read when the app coming to the front reads that list again.
 public let activationStaleAfter = 30.0
-/// Card BW: the Activate screen asks the server every 30 s, for 15 minutes; "Welcome to the
-/// beta" shows for 1.5 s before Your Music.
-public let activateCheckEvery = 30.0, activateChecksFor = 900.0, activateBeat = 1.5
+/// Card BW, CLA-146: the Activate screen asks the server for 3 minutes (see `activateCheckDelay`),
+/// then shows "Check again" (322); "Welcome to the beta" shows for 1.5 s before Your Music.
+public let activateChecksFor = 180.0, activateBeat = 1.5
+/// CLA-146: a check with no answer after this many seconds no longer blocks the next one. The
+/// request itself gives up after 10 s (`ServerActivator`).
+public let activateStuckAfter = 12.0
+/// CLA-146 (Jason, 18:58 JST 11-19): seconds from one timer check to the next, by the seconds
+/// since the checks started: 3 s in minute 1, 10 s in minute 2, 15 s in minute 3, then nil
+/// (stop). That is at most 30 checks, as many as the old 30 s for 15 minutes.
+public func activateCheckDelay(elapsed: Double) -> Double? {
+    if elapsed < 60 { return 3 }
+    if elapsed < 120 { return 10 }
+    if elapsed < activateChecksFor { return 15 }
+    return nil
+}
 /// The most tracks from outside the library that `AppState.extraTracks` keeps.
 public let extraTrackLimit = 50
 /// Seconds that a list's scroll bar shows after a wheel step or a screen change.
@@ -393,14 +405,27 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         return true
     }
     /// Card BW: one request to the activation server; its answer comes back as `.activation`.
-    func askActivation(_ effect: (Int) -> Effect, pressed: Bool) {
+    /// CLA-146: one check at a time. A check while one is on its way sends nothing; a press
+    /// then takes that answer as its own, so no connection still shows 327.
+    func askActivation(_ effect: (Int) -> Effect, pressed: Bool, check: Bool = true) {
+        if check && s.activateAsking(at: now) {
+            if pressed { s.activatePressed = s.activateAsked }
+            return  // a due timer check stays due until the answer comes
+        }
+        nextActivateCheck()
         s.activateRequest += 1
         if pressed { s.activatePressed = s.activateRequest }
-        s.activateCheckAt = now + activateCheckEvery
+        s.activateAsked = s.activateRequest; s.activateAskedAt = now
         fx.append(effect(s.activateRequest))
     }
-    func startActivateChecks() { s.activateStopAt = now + activateChecksFor; s.activateCheckAt = now + activateCheckEvery }
-    /// Card BW: the page opens (320). The checks run for 15 minutes from now.
+    /// CLA-146: the next timer check, by `activateCheckDelay`; none after the 3 minutes.
+    func nextActivateCheck() {
+        guard s.activateStopAt > 0 else { return }
+        let elapsed = now - (s.activateStopAt - activateChecksFor)
+        s.activateCheckAt = activateCheckDelay(elapsed: elapsed).map { now + $0 } ?? s.activateStopAt
+    }
+    func startActivateChecks() { s.activateStopAt = now + activateChecksFor; nextActivateCheck() }
+    /// Card BW: the page opens (320). The checks run for 3 minutes from now (CLA-146).
     func openActivatePage() {
         pageIsOpen()
         s.activatePressed = s.activateRequest  // a page that cannot open shows 327
@@ -408,7 +433,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     }
     /// 320: the browser shows the activate page, from "Open browser" or from the login (CLA-143).
     func pageIsOpen() {
-        s.activateRequest += 1  // an answer to the flow before is dropped
+        s.activateRequest += 1; s.activateAsked = 0  // an answer to the flow before is dropped
         s.activateFlow += 1
         showActivateStep {
             if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
@@ -424,10 +449,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// Card BW, 320 and 321: "Cancel" and MENU go back to 319 and stop the checks.
     func cancelActivate() {
         showActivateStep { s.activateOpenMail = nil; s.activation = .locked; s.activateStopAt = 0 }
-        s.activateRequest += 1  // an answer still on its way is dropped
+        s.activateRequest += 1; s.activateAsked = 0  // an answer still on its way is dropped
         s.activateFlow += 1  // and a page URL still on its way
     }
-    /// Card BW: the 1.5 s beat on 323, the 30 s checks, and their end after 15 minutes (322).
+    /// Card BW: the 1.5 s beat on 323, the timer checks, and their end after 3 minutes (322).
     func activateTick() {
         if s.activatedAt > 0 {
             if now >= s.activatedAt + activateBeat { s.activatedAt = 0; setupNext() }
@@ -857,7 +882,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .openActivate, .openActivateAgain, .useAnotherEmail: openActivatePage()
             case .tryActivateAgain:  // 324 (mail busy) opens the page again, because the email is typed there; 327 asks
                 if s.activation == .offline { startActivateChecks(); askActivation(Effect.checkActivation, pressed: true) } else { openActivatePage() }
-            case .sendAgain: showActivateStep { startActivateChecks() }; askActivation(Effect.sendActivationAgain, pressed: true)
+            case .sendAgain: showActivateStep { startActivateChecks() }; askActivation(Effect.sendActivationAgain, pressed: true, check: false)
             case .checkMail:  // 322, 325, 326: the checks start again
                 showActivateStep { startActivateChecks() }; askActivation(Effect.checkActivation, pressed: true)
             case .cancelActivate: cancelActivate()
@@ -1249,6 +1274,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             checkBeta()
 
         case .activation(let activation, let request):
+            if let request, request == s.activateAsked { s.activateAsked = 0 }  // CLA-146: the next check may go
             guard request == nil || request == s.activateRequest else { return }  // an older request
             // Card BW: a timer check with no connection waits for the next one; a press shows 327.
             if activation == .offline && request != s.activatePressed { return }
@@ -1276,8 +1302,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.activateHandOver = true
 
         case .checkActivation:
-            guard s.top.screen == .activate, s.activateStopAt > 0,
-                  s.activateStep == .browserOpen || s.activateStep == .checkMail else { return }
+            // CLA-146: also on 322, after the 3 minutes. It does not start the 3 minutes again.
+            guard s.top.screen == .activate,
+                  [.browserOpen, .checkMail, .stopped].contains(s.activateStep) else { return }
             askActivation(Effect.checkActivation, pressed: false)
 
         case .latestBeta(let build):
