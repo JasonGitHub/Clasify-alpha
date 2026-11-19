@@ -17,7 +17,7 @@ const hour = 60 * 60_000;
 const day = 24 * hour;
 
 type Account = { id: string; email: string; state: string; off: number };
-type Mac = { device_hash: string; account_id: string | null; state: string; mails: number; mail_state: string };
+type Mac = { device_hash: string; account_id: string | null; state: string; mails: number; mail_state: string; activated_at: number | null };
 
 export async function handle(request: Request, env: Env, deps: Deps): Promise<Response> {
   const url = new URL(request.url);
@@ -42,7 +42,12 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     const a = m?.account_id ? await account(m.account_id) : null;
     if (!m || !a) return { state: "locked" };
     if (a.off) return { state: "off" };
-    if (m.state === "active") return { state: "active", account: a.id };
+    // CLA-141: About shows the email masked and the date. The full address never goes out here.
+    // macs/limit: for the proposed change 362 ("1 of 2 Macs"); the app does not show them yet.
+    if (m.state === "active") {
+      const macs = (await db.prepare("SELECT COUNT(*) AS n FROM macs WHERE account_id = ? AND state = 'active'").bind(a.id).first<{ n: number }>())?.n ?? 0;
+      return { state: "active", account: a.id, email: masked(a.email), ...(m.activated_at ? { since: m.activated_at } : {}), macs, limit: Number(env.MACS) };
+    }
     if (a.state === "waitlist") return { state: "full" };
     if (m.mail_state === "busy") return { state: "busy" };
     return m.mail_state === "sent" ? { state: "waiting", email: a.email, mail: m.mails } : { state: "locked" };
@@ -173,14 +178,15 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
           .bind(now, swap, a.id, m.device_hash),
         // The turned-off Mac has no account, so /v1/status answers "locked".
         db.prepare(
-          `UPDATE macs SET state = 'waiting', account_id = NULL, mail_state = 'none'
+          `UPDATE macs SET state = 'waiting', account_id = NULL, mail_state = 'none', activated_at = NULL
            WHERE EXISTS (SELECT 1 FROM swaps WHERE id = ?) AND device_hash = (${oldest})`,
         ).bind(swap, a.id, m.device_hash),
         db.prepare(
-          `UPDATE macs SET state = 'active', last_seen_at = ? WHERE device_hash = ? AND account_id = ?
+          `UPDATE macs SET state = 'active', last_seen_at = ?, activated_at = CASE WHEN state = 'active' AND activated_at IS NOT NULL THEN activated_at ELSE ? END
+           WHERE device_hash = ? AND account_id = ?
            AND (state = 'active' OR ${activeMacs} < ?)
            AND ((SELECT state FROM accounts WHERE id = ?) = 'active' OR (SELECT COUNT(*) FROM accounts WHERE state = 'active') < ?)`,
-        ).bind(now, m.device_hash, a.id, a.id, Number(env.MACS), a.id, Number(env.CAP)),
+        ).bind(now, now, m.device_hash, a.id, a.id, Number(env.MACS), a.id, Number(env.CAP)),
         db.prepare(`UPDATE accounts SET state = 'active', confirmed_at = COALESCE(confirmed_at, ?) WHERE id = ? AND ${isActive}`)
           .bind(now, a.id, m.device_hash, a.id),
         db.prepare(`UPDATE mails SET used_at = ? WHERE token_hash = ? AND ${isActive}`).bind(now, hash, m.device_hash, a.id),
@@ -197,7 +203,14 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   return reply({ error: "not found" }, 404);
 }
 
-/** The device ID is a secret the app keeps in the Keychain; only its hash is stored. */
+/** "s***@example.com": the first character (a whole code point), "***", and the full domain. */
+export function masked(email: string): string {
+  const at = email.lastIndexOf("@");
+  const first = Array.from(email.slice(0, Math.max(at, 0)))[0] ?? "";
+  return `${first}***${at >= 0 ? email.slice(at) : ""}`;
+}
+
+/** The device ID comes from the Mac's hardware UUID (CLA-145); only its hash is stored. */
 async function deviceHash(request: Request): Promise<string | null> {
   const id = request.headers.get("Authorization")?.match(/^Device ([A-Za-z0-9_-]{32,128})$/)?.[1];
   return id ? sha256(id) : null;
