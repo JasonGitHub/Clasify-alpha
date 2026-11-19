@@ -32,6 +32,8 @@ public struct Settings: Equatable, Sendable {
     public var newBeta: Int?, betaNoticed: Int?
     /// CLA-128: setup has the Activate step. Off until the server is live.
     public var activateOn = false
+    /// CLA-140: this Mac activated (`AppState.activated`).
+    public var activated = false
     /// The device arrived once, at the first launch ever (card BR, change 288). True by default;
     /// a store with no saved value gives false, so a new Mac sees the arrival once.
     public var arrived = true
@@ -58,6 +60,7 @@ public struct Settings: Equatable, Sendable {
         // CLA-128: NOT for testers. `defaults write ... activate.on false` turns the gate off.
         // Before the beta build it becomes a build setting, or it goes away.
         static let activateOn = "activate.on"
+        static let activated = "activate.done"
         static let arrived = "arrive.done"
     }
 
@@ -87,6 +90,7 @@ public struct Settings: Equatable, Sendable {
         newBeta = store.string(forKey: Key.newBeta).flatMap { Int($0) }
         betaNoticed = store.string(forKey: Key.betaNoticed).flatMap { Int($0) }
         if let v = store.string(forKey: Key.activateOn).flatMap({ Bool($0) }) { activateOn = v }
+        activated = store.string(forKey: Key.activated).flatMap { Bool($0) } ?? false
         arrived = store.string(forKey: Key.arrived).flatMap { Bool($0) } ?? false
     }
 
@@ -107,6 +111,7 @@ public struct Settings: Equatable, Sendable {
         store.set(newBeta.map { String($0) }, forKey: Key.newBeta)
         store.set(betaNoticed.map { String($0) }, forKey: Key.betaNoticed)
         store.set(String(activateOn), forKey: Key.activateOn)
+        store.set(String(activated), forKey: Key.activated)
         store.set(String(arrived), forKey: Key.arrived)
     }
 }
@@ -133,7 +138,7 @@ extension AppState {
             (v.tourOn, v.tourHides) = (tourOn, tourHides)
             v.betaWarned = betaWarned
             (v.newBeta, v.betaNoticed) = (newBeta, betaNoticed)
-            v.activateOn = activateOn
+            (v.activateOn, v.activated) = (activateOn, activated)
             v.arrived = arrived
             return v
         }
@@ -147,7 +152,7 @@ extension AppState {
             (tourOn, tourHides) = (newValue.tourOn, newValue.tourHides)
             betaWarned = newValue.betaWarned
             (newBeta, betaNoticed) = (newValue.newBeta, newValue.betaNoticed)
-            activateOn = newValue.activateOn
+            (activateOn, activated) = (newValue.activateOn, newValue.activated)
             arrived = newValue.arrived
         }
     }

@@ -202,7 +202,7 @@ public final class Store {
         while let task = fetches.values.first { await task.value }
     }
 
-    /// CLA-128: at launch, the stored activation of a Mac that has a device ID. The answer comes
+    /// CLA-128: at launch, the stored activation of this Mac. The answer comes
     /// with no request number, so it is dropped here when a newer request started meanwhile.
     public func checkActivationAtLaunch() {
         guard let activator else { return }
