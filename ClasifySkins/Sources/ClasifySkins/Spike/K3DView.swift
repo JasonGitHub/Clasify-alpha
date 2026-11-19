@@ -219,6 +219,7 @@ public struct K3DFlipView<Content: View>: View {
             K3DMetalView(
                 angle: angle, lift: lift, tilt: tilt, ex: ex, scale: scale, black: black, screen: flip.screen, oldScreen: flip.oldScreen,
                 center: CGPoint(x: margin.leading + size.width / 2, y: margin.top + size.height / 2),
+                viewSize: CGSize(width: size.width + margin.leading + margin.trailing, height: size.height + margin.top + margin.bottom),
                 onFirstFrame: { ready.wrappedValue = true })
                 .padding(EdgeInsets(top: -margin.top, leading: -margin.leading, bottom: -margin.bottom, trailing: -margin.trailing))
                 // At rest behind the opaque 2D device, the 3D body must not show round its edge
@@ -288,6 +289,8 @@ struct K3DMetalView: NSViewRepresentable {
     var oldScreen: CGImage?
     /// The device's center in the view, in points from the top left.
     let center: CGPoint
+    /// CLA-138: the view's size once SwiftUI lays it out for `center` (the device and its margins).
+    let viewSize: CGSize
     /// Called once, on the main actor, when the view's first frame is on screen.
     let onFirstFrame: @MainActor () -> Void
 
@@ -300,7 +303,9 @@ struct K3DMetalView: NSViewRepresentable {
     func updateNSView(_ view: K3DLayerView, context: Context) {
         let pose = K3DPose(angle: angle, lift: lift, tilt: tilt, ex: ex, black: black, scale: scale)
         // Draw only when the picture changes: the view stays mounted while the device rests.
-        guard pose != view.pose || screen !== view.screen || oldScreen !== view.oldScreen || center != view.deviceCenter || !view.drewOnce else { return }
+        guard pose != view.pose || screen !== view.screen || oldScreen !== view.oldScreen || center != view.deviceCenter
+              || viewSize != view.expectedSize || !view.drewOnce else { return }
+        view.expectedSize = viewSize
         view.pose = pose
         view.screen = screen
         view.oldScreen = oldScreen
@@ -311,7 +316,7 @@ struct K3DMetalView: NSViewRepresentable {
         // frame after the cut (frames: the cut of frame n was the body of frame n + 1). The
         // trail hid that in timed turns; a Cmd drag's held poses have no trail. Once per changed
         // input: the guard above returns when nothing drawn changed. When nothing could be drawn
-        // yet (no size), the next display pass draws it.
+        // yet (no size, or not the size `center` is for: CLA-138), the next display pass draws it.
         if !view.drawNow() { view.needsDisplay = true }
     }
 }
@@ -335,6 +340,26 @@ final class K3DLayerView: MTKView {
     /// CLA-119: the old color's picture during a color spin.
     var oldScreen: CGImage?
     var deviceCenter = CGPoint.zero
+    /// CLA-138 (build 330: a second, flat device front 190 pt right and 124 pt down for one frame
+    /// as the first Cmd turn started): the window's room changes the margins, and SwiftUI calls
+    /// `updateNSView` with the new `deviceCenter` before it gives this view its new size. A frame
+    /// drawn then put the body at the new center in the old-size view. So a frame is drawn only
+    /// when the view has the size `deviceCenter` is for. From a change of that size until such a
+    /// frame is drawn, the layer is hidden, so the old frame does not show in the new size either
+    /// (`contentsGravity` `.center` would move it by (bottom − top) / 2). The 2D device is opaque
+    /// over the body then: in a Cmd turn's settle, at rest, and as the room goes at the end.
+    var expectedSize = CGSize.zero {
+        didSet { if expectedSize != oldValue, !sizeFits { setShown(false) } }
+    }
+    /// The view has the size `deviceCenter` is for.
+    var sizeFits: Bool { Self.fits(bounds.size, expectedSize) }
+    /// The layer shows: false from a change of `expectedSize` until a frame of that size is drawn.
+    var shows: Bool { layer?.opacity != 0 }
+    /// A size SwiftUI gave fits the expected one. SwiftUI rounds frames to whole pixels, so up to
+    /// 1.5 pt off still fits; the room changes the size by 100 pt or more.
+    nonisolated static func fits(_ size: CGSize, _ expected: CGSize) -> Bool {
+        abs(size.width - expected.width) < 1.5 && abs(size.height - expected.height) < 1.5
+    }
     /// Called once when the first frame is on screen, then cleared.
     var firstFrame: (@MainActor () -> Void)?
     /// A frame was drawn.
@@ -383,9 +408,20 @@ final class K3DLayerView: MTKView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let renderer = K3DRenderer.shared else { return }
-        if renderer.draw(in: self) { (drewOnce, drewLast) = (true, true) }
+        guard let renderer = K3DRenderer.shared, sizeFits else { return }  // CLA-138: `setFrameSize` draws it
+        if renderer.draw(in: self) {
+            (drewOnce, drewLast) = (true, true)
+            if !shows { setShown(true) }  // in the same transaction as the frame's present
+        }
         preparePrintsIfNeeded(renderer)
+    }
+
+    /// CLA-138: shows or hides the layer at once, with no implicit fade.
+    private func setShown(_ on: Bool) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer?.opacity = on ? 1 : 0
+        CATransaction.commit()
     }
 
     /// The last `draw(_:)` drew a frame.
