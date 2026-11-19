@@ -54,7 +54,12 @@ final class SpotifyConnectPlayer: Player {
     private var resumePoint: (track: String, playlist: String?, position: Double)?
     /// True after our play command succeeded, until stop or a move away.
     /// States before that can be from an older session or another device, so they are ignored.
-    private var ours = false
+    private var ours = false {
+        didSet { if ours && !oldValue { controlBack() } }  // CLA-97: the reducer ignores it with no loss open
+    }
+    /// CLA-97: a command timed out or the session dropped, and no state of our device has come
+    /// from the new login yet. `relogged`: the new login is done, so its next state confirms it.
+    private var lostSession = false, relogged = false
     private var lastTrack = "", lastRunning = false
     /// Spotify moved on to a context that the bridge cannot load, such as a station.
     private var followedOther = false
@@ -405,13 +410,15 @@ final class SpotifyConnectPlayer: Player {
         deviceOptions = [:]
         // After following Spotify into a station or album, there is no place to go on from.
         let message = followedOther ? "Spotify closed. Pick a song to play" : "Spotify closed. Press play to go on"
-        if ours { lose(message, resumable: true, reason: "Spotify quit") }
+        if ours { lose(message, resumable: true, reason: .spotifyQuit) }
     }
 
     /// Our playback ended outside Clasify. A resumable end keeps the place for Play.
     /// The log gets the reason kind only, with no IDs or names.
-    private func lose(_ message: String, resumable: Bool, reason: String) {
-        log.notice("lost control: \(reason, privacy: .public)")
+    private func lose(_ message: String, resumable: Bool, reason: ControlLoss) {
+        let words = [ControlLoss.spotifyQuit: "Spotify quit", .stoppedInSpotify: "no active device", .otherDevice: "other device"]
+        log.notice("lost control: \(words[reason] ?? reason.rawValue, privacy: .public)")
+        send(.controlLost(reason))  // CLA-97
         ours = false
         ticker?.cancel()
         if resumable && !followedOther { resumePoint = (lastTrack.isEmpty ? startedTrack : lastTrack, playlist, position) }
@@ -445,20 +452,41 @@ final class SpotifyConnectPlayer: Player {
         sent[lane, default: 0] += 1
         let mine = sent[lane]
         let again: @MainActor (Bool) async -> Void = { [weak self] force in
-            guard let self, await self.reconnect(force), id == self.loadID, relative || mine == self.sent[lane],
+            guard let self, await self.relogin(force), id == self.loadID, relative || mine == self.sent[lane],
                   self.ours || evenAfterStop, let device = self.device else { return }
             _ = call(device, nil)
         }
         let onStale: StaleHandler = { [weak self] in
             log.notice("Connect call timed out; logging in again")
-            if afterTimeout { Task { await again(true) } } else { Task { _ = await self?.reconnect(true) } }
+            if let self, !evenAfterStop, id == self.loadID, self.ours { self.sessionLost(.timeout) }  // CLA-97: not an old load's command
+            if afterTimeout { Task { await again(true) } } else { Task { _ = await self?.relogin(true) } }
         }
         guard call(device, onStale) == LSB_ERR_NOT_LOGGED_IN else { return }
+        if !evenAfterStop { sessionLost(.sessionDrop) }  // CLA-97: a stop's Pause is no loss
         Task { await again(false) }
+    }
+
+    /// CLA-97: control is lost until a state of our device comes from the new login.
+    private func sessionLost(_ reason: ControlLoss) {
+        (lostSession, relogged) = (true, false)
+        send(.controlLost(reason))
+    }
+
+    /// Logs in again. A working session lets the next state of our device confirm control (CLA-97).
+    private func relogin(_ force: Bool) async -> Bool {
+        let done = await reconnect(force)
+        if done && lostSession { relogged = true }
+        return done
+    }
+
+    private func controlBack() {
+        (lostSession, relogged) = (false, false)
+        send(.controlBack)
     }
 
     /// The session was logged in again. Register it, so the cluster watch delivers states again.
     func sessionRestored() {
+        if lostSession { relogged = true }  // CLA-97: the next state of our device confirms it
         Task { _ = try? await client.devices() }
         // The new registration makes the cluster watch send the current state. If our device
         // has a track, `handle` takes control again, or at launch shows what Spotify plays.
@@ -786,10 +814,11 @@ final class SpotifyConnectPlayer: Player {
             // With no active device, nothing plays elsewhere, so Play may continue here. After a
             // move away, the place is kept too: when that device stops, Play goes on here (CLA-93).
             let stopped = state.activeDeviceID.isEmpty
-            let reason = stopped ? "no active device" : "other device"
+            let reason: ControlLoss = stopped ? .stoppedInSpotify : .otherDevice
             movedAway = !stopped
             return lose(stopped ? "The music stopped in Spotify" : "Now playing on another device", resumable: true, reason: reason)
         }
+        if relogged { controlBack() }  // CLA-97: our device answers from the new login
         // Our Spotify app moved to another context: autoplay after the playlist ended, or a
         // list picked in Spotify itself. Follow it and keep control. Liked Songs can come back
         // as a playlist URI, so only a playlist context is compared.

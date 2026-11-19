@@ -32,6 +32,8 @@ final class AppleMusicPlayer: Player {
     /// The newest seek pressed during a load, run after the skips.
     private var pendingSeek: Double?
     private var poller: Timer?
+    /// CLA-97: a playback error happened, and no song has played since.
+    private var lostControl = false
     /// What the last poll saw, so that only changes are reported.
     private var lastTrack: String?
     private var lastPlaying = false
@@ -193,6 +195,10 @@ final class AppleMusicPlayer: Player {
             if hasQueue && !wantsPlay { player.pause() }  // the user paused during the load
         }
         send(load ? .loadFailed(message, generation: generation) : .playbackFailed(message, generation: generation))
+        if !load {  // CLA-97: back at the next play
+            lostControl = true
+            send(.controlLost(.appleMusicError))
+        }
     }
 
     private func startPolling() {
@@ -217,6 +223,10 @@ final class AppleMusicPlayer: Player {
             lastTrack = track
             lastPlaying = playing
             send(.trackChanged(track, playing: playing, generation: generation))
+        }
+        if playing && lostControl {  // CLA-97
+            lostControl = false
+            send(.controlBack)
         }
         if playing { send(.position(player.playbackTime, generation: generation)) }
     }
