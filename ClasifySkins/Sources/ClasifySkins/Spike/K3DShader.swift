@@ -650,7 +650,8 @@ enum K3DShader {
             // Thin black tape beside the jack, partly under the battery; the ribbon under it shows
             // as a raised band.
             float2 tq2 = o - float2(98.0, 160.0);
-            float tb = max(abs(tq2.x) - 36.0, abs(tq2.y) - 30.0), tk = ss(0.5, -0.5, tb);
+            float2 tq3 = abs(tq2) - float2(33.0, 27.0);  // K.3D.12: the tape's corners round, 3 pt
+            float tb = length(max(tq3, 0.0)) + min(max(tq3.x, tq3.y), 0.0) - 3.0, tk = ss(0.5, -0.5, tb);
             c = mix(c, float3(0.075, 0.075, 0.08) * (1.0 + 0.9 * cbw) + 0.10 * cbw * ss(1.6, 0.2, abs(dB - hw + 0.8)), tk);
             mt *= 1.0 - 0.8 * tk;
             sh *= mix(0.86, 1.0, ss(0.0, 2.5, tb));
