@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { handle } from "../src/activation";
+import { handle, masked } from "../src/activation";
 import type { Mailer } from "../src/mailer";
 
 /** Keeps the links instead of sending them; answers "busy" when told to. */
@@ -380,5 +380,59 @@ describe("activation", () => {
     const rows = await env.DB.batch(["macs", "mails"].map((t) => env.DB.prepare(`SELECT * FROM ${t}`)));
     const dump = JSON.stringify(rows.map((r) => r.results));
     for (const secret of [mac(1), code, mail.token]) expect(dump).not.toContain(secret);
+  });
+
+  describe("About > Activation (CLA-141)", () => {
+    it("an active Mac gets the masked email and its activation time; waiting keeps the full address", async () => {
+      expect(await join(mac(1), "sam@example.com")).toMatchObject({ state: "waiting", email: "sam@example.com" });
+      clock += 5000;
+      await confirm(mail.token);
+      const answer = await status(mac(1));
+      expect(answer).toMatchObject({ state: "active", email: "s***@example.com", since: clock });
+      expect(answer).toMatchObject({ macs: 1, limit: 2 });
+      await activate(mac(2), "sam@example.com");
+      expect(await status(mac(1))).toMatchObject({ macs: 2, limit: 2 });
+      expect(JSON.stringify(answer)).not.toContain("sam@");
+    });
+
+    it("a second press keeps the first time", async () => {
+      await activate(mac(1), "sam@example.com");
+      const first = clock;
+      clock += 5000;
+      expect(await confirm(mail.token)).toBe("ok");
+      expect(await status(mac(1))).toMatchObject({ since: first });
+    });
+
+    it("a swap clears the time; a new activation sets it again", async () => {
+      await activate(mac(1), "sam@example.com");
+      clock += 1000;
+      await activate(mac(2), "sam@example.com");
+      clock += later;
+      await activate(mac(3), "sam@example.com");
+      expect(await env.DB.prepare("SELECT activated_at FROM macs WHERE device_hash = (SELECT device_hash FROM macs WHERE state = 'waiting')").first("activated_at")).toBeNull();
+      clock += later;
+      await activate(mac(1), "sam@example.com");
+      expect(await status(mac(1))).toMatchObject({ state: "active", since: clock });
+    });
+
+    it("the migration fills active Macs from their last used link; others stay empty", async () => {
+      await activate(mac(1), "sam@example.com");
+      const used = clock;
+      await join(mac(2), "kim@example.com");
+      await env.DB.prepare("UPDATE macs SET activated_at = NULL").run();
+      expect(await status(mac(1))).not.toHaveProperty("since");  // no time: the app shows no date
+      const backfill = env.TEST_MIGRATIONS.find((m) => m.name.startsWith("0004"))!.queries.filter((q) => q.includes("UPDATE macs SET activated_at"));
+      expect(backfill).toHaveLength(1);
+      for (const q of backfill) await env.DB.prepare(q).run();
+      const rows = (await env.DB.prepare("SELECT state, activated_at FROM macs ORDER BY state").all<{ state: string; activated_at: number | null }>()).results;
+      expect(rows).toEqual([{ state: "active", activated_at: used }, { state: "waiting", activated_at: null }]);
+    });
+
+    it("masks to the first character and the full domain", () => {
+      expect(masked("sam@example.com")).toBe("s***@example.com");
+      expect(masked("a@b.co")).toBe("a***@b.co");
+      expect(masked("😀x@mail.example.jp")).toBe("😀***@mail.example.jp");
+      expect(masked("weird@name@host.com")).toBe("w***@host.com");
+    });
   });
 });
