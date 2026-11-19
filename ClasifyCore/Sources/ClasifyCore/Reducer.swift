@@ -430,15 +430,16 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// it is missing, else the first library read, else the main menu. Apple Music does not need it.
     func setupNext() {
         if s.spotifyApp == false && s.service == .spotify { s.stack = [Frame(screen: .spotifyApp)]; return }
+        // CLA-128: Activate comes before Your Music, while the switch is on. CLA-140: also after
+        // setup (a login after a lock), and by the remembered flag, so a "no connection" answer
+        // does not hold an activated Mac.
+        if s.activateGated { s.stack = [Frame(screen: .activate)]; return }
         guard !s.setupDone else {
             s.stack = [Frame(screen: .main)]
             // CLA-140: a launch that showed Activate first restores the stored login only now.
             if !s.signedIn && !s.restoring { restore() }
             return
         }
-        // CLA-128: Activate comes before Your Music, while the switch is on. CLA-140: by the
-        // remembered flag, so a "no connection" answer does not hold an activated Mac.
-        if s.activateGated { s.stack = [Frame(screen: .activate)]; return }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
         fetch(.yourMusic)

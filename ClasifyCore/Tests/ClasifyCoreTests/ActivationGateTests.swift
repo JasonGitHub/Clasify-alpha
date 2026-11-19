@@ -97,6 +97,17 @@ import Testing
         #expect(s.stack == [Frame(screen: .main)])
     }
 
+    /// The session expires after a lock: the login after it goes to Activate, not to the main
+    /// menu (Codex on #325).
+    @Test func aLoginAfterALockGoesToActivate() {
+        var s = gated(remembered: true)
+        send(&s, .launch, .restored(token: 1, ok: true), .activation(.off, request: nil), .expire)
+        #expect(s.top.screen == .login)
+        send(&s, .select)  // Log In
+        send(&s, .authDone(token: s.authAttempt, ok: true), .select)
+        #expect(s.stack == [Frame(screen: .activate)] && s.activateStep == .off)
+    }
+
     /// No connection, a full beta, a busy mail limit, or active: the remembered Mac stays open.
     @Test func theOtherLaunchAnswersKeepARememberedMacOpen() {
         for answer: Activation in [.offline, .full, .mailBusy, .active] {
