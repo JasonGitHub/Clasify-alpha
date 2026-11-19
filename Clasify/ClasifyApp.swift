@@ -114,8 +114,11 @@ enum DeviceWindow {
         guard window.occlusionState.contains(.visible) else { return false }
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow, .excludeDesktopElements],
                                                     CGWindowID(window.windowNumber)) as? [[String: Any]] else { return true }
+        let ownPID = Int(ProcessInfo.processInfo.processIdentifier)
         let above = list.compactMap { info -> WindowCover.Window? in
-            guard let dict = info[kCGWindowBounds as String] as? NSDictionary,
+            // myPod's own windows (How to Use, the menu bar icon) never cover the device.
+            guard info[kCGWindowOwnerPID as String] as? Int != ownPID,
+                  let dict = info[kCGWindowBounds as String] as? NSDictionary,
                   let rect = CGRect(dictionaryRepresentation: dict as CFDictionary) else { return nil }
             return WindowCover.Window(bounds: box(rect), layer: info[kCGWindowLayer as String] as? Int ?? 0,
                                       alpha: info[kCGWindowAlpha as String] as? Double ?? 1)
