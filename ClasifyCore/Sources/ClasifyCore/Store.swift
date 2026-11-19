@@ -223,8 +223,13 @@ public final class Store {
         let library = self.library, activator = activating ? self.activator : nil
         Task { [weak self] in
             var page: String?
-            if let activator { page = await Self.within(Self.pageWait) { await activator.pageURL() } }
-            if page != nil { self?.send(.loginCarriesActivate(token: token)) }
+            if let activator {
+                page = await Self.within(Self.pageWait) { await activator.pageURL() }
+                // MENU, Cancel or a newer login came while it waited: this login must not start
+                // (Codex on #330).
+                guard let state = self?.state, state.top.screen == .auth, state.top.token == token else { return }
+                if page != nil { self?.send(.loginCarriesActivate(token: token)) }
+            }
             let result = await library.logIn(page: page)
             switch result {
             case .notPremium: self?.send(.notPremium(token: token))

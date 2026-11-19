@@ -100,6 +100,16 @@ import Testing
         #expect(lib.calls.first == "logIn" && !store.state.activateHandOver)
     }
 
+    /// MENU while the page is asked for: that login never starts (Codex on #330).
+    @MainActor @Test func aLoginCancelledWhileThePageIsAskedForNeverStarts() async {
+        let lib = FakeLibrary()
+        let store = Store(player: FakePlayer(), library: lib, state: atLogIn(gate: true), env: Dependencies(now: { 100 }, random: { _ in 0 }), activator: FakeActivator(wait: 0.2))
+        store.send(.select)
+        store.send(.menu)  // back to the Log In screen
+        try? await Task.sleep(for: .milliseconds(600))
+        #expect(lib.calls == ["cancelLogIn"] && !store.state.activateHandOver && store.state.top.screen == .login)
+    }
+
     /// The page wait is at most 2 s; a late answer counts as none.
     @MainActor @Test func aLatePageCountsAsNone() async {
         #expect(Store.pageWait == 2)
