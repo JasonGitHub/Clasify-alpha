@@ -46,6 +46,34 @@ import Testing
         #expect(seen == Array(("com.cappyai.mypod.activation.v1:" + a).utf8))
     }
 
+    /// Jason's test switch: each value is another new Mac, and no value is the real ID.
+    @Test func aTestValueMakesThisMacANewMac() {
+        let real = DeviceID.make(uuid: a, sha256: Self.fakeHash)
+        #expect(DeviceID.make(uuid: a, testMac: nil, sha256: Self.fakeHash) == real)
+        let one = DeviceID.make(uuid: a, testMac: "A", sha256: Self.fakeHash)
+        let two = DeviceID.make(uuid: a, testMac: "B", sha256: Self.fakeHash)
+        #expect(one != real && two != real && one != two)
+        #expect(DeviceID.make(uuid: a, testMac: "A", sha256: Self.fakeHash) == one)
+        #expect(DeviceID.make(uuid: nil, testMac: "A", sha256: Self.fakeHash) == nil)  // still no random ID
+        var seen: [UInt8] = []
+        _ = DeviceID.make(uuid: a, testMac: "A") { seen = $0; return Self.fakeHash($0) }
+        #expect(seen == Array(("com.cappyai.mypod.activation.v1:" + a + ":A").utf8))
+    }
+
+    /// Only 1 to 32 letters and digits count. Anything else is ignored: the real ID.
+    @Test func aBadTestValueIsIgnored() {
+        let store = FakeSettings()
+        #expect(Settings.testMac(from: store) == nil)
+        for good in ["A", "test2", String(repeating: "z", count: 32)] {
+            store.values["activate.testMac"] = good
+            #expect(Settings.testMac(from: store) == good)
+        }
+        for bad in ["", String(repeating: "z", count: 33), "a b", "a:b", "a-b", "é", "a\n"] {
+            store.values["activate.testMac"] = bad
+            #expect(Settings.testMac(from: store) == nil)
+        }
+    }
+
     /// RFC 4648 test vectors, in the URL-safe alphabet with no padding.
     @Test func base64URLMatchesTheStandard() {
         #expect(DeviceID.base64URL(Array("".utf8)) == "")

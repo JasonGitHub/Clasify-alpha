@@ -8,7 +8,9 @@ import Security
 /// computed at each request and stored nowhere. The raw UUID never leaves this file.
 enum HardwareID {
     static func deviceID() -> String? {
-        DeviceID.make(uuid: platformUUID()) { Array(SHA256.hash(data: Data($0))) }
+        DeviceID.make(uuid: platformUUID(), testMac: ClasifyCore.Settings.testMac(from: UserDefaults.standard)) {
+            Array(SHA256.hash(data: Data($0)))
+        }
     }
 
     /// IOPlatformExpertDevice's kIOPlatformUUIDKey, the UUID that System Information shows.

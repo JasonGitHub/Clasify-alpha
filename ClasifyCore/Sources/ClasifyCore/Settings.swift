@@ -61,6 +61,9 @@ public struct Settings: Equatable, Sendable {
         // Before the beta build it becomes a build setting, or it goes away.
         static let activateOn = "activate.on"
         static let activated = "activate.done"
+        // CLA-145: NOT for testers. Jason's test switch for a "new Mac": see `testMac(from:)`.
+        // CLA-134 decides if beta builds keep it. Read only; the app never writes it.
+        static let activateTestMac = "activate.testMac"
         static let arrived = "arrive.done"
     }
 
@@ -92,6 +95,16 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.activateOn).flatMap({ Bool($0) }) { activateOn = v }
         activated = store.string(forKey: Key.activated).flatMap { Bool($0) } ?? false
         arrived = store.string(forKey: Key.arrived).flatMap { Bool($0) } ?? false
+    }
+
+    /// CLA-145: `defaults write com.cappyai.mypod activate.testMac <value>` makes this Mac a new
+    /// Mac for the activation server (`DeviceID.make(uuid:testMac:sha256:)`); deleting the key
+    /// gives the real ID back. Only 1 to 32 letters and digits count; any other value is ignored.
+    public static func testMac(from store: some SettingsStore) -> String? {
+        guard let v = store.string(forKey: Key.activateTestMac), (1...32).contains(v.count),
+              v.unicodeScalars.allSatisfy({ ("a"..."z").contains($0) || ("A"..."Z").contains($0) || ("0"..."9").contains($0) })
+        else { return nil }
+        return v
     }
 
     public func save(to store: some SettingsStore) {
