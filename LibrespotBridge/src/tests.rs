@@ -1697,13 +1697,33 @@ fn the_login_page_takes_only_the_activate_address() {
     }
     assert_eq!(login_page(None), OAUTH_PAGE);
     let page = login_page(Some(&good));
-    assert!(
-        page.contains("You’re in") && page.contains("One more step. Taking you to getmypod.app…")
-    );
+    // Change 365: the tab goes on at once, with no wait and no bar, and the 127.0.0.1 address
+    // (with Spotify's code) is never sent as the Referer.
+    assert!(page.contains("<meta name=\"referrer\" content=\"no-referrer\">"));
+    assert!(page.contains(".has(\"code\")){location.replace("));
+    for gone in [
+        "1200",
+        "setTimeout",
+        "One more step",
+        "class=\"bar\"",
+        "prefers-reduced-motion",
+    ] {
+        assert!(!page.contains(gone), "{gone}");
+    }
+    // The fallback line shows at 1.5 s, in 182's style.
     assert!(page.contains("Not moving? <a href=\"https://getmypod.app/activate/?d="));
-    assert!(page.contains("Go to getmypod.app</a>") && page.contains("animation:fill 1.2s"));
-    assert!(page.contains("prefers-reduced-motion") && page.contains("#7db7f5"));
-    assert!(page.contains(".has(\"code\")") && page.contains("},1200)"));
+    assert!(
+        page.contains("Go to getmypod.app</a>") && page.contains("animation:show 0s 1.5s forwards")
+    );
+    assert!(
+        page.contains("#5d6772") && page.contains("a{color:#1f6fd1}") && page.contains("#7db7f5")
+    );
+    // Without ?code= (a denied login) the page never moves: it shows 182's words.
+    let script = &page[page.find("<script>").unwrap()..];
+    let (with_code, without) = script.split_once("}else{").unwrap();
+    assert!(with_code.contains("location.replace") && !without.contains("location"));
+    assert!(without.contains(".done\").hidden=false") && page.contains("You’re in"));
+    assert_eq!(page.matches("location.replace").count(), 1);
     assert!(!page.contains("NEXT_URL"));
     assert_eq!(page.matches(good.as_str()).count(), 2); // the link and the script, nothing else
     for banned in ["<link", "<img", "<iframe", "src=", "url(", "@import"] {
