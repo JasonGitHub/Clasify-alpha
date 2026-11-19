@@ -254,6 +254,28 @@ enum K3DShader {
     float hash2(float2 p, float2 k, float m) { return fract(sin(dot(p, k)) * m); }
     // K.3D.11 (CLA-129): the battery's blue shrink film: soft wrinkles, an overlap seam at x 50
     // (the right end is two layers), diagonal tuck folds at the left end.
+    // K.3D.12 (CLA-150): the foam's hash, smooth value noise and round jittered dots (the mock's
+    // h12, vn12 and sp12): dots of radius rr in cells of cs pt, in a share pr of the cells.
+    float h12(float2 p) { return fract(sin(dot(p, float2(12.9898, 78.233))) * 43758.5453); }
+    float vn12(float2 p) {
+        float2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h12(i), h12(i + float2(1.0, 0.0)), f.x), mix(h12(i + float2(0.0, 1.0)), h12(i + float2(1.0, 1.0)), f.x), f.y);
+    }
+    float sp12(float2 p, float cs, float rr, float pr) {
+        float2 c = floor(p / cs);
+        float m = 0.0;
+        for (int j = -1; j <= 1; j++) {
+            for (int i = -1; i <= 1; i++) {
+                float2 n = c + float2(float(i), float(j));
+                if (h12(n + 7.1) < pr) {
+                    float2 q = (n + 0.15 + 0.7 * float2(h12(n + 1.3), h12(n + 2.9))) * cs;
+                    m = max(m, ss(rr, rr * 0.35, length(p - q)));
+                }
+            }
+        }
+        return m;
+    }
     float3 film(float2 o) {
         return float3(0.065, 0.28, 0.74) * (1.0 + 0.035 * sin(o.x * 0.055 + 1.6 * sin(o.y * 0.07 + o.x * 0.013)) * sin(o.y * 0.09 + o.x * 0.021) + 0.05 * (o.y - 212.0) / 48.0)
             * (o.x > 50.0 ? 1.07 : 1.0) * (1.0 - 0.22 * ss(1.4, 0.0, abs(o.x - 50.0)))
@@ -396,9 +418,8 @@ enum K3DShader {
             if (pt < 0.5) c *= 0.24;
         }
         else if (id == 37.0) {  // blue foam (K.3D.11): deep turquoise with coarse pores, 2 to 3 pt
-            float g1 = hash2(floor(o * 1.1), float2(12.9898, 78.233), 43758.5453), g2 = hash2(floor(o * 2.9), float2(26.1, 7.7), 4375.5);
-            float g3 = hash2(floor(o * 0.42 + 0.5), float2(41.3, 9.1), 4375.5);
-            c = float3(0.24, 0.62, 0.90) * (0.80 + 0.10 * g1 + 0.07 * g2 + 0.12 * g3);
+            // K.3D.12 (CLA-150, Jason's photo): pale sky blue, smooth soft mottle, no square cells.
+            c = float3(0.60, 0.86, 0.96) * (0.90 + 0.06 * vn12(o * 0.75) + 0.05 * vn12(o * 2.1 + 3.7) + 0.03 * vn12(o * 0.22 + 9.1) + 0.05 * vn12(o * 5.3 + 1.9));
             if (pt > 7.5) {  // the pad: the label under it shows through 9%
                 float2 l8 = float2(-o.x, o.y + 80.0);
                 float in8 = step(abs(l8.x), 132.0) * step(abs(l8.y), 165.0) * pk;
@@ -508,10 +529,9 @@ enum K3DShader {
             if (o.y < -9.0 && o.y >= -17.0) c = mix(og * 0.95, float3(0.96, 0.78, 0.34), 0.55 * step(0.62, fract(o.x * 0.55)));  // gold traces down the tail
             if (o.y < -17.0) c = mix(og * 0.72, float3(0.94, 0.76, 0.34), step(0.42, fract(o.x * 0.55)));
         }
-        if (id == 37.0) {  // the foam's sparkles and dark pores
-            c += float3(0.18) * step(0.965, hash2(floor(o * 1.4), float2(17.3, 61.7), 4375.5)) + float3(0.34) * step(0.985, hash2(floor(o * 0.75), float2(7.1, 33.9), 4375.5))
-                - float3(0.10, 0.14, 0.16) * step(0.90, hash2(floor(o * 0.9 + 0.3), float2(3.7, 19.9), 4375.5));
-            c += float3(0.16) * step(0.965, hash2(floor(o * 1.7), float2(39.3, 11.1), 4375.5));
+        if (id == 37.0) {  // K.3D.12: the cut sides are lighter and matte; the faces get small round glitter dots, stronger in grazing light
+            if (abs(von.z) <= 0.9) c = mix(c * (0.95 + 0.06 * vn12(float2(vo.x + vo.y, vo.z) * 2.4)), float3(0.92, 0.97, 1.0), 0.10);
+            else c = mix(c, float3(0.97, 0.99, 1.0), min(1.0, 0.80 * max(sp12(o, 4.0, 0.62, 0.50), 0.8 * sp12(o + 11.3, 2.3, 0.42, 0.45)) * (0.60 + 0.9 * pow(nh, 3.0))));
         }
         if ((id == 16.0 && !(pt > 3.5 && pt < 4.5)) || id == 18.0 || id == 26.0) c = mix(float3(dot(c, float3(0.30, 0.59, 0.11))), c, 0.70);
         if ((id == 19.0 || id == 35.0) && pt < 0.5) c *= float3(0.68, 1.32, 0.90);  // K.3D.12 colour C: the battery film in the photo's blue

@@ -174,7 +174,7 @@ struct K3DPartsTests {
     /// turquoise foam, and the label moved with the pad's cut-out. The PNGs show both of the
     /// drive's sides apart, for the design check against the mock.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theDriveHasItsK3D11Colors() throws {
-        for line in ["float hook11(float2 o)", "c = float3(0.24, 0.62, 0.90)", "l -= float2(-49.0, -49.0);", "mm = 0.66;"] {
+        for line in ["float hook11(float2 o)", "c = float3(0.60, 0.86, 0.96)", "l -= float2(-49.0, -49.0);", "mm = 0.66;"] {
             #expect(K3DShader.source.contains(line), "\(line)")
         }
         for (angle, tilt) in [(125.0, 15.0), (150.0, 25.0), (210.0, -25.0), (330.0, 25.0), (30.0, -25.0)] {
@@ -253,6 +253,22 @@ struct K3DPartsTests {
         }
         for (angle, tilt) in [(330.0, 25.0), (60.0, 25.0), (15.0, 35.0)] {
             _ = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-corners-\(Int(angle))-\(Int(tilt))")
+        }
+    }
+
+    /// CLA-150 PR 3 (K.3D.12 item 4): the blue foam is pale sky blue with smooth grain, round
+    /// sparkle dots and matte, lighter cut sides. The PNGs are the frozen reference poses and close
+    /// views of the pad and the U on the drive lid.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theK3D12FoamIsPaleSkyBlue() throws {
+        for line in ["float vn12(float2 p)", "float sp12(float2 p, float cs, float rr, float pr)", "c = float3(0.60, 0.86, 0.96)"] {
+            #expect(K3DShader.source.contains(line), "\(line)")
+        }
+        for (i, (angle, tilt)) in [(300.0, 25.0), (200.0, 25.0), (0.0, 0.0)].enumerated() {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-foam-ref-\(i)")
+            #expect(width(bytes, row: 300) > 100)
+        }
+        for (angle, tilt) in [(330.0, 25.0), (150.0, 25.0)] {
+            _ = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-foam-\(Int(angle))-\(Int(tilt))")
         }
     }
 
