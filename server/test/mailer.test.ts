@@ -51,8 +51,14 @@ describe("link mailer", () => {
       "Did not ask for this? You can ignore this mail.\nmyPod by Cappy · © 2026 CappyAI Ltd");
     expect(sent[0].html).toContain(`href="${link}"`);
     expect(sent[0].html).toContain(">Confirm my email</a>");
-    expect(sent[0].html).toContain("background:#f6f5f1");
+    // Card CB (CLA-154): the page look, light only, with a solid colour where gradients are stripped.
+    expect(sent[0].html).toContain('bgcolor="#e8eef4"');
+    expect(sent[0].html).toContain("radial-gradient(circle at 50% 40%,#ffffff,#d6e2ec 80%)");
+    expect(sent[0].html).toContain('<meta name="color-scheme" content="light">');
+    expect(sent[0].html).not.toContain(">myPod</div>");
+    expect(sent[0].html).toContain("font-size:34px");
     expect(linkMail('https://x/?c=a"b').html).toContain('href="https://x/?c=a&quot;b"');
+    expect(linkMail("https://x/?c=<b>&d").html).toContain('href="https://x/?c=&lt;b>&amp;d"');
   });
 
   it("stops at the day limit, sends one alert, and starts again the next day", async () => {

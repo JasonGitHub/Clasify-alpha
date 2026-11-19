@@ -29,14 +29,19 @@ export function linkMail(link: string) {
     subject: "Your myPod link",
     text: `Hi there,\n\nClick the button to start the myPod beta. The link works for 1 hour.\n\n${link}\n\n` +
       "Did not ask for this? You can ignore this mail.\nmyPod by Cappy · © 2026 CappyAI Ltd",
-    html: `<body style="margin:0;background:#f6f5f1"><div style="padding:26px 34px 22px;font-family:${font}">` +
-      `<div style="font-weight:bold;font-size:13px;color:#111317">myPod</div>` +
-      `<div style="font-weight:bold;font-size:20px;color:#111317;margin:18px 0 8px">Hi there,</div>` +
-      `<div style="font-size:14px;line-height:1.5;color:#4a525c;margin-bottom:18px">Click the button to start the myPod beta.<br>The link works for 1 hour.</div>` +
-      `<table role="presentation" cellspacing="0" cellpadding="0"><tr><td style="height:34px;padding:0 20px;border-radius:17px;background:#1f6fd1;background-image:linear-gradient(#5aa3f0,#1f6fd1)">` +
-      `<a href="${a}" style="display:inline-block;line-height:34px;color:#ffffff;font-weight:bold;font-size:13px;text-decoration:none">Confirm my email</a></td></tr></table>` +
-      `<div style="font-size:11px;line-height:1.5;color:#7a838d;margin-top:20px">Did not ask for this? You can ignore this mail.<br>myPod by Cappy · © 2026 CappyAI Ltd</div>` +
-      `</div></body>`,
+    // Card CB (CLA-154): the getmypod.app page look (card CA). Light only. A mail app with no
+    // gradients shows the solid #e8eef4 (bgcolor) and the solid blue button.
+    html: `<!DOCTYPE html><html><head><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light"></head>` +
+      `<body style="margin:0;padding:0;background:#e8eef4"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" bgcolor="#e8eef4" ` +
+      `style="background:#e8eef4;background-image:radial-gradient(circle at 50% 40%,#ffffff,#d6e2ec 80%)"><tr>` +
+      `<td align="center" style="padding:56px 40px 30px;text-align:center;font-family:${font}">` +
+      `<div style="font-weight:bold;font-size:34px;letter-spacing:-0.4px;color:#1b1f24;margin:0 0 10px">Hi there,</div>` +
+      `<div style="font-size:17px;line-height:1.45;color:#5d6772;margin:0 0 26px">Click the button to start the myPod beta.<br>The link works for 1 hour.</div>` +
+      `<table role="presentation" align="center" cellspacing="0" cellpadding="0" style="margin:0 auto"><tr>` +
+      `<td bgcolor="#1f6fd1" style="height:44px;padding:0 26px;border-radius:22px;background:#1f6fd1;background-image:linear-gradient(#5aa3f0,#1f6fd1)">` +
+      `<a href="${a}" style="display:inline-block;line-height:44px;color:#ffffff;font-weight:bold;font-size:17px;text-decoration:none">Confirm my email</a></td></tr></table>` +
+      `<div style="font-size:12px;line-height:1.6;color:#8a949e;margin:56px 0 0">Did not ask for this? You can ignore this mail.<br>myPod by Cappy · © 2026 CappyAI Ltd</div>` +
+      `</td></tr></table></body></html>`,
   };
 }
 
