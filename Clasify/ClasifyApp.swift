@@ -18,6 +18,13 @@ struct PlainWindowApp: App {
         }
         .windowStyle(.plain)
         .windowResizability(.contentSize)
+        // CLA-142: the first place, with no saved frame: the device at the screen's center. A
+        // saved frame (the place it was left) still wins.
+        .defaultWindowPlacement { [margin = DeviceWindow.margin] content, context in
+            let size = content.sizeThatFits(.unspecified)
+            let origin = FirstWindowPlace.origin(visible: context.defaultDisplay.visibleRect, window: size, margin: margin)
+            return WindowPlacement(x: origin.x, y: origin.y, width: size.width, height: size.height)
+        }
         .windowBackgroundDragBehavior(.enabled)
         .commands { DebugCommands(model: model); HelpCommands() }
         HowToUseWindow()
