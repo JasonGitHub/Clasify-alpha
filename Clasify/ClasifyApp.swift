@@ -142,8 +142,9 @@ enum DeviceWindow {
             NSApp.activate()
         } else if fading == nil && isShown {
             return
-        } else {
-            raise()
+        } else if !raise() {
+            open?()  // the device window was closed: open a new one
+            return
         }
         // A device window is there, so always fade it in, also if `unhide` has not put it on
         // the screen yet. Only with no device window at all, open one.
