@@ -23,9 +23,10 @@ public enum BetaEvent: Equatable, Sendable {
     case appUpdated(from: Int, to: Int, days: Int)
     /// After setup: a login failed, a list did not load (`offline` when the Mac was offline), or a song did not play.
     case useError(UseError, offline: Bool, service: MusicService)
-    /// Once a launch, at the first library read that worked: ms from the process start to the
-    /// first window (nil when the app did not say), and from `.launch` to that read.
-    case appSpeed(startMs: Int?, libraryMs: Int)
+    /// Once a launch after setup, at the first library read that the app took: ms from the
+    /// process start to the first window (nil when the app did not say), from `.launch` to that
+    /// read, and whether it worked (a failed one counts too: Jason 23:57 JST).
+    case appSpeed(startMs: Int?, libraryMs: Int, loaded: Bool)
     /// The service changed after setup (the Settings Service row).
     case serviceSwitch(from: MusicService, to: MusicService)
     /// One day with music, sent on the first action of a later day.
@@ -74,8 +75,8 @@ public enum BetaEvent: Equatable, Sendable {
             return ["old_build": .number(from), "new_build": .number(to), "days": .number(days)]
         case .useError(let kind, let offline, let service):
             return ["kind": .text(kind.rawValue), "offline": .flag(offline), "service": .text(service.eventName)]
-        case .appSpeed(let startMs, let libraryMs):
-            var p: [String: BetaValue] = ["library_ms": .number(libraryMs)]
+        case .appSpeed(let startMs, let libraryMs, let loaded):
+            var p: [String: BetaValue] = ["library_ms": .number(libraryMs), "loaded": .flag(loaded)]
             if let startMs { p["start_ms"] = .number(startMs) }
             return p
         case .serviceSwitch(let from, let to):
@@ -179,6 +180,8 @@ struct BeforeEvents {
     /// The action brings a library read, and the read times before it, for `app_speed`: the
     /// reducer marks each read that it took (Codex on #350: not a stale or unasked one).
     var libraryRead = false, readAt: [String: Double], artists: Bool
+    /// The reads in flight before: a failed read that the app took ends one of them.
+    var loading: Bool, refreshes: Int, coverReads: Int
     /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
     var choices: [String], used: Feature?
 
@@ -188,6 +191,7 @@ struct BeforeEvents {
         playing = s.isPlaying
         (error, service) = (s.top.error, s.service)
         (readAt, artists) = (s.readAt, s.artistsLoaded)
+        (loading, refreshes, coverReads) = (s.top.loading, s.refreshing.count, s.artReads.count)
         if case .loadFailed(_, let gen) = action, gen == s.playGen, s.current != nil { songFailed = true }
         if case .used(let feature) = action { used = feature }
         top = s.appleMusicFirst ? .appleMusic : .spotify
@@ -237,10 +241,15 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         if let error { events.append(.useError(error, offline: s.offline, service: s.service)) }
         if s.service != b.service { events.append(.serviceSwitch(from: b.service, to: s.service)) }
     }
-    if !s.speedSent, let launched = s.launchedAt, b.libraryRead,
-        s.readAt != b.readAt || s.artistsLoaded != b.artists {  // the Artists read sets no `readAt`
-        s.speedSent = true
-        events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded()))))
+    if !s.speedSent, let launched = s.launchedAt, b.libraryRead {
+        let loaded = s.readAt != b.readAt || s.artistsLoaded != b.artists  // the Artists read sets no `readAt`
+        // A failed read that the app took: its load, refresh or cover read ended. A stale or
+        // unasked one changes none of them.
+        let failed = (b.loading && !s.top.loading) || s.refreshing.count < b.refreshes || s.artReads.count < b.coverReads
+        if loaded || failed {
+            s.speedSent = true
+            events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded())), loaded: loaded))
+        }
     }
     let daysLeft = s.beta.map { Int((max(0, $0.endsAt - now) / BetaBuild.day).rounded(.up)) } ?? 0
     if screen != b.screen, let notice = BetaNotice(screen) {

@@ -38,12 +38,12 @@ import Testing
         _ = events(&s, .appStarted(ms: 850), now: 99)
         _ = events(&s, .launch, now: 100)
         #expect(s.launchedAt == 100 && s.startMs == 850)
-        #expect(events(&s, .playlistsLoaded(token: 9, playlists: nil), now: 101).isEmpty)  // a failed read
+        #expect(events(&s, .playlistsLoaded(token: 9, playlists: nil), now: 101).isEmpty)  // a stale read: not taken
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 101.1).isEmpty)  // not asked for: not taken
         s.artReads[Playlist.likedSongsID] = 4  // the main menu's cover read (Codex on #350)
         #expect(events(&s, .artTracksRead(token: 3, playlist: Playlist.likedSongsID, tracks: []), now: 101.2).isEmpty)  // stale
         #expect(events(&s, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: []), now: 101.25)
-            == [.appSpeed(startMs: 850, libraryMs: 1250)])
+            == [.appSpeed(startMs: 850, libraryMs: 1250, loaded: true)])
         s.refreshing.insert(AppState.readKey(.playlists))
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 102).isEmpty && s.speedSent)
         var artists = mainMenu()  // Apple Music: the Artists read counts too (Codex on #350)
@@ -51,11 +51,17 @@ import Testing
         artists.launchedAt = 100
         #expect(events(&artists, .artistsLoaded(token: 9, artists: LibraryRowsTests.artists), now: 100.5).isEmpty)  // stale
         #expect(events(&artists, .artistsLoaded(token: 1, artists: LibraryRowsTests.artists), now: 100.5)
-            == [.appSpeed(startMs: nil, libraryMs: 500)])
+            == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true)])
         var setup = AppState()  // a launch in setup sends none
         _ = events(&setup, .launch)
         #expect(setup.launchedAt == nil)
-        #expect(BetaEvent.appSpeed(startMs: nil, libraryMs: 5).properties == ["library_ms": .number(5)])
+        var failed = mainMenu()  // a failed first read that the app took counts too (Jason 23:57 JST)
+        _ = events(&failed, .wheel(1), .select, now: 100)
+        failed.launchedAt = 100
+        #expect(events(&failed, .playlistsLoaded(token: 1, playlists: nil), now: 100.75)
+            == [.useError(.listNotLoaded, offline: false, service: .spotify), .appSpeed(startMs: nil, libraryMs: 750, loaded: false)])
+        #expect(failed.speedSent)
+        #expect(BetaEvent.appSpeed(startMs: nil, libraryMs: 5, loaded: false).properties == ["library_ms": .number(5), "loaded": .flag(false)])
     }
 
     @Test func aServiceChangeAfterSetupSendsServiceSwitch() {
