@@ -306,6 +306,13 @@ struct K3DPartsTests {
             let changed = zip(bytes, off[i]).filter { abs(Int($0) - Int($1)) > 8 }.count
             if i != 2 { #expect(changed > 2000, "\(angle), \(tilt): \(changed) bytes changed") }
         }
+        // The CTO's ask (20:11 JST 11-19): the face of the U foam on the drive lid, seen from
+        // behind and to the side, between the open shell and the drive.
+        for (angle, tilt) in [(115.0, 30.0), (125.0, -25.0), (100.0, 15.0), (235.0, 30.0)] {
+            renderer.makePrintsNow()
+            let bytes = try #require(renderer.image(K3DPose(angle: angle, tilt: tilt, ex: 1), screen: nil, size: size, scale: 2))
+            save(bytes, "k3d12-shadow-lid-\(Int(angle))-\(Int(tilt))")
+        }
         _ = try #require(renderer.image(K3DPose(), screen: nil, size: size, scale: 2))
         #expect(!renderer.hasShadowMap, "closing frees the map")
     }
