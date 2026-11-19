@@ -174,7 +174,12 @@ import Testing
         s.stack.append(Frame(screen: .coverFlow))
         _ = events(&s, .tick, now: at(12))
         _ = events(&s, .used(.aboutFlip), .used(.aboutFlip), now: at(12))
-        #expect(s.today?.features == [.coverFlow, .aboutFlip] && s.today?.hadMusic == false)
+        #expect(s.today?.features == [.coverFlow, .aboutFlip] && s.today?.seconds == 0)
+        // CTO 00:08 JST: a day with features and no music goes out too, with minutes 0.
+        let sent = events(&s, .tick, now: at(12, day: 20))
+        guard case .dayActive(let day, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(day.features == [.coverFlow, .aboutFlip] && day.songs == 0 && day.hadUse)
+        #expect(!DayUse(day: 20261119, weekday: 5).hadUse)
         var set = mainMenu()
         set.stack.append(Frame(screen: .settings))
         _ = events(&set, .tick, now: at(12))

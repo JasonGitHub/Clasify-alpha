@@ -29,7 +29,7 @@ public enum BetaEvent: Equatable, Sendable {
     case appSpeed(startMs: Int?, libraryMs: Int, loaded: Bool)
     /// The service changed after setup (the Settings Service row).
     case serviceSwitch(from: MusicService, to: MusicService)
-    /// One day with music, sent on the first action of a later day.
+    /// One day with music, a feature or a 3D view, sent on the first action of a later day.
     case dayActive(DayUse, service: MusicService)
 
     /// The event name in PostHog.
@@ -272,14 +272,14 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
 /// A day starts with its first count, so an action with nothing to count changes nothing.
 func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
     var fx: [Effect] = []
-    /// Ends the day before `t`'s day: `day_active` for it, if it had music. While music plays
+    /// Ends the day before `t`'s day: `day_active` for it, if it had any use. While music plays
     /// with an open interval, the day ends at the next position report or the pause, which
     /// split the interval at midnight first (Codex on #348): so each day goes out once, whole.
     func roll(_ t: Double, force: Bool = false) -> (day: Int, weekday: Int, band: Int) {
         let at = DayUse.at(t, in: timeZone)
         let open = s.isPlaying && s.dayPlayAt != nil
         if let old = s.today, old.day < at.day, force || !open {
-            if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
+            if old.hadUse { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }
         return at
