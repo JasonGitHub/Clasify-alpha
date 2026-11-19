@@ -140,6 +140,52 @@ struct K3DTurnGestureTests {
         #expect(!a7 && !g.turning)
     }
 
+    /// Build 317: the Cmd up went to another app. Cmd seen up by the poll ends the turn.
+    @Test func cmdSeenUpEndsATurnWhoseCmdUpWasLost() {
+        var g = K3DTurnGesture()
+        let a1 = g.sync(command: false)
+        #expect(!a1)  // no turn: nothing to end
+        _ = g.scroll(.begin, command: true, inside: true)
+        _ = g.scroll(.lift, command: true, inside: true)
+        let a2 = g.sync(command: true)
+        #expect(!a2)
+        #expect(g.turning)
+        let a3 = g.sync(command: false)
+        #expect(a3)
+        #expect(!g.turning)
+        let a4 = g.scroll(.glide, command: false, inside: true)
+        #expect(a4 == .swallow)
+    }
+
+    /// Build 317: with the fingers down, Cmd seen up ends the turn at the lift, as Cmd up does.
+    @Test func cmdSeenUpWithTheFingersDownEndsAtTheLift() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.begin, command: true, inside: true)
+        let a1 = g.sync(command: false)
+        #expect(!a1)
+        let a2 = g.sync(command: false)
+        #expect(!a2)
+        let a3 = g.scroll(.move, command: false, inside: true)
+        #expect(a3 == .turn)
+        let a4 = g.scroll(.lift, command: false, inside: true)
+        #expect(a4 == .end)
+    }
+
+    /// Build 317: a wheel or pinch turn whose Cmd up was lost ends at the next event without Cmd.
+    @Test func aWheelOrPinchEventWithoutCmdEndsTheTurn() {
+        var g = K3DTurnGesture()
+        _ = g.scroll(.wheel, command: true, inside: true)
+        let a1 = g.sync(command: false)
+        #expect(a1)
+        let a2 = g.scroll(.wheel, command: false, inside: true)
+        #expect(a2 == .pass)
+        _ = g.pinch(command: true, inside: true)
+        let a3 = g.sync(command: false)
+        #expect(a3)
+        let a4 = g.pinch(command: false, inside: true)
+        #expect(!a4)
+    }
+
     /// 352 and 353: lifted fingers keep the turn; Cmd up then ends it at once.
     @Test func cmdUpAfterTheFingersLiftEndsTheTurn() {
         var g = K3DTurnGesture()

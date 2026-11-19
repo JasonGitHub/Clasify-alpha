@@ -163,6 +163,16 @@ public struct K3DTurnGesture: Equatable {
         return end() == .end
     }
 
+    /// Cmd as a turn event or the app's poll sees it (build 317). AppKit sends `flagsChanged`
+    /// only to the active app, but scroll and pinch events go to the window under the pointer.
+    /// So a turn can start while another app is active, and its Cmd up never comes. A system
+    /// shortcut can also take the Cmd up. Cmd seen up counts as the Cmd up. True: the turn
+    /// ends now. With the fingers down or a glide running, it ends when they end, as for Cmd up.
+    public mutating func sync(command: Bool) -> Bool {
+        guard turning, !command, !endPending else { return false }
+        return self.command(down: false)
+    }
+
     /// The app or the window is no longer in front: a lost Cmd up must not leave input dead.
     /// True when a turn ran.
     public mutating func resign() -> Bool {
