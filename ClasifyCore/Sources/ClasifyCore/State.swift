@@ -462,6 +462,12 @@ public struct AppState: Equatable, Sendable {
     public var firstSongSent = false
     /// CLA-97: the newest beta build that started, for `app_updated`. Saved with the settings.
     public var lastBuild: Int?
+    /// CLA-97, `app_speed`: when `.launch` came, the app's start time in ms, and the event went
+    /// out on this launch. Not saved.
+    public var launchedAt: Double?, startMs: Int?, speedSent = false
+    /// CLA-97: features used after midnight while the day before waits for the next position
+    /// report. They go to the new day when it starts. Not saved: a quit ends the waiting day.
+    public var pendingFeatures: Set<Feature> = []
     /// CLA-97: today's use, for `day_active`. Saved with the settings.
     public var today: DayUse?
     /// CLA-97: the copy of `today` that the settings save: about once a minute (Jason 23:07 JST).

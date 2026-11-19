@@ -21,6 +21,14 @@ public enum BetaEvent: Equatable, Sendable {
     case betaRenewal(BetaNotice, pressed: Bool, daysLeft: Int)
     /// The first start of a new build: the build before, this one, and days since it was signed.
     case appUpdated(from: Int, to: Int, days: Int)
+    /// After setup: a login failed, a list did not load (`offline` when the Mac was offline), or a song did not play.
+    case useError(UseError, offline: Bool, service: MusicService)
+    /// Once a launch after setup, at the first library read that the app took: ms from the
+    /// process start to the first window (nil when the app did not say), from `.launch` to that
+    /// read, and whether it worked (a failed one counts too: Jason 23:57 JST).
+    case appSpeed(startMs: Int?, libraryMs: Int, loaded: Bool)
+    /// The service changed after setup (the Settings Service row).
+    case serviceSwitch(from: MusicService, to: MusicService)
     /// One day with music, sent on the first action of a later day.
     case dayActive(DayUse, service: MusicService)
 
@@ -36,6 +44,9 @@ public enum BetaEvent: Equatable, Sendable {
         case .betaRenewal: "beta_renewal"
         case .appUpdated: "app_updated"
         case .dayActive: "day_active"
+        case .useError: "use_error"
+        case .appSpeed: "app_speed"
+        case .serviceSwitch: "service_switch"
         }
     }
 
@@ -62,6 +73,14 @@ public enum BetaEvent: Equatable, Sendable {
             return ["notice": .text(notice.rawValue), "pressed": .flag(pressed), "days_left": .number(daysLeft)]
         case .appUpdated(let from, let to, let days):
             return ["old_build": .number(from), "new_build": .number(to), "days": .number(days)]
+        case .useError(let kind, let offline, let service):
+            return ["kind": .text(kind.rawValue), "offline": .flag(offline), "service": .text(service.eventName)]
+        case .appSpeed(let startMs, let libraryMs, let loaded):
+            var p: [String: BetaValue] = ["library_ms": .number(libraryMs), "loaded": .flag(loaded)]
+            if let startMs { p["start_ms"] = .number(startMs) }
+            return p
+        case .serviceSwitch(let from, let to):
+            return ["from": .text(from.eventName), "to": .text(to.eventName)]
         case .dayActive(let d, let service):
             var p: [String: BetaValue] = [
                 "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
@@ -103,6 +122,11 @@ public enum SetupError: String, Sendable {
     case spotifyNotFound = "spotify_not_found", premiumNeeded = "premium_needed", loginFailed = "login_failed"
     case accessOff = "apple_music_access_off", noPlan = "no_apple_music_plan"
     case mailBusy = "mail_busy", betaFull = "beta_full", accountOff = "account_off", noConnection = "no_connection"
+}
+
+/// CLA-97: the errors of `use_error`.
+public enum UseError: String, Sendable {
+    case loginFailed = "login_failed", listNotLoaded = "list_not_loaded", songNotPlayed = "song_not_played"
 }
 
 /// Why myPod lost control of playback, as the player found it.
@@ -150,6 +174,14 @@ struct BeforeEvents {
     var played = false, position = 0.0
     /// Music played before the action, for the save of the day at a pause.
     var playing: Bool
+    /// For `use_error` and `service_switch`: the screen showed an error, the service, and the
+    /// action is a failed load of the playing song.
+    var error: Bool, service: MusicService, songFailed = false
+    /// The action brings a library read, and the read times before it, for `app_speed`: the
+    /// reducer marks each read that it took (Codex on #350: not a stale or unasked one).
+    var libraryRead = false, readAt: [String: Double], artists: Bool
+    /// The reads in flight before: a failed read that the app took ends one of them.
+    var loading: Bool, refreshes: Int, coverReads: Int
     /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
     var choices: [String], used: Feature?
 
@@ -157,11 +189,19 @@ struct BeforeEvents {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
         choices = s.settings.choices
         playing = s.isPlaying
+        (error, service) = (s.top.error, s.service)
+        (readAt, artists) = (s.readAt, s.artistsLoaded)
+        (loading, refreshes, coverReads) = (s.top.loading, s.refreshing.count, s.artReads.count)
+        if case .loadFailed(_, let gen) = action, gen == s.playGen, s.current != nil { songFailed = true }
         if case .used(let feature) = action { used = feature }
         top = s.appleMusicFirst ? .appleMusic : .spotify
         pick = nil
         if case .position(let t, let gen) = action, t > 0, gen == s.playGen { (played, position) = (true, t) }
         if case .betaBuild(let b) = action { build = b }
+        switch action {
+        case .playlistsLoaded, .tracksLoaded, .playlistsRefreshed, .tracksRefreshed, .artTracksRead, .artistsLoaded: libraryRead = true
+        default: break
+        }
         guard action == .select && !s.setupDone && screen == .pickMusic else { return }
         let rows = s.rows(for: s.top)
         if rows.indices.contains(s.top.sel), case .pickService(let service) = rows[s.top.sel] { pick = service }
@@ -192,6 +232,24 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
     if !s.firstSongSent, let seconds, b.played, s.isPlaying, s.current != nil {
         s.firstSongSent = true
         events.append(.firstSong(seconds: seconds, service: s.service))
+    }
+    if b.setupDone && screen != .activate {
+        var error: UseError?
+        if screen == .loginFailed && b.screen != .loginFailed { error = .loginFailed }
+        if screen == b.screen && s.top.error && !b.error { error = .listNotLoaded }
+        if b.songFailed { error = .songNotPlayed }
+        if let error { events.append(.useError(error, offline: s.offline, service: s.service)) }
+        if s.service != b.service { events.append(.serviceSwitch(from: b.service, to: s.service)) }
+    }
+    if !s.speedSent, let launched = s.launchedAt, b.libraryRead {
+        let loaded = s.readAt != b.readAt || s.artistsLoaded != b.artists  // the Artists read sets no `readAt`
+        // A failed read that the app took: its load, refresh or cover read ended. A stale or
+        // unasked one changes none of them.
+        let failed = (b.loading && !s.top.loading) || s.refreshing.count < b.refreshes || s.artReads.count < b.coverReads
+        if loaded || failed {
+            s.speedSent = true
+            events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded())), loaded: loaded))
+        }
     }
     let daysLeft = s.beta.map { Int((max(0, $0.endsAt - now) / BetaBuild.day).rounded(.up)) } ?? 0
     if screen != b.screen, let notice = BetaNotice(screen) {
@@ -265,11 +323,20 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
-    _ = roll(now)
+    // At a quit no report comes after, so the day that waits ends now.
+    _ = roll(now, force: action == .willQuit)
     var used: Set<Feature> = b.used.map { [$0] } ?? []
     if s.top.screen == .coverFlow { used.insert(.coverFlow) }
     if b.screen == .settings && s.settings.choices != b.choices { used.insert(.settings) }
-    if !used.isSubset(of: s.today?.features ?? []) { count(at: now) { d, _ in d.features.formUnion(used) } }
+    if let old = s.today, old.day < DayUse.at(now, in: timeZone).day {
+        // The day before still waits for the next report: a feature used now belongs to the new
+        // day, so it waits too (Codex on #348).
+        s.pendingFeatures.formUnion(used)
+    } else {
+        used.formUnion(s.pendingFeatures)
+        s.pendingFeatures = []
+        if !used.isSubset(of: s.today?.features ?? []) { count(at: now) { d, _ in d.features.formUnion(used) } }
+    }
     // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
     // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
     let saved = s.savedToday, today = s.today
