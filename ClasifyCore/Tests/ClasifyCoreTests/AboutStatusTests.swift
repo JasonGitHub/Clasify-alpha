@@ -51,11 +51,11 @@ import Testing
         #expect(about(.active(ActiveInfo(email: "s***@example.com"))).aboutStatus.opens)
     }
 
-    /// Step 2 opens Activation when the row opens: one two-line row. The wheel and a press do
-    /// nothing there, and MENU goes back to About at step 2.
-    @Test func step2OpensActivation() {
+    /// Step 1 (card CC) opens Activation when the row opens: one two-line row. The wheel and a
+    /// press do nothing there, and MENU goes back to About at step 1.
+    @Test func step1OpensActivation() {
         var s = about(.active(info))
-        send(&s, .wheel(1), .wheel(1), now: 1005)
+        send(&s, .wheel(1), now: 1005)
         #expect(s.top.off == AppState.aboutStatusStep)
         send(&s, .select, now: 1006)
         #expect(s.top.screen == .activation && s.rows(for: s.top) == [.activatedAs] && s.shownRows == trackRows)
@@ -66,11 +66,11 @@ import Testing
         #expect(s.top.screen == .about && s.top.off == AppState.aboutStatusStep && s.aboutIdleAt == 1100)
     }
 
-    /// A row that does not open: a press at step 2 waves, as at steps 0 and 1.
-    @Test func step2WithNoInfoWaves() {
+    /// A row that does not open: a press at step 1 waves, as at step 0.
+    @Test func step1WithNoInfoWaves() {
         for answer: Activation? in [nil, .offline, .active(nil)] {
             var s = about(answer, activated: answer != nil)
-            send(&s, .wheel(1), .wheel(1), now: 1005)
+            send(&s, .wheel(1), now: 1005)
             send(&s, .select, now: 1006)
             #expect(s.top.screen == .about && s.aboutWaveAt == 1006)
         }

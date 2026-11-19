@@ -3,10 +3,10 @@ import ClasifyCore
 import SwiftUI
 
 /// The About screen, card BF (About J1, Jason 23:05 JST 11-10, changes 207, 208, 211 and 212):
-/// one page that scrolls 4 wheel steps (card BS, changes 294 and 295; card BF.2). The headphone capybara on its ground shadow,
+/// one page that scrolls 3 wheel steps (card BS, changes 294 and 295; card BF.2; card CC, change 370). The headphone capybara on its ground shadow,
 /// "myPod" and "Made with ♥ by Cappy" in engraved steel, the Version, Status
 /// (card BF.2, change 360) and Licenses rows, then the legal text. The points are from the top
-/// of the 344.4 pt page.
+/// of the 327.5 pt page.
 /// The capybara waves, thinks, drinks boba and sleeps as `AppState.aboutPose(at:)` says, and
 /// the signature's glint runs with each wave (changes 209, 210). Card BF.1 (J1.3, changes 214-216)
 /// set the front page: two text styles. The tagline is gone (Jason 22:05 JST 11-19).
@@ -17,11 +17,11 @@ struct PocketAbout: View {
     /// A fixed clock for snapshot tests, in the same time as `AppState.aboutAt`.
     @Environment(\.animationTime) private var fixedTime
 
-    static let page: CGFloat = 344.4
+    static let page: CGFloat = 327.5
     /// Card BS: the page's offset at each wheel step, so each stop ends on a whole row in the
-    /// 206 pt view. 1: Version whole. 2: Status whole, selected when it opens (card BF.2).
-    /// 3: Licenses whole, selected. 4: the end, the legal text whole.
-    static let stops: [CGFloat] = [0, 30.9, 53.8, 76.7, 138.4]
+    /// 206 pt view. Card CC (change 370): 0 ends on the Version row. 1: Status whole, selected
+    /// when it opens (card BF.2). 2: Licenses whole, selected. 3: the end, the legal text whole.
+    static let stops: [CGFloat] = [0, 22.9, 45.8, 121.5]
 
     /// The thumb's part of the scroll track: the 206 pt view over the page.
     static let thumb: CGFloat = 206 / page
@@ -68,18 +68,18 @@ struct PocketAbout: View {
 
     private func page(status: Bool, licenses: Bool) -> some View {
         ZStack(alignment: .top) {
-            // Jason 22:05 JST 11-19: no tagline. The group moves down 9 pt, so it stays in the
-            // middle of the 206 pt first view.
-            capybara.offset(y: 27)
-            plate.offset(y: 125)
+            // Card CC (change 370): the Version row is the last row of the 206 pt first view, and
+            // the group (its gaps unchanged) is centered in the 183.1 pt above it.
+            capybara.offset(y: 16)
+            plate.offset(y: 114)
             PocketRow(text: .init(label: "Version", value: Labels.aboutVersion(in: state)), selected: false, scrolls: false)
-                .offset(y: 214)
+                .offset(y: 183.1)
             // Card BF.2: the Status row, then Licenses and the legal text 22.9 pt lower.
             PocketRow(text: Labels.statusRow(in: state), selected: status, scrolls: false)
-                .offset(y: 236.9)
+                .offset(y: 206)
             PocketRow(text: .init(label: "Licenses", opens: true), selected: licenses, scrolls: false)
-                .offset(y: 259.8)
-            legal.offset(y: 292.9)
+                .offset(y: 228.9)
+            legal.offset(y: 262)
         }
     }
 
@@ -212,11 +212,12 @@ struct PocketAbout: View {
         }
     }
 
-    /// 10 pt lines, 14 pt apart, each line in its own steel.
+    /// 10 pt lines, 14 pt apart, each line in its own steel. Card CC (change 369): the web page's
+    /// 4 lines, so Apple Music is named next to Spotify.
     private var legal: some View {
         VStack(spacing: 0) {
             ForEach(["© 2026 CappyAI Ltd. All rights reserved.", "Spotify is a trademark of Spotify AB.",
-                     "myPod is not affiliated with Spotify."], id: \.self) { line in
+                     "Apple Music is a trademark of Apple Inc.", "myPod is not affiliated with Apple or Spotify."], id: \.self) { line in
                 Self.engraved(Text(line).font(.helvetica(10)), height: 14, Self.lineSteel)
             }
         }

@@ -143,7 +143,7 @@ func playing(_ i: Int = 0) -> AppState {
         var old = s
         send(&s, .wheel(3), now: 1010)
         #expect(s.top.off == 1 && s.scrollUntil == 1011.5 && wheelMoved(from: old, to: s))  // a fast turn moves one step
-        #expect(AppState.aboutSteps == 4 && AppState.aboutStatusStep == 2 && AppState.aboutLicensesStep == 3)
+        #expect(AppState.aboutSteps == 3 && AppState.aboutStatusStep == 1 && AppState.aboutLicensesStep == 2)  // card CC
         for _ in 0..<6 { send(&s, .wheel(1)) }
         #expect(s.top.off == AppState.aboutSteps)  // the end of the page
         old = s
@@ -220,9 +220,9 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.aboutWaveAt == 1000.2)
         send(&s, .select, now: 1003)
         #expect(s.aboutWaveAt == 1003)
-        send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1005)
+        send(&s, .wheel(1), .wheel(1), now: 1005)
         #expect(s.top.off == AppState.aboutLicensesStep)
-        send(&s, .wheel(-1), .wheel(-1), .select, now: 1005.5)  // step 1: no Licenses, it waves
+        send(&s, .wheel(-1), .wheel(-1), .select, now: 1005.5)  // step 0: no Licenses, it waves
         #expect(s.top.screen == .about && s.aboutWaveAt == 1005.5)
         send(&s, .menu, .select, .select, now: 1006)  // About opens again at the top, and it waves
         #expect(s.top.screen == .about && s.aboutWaveAt == 1006)
@@ -231,11 +231,11 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.aboutWaveAt == 1040 && s.top.screen == .about)
     }
 
-    /// Change 213: from step 3 (card BF.2) a press opens the Licenses list, one row a license. Back
+    /// Change 213: from step 2 (card CC) a press opens the Licenses list, one row a license. Back
     /// on About, the idle clock starts again from the pose it left, and About keeps its step.
-    @Test func anAboutPressFromStep3OpensLicenses() {
+    @Test func anAboutPressFromStep2OpensLicenses() {
         var s = openAbout()
-        send(&s, .wheel(1), .wheel(1), .wheel(1), now: 1006)  // thinking since 1005.35
+        send(&s, .wheel(1), .wheel(1), now: 1006)  // thinking since 1005.35
         send(&s, .select, now: 1007)
         #expect(s.top.screen == .licenses && s.top.sel == 0)
         #expect(s.rows(for: s.top) == License.all.indices.map { .license($0) })
