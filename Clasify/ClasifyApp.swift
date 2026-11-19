@@ -79,64 +79,69 @@ enum DeviceWindow {
         window.title == HowToUse.title || window.identifier?.rawValue.hasPrefix(HowToUseWindow.id) == true
     }
 
-    /// Card AN.1: the device window that the menu bar icon hid. It keeps its place and screen.
-    /// A strong reference: off the screen, nothing else may keep the window.
-    private static var hidden: NSWindow?
-    static var isHidden: Bool { hidden != nil }
+    /// Card AN.1: the device window. `WindowShadowOff`'s hook sets it, because only the device
+    /// window has that hook. Weak: a closed window goes away.
+    static weak var device: NSWindow?
     /// The fade in and out (345).
     private static let fade = 0.15
+    /// The window that is fading out now. A show during the fade cancels the hide.
+    private static var hiding: NSWindow?
 
-    /// The device window shows: Clasify is in front, and the window is on screen, not in the
-    /// Dock. A window behind other apps counts as not shown, so a click brings it forward. A
-    /// window on another Space counts as not shown too, so a click moves it here (356).
-    static var isShown: Bool {
-        NSApp.isActive && hidden == nil && NSApp.windows.contains {
-            !($0 is NSPanel) && $0.level == .normal && $0.isVisible && !$0.isMiniaturized && $0.isOnActiveSpace && !isHelp($0)
+    /// The device window, or with no hook report, the first normal window that is not a panel,
+    /// the menu bar or How to Use.
+    private static var deviceWindow: NSWindow? {
+        device ?? NSApp.windows.first {
+            !($0 is NSPanel) && $0.level == .normal && ($0.isVisible || $0.isMiniaturized) && !isHelp($0)
         }
     }
 
-    /// Card AN.1, 344-345: fades the device window out, then takes it off the screen. The music
-    /// goes on.
+    /// The menu bar icon hid myPod, the same way as Cmd+H.
+    static var isHidden: Bool { NSApp.isHidden }
+
+    /// The person can see myPod now: the app is not hidden, and the device window is on this
+    /// Space, not in the Dock, and not fully covered by other windows. Whether myPod is the
+    /// active app does not count: a status item click does not activate it.
+    static var isShown: Bool {
+        guard !NSApp.isHidden, hiding == nil, let window = deviceWindow else { return false }
+        return window.isVisible && !window.isMiniaturized && window.isOnActiveSpace
+            && window.occlusionState.contains(.visible)
+    }
+
+    /// Card AN.1, 344-345: fades the device window out, then hides the app as Cmd+H does. The
+    /// system keeps every window and gives the front to the app under myPod. The music goes on.
     static func hide() {
-        let windows = NSApp.windows.filter {
-            !($0 is NSPanel) && $0.level == .normal && $0.isVisible && $0.isOnActiveSpace && !isHelp($0)
-        }
-        guard let window = windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return }
-        hidden = window
+        guard !NSApp.isHidden, let window = deviceWindow, window.isVisible else { return }
+        hiding = window
         NSAnimationContext.runAnimationGroup { context in
             context.duration = fade
             window.animator().alphaValue = 0
         }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(fade))
-            guard hidden === window else { return }  // a click showed it again during the fade
-            window.orderOut(nil)
-            window.alphaValue = 1
-            // With no other myPod window on screen, the app gives up the front, so the app
-            // under it becomes active. Not NSApp.hide: an unhide brings back only the windows
-            // that were on screen at the hide, so the device window stayed away (build 308).
-            let others = NSApp.windows.contains { !($0 is NSPanel) && $0.level == .normal && $0.isVisible }
-            if !others { NSApp.deactivate() }
+            guard hiding === window else { return }  // a click showed it again during the fade
+            hiding = nil
+            NSApp.hide(nil)
+            window.alphaValue = 1  // hidden now; `show()` fades it in again
         }
     }
 
-    /// Card AN.1, 344-345: fades the hidden device window in where it was. With none hidden, it
-    /// brings the window to the front, or opens one.
+    /// Card AN.1, 344-345: unhides myPod and fades the device window in where it was. A
+    /// window that is already in front stays as it is, so a show at launch changes nothing.
+    /// A window behind other apps, in the Dock or on another Space (356) comes here.
     static func show() {
-        guard let window = hidden else {
-            // Already in front: do nothing, so a show at launch changes nothing. A window
-            // behind other apps or in the Dock comes to the front.
-            if !isShown && !raise() { open?() }
+        let fading = hiding
+        hiding = nil  // cancels a hide that is still fading
+        if NSApp.isHidden {
+            deviceWindow?.alphaValue = 0
+            NSApp.unhide(nil)
+            NSApp.activate()
+        } else if fading == nil && isShown {
             return
+        } else {
+            raise()
         }
-        hidden = nil
-        if NSApp.isHidden { NSApp.unhide(nil) }  // after Cmd+H
-        if !window.isVisible { window.alphaValue = 0 }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate()
-        guard window.isVisible else {
-            // The window did not come back: show any device window, or open a new one.
-            window.alphaValue = 1
+        guard let window = deviceWindow, window.isVisible else {
+            // No device window came back: open a new one.
             if !raise() { open?() }
             return
         }
@@ -147,7 +152,7 @@ enum DeviceWindow {
         // The fade's end: the window is fully on, even when the animation did not run.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(fade))
-            guard hidden !== window else { return }  // a click hid it again during the fade
+            guard hiding !== window else { return }  // a click hid it again during the fade
             window.alphaValue = 1
         }
     }
@@ -160,7 +165,8 @@ enum DeviceWindow {
         let windows = NSApp.windows.filter {
             !($0 is NSPanel) && $0.level == .normal && ($0.isVisible || $0.isMiniaturized) && !isHelp($0)
         }
-        guard let window = windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return false }
+        let shown = device.flatMap { $0.isVisible || $0.isMiniaturized ? $0 : nil }  // card AN.1: the device first
+        guard let window = shown ?? windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return false }
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()

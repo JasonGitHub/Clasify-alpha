@@ -19,6 +19,7 @@ struct WindowShadowOff: NSViewRepresentable {
             // Space the person is on, at the same place on the screen. macOS never switches
             // the Space to it.
             window?.collectionBehavior.insert(.moveToActiveSpace)
+            if let window { DeviceWindow.device = window }  // card AN.1: the menu bar icon's window
         }
 
         /// Clicks go through to the device and the window drag.
