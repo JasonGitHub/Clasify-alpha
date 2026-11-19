@@ -4,8 +4,8 @@
 import { fromConfirm, fromPeek, fromStart, opened, screen } from "./logic.js";
 
 const api = "https://api.getmypod.app";
-// Placeholder until Jason makes the Turnstile widget for getmypod.app. The site key is public.
-const turnstileSiteKey = "TURNSTILE_SITE_KEY";
+// The Turnstile widget for getmypod.app (managed). The site key is public.
+const turnstileSiteKey = "0x4AAAAAAGIRWYxmCoZOyxc0";
 
 const gray = 'fill="none" stroke="#9aa4ae"';
 const icons = {
