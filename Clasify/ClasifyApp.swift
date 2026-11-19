@@ -145,11 +145,9 @@ enum DeviceWindow {
         } else {
             raise()
         }
-        guard let window = deviceWindow, window.isVisible else {
-            // No device window came back: open a new one.
-            if !raise() { open?() }
-            return
-        }
+        // A device window is there, so always fade it in, also if `unhide` has not put it on
+        // the screen yet. Only with no device window at all, open one.
+        guard let window = deviceWindow else { open?(); return }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = fade
             window.animator().alphaValue = 1
