@@ -177,10 +177,8 @@ enum DeviceWindow {
             NSApp.hide(nil)
             // The hide did not happen: do not leave an invisible window.
             try? await Task.sleep(for: .seconds(0.5))
-            if !NSApp.isHidden, hiding == nil, showing == nil, window.alphaValue == 0 {
-                window.alphaValue = 1
-                iconHid = false
-            }
+            // `iconHid` stays: AppKit may report not hidden after a hide that did happen.
+            if !NSApp.isHidden, hiding == nil, showing == nil, window.alphaValue == 0 { window.alphaValue = 1 }
         }
     }
 

@@ -48,7 +48,7 @@ final class MenuBarIcon: NSObject {
     }
 
     /// Build 323 debug read-out, off by default. `defaults write com.cappyai.mypod debug.menuBar
-    /// -bool true` turns it on: each click writes the state before, the decision, and 0.4 s
+    /// -bool true` turns it on: each click writes the state before, the decision, and 0.8 s
     /// later the state after, next to the icon, for a screen recording. Nothing is stored.
     private var clicks = 0
     private func debug(before: String, decision: String) {
@@ -68,7 +68,7 @@ final class MenuBarIcon: NSObject {
         button.title = line
         let click = clicks
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(0.4))
+            try? await Task.sleep(for: .seconds(0.8))
             guard let self, self.clicks == click, let button = self.item?.button else { return }
             button.title = line + " | " + DeviceWindow.debugState
         }
