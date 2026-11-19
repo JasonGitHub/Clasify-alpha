@@ -668,6 +668,15 @@ public struct K3DFlip {
     /// No turn runs: the device rests on one side.
     public func isResting(at now: Date) -> Bool { elapsed(at: now) >= length }
 
+    /// CLA-138 (build 330: at Cmd up from a big angle, the device jumped about 25° toward the
+    /// front in one frame): `K3DFlipView` pauses its timeline while this is true. A held pose
+    /// (a Cmd turn or an About drag) needs no timeline, but the timeline paused then came back
+    /// 4 to 6 frames late at the release, so the release's turn showed its first frame that far
+    /// in, past its fastest part. So the timeline runs while the device is held, and the turn
+    /// that starts at the release gets its next frame. A held pose that does not move draws
+    /// nothing new (`K3DMetalView` draws only a changed pose).
+    public func pausesTimeline(at now: Date) -> Bool { script != .held && isResting(at: now) }
+
     /// CLA-138 (build 327: one empty frame as a Cmd turn starts): the 3D body is on screen (its
     /// Metal view at full opacity) when the 2D device shows at `shown` below 1, and also while a
     /// Cmd turn holds the device (`K3DTurn.settle` at the front, and every held pose). A spin
