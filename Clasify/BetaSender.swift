@@ -24,8 +24,9 @@ import Foundation
     private var task: Task<Void, Never>?
     /// The next try, and the failed tries in a row: 30 s, 1 min, 2 min, … at most 10 min (CTO).
     private var nextTry = Date.distantPast, failures = 0
-    /// PostHog refused the batch (400) this many times in a row (CTO 00:25 JST 11-20).
-    private var refused = 0
+    /// The events of the batch that PostHog refused (400) once (CTO 00:25 JST 11-20). Its retry
+    /// sends these same events, so a second refusal drops only them, not events added since.
+    private var refused: Set<String> = []
 
     private static let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral  // no cache, no cookies, nothing on disk
@@ -69,20 +70,21 @@ import Foundation
         guard on else { return forget() }
         guard Date() >= nextTry, !queue.events.isEmpty, let person = person() else { return }
         nextTry = .distantFuture  // one request at a time
-        let batch = Array(queue.events.prefix(Self.batchSize))
+        var batch = queue.events.filter { refused.contains($0.id) }  // the queue may have dropped some
+        if batch.isEmpty { (refused, batch) = ([], Array(queue.events.prefix(Self.batchSize))) }
         var request = URLRequest(url: Self.host)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = BetaQueue.body(batch, key: key, person: person)
         let status = (try? await Self.session.data(for: request)).flatMap { ($0.1 as? HTTPURLResponse)?.statusCode }
-        if status == 200 || (status == 400 && refused >= 1) {
+        if status == 200 || (status == 400 && !refused.isEmpty) {
             // A batch that PostHog refuses twice goes: it can never be sent (CTO 00:25 JST).
-            (failures, refused) = (0, 0)
+            (failures, refused) = (0, [])
             queue.remove(Set(batch.map(\.id)))
             save()
             nextTry = queue.events.isEmpty ? Date() + 30 : Date()
         } else if status == 400 {
-            refused += 1
+            refused = Set(batch.map(\.id))
             nextTry = Date() + 30
         } else {  // no network, a timeout or a 5xx: keep and wait longer
             failures += 1
