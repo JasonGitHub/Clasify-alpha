@@ -1101,56 +1101,57 @@ import Testing
     }
 
     /// About, card BF: one page with the capybara at the top, then the steel name and lines with
-    /// the red heart. Card BS and BF.2: 4 steps, each ending on a whole row in the 206 pt view.
-    /// Step 1 shows Version whole, step 2 Status, step 3 the selected Licenses row whole, step 4
-    /// the legal text whole.
+    /// the red heart. Card CC (changes 369, 370): 3 steps, each ending on a whole row in the 206 pt
+    /// view. Step 0 shows the Version row whole, step 1 Status, step 2 the selected Licenses row
+    /// whole, step 3 the 4 legal lines whole.
     @Test func aboutScrollsOnePageWithTheCapybaraAndLicensesRow() throws {
         #expect(PocketAbout.poses.count == AboutPose.allCases.count)  // the art is bundled
-        #expect(PocketAbout.stops == [0, 30.9, 53.8, 76.7, 138.4] && PocketAbout.stops.count == AppState.aboutSteps + 1)
+        #expect(PocketAbout.stops == [0, 22.9, 45.8, 121.5] && PocketAbout.stops.count == AppState.aboutSteps + 1)
+        #expect(PocketAbout.page == 327.5)
         var s = sampleState()
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
         let top = Self.listTop, left = Self.screenLeft, x = left + 150
         let glass = try reference(0xf4f8fb)
         let first = try render(s, "about-0")
-        // The capybara: not plain glass in its 88 pt box, 27 pt down (no tagline, Jason 22:05 JST 11-19).
-        let art = (top + 35..<top + 111).filter { !near(first.rgb(x, $0), glass) }
+        // The capybara: not plain glass in its 88 pt box, 16 pt down (card CC).
+        let art = (top + 24..<top + 100).filter { !near(first.rgb(x, $0), glass) }
         #expect(art.count > 40)
-        // The heart: red pixels in the "Made with ♥ by Cappy" line, 162 to 178 pt down.
+        // The heart: red pixels in the "Made with ♥ by Cappy" line, 151 to 167 pt down.
         let red = (left + 60..<left + 240).filter { x in
-            (top + 162...top + 178).contains { y in let c = first.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
+            (top + 151...top + 167).contains { y in let c = first.rgb(x, y); return c.r > 180 && c.g < 140 && c.b < 140 }
         }
         #expect(!red.isEmpty)
-        // Step 1: the page moved up 30.9 pt. The Version row, at 183.1 to 206 pt, is whole: its
-        // ink shows, and nothing is selected.
+        // Step 0: the Version row, at 183.1 to 206 pt, is whole: its ink shows, and nothing is selected.
+        #expect((left + 9..<left + 60).contains { x in (top + 188...top + 201).contains { first.isDark(x, $0) } })
+        #expect(!first.isBlue(x, top + 194))
+        // Step 1: up 22.9 pt. The Status row ("Not activated" here) is at 183.1 to 206 pt, not selected.
         s.stack[2].off = 1
         let one = try render(s, "about-1")
         #expect((left + 9..<left + 60).contains { x in (top + 188...top + 201).contains { one.isDark(x, $0) } })
         #expect(!one.isBlue(x, top + 194))
-        // Step 2: up 53.8 pt. The Status row ("Not activated" here) is at 183.1 to 206 pt, not selected.
+        // Step 2: up 45.8 pt. The Licenses row, at 183.1 to 206 pt, is whole and selected.
         s.stack[2].off = 2
         let two = try render(s, "about-2")
-        #expect(!two.isBlue(x, top + 194))
-        // Step 3: up 76.7 pt. The Licenses row, at 183.1 to 206 pt, is whole and selected.
+        #expect(two.isBlue(x, top + 185) && two.isBlue(x, top + 204))
+        // Step 3: up 121.5 pt. Licenses is at 107.4 pt, and the 4 legal lines, at 140.5 to
+        // 196.5 pt, are ink on the glass, the 4th line too.
         s.stack[2].off = 3
-        let three = try render(s, "about-3")
-        #expect(three.isBlue(x, top + 185) && three.isBlue(x, top + 204))
-        // Step 4: up 138.4 pt. Licenses is at 121.4 pt, and the legal text, at 154.5 to 196.5 pt,
-        // is ink on the glass.
-        s.stack[2].off = 4
-        let last = try render(s, "about-4")
-        #expect(last.isBlue(x, top + 132))
-        let legal = (left + 60..<left + 240).filter { x in (top + 158...top + 195).contains { last.isDark(x, $0) } }
+        let last = try render(s, "about-3")
+        #expect(last.isBlue(x, top + 118))
+        let legal = (left + 60..<left + 240).filter { x in (top + 144...top + 195).contains { last.isDark(x, $0) } }
         #expect(legal.count > 10)
+        let fourth = (left + 60..<left + 240).filter { x in (top + 184...top + 194).contains { last.isDark(x, $0) } }
+        #expect(fourth.count > 10)
     }
 
-    /// CLA-141, card BF.2: at step 2 an activated Mac's Status row is selected (blue) when it
+    /// CLA-141, card BF.2: at step 1 (card CC) an activated Mac's Status row is selected (blue) when it
     /// opens, and Activation shows one selected two-line row (changes 360-362).
     @Test func aboutStatusAndActivation() throws {
         var s = sampleState()
         s.activated = true
         s.activation = .active(ActiveInfo(email: "s***@example.com", since: 1_795_014_000, macs: 1, limit: 2))
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
-        s.stack[2].off = 2
+        s.stack[2].off = 1
         let top = Self.listTop, x = Self.screenLeft + 150
         let status = try render(s, "about-status")
         #expect(status.isBlue(x, top + 185) && status.isBlue(x, top + 204))

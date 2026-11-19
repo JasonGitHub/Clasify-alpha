@@ -743,11 +743,11 @@ public struct AppState: Equatable, Sendable {
     public var service = MusicService.spotify
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
     public var aboutAt: Double = 0
-    /// About is one page that scrolls 4 wheel steps (card BS, changes 294 and 295; card BF.2).
-    /// Its step is the frame's `off`. Each stop ends on a whole row. At step 2 the Status row is
-    /// selected when it opens; from step 3 Licenses is selected, and a press opens Licenses.
-    /// Card BF.2 (change 360): 4 steps; the Status row is selected at step 2 when it opens.
-    public static let aboutSteps = 4, aboutStatusStep = 2, aboutLicensesStep = 3
+    /// About is one page that scrolls 3 wheel steps (card BS, changes 294 and 295; card BF.2).
+    /// Its step is the frame's `off`. Each stop ends on a whole row. At step 1 the Status row is
+    /// selected when it opens; from step 2 Licenses is selected, and a press opens Licenses.
+    /// Card CC (change 370): the Version row shows at step 0, so there is one step less.
+    public static let aboutSteps = 3, aboutStatusStep = 1, aboutLicensesStep = 2
 
     /// CLA-141, card BF.2: About's Status row. In memory only: the app saves no email.
     public var aboutStatus: AboutStatus {
