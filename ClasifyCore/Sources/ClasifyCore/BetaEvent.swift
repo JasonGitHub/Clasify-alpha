@@ -219,7 +219,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     func roll(_ t: Double, force: Bool = false) -> (day: Int, weekday: Int, band: Int) {
         let at = DayUse.at(t, in: timeZone)
         let open = s.isPlaying && s.dayPlayAt != nil
-        if let old = s.today, old.day != at.day, force || !open {
+        if let old = s.today, old.day < at.day, force || !open {
             if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }

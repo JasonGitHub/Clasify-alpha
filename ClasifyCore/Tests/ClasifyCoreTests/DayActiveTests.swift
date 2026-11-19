@@ -129,7 +129,7 @@ import Testing
     /// The day keeps the service of its music, also after a switch on a later day.
     @Test func theDaySendsItsOwnService() {
         var s = playing()
-        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .position(1, generation: s.playGen), .play, now: at(10))  // a switch stops the music
         s.service = .appleMusic
         let sent = events(&s, .tick, now: at(10, day: 20))
         guard case .dayActive(_, let service)? = sent.first else { Issue.record("no day_active"); return }
@@ -139,7 +139,7 @@ import Testing
     @Test func theFirstActionOfALaterDaySendsTheDayBefore() {
         var s = playing()
         _ = events(&s, .position(1, generation: s.playGen), .position(2, generation: s.playGen), now: at(23, 59))
-        _ = events(&s, .used(.takeApart), now: at(23, 59.5))
+        _ = events(&s, .used(.takeApart), .play, now: at(23, 59.5))  // the music stops before midnight
         let day = s.today!
         let sent = events(&s, .tick, now: at(0, 1, day: 20))
         #expect(sent == [.dayActive(day, service: .spotify)] && s.today == nil)
