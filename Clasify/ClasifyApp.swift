@@ -106,10 +106,29 @@ enum DeviceWindow {
         return window.isVisible && !window.isMiniaturized && window.isOnActiveSpace && isSeen(window)
     }
 
-    /// The one rule for a partly covered myPod: any part that the person can see counts as
-    /// shown, so a click hides it. Change only this check if the rule changes.
+    /// The one rule for a partly covered myPod (Jason, 13:10 JST 11-19): it counts as shown
+    /// only when no other window covers any part of the device, so the first click brings a
+    /// partly covered myPod to the front. A window over only the clear margin does not count.
+    /// The window list gives bounds and layers with no Screen Recording permission.
     private static func isSeen(_ window: NSWindow) -> Bool {
-        window.occlusionState.contains(.visible)
+        guard window.occlusionState.contains(.visible) else { return false }
+        guard let list = CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow, .excludeDesktopElements],
+                                                    CGWindowID(window.windowNumber)) as? [[String: Any]] else { return true }
+        let above = list.compactMap { info -> WindowCover.Window? in
+            guard let dict = info[kCGWindowBounds as String] as? NSDictionary,
+                  let rect = CGRect(dictionaryRepresentation: dict as CFDictionary) else { return nil }
+            return WindowCover.Window(bounds: box(rect), layer: info[kCGWindowLayer as String] as? Int ?? 0,
+                                      alpha: info[kCGWindowAlpha as String] as? Double ?? 1)
+        }
+        let mainHeight = Double(NSScreen.screens.first?.frame.height ?? 0)
+        let device = WindowCover.device(frame: box(window.frame), mainHeight: mainHeight,
+                                        top: Double(margin.top), leading: Double(margin.leading),
+                                        bottom: Double(margin.bottom), trailing: Double(margin.trailing))
+        return !WindowCover.isCovered(device, by: above)
+    }
+
+    private static func box(_ r: CGRect) -> WindowCover.Box {
+        WindowCover.Box(x: Double(r.minX), y: Double(r.minY), width: Double(r.width), height: Double(r.height))
     }
 
     /// Card AN.1, 344-345: fades the device window out, then hides the app as Cmd+H does. The
