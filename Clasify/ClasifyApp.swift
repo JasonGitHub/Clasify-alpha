@@ -342,10 +342,11 @@ final class AppModel {
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
         let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
+        HardwareID.removeOldKeychainItem()  // CLA-145: the old random ID is no longer used
         let activator = ServerActivator()
         let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(), activator: activator)
         // CLA-128: behind the activate.on switch (off by default). CLA-140: every launch asks the
-        // server, also with no device ID yet, so a Mac that was turned off locks again.
+        // server, so a Mac that was turned off locks again.
         if store.state.activateOn { store.checkActivationAtLaunch() }
         // Card BW: the page with its one-time code opens in the browser.
         store.onOpenActivatePage = { page in
