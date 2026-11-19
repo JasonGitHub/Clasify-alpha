@@ -54,7 +54,14 @@ enum K3DShader {
     #include <metal_stdlib>
     using namespace metal;
 
-    struct K3DUniforms { float4x4 mv; float4x4 pr; float blk; float ex; float pass; float flat; float prints; };
+    // CLA-150 PR 4 (K.3D.12 item 5, the real shadow): `shadow` 1 when the lamp's shadow map is
+    // bound for the inside parts; `shPass` 1 in the pass that draws that map. `lvp` is the
+    // lamp's camera, `lp` the lamp (xyz) and the map's far distance (w), as the mock's lvp, uLp
+    // and uShF.
+    struct K3DUniforms {
+        float4x4 mv; float4x4 pr; float blk; float ex; float pass; float flat; float prints; float shadow; float shPass;
+        float4x4 lvp; float4 lp;
+    };
 
     constant float apart[10] = { \(K3DShader.apart.map { "\($0)" }.joined(separator: ", ")) };
 
@@ -93,7 +100,7 @@ enum K3DShader {
         o.vwt = e[10];
         o.vm = m;
         o.vpt = pt;
-        o.position = u.pr * q;
+        o.position = u.shPass > 0.5 ? u.lvp * q : u.pr * q;
         // The parts' own geometry (materials above 10) is hidden while closed and for the first
         // 6% of the move: seen edge-on, its thin faces can draw as stray lines.
         if ((u.ex < 0.06 && m > 10.5) || (cb > 0.5 && u.ex < 0.14)) o.position = float4(2.0, 2.0, 2.0, 1.0);
@@ -161,6 +168,25 @@ enum K3DShader {
         L = mix(L, 1.0, rbox(q, float2(-0.20, 0.37), float2(0.20, 0.14), 0.05, 0.03));
         L = mix(L, 0.80, rbox(q, float2(0.78, 0.15), float2(0.08, 0.55), 0.04, 0.06));
         return clamp(L, 0.04, 1.0);
+    }
+
+    // CLA-150 PR 4 (K.3D.12 item 5): how much of the lamp reaches P, 0 to 1, from the lamp's
+    // map (the mock's shv). The map holds the distance to the lamp over `lp.w`; 5 x 5 reads,
+    // 1.5 map pixels apart and turned a little, give the soft edge. Metal's texture rows run
+    // down, so y is flipped against the mock's (the offsets too).
+    float shv(float3 P, float3 N, constant K3DUniforms& u, texture2d<float> tsh, sampler sn) {
+        float3 Q = P + N * 0.9;
+        float4 c = u.lvp * float4(Q, 1.0);
+        float2 s = float2(c.x / c.w * 0.5 + 0.5, 0.5 - 0.5 * c.y / c.w);
+        if (s.x < 0.0 || s.x > 1.0 || s.y < 0.0 || s.y > 1.0) return 1.0;
+        float z = length(Q - u.lp.xyz) / u.lp.w - 0.6 / u.lp.w, v = 0.0;
+        for (int j = -2; j <= 2; j++) {
+            for (int i = -2; i <= 2; i++) {
+                float2 o = float2(float(i), float(j)) + 0.5 * float2(float(j), -float(i)) * 0.5;
+                v += step(z, tsh.sample(sn, s + float2(o.x, -o.y) * \(K3DRenderer.shadowTexel), level(0)).r);
+            }
+        }
+        return v / 25.0;
     }
 
     // The physical light, linear: the lamp (Lambert, inverse square, 1 at the device's center)
@@ -341,13 +367,18 @@ enum K3DShader {
         return mix(c, float3(0.78, 0.80, 0.78), step(mix(0.90, 0.45, vreg), vh) * ss(0.20, 0.14, vd) * clr * ko);
     }
 
+    // `real`: 1 on an inside part (shell, frame, drive, foam, board) when the lamp's map is on;
+    // `vis` is then how much of the lamp reaches the point (`shv`), else 1.
     float3 inner(float id, float3 n, float3 v, float3 r, float3 vp, float3 vo, float3 von, float2 uv2, float3x3 M, float pt, float blk, float ex, float glass,
-                 texture2d<float> tl, texture2d<float> tp, texture2d<float> tq, sampler sm, float pk) {
-        float g = pow(clamp(physE(n, vp, vo, M), 0.0, 2.0), 0.4545);
+                 texture2d<float> tl, texture2d<float> tp, texture2d<float> tq, sampler sm, float pk, float real, float vis) {
+        // K.3D.12: the real shadow scales only the lamp's part of the light, not the room's.
+        float Ea = mix(uFloor, uCeil, 0.5 + 0.5 * n.y), E = physE(n, vp, vo, M);
+        E = Ea + (E - Ea) * vis;
+        float g = pow(clamp(E, 0.0, 2.0), 0.4545);
         float2 o = vo.xy, w = o - float2(0.0, -127.0);
         float rho = length(w);
         float3 h = normalize(normalize(float3(lamp.x, lamp.y, 1000.0)) + v);
-        float sp = pow(max(dot(n, h), 0.0), 30.0);
+        float sp = pow(max(dot(n, h), 0.0), 30.0) * vis;
         float3 c = float3(0.5);
         if (id == 11.0) c = float3(0.33, 0.40, 0.50);  // battery
         else if (id == 12.0) c = float3(0.72, 0.73, 0.75) * (0.985 + 0.015 * sin(o.y * 2.3)) + 0.25 * sp;  // drive, shield can: brushed metal
@@ -473,7 +504,7 @@ enum K3DShader {
             c = mix(c, float3(0.52, 0.33, 0.12), step(o.y, 62.0) * step(abs(o.x), 60.0));
         }
         // Metals reflect the room; the inside is darker until the parts are well apart.
-        float fz = step(0.9, abs(von.z)), fr0 = step(0.0, von.z), nh = max(dot(n, h), 0.0);
+        float fz = step(0.9, abs(von.z)), fr0 = step(0.0, von.z), nh = max(dot(n, h), 0.0) * vis;
         float mt = 0.0, ed = 99.0, sh = 1.0;
         if (id == 12.0 || id == 17.0 || id == 27.0 || id == 32.0 || id == 33.0 || id == 34.0 || id == 40.0) mt = 1.0;
         else if (id == 30.0 || id == 31.0) mt = 0.55;
@@ -681,6 +712,13 @@ enum K3DShader {
             sh *= mix(0.72, 1.0, ss(0.0, 16.0, -(length(max(d, 0.0)) + min(max(d.x, d.y), 0.0) - 34.0)));
         }
         if (id != 22.0 && id != 23.0) sh *= mix(0.62, 1.0, ss(0.06, 0.75, ex));
+        // K.3D.12: contact shadows deeper where parts sit close.
+        if (id == 13.0 || id == 34.0 || id == 27.0 || id == 40.0) sh = pow(sh, 1.35);
+        if (id == 34.0 && fz > 0.5 && pt < 0.5)
+            sh *= mix(0.83, 1.0, ss(0.0, 28.0, -rIn(o, -160.0, 80.0, 164.0, 260.0))) * mix(0.85, 1.0, ss(0.0, 16.0, -rIn(o, 84.0, 150.0, 180.0, 296.0)));
+        // K.3D.12: with the lamp's map on, the inside parts have no painted shadows, only the
+        // real one (`vis`). The outer parts (plate, window, wheel, screen module, button) keep theirs.
+        if (real > 0.5) sh = 1.0;
         float eg = fz * ss(1.4, 0.0, ed) * (0.14 + 0.16 * mt);
         float brl = fract(sin(floor(o.x * 3.0) * 12.9898) * 43758.5453);
         float sr = 0.46 + 0.30 * ss(-0.7, 0.7, r.y) + 0.42 * pow(max(dot(r, normalize(float3(-0.45, 0.5, 0.75))), 0.0), 5.0)
@@ -756,7 +794,7 @@ enum K3DShader {
                                 sampler sm [[sampler(0)]],
                                 sampler sn [[sampler(1)]], texture2d<float> t2 [[texture(3)]], sampler sf [[sampler(2)]],
                                 texture2d<float> tl [[texture(4)]], texture2d<float> tp [[texture(5)]], texture2d<float> tq [[texture(6)]],
-                                bool ff [[front_facing]]) {
+                                texture2d<float> tsh [[texture(7)]], bool ff [[front_facing]]) {
         float3x3 M = float3x3(u.mv[0].xyz, u.mv[1].xyz, u.mv[2].xyz);
         float vm = in.vm, pt = in.vpt;
         // CLA-119: the plate's grain is read once per screen pixel, at its middle, as the mock
@@ -798,6 +836,8 @@ enum K3DShader {
         if (pt > 8.5 && ((vm > 12.5 && vm < 13.5) || (vm > 42.5 && vm < 43.5))) {  // the logic board's real outline
             if ((o.y > -17.0 && length(o - float2(0.0, -127.0)) > 121.0) || (o.y < -281.0 && abs(o.x) > 118.0)) discard_fragment();
         }
+        // CLA-150 PR 4: the lamp's map holds each point's distance to the lamp, over the far distance.
+        if (u.shPass > 0.5) return float4(length(in.vp - u.lp.xyz) / u.lp.w, 0.0, 0.0, 1.0);
 
         float3 n = ff ? normalize(in.vn) : -normalize(in.vn);  // apart, back faces draw too
         float3 v = normalize(-in.vp);
@@ -807,7 +847,9 @@ enum K3DShader {
         float fr = pow(1.0 - max(dot(n, v), 0.0), 3.0);
         float3 col;
         if (vm > 10.5) {  // Take apart: the parts' inner faces
-            col = inner(floor(vm + 0.5), n, v, r, in.vp, in.vo, in.von, in.vuv2, M, pt, u.blk, u.ex, glass, tl, tp, tq, sm, u.prints);
+            float real = (u.shadow > 0.5 && (pt < 0.5 || pt > 5.5)) ? 1.0 : 0.0;
+            float vis = real > 0.5 ? shv(in.vp, n, u, tsh, sn) : 1.0;
+            col = inner(floor(vm + 0.5), n, v, r, in.vp, in.vo, in.von, in.vuv2, M, pt, u.blk, u.ex, glass, tl, tp, tq, sm, u.prints, real, vis);
         } else if (vm > 9.5) {  // dark: the window's cut edge and the board inside
             col = float3(0.09, 0.095, 0.10) * (0.7 + 0.4 * dif);
             if (u.ex > 0.0 && pt > 1.5 && pt < 2.5)  // apart: the window's cut edge is clear plastic

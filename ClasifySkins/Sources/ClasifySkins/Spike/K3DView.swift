@@ -498,6 +498,15 @@ final class K3DLayerView: MTKView {
     /// Take apart: the window glass, blended over the parts with no depth write (the mock's pass 1).
     private let glassPipeline: any MTLRenderPipelineState
     private let glassDepth: any MTLDepthStencilState
+    /// CLA-150 PR 4 (K.3D.12 item 5): the lamp's shadow map pass: each point's distance to the
+    /// lamp, one sample, no culling (the mock's `shadowPass`).
+    private let shadowPipeline: any MTLRenderPipelineState
+    /// The lamp's map and its depth, made at the first apart frame and freed when the device is
+    /// closed again (with the prints). About 16 MB; the depth lives in tile memory where it can.
+    private var shadowMap: (color: any MTLTexture, depth: any MTLTexture)?
+    /// The real shadow on the inside parts. Off: they keep their painted shadows (K.3D.11).
+    /// For tests, and the fallback if the pass is too slow.
+    var realShadows = true
     /// CLA-119: the 2:1 filter into the screen's pixels.
     private let downPipeline: any MTLRenderPipelineState
     private let vertices: any MTLBuffer, indices: any MTLBuffer
@@ -550,13 +559,48 @@ final class K3DLayerView: MTKView {
         var flat: Float = 0
         /// CLA-105 B3: 1 when the printed textures are bound; 0 draws each part's plain color.
         var prints: Float = 0
+        /// CLA-150 PR 4: 1 when the lamp's map is bound for the inside parts; `shPass` 1 in the
+        /// pass that draws it. `lvp`: the lamp's camera. `lp`: the lamp, and the map's far distance.
+        var shadow: Float = 0
+        var shPass: Float = 0
+        var lvp = matrix_identity_float4x4
+        var lp = SIMD4<Float>(0, 0, 0, 1)
     }
+
+    /// The mock's shadow map: 2048 pixels square (SHN), read 1.5 pixels apart (uShT).
+    nonisolated static let shadowSize = 2048
+    nonisolated static let shadowTexel = 1.5 / Double(shadowSize)
 
     /// CLA-105: closed, only the closed device draws, in one pass with back faces culled, as
     /// before. Apart, every part draws; from `ex` .001 their back faces too, and from .0005 the
-    /// window glass in a second pass (the mock's `draw`).
-    nonisolated static func passes(ex: Float) -> (all: Bool, cull: Bool, glass: Bool) {
-        (ex > 0, ex <= 0.001, ex > 0.0005)
+    /// window glass in a second pass (the mock's `draw`). CLA-150 PR 4: from .0005 too, the
+    /// lamp's shadow map is drawn first. Closed, there is no shadow pass.
+    nonisolated static func passes(ex: Float) -> (all: Bool, cull: Bool, glass: Bool, shadow: Bool) {
+        (ex > 0, ex <= 0.001, ex > 0.0005, ex > 0.0005)
+    }
+
+    /// CLA-150 PR 4: the lamp's camera, as the mock's `shadowPass` with the lamp not locked to
+    /// the device (`uLock` 0): from the lamp (`K3DShader`'s `lamp`) to the device's center, a
+    /// perspective that holds the device (near d - 700, far d + 700, 500 pt round the center).
+    /// The mock's matrix is WebGL's (depth -1 to 1); Metal's depth runs 0 to 1, so z is halved.
+    /// `far`: the map's far distance, the mock's uShF.
+    static func lampCamera(lift: Double) -> (lvp: simd_float4x4, lamp: SIMD3<Float>, far: Float) {
+        let c = SIMD3<Double>(0, 0, -Double(distance) - lift)
+        let l = SIMD3<Double>(-350, 800, Double(K3DMesh.depth / 2) + 1000 - Double(distance))
+        let d = simd_length(c - l), f = (c - l) / d
+        let up = abs(f.y) > 0.95 ? SIMD3<Double>(1, 0, 0) : SIMD3<Double>(0, 1, 0)
+        let sx = simd_normalize(simd_cross(f, up)), uy = simd_cross(sx, f)
+        let view = simd_double4x4(columns: (
+            SIMD4(sx.x, uy.x, -f.x, 0), SIMD4(sx.y, uy.y, -f.y, 0), SIMD4(sx.z, uy.z, -f.z, 0),
+            SIMD4(-simd_dot(sx, l), -simd_dot(uy, l), simd_dot(f, l), 1)))
+        let n = max(50, d - 700), fa = d + 700, t = d / 500
+        let lens = simd_double4x4(columns: (
+            SIMD4(t, 0, 0, 0), SIMD4(0, t, 0, 0), SIMD4(0, 0, (fa + n) / (n - fa), -1), SIMD4(0, 0, 2 * fa * n / (n - fa), 0)))
+        let half = simd_double4x4(columns: (SIMD4(1, 0, 0, 0), SIMD4(0, 1, 0, 0), SIMD4(0, 0, 0.5, 0), SIMD4(0, 0, 0.5, 1)))
+        let m = half * lens * view
+        func float(_ v: SIMD4<Double>) -> SIMD4<Float> { SIMD4<Float>(Float(v.x), Float(v.y), Float(v.z), Float(v.w)) }
+        let lvp = simd_float4x4(columns: (float(m.columns.0), float(m.columns.1), float(m.columns.2), float(m.columns.3)))
+        return (lvp, SIMD3<Float>(Float(l.x), Float(l.y), Float(l.z)), Float(fa + 100))
     }
 
     init?() {
@@ -564,7 +608,8 @@ final class K3DLayerView: MTKView {
               let library = try? Self.makeLibrary(device),
               let pipeline = try? Self.makePipeline(library), let depth = Self.makeDepth(device, write: true),
               let glassPipeline = try? Self.makePipeline(library, blend: true), let glassDepth = Self.makeDepth(device, write: false),
-              let downPipeline = try? Self.makeDownPipeline(library)
+              let downPipeline = try? Self.makeDownPipeline(library),
+              let shadowPipeline = try? Self.makeShadowPipeline(library)
         else { return nil }
         let mesh = K3DMesh()
         guard let vertices = device.makeBuffer(bytes: mesh.vertices, length: mesh.vertices.count * 4, options: []),
@@ -585,6 +630,7 @@ final class K3DLayerView: MTKView {
         self.glassPipeline = glassPipeline
         self.glassDepth = glassDepth
         self.downPipeline = downPipeline
+        self.shadowPipeline = shadowPipeline
         closedBox = Self.box(mesh, apart: false)
         apartBox = Self.box(mesh, apart: true)
         self.vertices = vertices
@@ -631,6 +677,17 @@ final class K3DLayerView: MTKView {
         descriptor.depthAttachmentPixelFormat = .depth32Float
         descriptor.rasterSampleCount = samples
         return try device.makeRenderPipelineState(descriptor: descriptor)
+    }
+
+    /// CLA-150 PR 4: the lamp's map pass: the same shaders (`shPass` 1), into one 32-bit float
+    /// channel, one sample.
+    static func makeShadowPipeline(_ library: any MTLLibrary) throws -> any MTLRenderPipelineState {
+        let descriptor = MTLRenderPipelineDescriptor()
+        descriptor.vertexFunction = library.makeFunction(name: "k3dVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "k3dFragment")
+        descriptor.colorAttachments[0].pixelFormat = .r32Float
+        descriptor.depthAttachmentPixelFormat = .depth32Float
+        return try library.device.makeRenderPipelineState(descriptor: descriptor)
     }
 
     /// CLA-119: the 2:1 filter's pipeline: one sample, no depth.
@@ -857,6 +914,7 @@ final class K3DLayerView: MTKView {
         }
         let k = Self.supersample, w = rect.w * k, h = rect.h * k
         guard let targets = sceneTargets(w, h) else { return false }
+        let map = shadowPass(buffer, pose: pose)
         let scene = MTLRenderPassDescriptor()
         scene.colorAttachments[0].texture = targets.color
         scene.colorAttachments[0].resolveTexture = targets.resolved
@@ -872,7 +930,7 @@ final class K3DLayerView: MTKView {
         encoder.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(w), height: Double(h), znear: 0, zfar: 1))
         let points = CGSize(width: Double(rect.w) / pixelScale, height: Double(rect.h) / pixelScale)
         let shifted = CGPoint(x: center.x - Double(rect.x) / pixelScale, y: center.y - Double(rect.y) / pixelScale)
-        encode(encoder, pose: pose, size: points, center: shifted)
+        encode(encoder, pose: pose, size: points, center: shifted, map: map)
         guard let filter = buffer.makeRenderCommandEncoder(descriptor: down) else { return false }
         filter.setViewport(MTLViewport(
             originX: Double(rect.x), originY: Double(rect.y), width: Double(rect.w), height: Double(rect.h), znear: 0, zfar: 1))
@@ -885,6 +943,54 @@ final class K3DLayerView: MTKView {
         filter.endEncoding()
         return true
     }
+
+    /// CLA-150 PR 4: the lamp's map for this frame, drawn into `buffer` before the scene, or nil
+    /// (closed, the real shadow off, or no memory for the map).
+    private func shadowPass(_ buffer: any MTLCommandBuffer, pose: K3DPose) -> (any MTLTexture)? {
+        guard realShadows, Self.passes(ex: Float(pose.ex)).shadow, let map = shadowTargets() else { return nil }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = map.color
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(1, 1, 1, 1)
+        pass.colorAttachments[0].storeAction = .store
+        pass.depthAttachment.texture = map.depth
+        pass.depthAttachment.loadAction = .clear
+        pass.depthAttachment.clearDepth = 1
+        pass.depthAttachment.storeAction = .dontCare
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
+        let lamp = Self.lampCamera(lift: pose.lift)
+        var uniforms = Uniforms(
+            mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt), pr: lamp.lvp, blk: pose.black ? 1 : 0, ex: Float(pose.ex))
+        uniforms.shPass = 1
+        uniforms.lvp = lamp.lvp
+        uniforms.lp = SIMD4(lamp.lamp, lamp.far)
+        encoder.setViewport(MTLViewport(originX: 0, originY: 0, width: Double(Self.shadowSize), height: Double(Self.shadowSize), znear: 0, zfar: 1))
+        encoder.setRenderPipelineState(shadowPipeline)
+        encoder.setDepthStencilState(depth)
+        encoder.setCullMode(.none)
+        bind(encoder, &uniforms, flat: flat, prints: nil, map: nil)
+        encoder.drawIndexedPrimitives(type: .triangle, indexCount: indexCount, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
+        encoder.endEncoding()
+        return map.color
+    }
+
+    /// The lamp's map and its depth, made once and kept until the device is closed.
+    private func shadowTargets() -> (color: any MTLTexture, depth: any MTLTexture)? {
+        if let shadowMap { return shadowMap }
+        let n = Self.shadowSize
+        let color = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .r32Float, width: n, height: n, mipmapped: false)
+        color.usage = [.renderTarget, .shaderRead]
+        color.storageMode = .private
+        let depth = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .depth32Float, width: n, height: n, mipmapped: false)
+        depth.usage = .renderTarget
+        depth.storageMode = device.supportsFamily(.apple7) ? .memoryless : .private
+        guard let c = device.makeTexture(descriptor: color), let d = device.makeTexture(descriptor: depth) else { return nil }
+        shadowMap = (c, d)
+        return shadowMap
+    }
+
+    /// Whether the lamp's map is made now. For tests.
+    var hasShadowMap: Bool { shadowMap != nil }
 
     /// The 2x targets, made again only when they are too small. The MSAA color and the depth
     /// live in tile memory where the GPU can (Apple silicon); elsewhere they are private.
@@ -938,6 +1044,7 @@ final class K3DLayerView: MTKView {
         else { return }
         buffer.commit()
         warmed = true
+        if !was { shadowMap = nil }  // the buffer keeps its own hold on the map until it is done
     }
 
     /// The warm-up frame was sent.
@@ -984,11 +1091,12 @@ final class K3DLayerView: MTKView {
         if wasApart {
             wasApart = false
             releasePrints()
+            shadowMap = nil
         }
         return nil
     }
 
-    private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint) {
+    private func encode(_ encoder: any MTLRenderCommandEncoder, pose: K3DPose, size: CGSize, center: CGPoint, map: (any MTLTexture)?) {
         var uniforms = Uniforms(
             mv: Self.modelView(angle: pose.angle, lift: pose.lift, tilt: pose.tilt),
             pr: Self.projection(size: size, center: center, scale: pose.scale), blk: pose.black ? 1 : 0,
@@ -999,6 +1107,12 @@ final class K3DLayerView: MTKView {
         uniforms.flat = layer?.weight ?? 0
         let prints = printsFor(ex: pose.ex)
         uniforms.prints = prints == nil ? 0 : 1
+        if map != nil {
+            let lamp = Self.lampCamera(lift: pose.lift)
+            uniforms.shadow = 1
+            uniforms.lvp = lamp.lvp
+            uniforms.lp = SIMD4(lamp.lamp, lamp.far)
+        }
         let passes = Self.passes(ex: uniforms.ex)
         encoder.setRenderPipelineState(pipeline)
         encoder.setDepthStencilState(depth)
@@ -1006,17 +1120,7 @@ final class K3DLayerView: MTKView {
         // the mock's counterclockwise front faces are counterclockwise here too.
         encoder.setFrontFacing(.counterClockwise)
         encoder.setCullMode(passes.cull ? .back : .none)
-        encoder.setVertexBuffer(vertices, offset: 0, index: 0)
-        encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
-        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
-        encoder.setFragmentTexture(front, index: 0)
-        encoder.setFragmentTexture(back, index: 1)
-        encoder.setFragmentSamplerState(linear, index: 0)
-        encoder.setFragmentSamplerState(nearest, index: 1)
-        encoder.setFragmentTexture(layer?.texture ?? flat, index: 3)
-        encoder.setFragmentSamplerState(flatSampler, index: 2)
-        // Closed, no part reads the prints: the front texture stands in for them.
-        for index in 0..<3 { encoder.setFragmentTexture(prints?[index] ?? front, index: 4 + index) }
+        bind(encoder, &uniforms, flat: layer?.texture ?? flat, prints: prints, map: map)
         let count = passes.all ? indexCount : closedIndexCount
         encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
         if passes.glass {
@@ -1028,6 +1132,23 @@ final class K3DLayerView: MTKView {
             encoder.drawIndexedPrimitives(type: .triangle, indexCount: count, indexType: .uint32, indexBuffer: indices, indexBufferOffset: 0)
         }
         encoder.endEncoding()
+    }
+
+    /// The buffers, textures and samplers both the scene and the lamp's map pass read.
+    private func bind(_ encoder: any MTLRenderCommandEncoder, _ uniforms: inout Uniforms, flat: any MTLTexture, prints: [any MTLTexture]?, map: (any MTLTexture)?) {
+        encoder.setVertexBuffer(vertices, offset: 0, index: 0)
+        encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
+        encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
+        encoder.setFragmentTexture(front, index: 0)
+        encoder.setFragmentTexture(back, index: 1)
+        encoder.setFragmentSamplerState(linear, index: 0)
+        encoder.setFragmentSamplerState(nearest, index: 1)
+        encoder.setFragmentTexture(flat, index: 3)
+        encoder.setFragmentSamplerState(flatSampler, index: 2)
+        // Closed, no part reads the prints: the front texture stands in for them. The lamp's
+        // map pass and a frame with no map do not read the map: the front stands in for it too.
+        for index in 0..<3 { encoder.setFragmentTexture(prints?[index] ?? front, index: 4 + index) }
+        encoder.setFragmentTexture(map ?? front, index: 7)
     }
 
     /// One frame drawn off screen, `size` points at `scale` pixels per point, the device
