@@ -41,6 +41,9 @@ import Testing
         #expect(events(&s, .playlistsLoaded(token: 9, playlists: nil), now: 101).isEmpty)  // a failed read
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 101.25) == [.appSpeed(startMs: 850, libraryMs: 1250)])
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 102).isEmpty && s.speedSent)
+        var setup = AppState()  // a launch in setup sends none
+        _ = events(&setup, .launch)
+        #expect(setup.launchedAt == nil)
         #expect(BetaEvent.appSpeed(startMs: nil, libraryMs: 5).properties == ["library_ms": .number(5)])
     }
 

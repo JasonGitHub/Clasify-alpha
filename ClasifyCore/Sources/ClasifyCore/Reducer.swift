@@ -259,7 +259,8 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let top = s.top.screen, handOver = s.activateHandOver
     // CLA-97: the first launch, for the setup times. A Mac set up before it has none.
     if action == .launch && !s.setupDone && s.firstLaunchAt == nil { s.firstLaunchAt = env.now() }
-    if action == .launch && s.launchedAt == nil { s.launchedAt = env.now() }
+    // CLA-97, `app_speed`: not on a launch in setup, as that time holds the person's own login steps.
+    if action == .launch && s.setupDone && s.launchedAt == nil { s.launchedAt = env.now() }
     let before = BeforeEvents(s, action)
     var fx = reduceAction(&s, action, env)
     fx += betaEvents(&s, before, fx, now: env.now())
