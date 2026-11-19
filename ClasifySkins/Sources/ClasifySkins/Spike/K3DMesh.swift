@@ -668,6 +668,15 @@ public struct K3DFlip {
     /// No turn runs: the device rests on one side.
     public func isResting(at now: Date) -> Bool { elapsed(at: now) >= length }
 
+    /// CLA-138 (build 327: one empty frame as a Cmd turn starts): the 3D body is on screen (its
+    /// Metal view at full opacity) when the 2D device shows at `shown` below 1, and also while a
+    /// Cmd turn holds the device (`K3DTurn.settle` at the front, and every held pose). A spin
+    /// and a timed turn cross the 2° fade over several frames, so the body is on screen under
+    /// an almost opaque 2D device first. A Cmd turn jumps past 2° in one frame after the settle:
+    /// without this, the Metal view became visible in the same frame as the 2D device went, and
+    /// its layer came one frame late.
+    public func bodyShows(shown: Double) -> Bool { shown < 1 || script == .held }
+
     /// The front shows flat, with no turn running: the 2D skin can show.
     /// CLA-105: closed again after a take-apart, it rests on the front only at 0° with no tilt.
     public func restsOnFront(at now: Date) -> Bool {
