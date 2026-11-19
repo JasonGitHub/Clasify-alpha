@@ -314,11 +314,16 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         }
         s.viewCounted[view] = max(s.viewCounted[view] ?? start, stop)
     }
-    // Codex on #352: a view open over midnight first counts its part of the day before, so that
-    // day goes out once, whole.
+    // Codex on #352: views open over midnight first count their part of each day before, all
+    // views up to one midnight before the next, so each day goes out once, whole.
     if !s.viewOpen.isEmpty, let today = s.today, today.day < DayUse.at(now, in: timeZone).day {
-        let midnight = DayUse.startOfDay(now, in: timeZone)
-        for view in View3D.allCases { settle(view, upTo: midnight) }
+        let last = DayUse.startOfDay(now, in: timeZone)
+        let from = s.viewOpen.map { s.viewCounted[$0.key] ?? $0.value }.min() ?? last
+        var midnight = DayUse.startOfDay(from, in: timeZone)
+        repeat {
+            midnight = min(last, DayUse.startOfDay(midnight + 26 * 3600, in: timeZone))  // the next midnight
+            for view in View3D.allCases { settle(view, upTo: midnight) }
+        } while midnight < last
     }
     if b.played, s.isPlaying, let current = s.current {
         if let last = s.dayPlayAt, now > last {

@@ -258,4 +258,15 @@ import Testing
         _ = events(&music, .view3D(.apart, open: false), now: at(0, day: 20) + 20)
         #expect(music.today?.views == [0, 20, 0])
     }
+
+    /// Codex on #352: two views open over two midnights: each day gets the part of both.
+    @Test func twoViewsOpenOverTwoMidnightsGiveEachDayItsPart() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))
+        _ = events(&s, .view3D(.turn, open: true), .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let sent = events(&s, .tick, now: at(9, day: 21))
+        let days = sent.compactMap { e -> DayUse? in if case .dayActive(let d, _) = e { d } else { nil } }
+        #expect(days.map(\.day) == [20261119, 20261120])
+        #expect(days.first?.views == [10, 10, 0] && days.last?.views == [1790, 1790, 0])
+    }
 }
