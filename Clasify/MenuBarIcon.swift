@@ -42,36 +42,7 @@ final class MenuBarIcon: NSObject {
     @objc private func click() {
         // Build 323: after the icon's hide, a click always shows (`iconHid`).
         let shown = !DeviceWindow.iconHid && DeviceWindow.isShown
-        let before = DeviceWindow.debugState
         store.send(.menuBarClick(shown: shown))
-        debug(before: before, decision: shown && store.state.setupDone ? "hide" : "show")
-    }
-
-    /// Build 323 debug read-out, off by default. `defaults write com.cappyai.mypod debug.menuBar
-    /// -bool true` turns it on: each click writes the state before, the decision, and 0.8 s
-    /// later the state after, next to the icon, for a screen recording. Nothing is stored.
-    private var clicks = 0
-    private func debug(before: String, decision: String) {
-        guard let item, let button = item.button else { return }
-        guard UserDefaults.standard.bool(forKey: "debug.menuBar") else {
-            if !button.title.isEmpty {
-                button.title = ""
-                item.length = NSStatusItem.squareLength
-            }
-            return
-        }
-        clicks += 1
-        let line = "\(clicks) \(before) >\(decision)"
-        item.length = NSStatusItem.variableLength
-        button.imagePosition = .imageLeft
-        button.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        button.title = line
-        let click = clicks
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(0.8))
-            guard let self, self.clicks == click, let button = self.item?.button else { return }
-            button.title = line + " | " + DeviceWindow.debugState
-        }
     }
 
     /// 343, option C: a solid player, 18 points. The body is filled; the screen and the wheel
