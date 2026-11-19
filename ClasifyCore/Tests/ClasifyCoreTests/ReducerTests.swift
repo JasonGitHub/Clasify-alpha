@@ -131,10 +131,10 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.deviceColor == .black)  // a saved setting: a reset keeps it
     }
 
-    /// Card BF, change 207, and card BS, change 294: About is one page of 4 wheel steps (card BF.2), one step
+    /// Card BF, change 207, and card BS, change 294: About is one page of 3 wheel steps (card CC), one step
     /// a turn. It opens at the top, and the scroll bar shows from 0.3 s to 1.8 s, then for 1.5 s
     /// after each step.
-    @Test func aboutScrollsFourStepsOneATurn() {
+    @Test func aboutScrollsThreeStepsOneATurn() {
         var s = mainMenu()
         send(&s, .wheel(5), .select, .wheel(8))  // Settings, on the About row
         #expect(s.rows(for: s.top)[s.top.sel] == .about)
@@ -148,9 +148,9 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.top.off == AppState.aboutSteps)  // the end of the page
         old = s
         send(&s, .wheel(1), now: 1020)
-        #expect(s.top.off == 4 && s.scrollUntil < 1020 && !wheelMoved(from: old, to: s))  // no bar, no click
+        #expect(s.top.off == 3 && s.scrollUntil < 1020 && !wheelMoved(from: old, to: s))  // no bar, no click
         send(&s, .wheel(-1))
-        #expect(s.top.off == 3)
+        #expect(s.top.off == 2)
         send(&s, .menu)
         #expect(s.top.screen == .settings)
         send(&s, .select)
