@@ -112,6 +112,9 @@ public enum Action: Equatable, Sendable {
     case appStarted(ms: Int)
     /// CLA-97: the app quits normally. The exact day count is saved (`AppState.savedToday`).
     case willQuit
+    /// CLA-97: the sender takes events: a PostHog key is in the build and `analytics.on` is on.
+    /// The app sends it at start and when the switch changes.
+    case analyticsOn(Bool)
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -1372,6 +1375,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             fx.append(.track(.controlLost(reason, service: s.service)))
 
         case .used, .willQuit: break  // only for `day_active` (dayEvents)
+        case .analyticsOn(let on): s.analyticsOn = on
         case .appStarted(let ms): s.startMs = ms
 
         case .controlBack:
