@@ -50,7 +50,7 @@ import Testing
             .setupStep(.hello, seconds: 1, service: .spotify), .setupError(.loginFailed, service: .spotify), song,
             .controlLost(.timeout, service: .spotify), .controlBack(seconds: 3, service: .spotify),
             .appUpdated(from: 1, to: 2, days: 3), .useError(.loginFailed, offline: false, service: .spotify),
-            .appSpeed(startMs: 1, libraryMs: 2), .musicPick(.spotify, top: .appleMusic, spotifyApp: true),
+            .appSpeed(startMs: 1, libraryMs: 2, loaded: true), .musicPick(.spotify, top: .appleMusic, spotifyApp: true),
             .betaRenewal(.warning, pressed: true, daysLeft: 3), .serviceSwitch(from: .spotify, to: .appleMusic),
             .dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify),
         ]
