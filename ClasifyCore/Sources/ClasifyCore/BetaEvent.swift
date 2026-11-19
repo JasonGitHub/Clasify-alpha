@@ -229,7 +229,7 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
             events.append(.setupError(error, service: s.service))
         }
     }
-    if !s.firstSongSent, let seconds, b.played, s.isPlaying, s.current != nil {
+    if !s.firstSongSent, s.analyticsOn, let seconds, b.played, s.isPlaying, s.current != nil {
         s.firstSongSent = true
         events.append(.firstSong(seconds: seconds, service: s.service))
     }

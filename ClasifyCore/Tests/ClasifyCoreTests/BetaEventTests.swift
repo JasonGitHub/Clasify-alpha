@@ -97,11 +97,15 @@ import Testing
         s.t = 30  // a scrub sets the place, but the engine has not played yet
         #expect(events(&s, .tick, now: 95).isEmpty && !s.firstSongSent)
         #expect(events(&s, .position(1, generation: s.playGen + 1), now: 96).isEmpty)  // another load
+        // CLA-97 A3: the sender does not take events yet: not made, made again at the next play.
+        #expect(events(&s, .position(1, generation: s.playGen), now: 97).isEmpty && !s.firstSongSent)
+        _ = events(&s, .analyticsOn(true), now: 99)
+        #expect(s.analyticsOn)
         #expect(events(&s, .position(1, generation: s.playGen), now: 100) == [.firstSong(seconds: 60, service: .spotify)])
         #expect(s.firstSongSent && s.settings.firstSongSent)
         #expect(events(&s, .position(2, generation: s.playGen), now: 101).isEmpty)
         var old = afterSetup()  // set up before CLA-97: no time, no event
-        old.current = s.current; old.isPlaying = true
+        old.current = s.current; old.isPlaying = true; old.analyticsOn = true
         #expect(events(&old, .position(1, generation: old.playGen), now: 100).isEmpty)
         #expect(BetaEvent.firstSong(seconds: 60, service: .appleMusic).properties == ["seconds": .number(60), "service": .text("apple_music")])
         #expect(BetaEvent.setupStep(.allSet, seconds: 3, service: .spotify).name == "setup_step")
