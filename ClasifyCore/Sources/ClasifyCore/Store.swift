@@ -170,6 +170,8 @@ public final class Store {
     /// Card AN.1 (CLA-43): fade the device window in or out. The app sets them.
     @ObservationIgnored public var onShowWindow: (@MainActor () -> Void)?
     @ObservationIgnored public var onHideWindow: (@MainActor () -> Void)?
+    /// CLA-97: the beta analytics sender. The app sets it (A3); nil sends nothing.
+    @ObservationIgnored public var onBetaEvent: (@MainActor (BetaEvent) -> Void)?
     /// Card BW: opens the activator's page URL (getmypod.app/activate/?d=CODE) in the browser. The app sets it.
     @ObservationIgnored public var onOpenActivatePage: (@MainActor (String) -> Void)?
     /// Where the settings are saved. When set, `init` loads them into the state.
@@ -330,6 +332,7 @@ public final class Store {
             case .quit: onQuit?()
             case .showWindow: onShowWindow?()
             case .hideWindow: onHideWindow?()
+            case .track(let event): onBetaEvent?(event)
             case .openActivatePage(let request):
                 guard let activator else { break }
                 let flow = state.activateFlow

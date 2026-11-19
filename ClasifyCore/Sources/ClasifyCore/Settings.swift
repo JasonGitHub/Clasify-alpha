@@ -37,6 +37,9 @@ public struct Settings: Equatable, Sendable {
     /// The device arrived once, at the first launch ever (card BR, change 288). True by default;
     /// a store with no saved value gives false, so a new Mac sees the arrival once.
     public var arrived = true
+    /// CLA-97: `AppState.firstLaunchAt` and `AppState.firstSongSent`.
+    public var firstLaunchAt: Double?
+    public var firstSongSent = false
 
     public init() {}
 
@@ -65,6 +68,8 @@ public struct Settings: Equatable, Sendable {
         // is always on. Read only; the app never writes it. See `DeviceID.current`.
         static let activateHardwareID = "activate.hardwareID"
         static let arrived = "arrive.done"
+        static let firstLaunchAt = "analytics.firstLaunch"
+        static let firstSongSent = "analytics.firstSong"
     }
 
     /// The saved settings. A missing or unknown value gives the default.
@@ -95,6 +100,8 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.activateOn).flatMap({ Bool($0) }) { activateOn = v }
         activated = store.string(forKey: Key.activated).flatMap { Bool($0) } ?? false
         arrived = store.string(forKey: Key.arrived).flatMap { Bool($0) } ?? false
+        firstLaunchAt = store.string(forKey: Key.firstLaunchAt).flatMap { Double($0) }
+        firstSongSent = store.string(forKey: Key.firstSongSent).flatMap { Bool($0) } ?? false
     }
 
     /// CLA-145: `activate.hardwareID` "true" makes the device ID from the hardware. Off by
@@ -122,6 +129,8 @@ public struct Settings: Equatable, Sendable {
         store.set(String(activateOn), forKey: Key.activateOn)
         store.set(String(activated), forKey: Key.activated)
         store.set(String(arrived), forKey: Key.arrived)
+        store.set(firstLaunchAt.map { String($0) }, forKey: Key.firstLaunchAt)
+        store.set(firstSongSent ? "true" : nil, forKey: Key.firstSongSent)  // only once it went out
     }
 }
 
@@ -149,6 +158,7 @@ extension AppState {
             (v.newBeta, v.betaNoticed) = (newBeta, betaNoticed)
             (v.activateOn, v.activated) = (activateOn, activated)
             v.arrived = arrived
+            (v.firstLaunchAt, v.firstSongSent) = (firstLaunchAt, firstSongSent)
             return v
         }
         set {
@@ -163,6 +173,7 @@ extension AppState {
             (newBeta, betaNoticed) = (newValue.newBeta, newValue.betaNoticed)
             (activateOn, activated) = (newValue.activateOn, newValue.activated)
             arrived = newValue.arrived
+            (firstLaunchAt, firstSongSent) = (newValue.firstLaunchAt, newValue.firstSongSent)
         }
     }
 }

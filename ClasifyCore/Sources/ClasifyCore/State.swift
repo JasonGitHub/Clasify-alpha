@@ -458,6 +458,12 @@ public struct AppState: Equatable, Sendable {
     /// Set by the answer `.active`, cleared by `.locked`, `.waiting` and `.off`. With the gate on
     /// and this false, the launch shows Activate before anything else. Log Out keeps it.
     public var activated = false
+    /// CLA-97: the first launch with setup, in `Dependencies.now` time, and the first song
+    /// event went out once. Saved with the settings. A Mac set up before CLA-97 has no time.
+    public var firstLaunchAt: Double?
+    public var firstSongSent = false
+    /// CLA-97: the last setup step event, so the same step does not go out twice in a row. Not saved.
+    public var lastSetupStep: SetupStep?
     /// CLA-143: the running login carries the activate page; Activate opens on 320. Not saved.
     public var activateHandOver = false
     /// CLA-128: this Mac's activation. The app sends the stored one before `.launch`. Not saved here.
