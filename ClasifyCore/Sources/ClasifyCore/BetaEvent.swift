@@ -1,3 +1,5 @@
+import Foundation
+
 /// CLA-97: a beta analytics event. The reducer decides it and returns it as `Effect.track`;
 /// the app's sender (A3) adds the account ID, the build and the macOS version, and sends it
 /// only from a signed beta build with a key, on an activated Mac, with `analytics.on`. No
@@ -19,6 +21,8 @@ public enum BetaEvent: Equatable, Sendable {
     case betaRenewal(BetaNotice, pressed: Bool, daysLeft: Int)
     /// The first start of a new build: the build before, this one, and days since it was signed.
     case appUpdated(from: Int, to: Int, days: Int)
+    /// One day with music, sent on the first action of a later day.
+    case dayActive(DayUse, service: MusicService)
 
     /// The event name in PostHog.
     public var name: String {
@@ -31,6 +35,7 @@ public enum BetaEvent: Equatable, Sendable {
         case .controlBack: "control_back"
         case .betaRenewal: "beta_renewal"
         case .appUpdated: "app_updated"
+        case .dayActive: "day_active"
         }
     }
 
@@ -57,13 +62,21 @@ public enum BetaEvent: Equatable, Sendable {
             return ["notice": .text(notice.rawValue), "pressed": .flag(pressed), "days_left": .number(daysLeft)]
         case .appUpdated(let from, let to, let days):
             return ["old_build": .number(from), "new_build": .number(to), "days": .number(days)]
+        case .dayActive(let d, let service):
+            var p: [String: BetaValue] = [
+                "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
+                "minutes_night": .decimal(d.bands[0] / 60), "minutes_morning": .decimal(d.bands[1] / 60),
+                "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
+            ]
+            for f in Feature.allCases { p["used_" + f.rawValue] = .flag(d.features.contains(f)) }
+            return p
         }
     }
 }
 
 /// A value in an event's data.
 public enum BetaValue: Equatable, Sendable {
-    case text(String), number(Int), flag(Bool)
+    case text(String), number(Int), flag(Bool), decimal(Double)
 }
 
 /// The setup steps, in order (analytics doc). `spotify_check` shows only when the Spotify app is missing.
@@ -112,6 +125,14 @@ public enum BetaNotice: String, Sendable {
     }
 }
 
+extension Settings {
+    /// The Settings rows a person changes, for the Settings flag of `day_active`.
+    var choices: [String] {
+        [String(shuffle), repeatMode.rawValue, albumArt.rawValue, deviceColor.rawValue, String(clicker),
+         String(nowPlayingBar), String(menuBar), service.rawValue]
+    }
+}
+
 extension MusicService {
     /// `spotify` or `apple_music`, as the events name it.
     public var eventName: String { self == .spotify ? "spotify" : "apple_music" }
@@ -126,13 +147,20 @@ struct BeforeEvents {
     var pick: MusicService?, top: MusicService
     /// The action is the engine's report of a position past 0 for the playing load: a
     /// confirmed play, not a scrub or the optimistic Play.
-    var played = false
+    var played = false, position = 0.0
+    /// Music played before the action, for the save of the day at a pause.
+    var playing: Bool
+    /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
+    var choices: [String], used: Feature?
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
+        choices = s.settings.choices
+        playing = s.isPlaying
+        if case .used(let feature) = action { used = feature }
         top = s.appleMusicFirst ? .appleMusic : .spotify
         pick = nil
-        if case .position(let t, let gen) = action, t > 0, gen == s.playGen { played = true }
+        if case .position(let t, let gen) = action, t > 0, gen == s.playGen { (played, position) = (true, t) }
         if case .betaBuild(let b) = action { build = b }
         guard action == .select && !s.setupDone && screen == .pickMusic else { return }
         let rows = s.rows(for: s.top)
@@ -179,6 +207,77 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         s.lastBuild = build.number
     }
     return events.map(Effect.track)
+}
+
+/// CLA-97: counts today's music and features, and sends `day_active` for a day that ended.
+/// A day starts with its first count, so an action with nothing to count changes nothing.
+func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
+    var fx: [Effect] = []
+    /// Ends the day before `t`'s day: `day_active` for it, if it had music. While music plays
+    /// with an open interval, the day ends at the next position report or the pause, which
+    /// split the interval at midnight first (Codex on #348): so each day goes out once, whole.
+    func roll(_ t: Double, force: Bool = false) -> (day: Int, weekday: Int, band: Int) {
+        let at = DayUse.at(t, in: timeZone)
+        let open = s.isPlaying && s.dayPlayAt != nil
+        if let old = s.today, old.day < at.day, force || !open {
+            if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
+            s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
+        }
+        return at
+    }
+    func count(at t: Double, force: Bool = false, _ change: (inout DayUse, Int) -> Void) {
+        let at = roll(t, force: force)
+        if var today = s.today, at.day < today.day {
+            // That day already went out (for example after the clock moved). Its part goes to
+            // this day's night band, so no time is lost (Jason: no silent data loss).
+            change(&today, 0)
+            s.today = today
+            return
+        }
+        var d = s.today ?? DayUse(day: at.day, weekday: at.weekday)
+        change(&d, at.band)
+        s.today = d
+    }
+    if b.played, s.isPlaying, let current = s.current {
+        if let last = s.dayPlayAt, now > last {
+            // A long gap on the same track counts the music that played in it, as the position
+            // moved: App Nap can slow the reports while myPod is hidden. After a Mac sleep this
+            // can count too much, by at most the rest of one track. Another track, or a
+            // position that went back: at most `dayGapLimit`.
+            let wall = now - last
+            var add = min(wall, dayGapLimit)
+            if wall > dayGapLimit, s.dayTrack == current.track, let from = s.dayPosition, b.position > from {
+                add = min(wall, b.position - from)
+            }
+            // The time goes to the band and the day of each part (Codex on #348).
+            var t = now - add
+            while t < now {
+                let end = min(now, DayUse.nextBand(after: t, in: timeZone)), from = t
+                count(at: t, force: true) { d, band in d.bands[band] += end - from }
+                t = end
+            }
+        }
+        (s.dayPlayAt, s.dayPosition) = (now, b.position)
+        _ = roll(now, force: true)
+        if s.dayTrack != current.track { s.dayTrack = current.track; count(at: now) { d, _ in d.songs += 1 } }
+        let service = s.service
+        count(at: now) { d, _ in d.service = service }
+    } else if !s.isPlaying && s.dayPlayAt != nil {
+        s.dayPlayAt = nil
+    }
+    _ = roll(now)
+    var used: Set<Feature> = b.used.map { [$0] } ?? []
+    if s.top.screen == .coverFlow { used.insert(.coverFlow) }
+    if b.screen == .settings && s.settings.choices != b.choices { used.insert(.settings) }
+    if !used.isSubset(of: s.today?.features ?? []) { count(at: now) { d, _ in d.features.formUnion(used) } }
+    // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
+    // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
+    let saved = s.savedToday, today = s.today
+    let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
+    let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
+        || saved?.service != today?.service || minute(saved) != minute(today)
+    if changed || (b.playing && !s.isPlaying) || action == .willQuit { s.savedToday = today }
+    return fx
 }
 
 /// The error that the screen shows now, when it just opened or changed.

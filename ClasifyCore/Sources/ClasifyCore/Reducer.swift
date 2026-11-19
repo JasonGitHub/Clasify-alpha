@@ -105,6 +105,11 @@ public enum Action: Equatable, Sendable {
     /// `control_lost` and `control_back` events: `.playbackFailed` and the track reports still
     /// drive the screens.
     case controlLost(ControlLoss), controlBack
+    /// CLA-97: a skin feature that the reducer does not see (the About flip, the take-apart),
+    /// for `day_active`.
+    case used(Feature)
+    /// CLA-97: the app quits normally. The exact day count is saved (`AppState.savedToday`).
+    case willQuit
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -180,6 +185,8 @@ public enum Effect: Equatable, Sendable {
 public struct Dependencies: Sendable {
     public var now: @Sendable () -> Double
     public var random: @Sendable (Int) -> Int  // uniform in 0..<n
+    /// CLA-97: the Mac's time zone, for the day and time bands of `day_active`.
+    public var timeZone = TimeZone.current
 
     public init(now: @escaping @Sendable () -> Double, random: @escaping @Sendable (Int) -> Int) {
         self.now = now; self.random = random
@@ -253,6 +260,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let before = BeforeEvents(s, action)
     var fx = reduceAction(&s, action, env)
     fx += betaEvents(&s, before, fx, now: env.now())
+    fx += dayEvents(&s, action, before, now: env.now(), in: env.timeZone)
     // 348: a beta notice or Activate that opens shows a hidden myPod. CLA-153: not Activate
     // that opens through the login hand-over (320), because the browser shows the activate
     // page. A locked Mac at launch still shows it, also on 321.
@@ -1358,6 +1366,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             guard s.controlLostAt == nil else { return }  // one loss until control comes back
             s.controlLostAt = now
             fx.append(.track(.controlLost(reason, service: s.service)))
+
+        case .used, .willQuit: break  // only for `day_active` (dayEvents)
 
         case .controlBack:
             guard let lost = s.controlLostAt else { return }
