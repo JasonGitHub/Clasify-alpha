@@ -168,7 +168,7 @@ public struct K3DFlipView<Content: View>: View {
         // The timeline runs only while the device turns. At rest on either side it pauses, and
         // the pose is the side it rests on. A new turn changes `flip`, which starts it again.
         // Reading `settled` makes the body run again when a turn ends.
-        let resting = settled >= 0 && flip.isResting(at: .now)
+        let resting = settled >= 0 && flip.pausesTimeline(at: .now)  // CLA-138: runs while held
         let needsRoom = !(settled >= 0 && flip.restsOnFront(at: .now))
         TimelineView(.animation(paused: resting)) { context in
             let date = resting ? Date.distantFuture : context.date
