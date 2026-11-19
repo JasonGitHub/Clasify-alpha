@@ -69,9 +69,9 @@ final class LibrespotLibrary: Library {
 
     /// Logs in through the browser: `.failed` when the user cancels or the login fails,
     /// `.notPremium` when the account is not Premium (CLA-66).
-    func logIn() async -> LoginResult {
+    func logIn(page: String?) async -> LoginResult {
         do {
-            try await browserLogIn()
+            try await browserLogIn(page: page)
             loggedIn()
             return .ok
         } catch let error as BridgeError where error.status == LSB_ERR_NOT_PREMIUM {
@@ -84,13 +84,13 @@ final class LibrespotLibrary: Library {
     }
 
     /// Throws when the user cancels, Spotify refuses, or the Keychain refuses the token.
-    private func browserLogIn() async throws {
+    private func browserLogIn(page: String?) async throws {
         // A new browser login ends any older one ("Open browser again", card AX). The bridge
         // stops the older wait, but its tokens may already have come: it must not start a
         // session after this one began, or this login would fail its own check below.
         session += 1
         let mine = session
-        let tokens = try await timed("oauth login") { try await LibrespotClient.oauthLogin() }
+        let tokens = try await timed("oauth login") { try await LibrespotClient.oauthLogin(next: page) }
         // A logout or another login came while the browser was open. Do not undo it.
         guard session == mine else { throw BridgeError.cancelled }
         guard let refresh = tokens.refreshToken else { throw BridgeError.noRefreshToken }

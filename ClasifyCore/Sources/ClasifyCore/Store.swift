@@ -72,7 +72,9 @@ public protocol Library: AnyObject {
     /// so that a later `playlists()` or `tracks(of:)` can answer at once.
     func prefetch() async
     /// Logs in through the browser: `.failed` when the user cancels or the login fails.
-    func logIn() async -> LoginResult
+    /// `page` is nil, or the activate page that the login page then opens in the same tab
+    /// (CLA-143, Spotify only).
+    func logIn(page: String?) async -> LoginResult
     /// Stops a login that waits for the browser.
     func cancelLogIn() async
     /// Logs in again with the stored login: `.failed` when there is none or it fails.
@@ -214,6 +216,36 @@ public final class Store {
         }
     }
 
+    /// A browser login. CLA-143: `activating` asks for the activate page first, for at most
+    /// `pageWait` seconds. On time, the login page takes the tab on to it; late, no answer or
+    /// an error, the login goes on without it, as before.
+    private func logIn(_ token: Int, activating: Bool) {
+        let library = self.library, activator = activating ? self.activator : nil
+        Task { [weak self] in
+            var page: String?
+            if let activator { page = await Self.within(Self.pageWait) { await activator.pageURL() } }
+            if page != nil { self?.send(.loginCarriesActivate(token: token)) }
+            let result = await library.logIn(page: page)
+            switch result {
+            case .notPremium: self?.send(.notPremium(token: token))
+            case .denied: self?.send(.accessDenied(token: token))
+            case .ok, .failed: self?.send(.authDone(token: token, ok: result == .ok))
+            }
+        }
+    }
+    static let pageWait = 2.0
+
+    /// The answer of `work`, or nil when it takes longer than `seconds`.
+    static func within(_ seconds: Double, _ work: @escaping @Sendable () async -> String?) async -> String? {
+        await withTaskGroup(of: String?.self) { group in
+            group.addTask { await work() }
+            group.addTask { try? await Task.sleep(for: .seconds(seconds)); return nil }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
     public func send(_ action: Action) {
         let before = state
         let effects = reduce(&state, action, env)
@@ -284,16 +316,8 @@ public final class Store {
             case .prefetch:
                 let library = self.library
                 Task(priority: .utility) { await library.prefetch() }
-            case .logIn(let token):
-                let library = self.library
-                Task { [weak self] in
-                    let result = await library.logIn()
-                    switch result {
-                    case .notPremium: self?.send(.notPremium(token: token))
-                    case .denied: self?.send(.accessDenied(token: token))
-                    case .ok, .failed: self?.send(.authDone(token: token, ok: result == .ok))
-                    }
-                }
+            case .logIn(let token): logIn(token, activating: false)
+            case .logInActivating(let token): logIn(token, activating: true)
             case .getSpotifyApp: onGetSpotifyApp?()
             case .getPremium: onGetPremium?()
             case .openPrivacy: onOpenPrivacy?()

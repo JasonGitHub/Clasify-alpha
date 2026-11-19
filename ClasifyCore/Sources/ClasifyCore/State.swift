@@ -403,6 +403,8 @@ public struct AppState: Equatable, Sendable {
     /// Set by the answer `.active`, cleared by `.locked`, `.waiting` and `.off`. With the gate on
     /// and this false, the launch shows Activate before anything else. Log Out keeps it.
     public var activated = false
+    /// CLA-143: the running login carries the activate page; Activate opens on 320. Not saved.
+    public var activateHandOver = false
     /// CLA-128: this Mac's activation. The app sends the stored one before `.launch`. Not saved here.
     public var activation = Activation.locked
     /// The newest request to the activation server; an older answer is dropped.

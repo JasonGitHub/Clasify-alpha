@@ -165,13 +165,15 @@ final class LibrespotClient: @unchecked Sendable {
 
     /// Opens the Spotify login page in the browser and waits for the redirect.
     /// The bridge call can block while an older login stops, so it runs off the main actor.
-    static func oauthLogin() async throws -> OAuthTokens {
+    /// `next` is nil, or the activate page that the page after the login opens (CLA-143).
+    static func oauthLogin(next: String?) async throws -> OAuthTokens {
         try await withCheckedThrowingContinuation { continuation in
             // A raw pointer is not Sendable, so it crosses into the task as an address.
             let address = UInt(bitPattern: Unmanaged.passRetained(ResultBox(continuation)).toOpaque())
             Task.detached {
                 let box = UnsafeMutableRawPointer(bitPattern: address)!
-                let status = lsb_oauth_login(tokenCallback, box, nil)
+                // The bridge copies `next` before it returns.
+                let status = next.map { $0.withCString { lsb_oauth_login(tokenCallback, box, $0) } } ?? lsb_oauth_login(tokenCallback, box, nil)
                 if status != LSB_OK {
                     Unmanaged<ResultBox<OAuthTokens>>.fromOpaque(box).takeRetainedValue()
                         .resume(.failure(BridgeError(status: status, message: "login did not start")))

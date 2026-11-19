@@ -1352,7 +1352,7 @@ func playing(_ i: Int = 0) -> AppState {
     func track(_ id: String) async -> Track? { fetches.append(id); return extra[id] }
     func artists() async -> [Playlist]? { fetches.append("artists"); return [] }
     func prefetch() async { calls.append("prefetch") }
-    func logIn() async -> LoginResult { calls.append("logIn"); return loginResult }
+    func logIn(page: String?) async -> LoginResult { calls.append(page.map { "logIn \($0)" } ?? "logIn"); return loginResult }
     func cancelLogIn() async { calls.append("cancelLogIn") }
     func restoreSession() async -> LoginResult { calls.append("restoreSession"); return loginResult }
     func logOut() { calls.append("logOut") }

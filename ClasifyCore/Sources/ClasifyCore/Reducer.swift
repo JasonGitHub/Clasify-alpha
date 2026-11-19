@@ -85,6 +85,9 @@ public enum Action: Equatable, Sendable {
     /// CLA-128: the activation server answered request number `request`. nil: the app's stored
     /// activation, sent before `.launch`.
     case activation(Activation, request: Int?)
+    /// CLA-143: the login with this token carries the activate page: after it, the tab goes on
+    /// to the email page, so Activate opens on 320 and skips 319.
+    case loginCarriesActivate(token: Int)
     /// CLA-128: the app came back to the front. On the Activate screen, while its checks run
     /// (320 and 321), it asks the server again.
     case checkActivation
@@ -129,6 +132,10 @@ public enum Effect: Equatable, Sendable {
     case prefetch
     /// Log in through the browser; the result comes back as `.authDone` with this token.
     case logIn(token: Int)
+    /// CLA-143, card BY: the same browser login, on a Mac that still has to activate (Spotify
+    /// only). The app first asks for the activate page (at most 2 s) and hands it to the login
+    /// page, so the same tab goes on to it. With no page in time, it is `.logIn`.
+    case logInActivating(token: Int)
     case cancelLogIn
     /// Open the Spotify app's download page in the browser (card BB).
     case getSpotifyApp
@@ -395,14 +402,24 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     func startActivateChecks() { s.activateStopAt = now + activateChecksFor; s.activateCheckAt = now + activateCheckEvery }
     /// Card BW: the page opens (320). The checks run for 15 minutes from now.
     func openActivatePage() {
-        s.activateRequest += 1  // an answer to the flow before is dropped
+        pageIsOpen()
         s.activatePressed = s.activateRequest  // a page that cannot open shows 327
+        fx.append(.openActivatePage(request: s.activateRequest))
+    }
+    /// 320: the browser shows the activate page, from "Open browser" or from the login (CLA-143).
+    func pageIsOpen() {
+        s.activateRequest += 1  // an answer to the flow before is dropped
         s.activateFlow += 1
         showActivateStep {
             if case .waiting(_, let mail) = s.activation { s.activateOpenMail = mail } else { s.activateOpenMail = 0 }
             startActivateChecks()
         }
-        fx.append(.openActivatePage(request: s.activateRequest))
+    }
+    /// The browser login with the current `authAttempt`. CLA-143: on a Mac that still has to
+    /// activate, a Spotify login carries the activate page.
+    func logIn() {
+        s.activateHandOver = false
+        fx.append(s.activateGated && s.service == .spotify ? .logInActivating(token: s.authAttempt) : .logIn(token: s.authAttempt))
     }
     /// Card BW, 320 and 321: "Cancel" and MENU go back to 319 and stop the checks.
     func cancelActivate() {
@@ -433,7 +450,12 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         // CLA-128: Activate comes before Your Music, while the switch is on. CLA-140: also after
         // setup (a login after a lock), and by the remembered flag, so a "no connection" answer
         // does not hold an activated Mac.
-        if s.activateGated { s.stack = [Frame(screen: .activate)]; return }
+        if s.activateGated {
+            s.stack = [Frame(screen: .activate)]
+            // CLA-143, card BY: the login page took the tab on to the email page, so 320, not 319.
+            if s.activateHandOver { s.activateHandOver = false; pageIsOpen() }
+            return
+        }
         guard !s.setupDone else {
             s.stack = [Frame(screen: .main)]
             // CLA-140: a launch that showed Activate first restores the stored login only now.
@@ -757,7 +779,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .logIn:
                 s.authAttempt += 1
                 s.stack.append(Frame(screen: .auth, token: s.authAttempt))
-                fx.append(.logIn(token: s.authAttempt))
+                logIn()
             case .getSpotifyApp: fx.append(.getSpotifyApp)
             case .checkPremium:
                 // Card AX, screen 135: the cable's light flows once, and Clasify logs in again
@@ -773,7 +795,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 // the new token makes its `.authDone` stale.
                 s.authAttempt += 1
                 s.stack[s.stack.count - 1] = Frame(screen: .auth, token: s.authAttempt)
-                fx.append(.logIn(token: s.authAttempt))
+                logIn()
             case .nowPlaying: s.stack.append(Frame(screen: .now)); s.nowMode = .volume
             case .coverFlow:
                 open(.coverFlow)
@@ -823,7 +845,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                     // back with this screen's token.
                     s.authAttempt += 1
                     s.stack[s.stack.count - 1].token = s.authAttempt
-                    fx.append(.logIn(token: s.authAttempt))
+                    logIn()
                 }
             case .openPrivacy: fx.append(.openPrivacy)
             case .getNewBeta:  // the warning closes; the ended screen stays
@@ -1184,6 +1206,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             }
             s.restoring = false
             s.authAttempt += 1  // a late result of this login is stale
+            s.activateHandOver = false
             if s.top.screen == .premium { return }  // "Check again": still no Premium, no change
             // A restore at launch during setup: Hello and the color pick stay. The browser
             // login after them shows the Premium screen.
@@ -1200,7 +1223,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // Card AX: a failed login says so in place of the wait (171). One that worked shows
             // "You’re in" for a beat (175), then goes on.
             if !ok && prompt { s.stack[s.stack.count - 1].token = 0; return }  // a press asks again
-            if !ok { s.stack[s.stack.count - 1] = Frame(screen: .loginFailed); return }
+            if !ok { s.activateHandOver = false; s.stack[s.stack.count - 1] = Frame(screen: .loginFailed); return }
             s.signedIn = true; s.sessionEnded = false
             fx.append(.prefetch)
             s.stack = [Frame(screen: .loggedIn)]
@@ -1244,6 +1267,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 if activation == .active && s.top.screen == .activate { s.activatedAt = now }  // 323, then Your Music
             }
             if lock && !s.activated { lockToActivate(activation) }
+
+        case .loginCarriesActivate(let token):
+            guard s.top.screen == .auth, s.top.token == token, s.activateGated else { return }  // a stale login
+            s.activateHandOver = true
 
         case .checkActivation:
             guard s.top.screen == .activate, s.activateStopAt > 0,

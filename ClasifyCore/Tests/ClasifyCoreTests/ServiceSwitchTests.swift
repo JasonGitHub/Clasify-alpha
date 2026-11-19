@@ -245,7 +245,7 @@ import Testing
     _ = await libraries.restoreSession()
     libraries.service = .appleMusic
     #expect(libraries.words == .appleMusic)
-    _ = await libraries.logIn()
+    _ = await libraries.logIn(page: nil)
     libraries.logOut()
     _ = await libraries.playlists()
     _ = await libraries.artists()
