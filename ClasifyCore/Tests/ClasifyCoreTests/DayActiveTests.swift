@@ -77,6 +77,25 @@ import Testing
         #expect(events(&s, .tick, now: at(0, day: 20) + 2).isEmpty)  // no second day_active
     }
 
+    /// Codex on #348: a feature used after midnight, while the day before waits, goes to the new day.
+    @Test func aFeatureUsedJustAfterMidnightGoesToTheNewDay() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(23, 59) + 59)
+        #expect(events(&s, .used(.takeApart), now: at(0, day: 20)).isEmpty)
+        #expect(s.today?.day == 20261119 && s.today?.features.isEmpty == true && s.pendingFeatures == [.takeApart])
+        let sent = events(&s, .position(2, generation: s.playGen), now: at(0, day: 20) + 1)
+        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(old.features.isEmpty && s.today?.day == 20261120 && s.today?.features == [.takeApart] && s.pendingFeatures.isEmpty)
+        // At a quit, the waiting day ends and the feature goes to the new day.
+        var quit = playing()
+        _ = events(&quit, .position(1, generation: quit.playGen), now: at(23, 59) + 59)
+        _ = events(&quit, .used(.aboutFlip), now: at(0, day: 20))
+        let atQuit = events(&quit, .willQuit, now: at(0, day: 20) + 1)
+        guard case .dayActive(let day, _)? = atQuit.first else { Issue.record("no day_active at quit"); return }
+        #expect(day.day == 20261119 && day.features.isEmpty)
+        #expect(quit.today?.day == 20261120 && quit.today?.features == [.aboutFlip] && quit.settings.today == quit.today)
+    }
+
     /// The safety net: a part of a day that already went out goes to today's night band.
     @Test func aPartOfAClosedDayGoesToTodaysNightBand() {
         var s = playing()

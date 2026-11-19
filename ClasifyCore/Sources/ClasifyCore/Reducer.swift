@@ -108,6 +108,8 @@ public enum Action: Equatable, Sendable {
     /// CLA-97: a skin feature that the reducer does not see (the About flip, the take-apart),
     /// for `day_active`.
     case used(Feature)
+    /// CLA-97: ms from the process start to the first window, for `app_speed`. The app sends it once.
+    case appStarted(ms: Int)
     /// CLA-97: the app quits normally. The exact day count is saved (`AppState.savedToday`).
     case willQuit
 }
@@ -257,6 +259,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     let top = s.top.screen, handOver = s.activateHandOver
     // CLA-97: the first launch, for the setup times. A Mac set up before it has none.
     if action == .launch && !s.setupDone && s.firstLaunchAt == nil { s.firstLaunchAt = env.now() }
+    if action == .launch && s.launchedAt == nil { s.launchedAt = env.now() }
     let before = BeforeEvents(s, action)
     var fx = reduceAction(&s, action, env)
     fx += betaEvents(&s, before, fx, now: env.now())
@@ -1368,6 +1371,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             fx.append(.track(.controlLost(reason, service: s.service)))
 
         case .used, .willQuit: break  // only for `day_active` (dayEvents)
+        case .appStarted(let ms): s.startMs = ms
 
         case .controlBack:
             guard let lost = s.controlLostAt else { return }
