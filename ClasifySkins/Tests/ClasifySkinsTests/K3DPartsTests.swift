@@ -127,10 +127,10 @@ struct K3DPartsTests {
 
     /// The mock's `draw`: closed, one pass of the closed device with back faces culled.
     @Test func closedDrawsOnePassCulled() {
-        #expect(K3DRenderer.passes(ex: 0) == (all: false, cull: true, glass: false))
-        #expect(K3DRenderer.passes(ex: 0.0004) == (all: true, cull: true, glass: false))
-        #expect(K3DRenderer.passes(ex: 0.0008) == (all: true, cull: true, glass: true))
-        #expect(K3DRenderer.passes(ex: 0.5) == (all: true, cull: false, glass: true))
+        #expect(K3DRenderer.passes(ex: 0) == (all: false, cull: true, glass: false, shadow: false))
+        #expect(K3DRenderer.passes(ex: 0.0004) == (all: true, cull: true, glass: false, shadow: false))
+        #expect(K3DRenderer.passes(ex: 0.0008) == (all: true, cull: true, glass: true, shadow: true))
+        #expect(K3DRenderer.passes(ex: 0.5) == (all: true, cull: false, glass: true, shadow: true))
     }
 
     func frame(_ pose: K3DPose, _ name: String) throws -> [UInt8] {
@@ -270,6 +270,51 @@ struct K3DPartsTests {
         for (angle, tilt) in [(330.0, 25.0), (150.0, 25.0)] {
             _ = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-foam-\(Int(angle))-\(Int(tilt))")
         }
+    }
+
+    /// CLA-150 PR 4 (K.3D.12 item 5): the real shadow. One lamp's map, drawn only apart, darkens
+    /// the lamp's light on the inside parts; their painted shadows are off then. The closed device
+    /// has no map and does not change. The PNGs are the frozen reference poses and close views,
+    /// and the same poses with the real shadow off (K.3D.11's painted shadows), for the design check.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theK3D12ShadowIsReal() throws {
+        for line in ["if (real > 0.5) sh = 1.0;", "E = Ea + (E - Ea) * vis;", "sh = pow(sh, 1.35);"] {
+            #expect(K3DShader.source.contains(line), "\(line)")
+        }
+        #expect(MemoryLayout<K3DRenderer.Uniforms>.stride == 240)
+        let renderer = try #require(K3DRenderer())
+        renderer.makePrintsNow()
+        let closed = try #require(renderer.image(K3DPose(angle: 200, tilt: 25), screen: nil, size: size, scale: 2))
+        #expect(!renderer.hasShadowMap)
+        renderer.realShadows = false
+        let closedOff = try #require(renderer.image(K3DPose(angle: 200, tilt: 25), screen: nil, size: size, scale: 2))
+        #expect(closed == closedOff)
+        let poses: [(Double, Double)] = [(300, 25), (200, 25), (0, 0), (330, 25), (150, 25), (60, 25)]
+        var off: [[UInt8]] = []
+        for (angle, tilt) in poses {
+            renderer.makePrintsNow()
+            let bytes = try #require(renderer.image(K3DPose(angle: angle, tilt: tilt, ex: 1), screen: nil, size: size, scale: 2))
+            save(bytes, "k3d12-shadow-\(Int(angle))-\(Int(tilt))-off")
+            off.append(bytes)
+        }
+        renderer.realShadows = true
+        for (i, (angle, tilt)) in poses.enumerated() {
+            renderer.makePrintsNow()
+            let bytes = try #require(renderer.image(K3DPose(angle: angle, tilt: tilt, ex: 1), screen: nil, size: size, scale: 2))
+            #expect(renderer.hasShadowMap)
+            save(bytes, i < 3 ? "k3d12-shadow-ref-\(i)" : "k3d12-shadow-\(Int(angle))-\(Int(tilt))")
+            #expect(width(bytes, row: 300) > 100)
+            let changed = zip(bytes, off[i]).filter { abs(Int($0) - Int($1)) > 8 }.count
+            if i != 2 { #expect(changed > 2000, "\(angle), \(tilt): \(changed) bytes changed") }
+        }
+        // The CTO's ask (20:11 JST 11-19): the face of the U foam on the drive lid, seen from
+        // behind and to the side, between the open shell and the drive.
+        for (angle, tilt) in [(115.0, 30.0), (125.0, -25.0), (100.0, 15.0), (235.0, 30.0)] {
+            renderer.makePrintsNow()
+            let bytes = try #require(renderer.image(K3DPose(angle: angle, tilt: tilt, ex: 1), screen: nil, size: size, scale: 2))
+            save(bytes, "k3d12-shadow-lid-\(Int(angle))-\(Int(tilt))")
+        }
+        _ = try #require(renderer.image(K3DPose(), screen: nil, size: size, scale: 2))
+        #expect(!renderer.hasShadowMap, "closing frees the map")
     }
 
     /// Apart, the plate comes 68 pt toward the eye, so the device is wider on screen. The PNGs
