@@ -51,6 +51,10 @@ struct HelpCommands: Commands {
 /// window is behind another app's window (CLA-47). With no window, SwiftUI opens one.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Card AN.1, 345: the icon's hide leaves the device window at alpha 0 (no blink). Every
+    /// other way back (Dock, Cmd+Tab, Settings row Off) shows it at full strength here.
+    func applicationDidUnhide(_ notification: Notification) { DeviceWindow.unhidden() }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // Card AN.1, 347: the Dock icon also shows a myPod that the menu bar icon hid.
         if DeviceWindow.isHidden { DeviceWindow.show(); return false }
@@ -86,6 +90,8 @@ enum DeviceWindow {
     private static let fade = 0.15
     /// The window that is fading out now. A show during the fade cancels the hide.
     private static var hiding: NSWindow?
+    /// The window that `show()` is fading in now. The unhide does not jump it to alpha 1.
+    private static var showing: NSWindow?
 
     /// The device window, or with no hook report, the first normal window that is not a panel,
     /// the menu bar or How to Use.
@@ -147,9 +153,20 @@ enum DeviceWindow {
             try? await Task.sleep(for: .seconds(fade))
             guard hiding === window else { return }  // a click showed it again during the fade
             hiding = nil
+            // Build 321 (Jason, Finder active): alpha 1 here drew one frame before the hide took
+            // effect. The window stays at alpha 0; `show()` or `unhidden()` brings it back.
             NSApp.hide(nil)
-            window.alphaValue = 1  // hidden now; `show()` fades it in again
+            // The hide did not happen: do not leave an invisible window.
+            try? await Task.sleep(for: .seconds(0.5))
+            if !NSApp.isHidden, hiding == nil, showing == nil, window.alphaValue == 0 { window.alphaValue = 1 }
         }
+    }
+
+    /// The app came back by any way: a device window that the icon faded out shows at full
+    /// strength. Not while `show()` fades it in: that fade ends at alpha 1 itself.
+    static func unhidden() {
+        guard let window = deviceWindow, showing !== window, hiding == nil else { return }
+        window.alphaValue = 1
     }
 
     /// Card AN.1, 344-345: unhides myPod and fades the device window in where it was. A
@@ -158,9 +175,13 @@ enum DeviceWindow {
     static func show() {
         let fading = hiding
         hiding = nil  // cancels a hide that is still fading
-        if NSApp.isHidden {
+        let wasHidden = NSApp.isHidden
+        if wasHidden {
             deviceWindow?.alphaValue = 0
-            NSApp.unhide(nil)
+            showing = deviceWindow
+            // Build 321 (Chrome active): `unhide(_:)` also activates myPod. macOS refuses that
+            // from a status item click, and the windows stayed off the screen for one click.
+            NSApp.unhideWithoutActivation()
             if deviceWindow?.isMiniaturized == true { deviceWindow?.deminiaturize(nil) }  // back from the Dock too
             deviceWindow?.orderFrontRegardless()  // in front even if macOS does not activate myPod
             NSApp.activate()
@@ -172,7 +193,8 @@ enum DeviceWindow {
         }
         // A device window is there, so always fade it in, also if `unhide` has not put it on
         // the screen yet. Only with no device window at all, open one.
-        guard let window = deviceWindow else { open?(); return }
+        guard let window = deviceWindow else { showing = nil; open?(); return }
+        showing = window
         NSAnimationContext.runAnimationGroup { context in
             context.duration = fade
             window.animator().alphaValue = 1
@@ -180,8 +202,18 @@ enum DeviceWindow {
         // The fade's end: the window is fully on, even when the animation did not run.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(fade))
+            if showing === window { showing = nil }
             guard hiding !== window else { return }  // a click hid it again during the fade
             window.alphaValue = 1
+            // The unhide may end late, and AppKit's window state may not tell. After every show
+            // from hidden, do what the person's second click did in build 321 (the calls of
+            // `raise()`): unhide again if needed, then put the device window in front.
+            if wasHidden {
+                if NSApp.isHidden { NSApp.unhideWithoutActivation() }
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+            }
         }
     }
 
