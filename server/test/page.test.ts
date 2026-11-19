@@ -33,7 +33,7 @@ describe("activation page (card BX)", () => {
     expect(words(fromPeek({ email: "sam@example.com" }))).toEqual(["One more click", "Confirm sam@example.com", "to start the myPod beta."]);
     expect(words(fromPeek({ result: "expired" }))).toEqual(["This link has expired", "No problem. Open myPod and", "choose “Send again”."]);
     expect(fromPeek(null).kind).toBe("error");
-    expect(words(fromConfirm({ result: "ok" }, "sam@example.com"))).toEqual(["You are in", "Go back to myPod.", "It’s ready for you. You can close this tab."]);
+    expect(words(fromConfirm({ result: "ok" }, "sam@example.com"))).toEqual(["You’re in", "Go back to myPod.", "It’s ready for you. You can close this tab."]);
     expect(words(fromConfirm({ result: "macs" }, "sam@example.com")))
       .toEqual(["Two Macs already", "This email already runs myPod on two Macs.", "Write to us at feedback@getmypod.app"]);
     expect(words(fromConfirm({ result: "off" }, "s@e.co"))).toEqual(["Activation is off", "Write to us at", "feedback@getmypod.app"]);

@@ -10,7 +10,7 @@ const screens = {
   email: { icon: "", title: "Join the myPod beta", lines: [["Type your email. We’ll send you a link."], ["Click it, and myPod opens up."]] },
   sent: { icon: "mail", title: "Check your mail", lines: [["We sent a link to ", "@", "."], ["Click it to finish. It works for 1 hour."]] },
   confirm: { icon: "", title: "One more click", lines: [["Confirm ", "@"], ["to start the myPod beta."]] },
-  done: { icon: "check", title: "You are in", lines: [["Go back to myPod."], ["It’s ready for you. You can close this tab."]] },
+  done: { icon: "check", title: "You’re in", lines: [["Go back to myPod."], ["It’s ready for you. You can close this tab."]] },
   full: { icon: "people", title: "The beta is full", lines: [["Thanks! We saved ", "@", "."], ["We’ll write to you when a spot opens."]] },
   linkExpired: { icon: "clock", title: "This link has expired", lines: [["No problem. Open myPod and"], ["choose “Send again”."]] },
   pageExpired: { icon: "clock", title: "This page has expired", lines: [["No problem. Open myPod and"], ["choose “Open browser again”."]] },

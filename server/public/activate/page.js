@@ -14,7 +14,7 @@ const icons = {
   people: `<circle cx="40" cy="40" r="15" ${gray} stroke-width="9"/><circle cx="72" cy="40" r="15" ${gray} stroke-width="9"/><path d="M14 92c0-18 12-28 26-28s26 10 26 28M50 74c6-7 13-10 22-10 14 0 24 10 24 28" ${gray} stroke-width="9" stroke-linecap="round"/>`,
   clock: `<circle cx="55" cy="55" r="38" ${gray} stroke-width="10"/><path d="M55 34v22l14 9" ${gray} stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>`,
   power: `<circle cx="55" cy="58" r="34" ${gray} stroke-width="10" stroke-dasharray="168 46" stroke-dashoffset="-23" stroke-linecap="round" transform="rotate(-90 55 58)"/><path d="M55 16v36" stroke="#9aa4ae" stroke-width="10" stroke-linecap="round"/>`,
-  macs: `<rect x="10" y="22" width="56" height="40" rx="6" ${gray} stroke-width="9"/><rect x="44" y="48" width="56" height="40" rx="6" fill="#f6f5f1" stroke="#9aa4ae" stroke-width="9"/>`,
+  macs: `<rect x="10" y="22" width="56" height="40" rx="6" ${gray} stroke-width="9"/><rect class="cut" x="44" y="48" width="56" height="40" rx="6" stroke="#9aa4ae" stroke-width="9"/>`,
   cross: `<path d="M32 32l46 46M78 32L32 78" ${gray} stroke-width="12" stroke-linecap="round"/>`,
 };
 
