@@ -168,6 +168,8 @@ public enum Effect: Equatable, Sendable {
     /// Card AN.1 (CLA-43, 344-345): fade the device window in where it was last, or out. The
     /// music goes on.
     case showWindow, hideWindow
+    /// CLA-97: send this beta analytics event. The app's sender decides if it goes out.
+    case track(BetaEvent)
 }
 
 /// Side inputs the reducer reads, injected so tests are deterministic.
@@ -242,7 +244,11 @@ let showsWindow: [Screen] = [.betaSoon, .betaEnded, .betaNew, .activate]
 @discardableResult
 public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -> [Effect] {
     let top = s.top.screen, handOver = s.activateHandOver
+    // CLA-97: the first launch, for the setup times. A Mac set up before it has none.
+    if action == .launch && !s.setupDone && s.firstLaunchAt == nil { s.firstLaunchAt = env.now() }
+    let before = BeforeEvents(s, action)
     var fx = reduceAction(&s, action, env)
+    fx += betaEvents(&s, before, now: env.now())
     // 348: a beta notice or Activate that opens shows a hidden myPod. CLA-153: not Activate
     // that opens through the login hand-over (320), because the browser shows the activate
     // page. A locked Mac at launch still shows it, also on 321.

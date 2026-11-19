@@ -20,13 +20,17 @@ func openFocus(_ first: Int) -> [Action] {
 @discardableResult
 func send(_ s: inout AppState, _ actions: Action..., now: Double = 100) -> [Effect] {
     let e = Dependencies(now: { now }, random: { _ in 0 })
-    return actions.flatMap { reduce(&s, $0, e) }
+    return actions.flatMap { reduce(&s, $0, e) }.filter(\.isNotTrack)  // BetaEventTests checks `.track`
 }
 
 @discardableResult
 func send(_ s: inout AppState, _ actions: [Action]) -> [Effect] {
     let e = Dependencies(now: { 100 }, random: { _ in 0 })
-    return actions.flatMap { reduce(&s, $0, e) }
+    return actions.flatMap { reduce(&s, $0, e) }.filter(\.isNotTrack)
+}
+
+extension Effect {
+    var isNotTrack: Bool { if case .track = self { false } else { true } }
 }
 
 /// A later launch: the first launch setup ended before, so the login screen shows first.
