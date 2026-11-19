@@ -213,17 +213,27 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
 /// A day starts with its first count, so an action with nothing to count changes nothing.
 func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
     var fx: [Effect] = []
-    /// Ends the day before `t`'s day: `day_active` for it, if it had music.
-    func roll(_ t: Double) -> (day: Int, weekday: Int, band: Int) {
+    /// Ends the day before `t`'s day: `day_active` for it, if it had music. While music plays
+    /// with an open interval, the day ends at the next position report or the pause, which
+    /// split the interval at midnight first (Codex on #348): so each day goes out once, whole.
+    func roll(_ t: Double, force: Bool = false) -> (day: Int, weekday: Int, band: Int) {
         let at = DayUse.at(t, in: timeZone)
-        if let old = s.today, old.day != at.day {
+        let open = s.isPlaying && s.dayPlayAt != nil
+        if let old = s.today, old.day != at.day, force || !open {
             if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }
         return at
     }
-    func count(at t: Double, _ change: (inout DayUse, Int) -> Void) {
-        let at = roll(t)
+    func count(at t: Double, force: Bool = false, _ change: (inout DayUse, Int) -> Void) {
+        let at = roll(t, force: force)
+        if var today = s.today, at.day < today.day {
+            // That day already went out (for example after the clock moved). Its part goes to
+            // this day's night band, so no time is lost (Jason: no silent data loss).
+            change(&today, 0)
+            s.today = today
+            return
+        }
         var d = s.today ?? DayUse(day: at.day, weekday: at.weekday)
         change(&d, at.band)
         s.today = d
@@ -243,12 +253,12 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
             var t = now - add
             while t < now {
                 let end = min(now, DayUse.nextBand(after: t, in: timeZone)), from = t
-                count(at: t) { d, band in d.bands[band] += end - from }
+                count(at: t, force: true) { d, band in d.bands[band] += end - from }
                 t = end
             }
         }
         (s.dayPlayAt, s.dayPosition) = (now, b.position)
-        _ = roll(now)
+        _ = roll(now, force: true)
         if s.dayTrack != current.track { s.dayTrack = current.track; count(at: now) { d, _ in d.songs += 1 } }
         let service = s.service
         count(at: now) { d, _ in d.service = service }

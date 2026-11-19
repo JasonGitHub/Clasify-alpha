@@ -65,6 +65,27 @@ import Testing
         #expect(late.today?.bands == [10, 0, 0, 0] && late.today?.day == 20261120 && late.today?.songs == 1)
     }
 
+    /// Codex on #348: an action after midnight, before the next report, does not split the day in two.
+    @Test func anActionJustAfterMidnightWaitsForTheNextReport() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(23, 59) + 59)
+        #expect(events(&s, .wheel(1), now: at(0, day: 20) + 0.1).isEmpty && s.today?.day == 20261119)
+        let sent = events(&s, .position(2, generation: s.playGen), now: at(0, day: 20) + 1)
+        #expect(sent.count == 1 && s.today?.day == 20261120 && s.today?.bands[0] == 1)
+        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(old.bands[3] == 1 && old.songs == 1)
+        #expect(events(&s, .tick, now: at(0, day: 20) + 2).isEmpty)  // no second day_active
+    }
+
+    /// The safety net: a part of a day that already went out goes to today's night band.
+    @Test func aPartOfAClosedDayGoesToTodaysNightBand() {
+        var s = playing()
+        s.today = DayUse(day: 20261120, weekday: 6)
+        (s.dayPlayAt, s.dayTrack, s.dayPosition) = (at(23, 59) + 55, "l0", 1)
+        #expect(events(&s, .position(11, generation: s.playGen), now: at(0, day: 20) + 5).isEmpty)
+        #expect(s.today?.day == 20261120 && s.today?.bands == [10, 0, 0, 0])
+    }
+
     /// Jason 23:07 JST: the saved copy follows about once a minute, at a pause and at a quit.
     @Test func theDaySavesAboutOnceAMinuteAtAPauseAndAtAQuit() {
         var s = playing()
