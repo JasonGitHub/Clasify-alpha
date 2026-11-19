@@ -241,12 +241,13 @@ let showsWindow: [Screen] = [.betaSoon, .betaEnded, .betaNew, .activate]
 
 @discardableResult
 public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -> [Effect] {
-    let top = s.top.screen
+    let top = s.top.screen, handOver = s.activateHandOver
     var fx = reduceAction(&s, action, env)
     // 348: a beta notice or Activate that opens shows a hidden myPod. CLA-153: not Activate
-    // after the login hand-over (320), because the browser shows the activate page.
+    // that opens through the login hand-over (320), because the browser shows the activate
+    // page. A locked Mac at launch still shows it, also on 321.
     if s.top.screen != top && showsWindow.contains(s.top.screen) && !fx.contains(.showWindow)
-        && !(s.top.screen == .activate && s.browserLeads) { fx.append(.showWindow) }
+        && !(s.top.screen == .activate && handOver) { fx.append(.showWindow) }
     return fx
 }
 
