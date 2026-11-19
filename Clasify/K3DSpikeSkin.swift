@@ -69,6 +69,8 @@ struct K3DSpikeSkin: View {
     @State private var settling: Task<Void, Never>?
     /// CLA-97: the 3D views that this skin last reported open, for `watchViews`.
     @State private var viewsOpen: Set<View3D> = []
+    /// CLA-97: the window is on screen and not fully covered (its occlusion state).
+    @State private var visible = true
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -158,24 +160,45 @@ struct K3DSpikeSkin: View {
             colorChanged(from: old, to: new)
         }
         .task { await arrive() }
-        .task { await watchViews() }
+        // CLA-97: the 3D views' seconds. Each start changes one of these values. A script's end
+        // changes nothing (the flip is a clock), so the watch waits once until `flip.ends`.
+        .task(id: ViewWatch(ends: flip.ends, turned: store.state.deviceTurned, screen: store.state.top.screen, visible: visible)) {
+            await watchViews()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { note in
+            guard let shown = note.object as? NSWindow, shown === window.window else { return }
+            visible = shown.occlusionState.contains(.visible)
+        }
+        .onDisappear { report([]) }  // the window closed
     }
 
-    /// CLA-97: twice a second, reports each 3D view that opened or closed, so the day counts its
-    /// seconds. A window that closes or is fully covered counts as all views closed.
+    /// CLA-97: what `watchViews` runs again for.
+    private struct ViewWatch: Equatable {
+        let ends: Date, turned: Bool, screen: Screen, visible: Bool
+    }
+
+    /// CLA-97: reports each 3D view that opened or closed, so the day counts its seconds, now
+    /// and once more when the running script ends. A covered window counts as all views closed.
     private func watchViews() async {
-        while !Task.isCancelled {
-            let now = Date.now
-            var open: Set<View3D> = []
-            if window.window?.occlusionState.contains(.visible) == true {
-                if store.state.deviceTurned { open.insert(.turn) }
-                if flip.isApart(at: now) || flip.apartRuns(at: now) { open.insert(.apart) }
-                if showroom && !flip.restsOnFront(at: now) && !store.state.deviceTurned { open.insert(.aboutFlip) }
-            }
-            report(open)
-            try? await Task.sleep(for: .milliseconds(500))
+        reportViews()
+        let wait = flip.ends.timeIntervalSinceNow
+        guard wait > 0, wait < 60 else { return }  // `.waiting` ends in the far future: its start comes first
+        try? await Task.sleep(for: .seconds(wait))
+        if !Task.isCancelled { reportViews() }
+    }
+
+    private func reportViews() {
+        let now = Date.now
+        var open: Set<View3D> = []
+        if visible {
+            // The views never overlap, so no second counts twice: apart, in a Cmd turn or in
+            // About, is apart only.
+            let apart = flip.isApart(at: now)  // also true while the apart script runs
+            if apart { open.insert(.apart) }
+            if store.state.deviceTurned && !apart { open.insert(.turn) }
+            if showroom && !flip.restsOnFront(at: now) && !store.state.deviceTurned && !apart { open.insert(.aboutFlip) }
         }
-        report([])  // the window closed
+        report(open)
     }
 
     private func report(_ open: Set<View3D>) {
