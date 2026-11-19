@@ -38,9 +38,9 @@ enum K3DPrints {
         x.font(500, 19)
         x.text("• Read the playlist before operation.", 48, 60)
         x.text("• Back up your Liked Songs regularly.", 48, 88)
-        x.text("• CappyAI is not responsible for songs stuck in your head.", 48, 116)
+        x.text("• Cappy is not responsible for songs stuck in your head.", 48, 116)
         x.font(900, 66)
-        x.text("CAPPYAI", 34, 222)
+        x.text("CAPPY", 34, 222)
         x.font(700, 30)
         x.text("CP8022CAA", 350, 200)
         x.text("80GB", 540, 200)
@@ -68,14 +68,14 @@ enum K3DPrints {
         x.text("and Liked Songs. No real capybaras inside.", 46, 554)
         x.text("Do not drop. Do not feed.", 46, 578)
         x.font(900, 34)
-        x.text("CappyAI", 34, 660)
+        x.text("Cappy", 34, 660)
         x.barcode(from: 250, to: 606, y: 628, height: 40, count: 170) { 1 + Double(($0 * 5 + 1) % 3) }
         x.font(500, 17)
         x.text("L8006  SAPPA  455-1395A   A0571L5HCYLMA4", 34, 704)
         x.font(700, 22)
-        x.text("CAPPYAI LTD", 34, 750)
+        x.text("CAPPY", 34, 750)
         x.font(500, 18)
-        x.text("DESIGNED BY CAPPYAI", 420, 750)
+        x.text("DESIGNED BY CAPPY", 420, 750)
         x.font(500, 15)
         x.text("© 2026 CappyAI Ltd", 34, 778)
         // The battery print (Jason 23:59 JST: the real print is black).
@@ -87,12 +87,12 @@ enum K3DPrints {
         x.font(700, 24)
         x.text("Li-ion Polymer   3.7V   850mAh   3.1Wh", 306, 900, align: .center)
         x.font(500, 19)
-        x.text("Model CP-B01     CappyAI Ltd", 306, 928, align: .center)
+        x.text("Model CP-B01     Cappy", 306, 928, align: .center)
         x.font(500, 17)
         x.text("CAUTION: do not open, crush, heat above 60\u{00b0}C or put in fire.", 306, 956, align: .center)
         x.text("Charge with songs only. Keep away from real capybaras.", 306, 980, align: .center)
         x.font(700, 18)
-        x.text("S/N CP61B1-7T5-0042      Designed by CappyAI", 306, 1008, align: .center)
+        x.text("S/N CP61B1-7T5-0042      Designed by Cappy", 306, 1008, align: .center)
         chipTops(x)
         ribbonPrint(x)
         return x.bytes()
@@ -101,8 +101,8 @@ enum K3DPrints {
     /// Three chip tops, 384 x 256 each, at (640, 256 k).
     private static func chipTops(_ x: Canvas) {
         let chips: [[(String, Int, Double, Double)]] = [
-            [("CappyAI", 600, 60, 118), ("CP7-0842", 500, 46, 180), ("A1 2611 REV C", 400, 30, 232), ("CAPYBARA CORE", 400, 26, 276)],
-            [("CAPPYAI", 600, 44, 112), ("K9-SONGS-30G", 500, 40, 168), ("2611 B2", 400, 32, 218), ("LOT 0842-7", 400, 28, 264)],
+            [("Cappy", 600, 60, 118), ("CP7-0842", 500, 46, 180), ("A1 2611 REV C", 400, 30, 232), ("CAPYBARA CORE", 400, 26, 276)],
+            [("CAPPY", 600, 44, 112), ("K9-SONGS-30G", 500, 40, 168), ("2611 B2", 400, 32, 218), ("LOT 0842-7", 400, 28, 264)],
             [("CP", 700, 96, 170), ("4412", 500, 64, 244)],
         ]
         for (k, lines) in chips.enumerated() {
@@ -133,7 +133,7 @@ enum K3DPrints {
         x.fill("#000000")
         x.fillRect(640, 768, 384, 256)
         x.fill("#ffffff")
-        for (k, (t, length)) in [("CP1-0399-01", 74.0), ("CAPPYAI LTD \u{00a9} 2026", 140), ("Designed by CappyAI", 130), ("CP2-0371", 75)].enumerated() {
+        for (k, (t, length)) in [("CP1-0399-01", 74.0), ("CAPPYAI LTD \u{00a9} 2026", 140), ("Designed by Cappy", 130), ("CP2-0371", 75)].enumerated() {
             x.save()
             x.translate(640, 768 + Double(k) * 64)
             let sx = 60 / length
@@ -183,10 +183,10 @@ enum K3DPrints {
         let half = Double(boardSize.w / 2), sx = half / 324, sy = Double(boardSize.h) / 276
         // The wheel side, in board points (x, -y).
         x.setTransform(sx, sy, 162 * sx, -14 * sy)
-        var items: [Item] = [at(800, 8.2, "CAPPYAI", -145, -92), at(600, 4.3, "\u{00a9}2026  CP-2168-04", -145, -99.5)]
+        var items: [Item] = [at(800, 8.2, "CAPPY", -145, -92), at(600, 4.3, "\u{00a9}2026  CP-2168-04", -145, -99.5)]
         items += lines(600, 3.7, ["R218 C182", "R223 C181", "Q3  XW26", "CP-A  01"], 24.5, -42, 5.4)
-        items += lines(600, 3.7, ["R107 R252", "R220 C132", "CAPPYAI CORE", "R176 R180", "CP7-0842 B"], -58, -182, 5.4)
-        items += lines(600, 3.7, ["C51 R14 L10 XW15 R110", "R120 R116 R121 C62", "DESIGNED BY CAPPYAI"], 43, -237.5, 5.4)
+        items += lines(600, 3.7, ["R107 R252", "R220 C132", "CAPPY CORE", "R176 R180", "CP7-0842 B"], -58, -182, 5.4)
+        items += lines(600, 3.7, ["C51 R14 L10 XW15 R110", "R120 R116 R121 C62", "DESIGNED BY CAPPY"], 43, -237.5, 5.4)
         items += lines(600, 3.7, ["C58 R214", "C171", "C174", "C61 C179", "C172 XW57"], 54, -170, 5.4)
         items += lines(600, 3.7, ["R174 R122", "R178 Q1 Q2", "XW38 XW42", "C224 R219"], -150, -178, 5.4)
         items += [
@@ -206,7 +206,7 @@ enum K3DPrints {
         x.strokeRect(-157.5, 106, 26, 6.5)
         // The chip side, as seen from the back (X = -x).
         x.setTransform(sx, sy, half + 162 * sx, -14 * sy)
-        items = [at(800, 7.4, "CAPPYAI", -152, -25), at(600, 3.7, "CP-2168-04  SIDE B", 78, -22)]
+        items = [at(800, 7.4, "CAPPY", -152, -25), at(600, 3.7, "CP-2168-04  SIDE B", 78, -22)]
         for (t, px, py) in [("U1", -148.0, -143.2), ("U2", -56, -140.2), ("U3", 99, -162.2), ("U4", -46, -72.2), ("U5", 36, -171.2)] {
             items.append(at(600, 3.7, t, px, py))
         }
@@ -216,7 +216,7 @@ enum K3DPrints {
             at(600, 3.7, "L1 4R7", 117, -224, .right),
         ]
         for (t, px, py) in [("Y1", -138.0, -214.2), ("C229", 61, -238), ("TP1", -25, -129.5), ("TP2", 15, -132.5), ("RATED: CHILL", 100, -104),
-                            ("DO NOT FEED", 100, -110), ("MADE WITH CARE BY CAPPYAI", -150, -268)] {
+                            ("DO NOT FEED", 100, -110), ("MADE WITH CARE BY CAPPY", -150, -268)] {
             items.append(at(600, 3.7, t, px, py))
         }
         flush(x, items)
@@ -233,7 +233,7 @@ enum K3DPrints {
         // The drive board at (0, 0), 4 px per pt, in drive points (x, -y).
         x.setTransform(4, 4, 624, 512)
         flush(x, [
-            at(800, 11, "CAPPYAI", -132, -244), at(600, 5, "CP8022 DRIVE BOARD  REV C", -132, -254),
+            at(800, 11, "CAPPY", -132, -244), at(600, 5, "CP8022 DRIVE BOARD  REV C", -132, -254),
             at(700, 5.8, "U1 MOTOR CTRL", -60, -115.5), at(700, 5.8, "U2 SONGS", 64, -85.5), at(600, 5, "Y1", -122, -93.5),
             at(600, 5, "M1", 17, -78), at(600, 5, "C1-C6", 42, -206), at(600, 5, "SPINS ONLY FOR GOOD SONGS", -116, -82),
             at(700, 5.8, "DO NOT COVER THIS HOLE", -103, 94), at(700, 5.8, "CP8022CAA  80GB", 68, -20), at(600, 5, "HANDLE WITH CARE", 68, -28),
@@ -251,7 +251,7 @@ enum K3DPrints {
         x.text("CP-HBS-2026-11-13", -122, 4)
         x.restore()
         x.font(700, 7)
-        x.text("DESIGNED BY CAPPYAI", -108, 232)
+        x.text("DESIGNED BY CAPPY", -108, 232)
         x.font(500, 5.4)
         x.text("INSIDE: 1 BATTERY, 1 DRIVE, 0 CAPYBARAS", -108, 242)
         // The shield plate's back at (1248, 1456), 2.4 px per pt, as seen from the back: red = stamped text.
@@ -280,7 +280,7 @@ enum K3DPrints {
         x.font(800, 7.5)
         x.text("CJ-01", 115, -262, align: .center)
         x.font(700, 4.2)
-        x.text("CAPPYAI", 115, -254, align: .center)
+        x.text("CAPPY", 115, -254, align: .center)
         x.font(700, 5.2)
         x.text("CP7", 115, -201, align: .center)
         x.text("J01", 115, -194, align: .center)
