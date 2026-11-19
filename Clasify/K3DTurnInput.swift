@@ -11,6 +11,8 @@ import SwiftUI
 struct K3DTurnInput: NSViewRepresentable {
     /// One mouse-wheel line, in points of finger travel.
     static let line = 20.0
+    /// Build 317: seconds between two looks at Cmd while a turn runs.
+    static let pollEvery = 0.05
 
     let onSwipe: @MainActor (_ dx: Double, _ dy: Double) -> Void
     let onPinch: @MainActor (_ amount: Double, _ began: Bool) -> Void
@@ -46,6 +48,8 @@ struct K3DTurnInput: NSViewRepresentable {
         private var hold: Task<Void, Never>?
         private var gesture = K3DTurnGesture()
         private var monitor: Any?
+        /// Build 317: looks at Cmd while a turn runs, because its Cmd up can go to another app.
+        private var poll: Task<Void, Never>?
         private var observers: [NSObjectProtocol] = []
 
         override func hitTest(_ point: NSPoint) -> NSView? { nil }  // clicks and drags go to SwiftUI
@@ -58,7 +62,10 @@ struct K3DTurnInput: NSViewRepresentable {
             guard let window else { return resign() }
             // AppKit calls local monitors on the main thread.
             monitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel, .magnify, .flagsChanged, .leftMouseDown, .leftMouseDragged, .leftMouseUp]) { [weak self] event in
-                let taken = MainActor.assumeIsolated { self?.take(event) ?? false }
+                let taken = MainActor.assumeIsolated {
+                    defer { self?.watchCommand() }
+                    return self?.take(event) ?? false
+                }
                 return taken ? nil : event
             }
             // The CTO's safety exit: Clasify or the device window goes to the back. The plain
@@ -77,6 +84,31 @@ struct K3DTurnInput: NSViewRepresentable {
         private func resign() {
             endPress()
             if gesture.resign() { onEnd() }
+            watchCommand()
+        }
+
+        /// Build 317: while a turn runs, look at Cmd every `pollEvery` seconds. A local monitor
+        /// gets `flagsChanged` only while myPod is the active app, but a swipe over its window
+        /// starts a turn when another app is active. Then the Cmd up goes to that app, and the
+        /// device stayed turned. `NSEvent.modifierFlags` is the keyboard's state now, in any app.
+        private func watchCommand() {
+            guard gesture.turning else {
+                poll?.cancel()
+                poll = nil
+                return
+            }
+            guard poll == nil else { return }
+            poll = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(K3DTurnInput.pollEvery)) } catch { return }
+                    guard let self else { return }
+                    if self.gesture.sync(command: NSEvent.modifierFlags.contains(.command)) { self.onEnd() }
+                    if !self.gesture.turning {
+                        self.poll = nil
+                        return
+                    }
+                }
+            }
         }
 
         private func endPress() {
@@ -125,6 +157,8 @@ struct K3DTurnInput: NSViewRepresentable {
                 if gesture.command(down: command) { onEnd() }
                 return false  // Cmd itself is not the turn's: shortcuts keep working
             }
+            // Build 317: an event without Cmd during a turn means its Cmd up was lost.
+            if gesture.sync(command: command) { onEnd() }
             guard event.window === window else { return false }
             let inside = bounds.contains(convert(event.locationInWindow, from: nil))
             if [.leftMouseDown, .leftMouseDragged, .leftMouseUp].contains(event.type) {
