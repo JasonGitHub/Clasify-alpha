@@ -393,6 +393,7 @@ final class AppModel {
         self.haptics = haptics
         let keeper = SessionKeeper(client: client, library: library, player: player, store: store)
         player.reconnect = { [weak keeper] force in await keeper?.reconnect(force: force) ?? false }
+        player.mayRaise = { [weak store] in store?.state.browserLeads != true }  // CLA-153
         self.keeper = keeper
         battery = BatteryWatcher(store: store)
         // A change made in the Spotify app shows when the user comes back to Clasify.
@@ -454,7 +455,8 @@ final class AppModel {
                 // When the browser login works (change 170) or the Spotify app is found (174),
                 // Clasify comes to the front.
                 // Not for "You’re all set": the library read may take long, and the person may work elsewhere.
-                let raises = state.beatUntil > 0 && state.top.screen != .yourMusic
+                // CLA-153: not when the login took the tab on to the activate page.
+                let raises = state.beatUntil > 0 && state.top.screen != .yourMusic && !state.browserLeads
                 if raises && !beat { DeviceWindow.raise() }
                 beat = raises
             }

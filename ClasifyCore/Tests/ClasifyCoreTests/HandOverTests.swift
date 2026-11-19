@@ -48,6 +48,35 @@ import Testing
         #expect(s.activateStep == .checkMail)
     }
 
+    /// CLA-153: after the hand-over the browser stays in front. No raise at "You’re in", no
+    /// `.showWindow` when 320 opens or on 321. The confirmation (323) brings myPod back, once.
+    @Test func theBrowserStaysInFrontUntilTheConfirmation() {
+        var s = atLogIn(gate: true)
+        send(&s, .select, .loginCarriesActivate(token: 2), .authDone(token: 2, ok: true))
+        #expect(s.top.screen == .loggedIn && s.browserLeads)
+        #expect(!send(&s, .tick, now: 101.5).contains(.showWindow) && s.activateStep == .browserOpen && s.browserLeads)
+        send(&s, .checkActivation, now: 110)
+        #expect(!send(&s, .activation(.waiting(email: "sam@example.com", mail: 1), request: s.activateRequest), now: 111).contains(.showWindow))
+        #expect(s.activateStep == .checkMail && s.browserLeads)
+        send(&s, .checkActivation, now: 120)
+        let fx = send(&s, .activation(.active(), request: s.activateRequest), now: 121)
+        #expect(fx.filter { $0 == .showWindow }.count == 1 && s.activateStep == .confirmed && !s.browserLeads)
+    }
+
+    /// CLA-153: with no hand-over, Activate opens on 319 and shows myPod, as before (348).
+    /// "Open browser" pulls nothing in front; 322 is myPod's again.
+    @Test func withNoHandOverActivateStillShowsMyPod() {
+        var s = atLogIn(gate: true)
+        send(&s, .select, .authDone(token: 2, ok: true))
+        #expect(!s.browserLeads)
+        #expect(send(&s, .tick, now: 101.5).contains(.showWindow) && s.activateStep == .join && !s.browserLeads)
+        #expect(!send(&s, .select, now: 200).contains(.showWindow) && s.activateStep == .browserOpen && s.browserLeads)
+        send(&s, .activation(.waiting(email: "sam@example.com", mail: 1), request: s.activateRequest), now: 201)
+        #expect(s.activateStep == .checkMail && s.browserLeads)
+        send(&s, .tick, now: 400)
+        #expect(s.activateStep == .stopped && !s.browserLeads)
+    }
+
     /// No page in time (offline, slow): today's 319.
     @Test func withNoPageActivateOpensOn319() {
         var s = atLogIn(gate: true)
