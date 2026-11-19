@@ -42,6 +42,7 @@ enum Labels {
         case .yourMusic: "Your Music"
         case .betaSoon, .betaEnded, .betaNew: "Beta"  // card BI v2, changes 233 and 234; card BV, 312
         case .activate: "Activate"  // CLA-128
+        case .activation: "Activation"  // CLA-141, card BF.2
         }
     }
 
@@ -54,6 +55,16 @@ enum Labels {
         /// The playing track's row shows a speaker, whether it plays or is paused.
         var playing = false
         var opens = false
+        /// The value in gray, as "Not activated" (card BF.2).
+        var grayValue = false
+    }
+
+    /// CLA-141, card BF.2 (change 360): About's Status row. It opens only with the server's info.
+    static func statusRow(in state: AppState) -> RowText {
+        switch state.aboutStatus {
+        case .notActivated: RowText(label: "Status", value: "Not activated", grayValue: true)
+        case .activated: RowText(label: "Status", value: "Activated", opens: state.aboutStatus.opens)
+        }
     }
 
     static func row(_ row: Row, on screen: Screen, in state: AppState) -> RowText {
@@ -121,6 +132,10 @@ enum Labels {
         case .useAnotherEmail: return RowText(label: "Use another email")
         case .checkMail: return RowText(label: "Check again")
         case .tryActivateAgain: return RowText(label: "Try again")
+        // CLA-141, card BF.2 (changes 361, 362): the masked email, then the date and the Macs.
+        case .activatedAs:
+            guard case .activated(let info) = state.aboutStatus else { return RowText(label: "") }
+            return RowText(label: info?.email ?? "", detail: info?.subtitle() ?? "")
         }
     }
 

@@ -1101,11 +1101,12 @@ import Testing
     }
 
     /// About, card BF: one page with the capybara at the top, then the steel name and lines with
-    /// the red heart. Card BS: 3 steps, each ending on a whole row in the 206 pt view. Step 1
-    /// shows Version whole, step 2 the selected Licenses row whole, step 3 the legal text whole.
+    /// the red heart. Card BS and BF.2: 4 steps, each ending on a whole row in the 206 pt view.
+    /// Step 1 shows Version whole, step 2 Status, step 3 the selected Licenses row whole, step 4
+    /// the legal text whole.
     @Test func aboutScrollsOnePageWithTheCapybaraAndLicensesRow() throws {
         #expect(PocketAbout.poses.count == AboutPose.allCases.count)  // the art is bundled
-        #expect(PocketAbout.stops == [0, 30.9, 53.8, 115.5] && PocketAbout.stops.count == AppState.aboutSteps + 1)
+        #expect(PocketAbout.stops == [0, 30.9, 53.8, 76.7, 138.4] && PocketAbout.stops.count == AppState.aboutSteps + 1)
         var s = sampleState()
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
         let top = Self.listTop, left = Self.screenLeft, x = left + 150
@@ -1125,17 +1126,45 @@ import Testing
         let one = try render(s, "about-1")
         #expect((left + 9..<left + 60).contains { x in (top + 188...top + 201).contains { one.isDark(x, $0) } })
         #expect(!one.isBlue(x, top + 194))
-        // Step 2: up 53.8 pt. The Licenses row, at 183.1 to 206 pt, is whole and selected.
+        // Step 2: up 53.8 pt. The Status row ("Not activated" here) is at 183.1 to 206 pt, not selected.
         s.stack[2].off = 2
         let two = try render(s, "about-2")
-        #expect(two.isBlue(x, top + 185) && two.isBlue(x, top + 204))
-        // Step 3: up 115.5 pt. Licenses is at 121.4 pt, and the legal text, at 154.5 to 196.5 pt,
-        // is ink on the glass.
+        #expect(!two.isBlue(x, top + 194))
+        // Step 3: up 76.7 pt. The Licenses row, at 183.1 to 206 pt, is whole and selected.
         s.stack[2].off = 3
-        let last = try render(s, "about-3")
+        let three = try render(s, "about-3")
+        #expect(three.isBlue(x, top + 185) && three.isBlue(x, top + 204))
+        // Step 4: up 138.4 pt. Licenses is at 121.4 pt, and the legal text, at 154.5 to 196.5 pt,
+        // is ink on the glass.
+        s.stack[2].off = 4
+        let last = try render(s, "about-4")
         #expect(last.isBlue(x, top + 132))
         let legal = (left + 60..<left + 240).filter { x in (top + 158...top + 195).contains { last.isDark(x, $0) } }
         #expect(legal.count > 10)
+    }
+
+    /// CLA-141, card BF.2: at step 2 an activated Mac's Status row is selected (blue) when it
+    /// opens, and Activation shows one selected two-line row (changes 360-362).
+    @Test func aboutStatusAndActivation() throws {
+        var s = sampleState()
+        s.activateOn = true
+        s.activated = true
+        s.activation = .active(ActiveInfo(email: "s***@example.com", since: 1_795_014_000, macs: 1, limit: 2))
+        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
+        s.stack[2].off = 2
+        let top = Self.listTop, x = Self.screenLeft + 150
+        let status = try render(s, "about-status")
+        #expect(status.isBlue(x, top + 185) && status.isBlue(x, top + 204))
+        s.activation = .locked  // no connection at launch: "Activated", no selection
+        let offline = try render(s, "about-status-offline")
+        #expect(!offline.isBlue(x, top + 194))
+        s.activation = .active(ActiveInfo(email: "s***@example.com", since: 1_795_014_000, macs: 1, limit: 2))
+        s.stack.append(Frame(screen: .activation))
+        let page = try render(s, "activation")
+        #expect(page.isBlue(x, top + 3) && page.isBlue(x, top + 38))  // one 41.2 pt row, selected
+        #expect(!page.isBlue(x, top + 60))
+        s.activation = .active(ActiveInfo(email: "a-very-long-name***@mail.example-company.co.jp", since: 1_795_014_000, macs: 2, limit: 2))
+        _ = try render(s, "activation-long")
     }
 
     /// Change 210: the capybara waves in the first second, then stands, then sleeps. Changes 209
@@ -1609,7 +1638,7 @@ import Testing
             ("320-browser-open", { $0.activateOpenMail = 0; $0.activateStopAt = 1000 }),
             ("321-check-mail", { $0.activation = .waiting(email: "sam.longname.example@example.com", mail: 1); $0.activateStopAt = 1000 }),
             ("322-stopped", { $0.activation = .waiting(email: "sam@example.com", mail: 1) }),
-            ("323-confirmed", { $0.activation = .active }),
+            ("323-confirmed", { $0.activation = .active() }),
             ("324-mail-busy", { $0.activation = .mailBusy }),
             ("325-full", { $0.activation = .full }),
             ("326-off", { $0.activation = .off }),

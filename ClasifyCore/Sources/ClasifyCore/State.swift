@@ -149,12 +149,14 @@ public enum Screen: Equatable, Sendable {
     case betaNew
     /// CLA-128: setup's Activate step, before Your Music. Its words and rows follow `activation`.
     case activate
+    /// CLA-141, card BF.2 (change 361): About > Activation, one row with the masked email.
+    case activation
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate, .activation:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -224,6 +226,9 @@ public enum Row: Equatable, Sendable {
     /// "Cancel" (320), "Send again" and "Use another email" (321, 322), "Check again" (322,
     /// 325, 326) and "Try again" (324, 327).
     case openActivate, openActivateAgain, cancelActivate, sendAgain, useAnotherEmail, checkMail, tryActivateAgain
+    /// CLA-141, card BF.2: the one row of Activation: the masked email, the date and the Macs.
+    /// A press does nothing.
+    case activatedAs
 }
 
 /// CLA-128: where this Mac's activation stands, as the server last said.
@@ -233,7 +238,8 @@ public enum Activation: Equatable, Sendable {
     /// Mail number `mail` went to `email`; the server waits for the click on its link. The
     /// email lives in memory only: never saved, never logged.
     case waiting(email: String, mail: Int)
-    case active
+    /// Active. The info is in the answers of a newer server (CLA-141); an old one sends none.
+    case active(ActiveInfo? = nil)
     /// The beta cap is reached: no new accounts now.
     case full
     /// The server turned this account off.
@@ -251,13 +257,62 @@ public enum Activation: Equatable, Sendable {
         case "locked": self = .locked
         case "waiting":
             if let email = json["email"] as? String, let mail = json["mail"] as? Int { self = .waiting(email: email, mail: mail) } else { self = .offline }
-        case "active": self = .active
+        case "active":
+            // The server's times are milliseconds (Date.now()); ActiveInfo keeps seconds.
+            let ms = (json["since"] as? Double) ?? (json["since"] as? Int).map(Double.init)
+            let info = ActiveInfo(email: json["email"] as? String, since: ms.map { $0 / 1000 },
+                                  macs: json["macs"] as? Int, limit: json["limit"] as? Int)
+            self = .active(info == ActiveInfo() ? nil : info)
         case "full": self = .full
         case "off": self = .off
         case "busy": self = .mailBusy
         default: self = .offline
         }
     }
+}
+
+extension Activation {
+    public var isActive: Bool { if case .active = self { true } else { false } }
+}
+
+/// CLA-141, card BF.2: what the server says about an active Mac, for About > Activation. In
+/// memory only, never saved. The email comes masked from the server ("s***@example.com").
+public struct ActiveInfo: Equatable, Sendable {
+    public var email: String?
+    /// When this Mac became active, in seconds since 1970 (the server sends milliseconds).
+    public var since: Double?
+    /// Active Macs on the account, and the limit (change 362).
+    public var macs: Int?, limit: Int?
+
+    public init(email: String? = nil, since: Double? = nil, macs: Int? = nil, limit: Int? = nil) {
+        (self.email, self.since, self.macs, self.limit) = (email, since, macs, limit)
+    }
+
+    /// The row's second line: "Activated on 19 Nov 2026 · 1 of 2 Macs", or the part that is
+    /// known, or nil. The date is in `timeZone` (the Mac's), with English month names.
+    public func subtitle(in timeZone: TimeZone = .current) -> String? {
+        var parts: [String] = []
+        if let since {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = timeZone
+            f.dateFormat = "d MMM yyyy"
+            parts.append("Activated on " + f.string(from: Date(timeIntervalSince1970: since)))
+        }
+        if let macs, let limit { parts.append("\(macs) of \(limit) Macs") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+}
+
+/// CLA-141, card BF.2 (change 360): About's Status row.
+public enum AboutStatus: Equatable, Sendable {
+    /// Gray "Not activated": the gate is off in this build, or this Mac is not activated.
+    case notActivated
+    /// "Activated". With the server's info (and an email), the row opens Activation; with
+    /// none (no connection, or an old server), it has no chevron and does not open.
+    case activated(ActiveInfo?)
+
+    public var opens: Bool { if case .activated(let info) = self { info?.email != nil } else { false } }
 }
 
 /// CLA-128, card BW: which Activate screen shows.
@@ -432,7 +487,7 @@ public struct AppState: Equatable, Sendable {
 
     /// Card BW: the Activate screen that shows now.
     public var activateStep: ActivateStep {
-        if activation == .active { return .confirmed }
+        if activation.isActive { return .confirmed }
         if activateOpenMail != nil { return .browserOpen }
         switch activation {
         case .locked, .active: return .join
@@ -641,10 +696,18 @@ public struct AppState: Equatable, Sendable {
     public var service = MusicService.spotify
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
     public var aboutAt: Double = 0
-    /// About is one page that scrolls 3 wheel steps (card BS, changes 294 and 295; was 5 in
-    /// card BF). Its step is the frame's `off`. Each stop ends on a whole row. From step 2 the
-    /// Licenses row is selected, and a press opens Licenses.
-    public static let aboutSteps = 3, aboutLicensesStep = 2
+    /// About is one page that scrolls 4 wheel steps (card BS, changes 294 and 295; card BF.2).
+    /// Its step is the frame's `off`. Each stop ends on a whole row. At step 2 the Status row is
+    /// selected when it opens; from step 3 Licenses is selected, and a press opens Licenses.
+    /// Card BF.2 (change 360): 4 steps; the Status row is selected at step 2 when it opens.
+    public static let aboutSteps = 4, aboutStatusStep = 2, aboutLicensesStep = 3
+
+    /// CLA-141, card BF.2: About's Status row. In memory only: the app saves no email.
+    public var aboutStatus: AboutStatus {
+        guard activateOn && activated else { return .notActivated }
+        if case .active(let info) = activation { return .activated(info) }
+        return .activated(nil)
+    }
     /// When the capybara's last wave started: 0.35 s after About opens, and on a press or a
     /// wake (change 210). The tagline's glint starts with it (change 209).
     public var aboutWaveAt: Double = 0
@@ -818,7 +881,7 @@ public struct AppState: Equatable, Sendable {
     /// rows get shorter instead. The song panel's bar takes a row of the panel.
     public var shownRows: Int {
         switch top.screen {
-        case .tracks, .albums: return trackRows  // two-line rows
+        case .tracks, .albums, .activation: return trackRows  // two-line rows (card BF.2: Activation's row)
         case .albumPanel: return showsPanelBar ? panelRows - 1 : panelRows
         default: return showsBar ? visibleRows - 1 : visibleRows
         }
@@ -1024,6 +1087,7 @@ public struct AppState: Equatable, Sendable {
             }
         case .betaEnded: [.getNewBeta, .quit]
         case .licenses: License.all.indices.map { .license($0) }
+        case .activation: [.activatedAs]
         case .about, .now, .hello, .yourMusic, .loggedIn, .license: []
         }
     }

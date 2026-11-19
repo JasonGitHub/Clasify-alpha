@@ -55,7 +55,7 @@ import Testing
         #expect(s.activateStep == .browserOpen)
         send(&s, .wheel(1), .checkActivation, .activation(sam, request: 3), now: 212)
         #expect(s.activateStep == .checkMail && s.top.sel == 0 && s.rows(for: s.top) == [.sendAgain, .useAnotherEmail])
-        send(&s, .checkActivation, .activation(.active, request: 4), now: 220)
+        send(&s, .checkActivation, .activation(.active(), request: 4), now: 220)
         #expect(s.activateStep == .confirmed && s.rows(for: s.top).isEmpty)
         send(&s, .tick, now: 221.4)
         #expect(s.top.screen == .activate)
@@ -65,7 +65,7 @@ import Testing
 
     @Test func aPressOnConfirmedGoesOnAtOnce() {
         var s = mailOut()
-        send(&s, .checkActivation, .activation(.active, request: 3), .select, now: 220)
+        send(&s, .checkActivation, .activation(.active(), request: 3), .select, now: 220)
         #expect(s.top.screen == .yourMusic && s.activatedAt == 0)
     }
 
@@ -120,7 +120,7 @@ import Testing
         send(&s, .select, .wheel(1), .select, now: 300)  // "Send again", then "Use another email"
         send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), now: 301)
         #expect(s.activateStep == .browserOpen)
-        send(&s, .checkActivation, .activation(.active, request: 5), now: 310)
+        send(&s, .checkActivation, .activation(.active(), request: 5), now: 310)
         #expect(!s.activateDue(at: 311.4) && s.activateDue(at: 311.5) && !join().activateDue(at: 1000))
     }
 
@@ -170,20 +170,20 @@ import Testing
     @Test func anOlderAnswerAndAFailedTimerCheckAreDropped() {
         var s = mailOut()
         send(&s, .select, now: 300)  // request 3 is out
-        send(&s, .activation(.active, request: 2), now: 301)
+        send(&s, .activation(.active(), request: 2), now: 301)
         #expect(s.activateStep == .checkMail)
         send(&s, .tick, .activation(.offline, request: 4), now: 330)
         #expect(s.activateStep == .checkMail)
         var launch = AppState()
-        send(&launch, .activation(.active, request: nil))
-        #expect(launch.activation == .active)
+        send(&launch, .activation(.active(), request: nil))
+        #expect(launch.activation == .active())
     }
 
     /// Already active (the stored activation, sent before the launch): no Activate step.
     @Test func anActiveMacSkipsTheStep() {
         var s = AppState()
         s.activateOn = true
-        send(&s, .activation(.active, request: nil))
+        send(&s, .activation(.active(), request: nil))
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)
         send(&s, .select, .select, .select, .authDone(token: 2, ok: true))
         send(&s, .tick, now: 101.5)
@@ -230,7 +230,7 @@ import Testing
     @Test func theServerAnswersMapToActivation() {
         #expect(Activation(status: 200, json: ["state": "locked"]) == .locked)
         #expect(Activation(status: 200, json: ["state": "waiting", "email": "sam@example.com", "mail": 2]) == .waiting(email: "sam@example.com", mail: 2))
-        #expect(Activation(status: 200, json: ["state": "active", "account": "a1"]) == .active)
+        #expect(Activation(status: 200, json: ["state": "active", "account": "a1"]) == .active())
         #expect(Activation(status: 200, json: ["state": "full"]) == .full)
         #expect(Activation(status: 200, json: ["state": "off"]) == .off)
         #expect(Activation(status: 200, json: ["state": "busy"]) == .mailBusy)
