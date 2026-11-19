@@ -101,6 +101,10 @@ public enum Action: Equatable, Sendable {
     /// (true), or it is back on its front (false). While it is turned, the wheel, the buttons
     /// and the keys do nothing. The angle itself stays in the skin (`K3DTurn`).
     case deviceTurned(Bool)
+    /// CLA-97: the player lost control of playback, or got it back. Only for the
+    /// `control_lost` and `control_back` events: `.playbackFailed` and the track reports still
+    /// drive the screens.
+    case controlLost(ControlLoss), controlBack
 }
 
 /// What the reducer asks the `Player` to do. The `Store` runs these.
@@ -248,7 +252,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     if action == .launch && !s.setupDone && s.firstLaunchAt == nil { s.firstLaunchAt = env.now() }
     let before = BeforeEvents(s, action)
     var fx = reduceAction(&s, action, env)
-    fx += betaEvents(&s, before, now: env.now())
+    fx += betaEvents(&s, before, fx, now: env.now())
     // 348: a beta notice or Activate that opens shows a hidden myPod. CLA-153: not Activate
     // that opens through the login hand-over (320), because the browser shows the activate
     // page. A locked Mac at launch still shows it, also on 321.
@@ -1349,6 +1353,16 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             fx.append(shown && s.setupDone ? .hideWindow : .showWindow)
         case .deviceTurned(let turned):
             s.deviceTurned = turned
+
+        case .controlLost(let reason):
+            guard s.controlLostAt == nil else { return }  // one loss until control comes back
+            s.controlLostAt = now
+            fx.append(.track(.controlLost(reason, service: s.service)))
+
+        case .controlBack:
+            guard let lost = s.controlLostAt else { return }
+            s.controlLostAt = nil
+            fx.append(.track(.controlBack(seconds: max(0, Int((now - lost).rounded())), service: s.service)))
 
         case .arrived:
             guard !s.arrived else { return }
