@@ -6,7 +6,10 @@ import Testing
     /// The `.track` events of the actions, at `now`.
     func events(_ s: inout AppState, _ actions: Action..., now: Double) -> [BetaEvent] {
         let e = Dependencies(now: { now }, random: { _ in 0 })
-        return actions.flatMap { reduce(&s, $0, e) }.compactMap { if case .track(let event) = $0 { event } else { nil } }
+        return actions.flatMap { reduce(&s, $0, e) }.compactMap { (fx: Effect) -> BetaEvent? in
+            if case .track(let event) = fx { return event }
+            return nil
+        }
     }
 
     /// The first launch at 100, on the color pick at 110.

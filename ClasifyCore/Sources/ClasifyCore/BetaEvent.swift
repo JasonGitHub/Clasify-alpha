@@ -26,13 +26,15 @@ public enum BetaEvent: Equatable, Sendable {
     public var properties: [String: BetaValue] {
         switch self {
         case .setupStep(let step, let seconds, let service):
-            ["step": .text(step.rawValue), "seconds": .number(seconds), "service": .text(service.eventName)]
-        case .setupError(let kind, let service): ["kind": .text(kind.rawValue), "service": .text(service.eventName)]
+            return ["step": .text(step.rawValue), "seconds": .number(seconds), "service": .text(service.eventName)]
+        case .setupError(let kind, let service):
+            return ["kind": .text(kind.rawValue), "service": .text(service.eventName)]
         case .musicPick(let service, let top, let spotifyApp):
             var p: [String: BetaValue] = ["service": .text(service.eventName), "top": .text(top.eventName)]
             if let spotifyApp { p["spotify_app"] = .flag(spotifyApp) }
             return p
-        case .firstSong(let seconds, let service): ["seconds": .number(seconds), "service": .text(service.eventName)]
+        case .firstSong(let seconds, let service):
+            return ["seconds": .number(seconds), "service": .text(service.eventName)]
         }
     }
 }
