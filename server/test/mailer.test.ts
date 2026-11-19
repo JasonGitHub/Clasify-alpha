@@ -51,10 +51,17 @@ describe("link mailer", () => {
       "Did not ask for this? You can ignore this mail.\nmyPod by Cappy · © 2026 CappyAI Ltd");
     expect(sent[0].html).toContain(`href="${link}"`);
     expect(sent[0].html).toContain(">Confirm my email</a>");
-    // Card CB (CLA-154): the page look, light only, with a solid colour where gradients are stripped.
+    // Card CD (CLA-160): solid colours only, and our own dark colours where the app reads them.
     expect(sent[0].html).toContain('bgcolor="#e8eef4"');
-    expect(sent[0].html).toContain("radial-gradient(circle at 50% 40%,#ffffff,#d6e2ec 80%)");
-    expect(sent[0].html).toContain('<meta name="color-scheme" content="light">');
+    expect(sent[0].html).toContain('bgcolor="#1f6fd1"');
+    expect(sent[0].html).not.toContain("background-image");
+    expect(sent[0].html).not.toContain("gradient");
+    expect(sent[0].html).toContain('<meta name="color-scheme" content="light dark">');
+    expect(sent[0].html).toContain('<meta name="supported-color-schemes" content="light dark">');
+    const dark = sent[0].html!.match(/@media \(prefers-color-scheme: dark\)\{(.*?\})\}/)?.[1] ?? "";
+    for (const rule of [".pg{background:#1b1f24!important}", ".tt{color:#f2f4f6!important}", ".tx{color:#a7b1bb!important}",
+      ".ft{color:#7a838d!important}", ".bt{background:#2f80e0!important}", ".bl{color:#ffffff!important}"]) expect(dark).toContain(rule);
+    for (const cls of ["pg", "tt", "tx", "ft", "bt", "bl"]) expect(sent[0].html).toContain(`class="${cls}"`);
     expect(sent[0].html).not.toContain(">myPod</div>");
     expect(sent[0].html).toContain("font-size:34px");
     expect(linkMail('https://x/?c=a"b').html).toContain('href="https://x/?c=a&quot;b"');
