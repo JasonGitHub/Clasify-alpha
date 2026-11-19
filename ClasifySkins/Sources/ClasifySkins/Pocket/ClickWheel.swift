@@ -9,8 +9,6 @@ struct ClickWheel: View {
     var color = DeviceColor.silver
     /// False in snapshot tests, which cannot draw the AppKit scroll view.
     var catchesScroll = true
-    /// The wheel moves a bar, not a list: a trackpad scroll goes the other way (CLA-48).
-    var movesBar = false
     /// When the center starts to glow: on Hello (card AT, change 166) and after the first turn
     /// on the color pick (card AW, change 150). Nil: no glow.
     var glowFrom: Double?
@@ -53,13 +51,12 @@ struct ClickWheel: View {
 
     init(
         input: @escaping @MainActor (Action) -> Void, color: DeviceColor = .silver, catchesScroll: Bool = true,
-        movesBar: Bool = false, glowFrom: Double? = nil, fingerFrom: Double? = nil, label: LabelGlow? = nil,
+        glowFrom: Double? = nil, fingerFrom: Double? = nil, label: LabelGlow? = nil,
         pressed: Zone? = nil, hovered: Zone? = nil
     ) {
         self.input = input
         self.color = color
         self.catchesScroll = catchesScroll
-        self.movesBar = movesBar
         self.glowFrom = glowFrom
         self.fingerFrom = fingerFrom
         self.label = label
@@ -143,7 +140,7 @@ struct ClickWheel: View {
     /// The face with its input: scroll, drag, clicks and the pointer.
     private var handled: some View {
         face
-            .background { if catchesScroll { ScrollCatcher(movesBar: movesBar) { input(.wheel($0)) } } }
+            .background { if catchesScroll { ScrollCatcher { input(.wheel($0)) } } }
             .contentShape(Circle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
             .onContinuousHover { phase in

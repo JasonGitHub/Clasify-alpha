@@ -9,25 +9,26 @@ struct ScrollCatcher: NSViewRepresentable {
     /// Scroll distance for one detent, as in the mockup. One mouse-wheel line is one detent.
     static let step: CGFloat = 40
 
-    /// The wheel moves a bar (`AppState.wheelMovesBar`), so fingers up on a trackpad are +1.
-    var movesBar = false
     let onDetent: @MainActor (Int) -> Void
+
+    /// How far a trackpad scroll moved the fingers down, in points. It follows the fingers, not
+    /// the natural scrolling setting (CLA-48): with it on, fingers down give a positive delta.
+    /// Fingers down are +1 on every screen: the next row in a list, and more on a Now Playing bar
+    /// (CLA-131, Jason: "Fingers down = more").
+    static func fingersDown(_ deltaY: CGFloat, natural: Bool) -> CGFloat { natural ? deltaY : -deltaY }
 
     func makeNSView(context: Context) -> CatcherView {
         let view = CatcherView()
         view.onDetent = onDetent
-        view.movesBar = movesBar
         return view
     }
 
     func updateNSView(_ view: CatcherView, context: Context) {
         view.onDetent = onDetent
-        view.movesBar = movesBar
     }
 
     final class CatcherView: NSView {
         var onDetent: @MainActor (Int) -> Void = { _ in }
-        var movesBar = false
         private var distance: CGFloat = 0
         /// This swipe began with Cmd: none of it, its glide too, is the wheel's.
         private var cmdScroll = false
@@ -60,11 +61,8 @@ struct ScrollCatcher: NSViewRepresentable {
             guard hypot(point.x - bounds.midX, point.y - bounds.midY) <= radius else { return false }
             if event.phase == .began { distance = 0 }
             if event.hasPreciseScrollingDeltas {
-                // A trackpad, in points. Follow the fingers, not the natural scrolling setting
-                // (CLA-48): with it on, fingers down give a positive delta. In a list, fingers
-                // down are the next row; on a bar, fingers up are more.
-                let down = event.isDirectionInvertedFromDevice ? event.scrollingDeltaY : -event.scrollingDeltaY
-                distance += movesBar ? -down : down
+                // A trackpad, in points.
+                distance += ScrollCatcher.fingersDown(event.scrollingDeltaY, natural: event.isDirectionInvertedFromDevice)
             } else {
                 // A mouse wheel, in lines: down the list is positive, as in a browser.
                 distance -= event.scrollingDeltaY * ScrollCatcher.step
