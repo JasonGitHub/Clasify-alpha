@@ -161,7 +161,7 @@ struct PocketAbout: View {
         .shadow(color: .white.opacity(0.9), radius: 0, y: 1)
         .shadow(color: .black.opacity(0.18), radius: 0, y: -0.5)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("myPod. Made with love by CappyAI. AI-native craftsmanship.")
+        .accessibilityLabel("myPod. Made with love by Cappy. AI-native craftsmanship.")
     }
 
     /// "Made with ♥ by CappyAI" in steel. The glint sweeps the whole line as one, from the start
@@ -171,7 +171,7 @@ struct PocketAbout: View {
             HStack(spacing: 4) {
                 Text("Made with").font(.helvetica(14)).opacity(heart ? 0 : 1)
                 Heart().fill(Color(hex: 0xe0565b)).frame(width: 12, height: 11).opacity(heart ? 1 : 0)
-                Text("by CappyAI").font(.helvetica(14)).opacity(heart ? 0 : 1)
+                Text("by Cappy").font(.helvetica(14)).opacity(heart ? 0 : 1)
             }
             .lineLimit(1).fixedSize().frame(height: 16)
         }
