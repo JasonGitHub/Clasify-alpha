@@ -46,6 +46,12 @@ import Testing
             == [.appSpeed(startMs: 850, libraryMs: 1250)])
         s.refreshing.insert(AppState.readKey(.playlists))
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 102).isEmpty && s.speedSent)
+        var artists = mainMenu()  // Apple Music: the Artists read counts too (Codex on #350)
+        _ = events(&artists, .libraryWords(.appleMusic), .wheel(2), .select, now: 100)
+        artists.launchedAt = 100
+        #expect(events(&artists, .artistsLoaded(token: 9, artists: LibraryRowsTests.artists), now: 100.5).isEmpty)  // stale
+        #expect(events(&artists, .artistsLoaded(token: 1, artists: LibraryRowsTests.artists), now: 100.5)
+            == [.appSpeed(startMs: nil, libraryMs: 500)])
         var setup = AppState()  // a launch in setup sends none
         _ = events(&setup, .launch)
         #expect(setup.launchedAt == nil)

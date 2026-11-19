@@ -178,7 +178,7 @@ struct BeforeEvents {
     var error: Bool, service: MusicService, songFailed = false
     /// The action brings a library read, and the read times before it, for `app_speed`: the
     /// reducer marks each read that it took (Codex on #350: not a stale or unasked one).
-    var libraryRead = false, readAt: [String: Double]
+    var libraryRead = false, readAt: [String: Double], artists: Bool
     /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
     var choices: [String], used: Feature?
 
@@ -187,7 +187,7 @@ struct BeforeEvents {
         choices = s.settings.choices
         playing = s.isPlaying
         (error, service) = (s.top.error, s.service)
-        readAt = s.readAt
+        (readAt, artists) = (s.readAt, s.artistsLoaded)
         if case .loadFailed(_, let gen) = action, gen == s.playGen, s.current != nil { songFailed = true }
         if case .used(let feature) = action { used = feature }
         top = s.appleMusicFirst ? .appleMusic : .spotify
@@ -195,7 +195,7 @@ struct BeforeEvents {
         if case .position(let t, let gen) = action, t > 0, gen == s.playGen { (played, position) = (true, t) }
         if case .betaBuild(let b) = action { build = b }
         switch action {
-        case .playlistsLoaded, .tracksLoaded, .playlistsRefreshed, .tracksRefreshed, .artTracksRead: libraryRead = true
+        case .playlistsLoaded, .tracksLoaded, .playlistsRefreshed, .tracksRefreshed, .artTracksRead, .artistsLoaded: libraryRead = true
         default: break
         }
         guard action == .select && !s.setupDone && screen == .pickMusic else { return }
@@ -237,7 +237,8 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         if let error { events.append(.useError(error, offline: s.offline, service: s.service)) }
         if s.service != b.service { events.append(.serviceSwitch(from: b.service, to: s.service)) }
     }
-    if !s.speedSent, let launched = s.launchedAt, b.libraryRead, s.readAt != b.readAt {
+    if !s.speedSent, let launched = s.launchedAt, b.libraryRead,
+        s.readAt != b.readAt || s.artistsLoaded != b.artists {  // the Artists read sets no `readAt`
         s.speedSent = true
         events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded()))))
     }
