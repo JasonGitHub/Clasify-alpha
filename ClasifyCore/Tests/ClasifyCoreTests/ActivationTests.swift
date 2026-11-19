@@ -69,21 +69,65 @@ import Testing
         #expect(s.top.screen == .yourMusic && s.activatedAt == 0)
     }
 
-    /// The 30 s timer asks on 320 and 321; after 15 minutes the checks stop (322). An app
-    /// return then asks nothing; "Check again" asks and starts the checks again.
-    @Test func theChecksRunEvery30sFor15Minutes() {
+    /// CLA-146: 3 s in minute 1, 10 s in minute 2, 15 s in minute 3, then no more.
+    @Test func theScheduleSlowsDownAndStopsAt3Minutes() {
+        let delays = [0.0, 59, 60, 119, 120, 179, 180, 900].map { activateCheckDelay(elapsed: $0) }
+        #expect(delays == [3, 3, 10, 10, 15, 15, nil, nil])
+        #expect(activateChecksFor == 180)
+    }
+
+    /// CLA-146: the timer asks at most 30 times (as the old 30 s for 15 minutes did), when
+    /// every answer comes at once. Then 322 shows.
+    @Test func theTimerAsksAtMost30Times() {
         var s = join()
         send(&s, .select, now: 200)
-        #expect(send(&s, .tick, now: 229).isEmpty)
-        #expect(send(&s, .tick, now: 230) == [.checkActivation(request: 2)])
-        send(&s, .activation(sam, request: 2), now: 231)
-        #expect(send(&s, .tick, now: 259).isEmpty && send(&s, .tick, now: 260) == [.checkActivation(request: 3)])
-        send(&s, .activation(sam, request: 3), now: 261)
+        var times: [Double] = []
+        var t = 200.0
+        while t <= 400 {
+            if s.activateDue(at: t) {
+                for case .checkActivation(let r) in send(&s, .tick, now: t) {
+                    times.append(t - 200)
+                    send(&s, .activation(sam, request: r), now: t)
+                }
+            }
+            t += 0.25
+        }
+        #expect(times.count <= 30 && times.count == 29)
+        #expect(Array(times.prefix(3)) == [3, 6, 9] && times.contains(60) && times.contains(70) && times.contains(135))
+        #expect(times.last == 165 && s.activateStep == .stopped)
+    }
+
+    /// CLA-146: on 322 an app return asks but starts no timer; "Check again" starts the 3 minutes again.
+    @Test func anAppReturnAsksAlsoAfterTheStop() {
+        var s = mailOut()
         send(&s, .tick, now: 1100)
         #expect(s.activateStep == .stopped && s.rows(for: s.top) == [.checkMail, .sendAgain, .useAnotherEmail])
-        #expect(send(&s, .checkActivation, now: 1200).isEmpty && send(&s, .tick, now: 1300).isEmpty)
+        #expect(send(&s, .checkActivation, now: 1200) == [.checkActivation(request: 3)])
+        send(&s, .activation(sam, request: 3), now: 1201)
+        #expect(s.activateStep == .stopped && s.activateStopAt == 0 && send(&s, .tick, now: 1300).isEmpty)
         #expect(send(&s, .select, now: 1400) == [.checkActivation(request: 4)])
-        #expect(s.activateStep == .checkMail && s.activateStopAt == 1400 + activateChecksFor)
+        #expect(s.activateStep == .checkMail && s.activateStopAt == 1400 + activateChecksFor && s.activateCheckAt == 1403)
+        send(&s, .activation(sam, request: 4), now: 1401)
+        send(&s, .checkActivation, .activation(.active(), request: 5), now: 1500)  // the app came back
+        #expect(s.activateStep == .confirmed)
+    }
+
+    /// CLA-146: one check at a time. A due check waits for the answer, or 12 s; a press
+    /// takes the answer on its way as its own; "Send again" always goes.
+    @Test func oneCheckAtATime() {
+        var s = mailOut()  // the next check is due at 213
+        #expect(send(&s, .tick, now: 213) == [.checkActivation(request: 3)])
+        #expect(!s.activateDue(at: 216) && send(&s, .tick, now: 216).isEmpty && send(&s, .checkActivation, now: 217).isEmpty)
+        #expect(s.activateDue(at: 225) && send(&s, .tick, now: 225) == [.checkActivation(request: 4)])  // 3 was stuck
+        send(&s, .activation(sam, request: 4), now: 226)
+        #expect(send(&s, .tick, now: 229) == [.checkActivation(request: 5)])
+        #expect(send(&s, .select, now: 230) == [.sendActivationAgain(request: 6)])  // "Send again" while 5 is on its way
+        var pressed = mailOut()
+        send(&pressed, .tick, now: 1100)  // 322
+        send(&pressed, .checkActivation, now: 1200)  // request 3 is on its way
+        #expect(send(&pressed, .select, now: 1201).isEmpty && pressed.activatePressed == 3)  // "Check again"
+        send(&pressed, .activation(.offline, request: 3), now: 1202)
+        #expect(pressed.activateStep == .offline)
     }
 
     /// "Send again" asks the server and starts the 15 minutes again; "Use another email"
@@ -116,7 +160,7 @@ import Testing
     /// ticker sends `.tick` when a check, the end of the checks or the beat is due.
     @Test func useAnotherEmailDropsTheResendAndTheTickerKnowsTheDeadlines() {
         var s = mailOut()
-        #expect(!s.activateDue(at: 239) && s.activateDue(at: 240))
+        #expect(!s.activateDue(at: 212.9) && s.activateDue(at: 213))
         send(&s, .select, .wheel(1), .select, now: 300)  // "Send again", then "Use another email"
         send(&s, .activation(.waiting(email: "sam@example.com", mail: 2), request: 3), now: 301)
         #expect(s.activateStep == .browserOpen)
