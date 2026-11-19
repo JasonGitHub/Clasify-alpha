@@ -139,6 +139,7 @@ enum DeviceWindow {
         if NSApp.isHidden {
             deviceWindow?.alphaValue = 0
             NSApp.unhide(nil)
+            if deviceWindow?.isMiniaturized == true { deviceWindow?.deminiaturize(nil) }  // back from the Dock too
             deviceWindow?.orderFrontRegardless()  // in front even if macOS does not activate myPod
             NSApp.activate()
         } else if fading == nil && isShown {
