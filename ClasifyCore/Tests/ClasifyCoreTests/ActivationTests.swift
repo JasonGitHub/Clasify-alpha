@@ -285,7 +285,11 @@ import Testing
 
 struct FakeActivator: Activator {
     var page: String? = "https://getmypod.app/activate/?d=code"
-    func pageURL() async -> String? { page }
+    var wait = 0.0
+    func pageURL() async -> String? {
+        if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
+        return page
+    }
     func status() async -> Activation { .waiting(email: "sam@example.com", mail: 1) }
     func sendAgain() async -> Activation { .waiting(email: "sam@example.com", mail: 2) }
 }

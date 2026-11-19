@@ -33,7 +33,7 @@ public final class ServiceLibrary: Library {
     public func track(_ id: String) async -> Track? { await active.track(id) }
     public func artists() async -> [Playlist]? { await active.artists() }
     public func prefetch() async { await active.prefetch() }
-    public func logIn() async -> LoginResult { await active.logIn() }
+    public func logIn(page: String?) async -> LoginResult { await active.logIn(page: page) }
     public func cancelLogIn() async { await active.cancelLogIn() }
     public func restoreSession() async -> LoginResult { await active.restoreSession() }
     public func logOut() { active.logOut() }

@@ -85,7 +85,7 @@ final class AppleMusicLibrary: Library {
 
     /// The macOS prompt (card BM, change 258). macOS asks only once: after that, the answer
     /// comes back at once.
-    func logIn() async -> LoginResult {
+    func logIn(page: String?) async -> LoginResult {  // no browser: `page` is for Spotify
         await Self.result(MusicAuthorization.request())
     }
 
