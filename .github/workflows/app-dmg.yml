@@ -87,6 +87,13 @@ jobs:
           rm -f "$RUNNER_TEMP/cert.p12"
           security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" > /dev/null
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+      - name: Put the PostHog project key into the app, before signing
+        # CLA-97: the beta events' key (a public write key). An empty or unset secret writes an
+        # empty value: the app then sends nothing. The value goes as one argument, never echoed.
+        env:
+          POSTHOG_KEY: ${{ secrets.POSTHOG_KEY }}
+        run: |
+          plutil -replace PostHogKey -string "$POSTHOG_KEY" DerivedData/Build/Products/Release/myPod.app/Contents/Info.plist
       - name: Sign the app with hardened runtime and make the DMG
         run: |
           app=DerivedData/Build/Products/Release/myPod.app
