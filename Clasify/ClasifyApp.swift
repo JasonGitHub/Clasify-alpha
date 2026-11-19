@@ -144,16 +144,6 @@ enum DeviceWindow {
         return WindowCover.isCovered(device, by: above)
     }
 
-    /// Build 323 debug read-out (`debug.menuBar`): what AppKit reports now. h hidden, v visible,
-    /// s on this Space, a alpha above 0, o occlusion visible, c covered, i our own hide flag.
-    static var debugState: String {
-        let window = deviceWindow
-        func bit(_ b: Bool?) -> String { b.map { $0 ? "1" : "0" } ?? "-" }
-        return "h\(bit(NSApp.isHidden)) v\(bit(window?.isVisible)) s\(bit(window?.isOnActiveSpace))"
-            + " a\(bit(window.map { $0.alphaValue > 0 })) o\(bit(window?.occlusionState.contains(.visible)))"
-            + " c\(bit(window.map(isCovered))) i\(bit(iconHid))"
-    }
-
     private static func box(_ r: CGRect) -> WindowCover.Box {
         WindowCover.Box(x: Double(r.minX), y: Double(r.minY), width: Double(r.width), height: Double(r.height))
     }
