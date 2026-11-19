@@ -462,6 +462,10 @@ public struct AppState: Equatable, Sendable {
     public var firstSongSent = false
     /// CLA-97: the newest beta build that started, for `app_updated`. Saved with the settings.
     public var lastBuild: Int?
+    /// CLA-97: today's use, for `day_active`. Saved with the settings.
+    public var today: DayUse?
+    /// CLA-97: the last position report while playing, and the track counted last. Not saved.
+    public var dayPlayAt: Double?, dayTrack: String?
     /// CLA-97: when the player lost control, until it comes back. Not saved.
     public var controlLostAt: Double?
     /// CLA-97: the last setup step event, so the same step does not go out twice in a row. Not saved.

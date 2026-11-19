@@ -19,6 +19,8 @@ public enum BetaEvent: Equatable, Sendable {
     case betaRenewal(BetaNotice, pressed: Bool, daysLeft: Int)
     /// The first start of a new build: the build before, this one, and days since it was signed.
     case appUpdated(from: Int, to: Int, days: Int)
+    /// One day with music, sent on the first action of a later day.
+    case dayActive(DayUse, service: MusicService)
 
     /// The event name in PostHog.
     public var name: String {
@@ -31,6 +33,7 @@ public enum BetaEvent: Equatable, Sendable {
         case .controlBack: "control_back"
         case .betaRenewal: "beta_renewal"
         case .appUpdated: "app_updated"
+        case .dayActive: "day_active"
         }
     }
 
@@ -57,13 +60,21 @@ public enum BetaEvent: Equatable, Sendable {
             return ["notice": .text(notice.rawValue), "pressed": .flag(pressed), "days_left": .number(daysLeft)]
         case .appUpdated(let from, let to, let days):
             return ["old_build": .number(from), "new_build": .number(to), "days": .number(days)]
+        case .dayActive(let d, let service):
+            var p: [String: BetaValue] = [
+                "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
+                "minutes_night": .decimal(d.bands[0] / 60), "minutes_morning": .decimal(d.bands[1] / 60),
+                "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
+            ]
+            for f in Feature.allCases { p["used_" + f.rawValue] = .flag(d.features.contains(f)) }
+            return p
         }
     }
 }
 
 /// A value in an event's data.
 public enum BetaValue: Equatable, Sendable {
-    case text(String), number(Int), flag(Bool)
+    case text(String), number(Int), flag(Bool), decimal(Double)
 }
 
 /// The setup steps, in order (analytics doc). `spotify_check` shows only when the Spotify app is missing.
@@ -112,6 +123,14 @@ public enum BetaNotice: String, Sendable {
     }
 }
 
+extension Settings {
+    /// The Settings rows a person changes, for the Settings flag of `day_active`.
+    var choices: [String] {
+        [String(shuffle), repeatMode.rawValue, albumArt.rawValue, deviceColor.rawValue, String(clicker),
+         String(nowPlayingBar), String(menuBar), service.rawValue]
+    }
+}
+
 extension MusicService {
     /// `spotify` or `apple_music`, as the events name it.
     public var eventName: String { self == .spotify ? "spotify" : "apple_music" }
@@ -127,9 +146,13 @@ struct BeforeEvents {
     /// The action is the engine's report of a position past 0 for the playing load: a
     /// confirmed play, not a scrub or the optimistic Play.
     var played = false
+    /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
+    var choices: [String], used: Feature?
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
+        choices = s.settings.choices
+        if case .used(let feature) = action { used = feature }
         top = s.appleMusicFirst ? .appleMusic : .spotify
         pick = nil
         if case .position(let t, let gen) = action, t > 0, gen == s.playGen { played = true }
@@ -179,6 +202,34 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         s.lastBuild = build.number
     }
     return events.map(Effect.track)
+}
+
+/// CLA-97: counts today's music and features, and sends `day_active` for a day that ended.
+/// A day starts with its first count, so an action with nothing to count changes nothing.
+func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
+    var fx: [Effect] = []
+    let (day, weekday, band) = DayUse.at(now, in: timeZone)
+    if let old = s.today, old.day != day {
+        if old.hadMusic { fx.append(.track(.dayActive(old, service: s.service))) }
+        s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
+    }
+    func count(_ change: (inout DayUse) -> Void) {
+        var d = s.today ?? DayUse(day: day, weekday: weekday)
+        change(&d)
+        s.today = d
+    }
+    if b.played, s.isPlaying, let current = s.current {
+        if let last = s.dayPlayAt, now > last { count { $0.bands[band] += min(now - last, dayGapLimit) } }
+        s.dayPlayAt = now
+        if s.dayTrack != current.track { s.dayTrack = current.track; count { $0.songs += 1 } }
+    } else if !s.isPlaying && s.dayPlayAt != nil {
+        s.dayPlayAt = nil
+    }
+    var used = b.used
+    if s.top.screen == .coverFlow { used = .coverFlow }
+    if b.screen == .settings && s.settings.choices != b.choices { used = .settings }
+    if let used, s.today?.features.contains(used) != true { count { $0.features.insert(used) } }
+    return fx
 }
 
 /// The error that the screen shows now, when it just opened or changed.
