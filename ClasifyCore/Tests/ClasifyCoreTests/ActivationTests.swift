@@ -1,15 +1,14 @@
 import Testing
 @testable import ClasifyCore
 
-/// CLA-128 card BW: setup's Activate screens 319 to 327, behind the `activate.on` switch (off
-/// by default). Order: Hello, Color, Pick Your Music, Log In, Activate, Your Music.
+/// CLA-128 card BW: setup's Activate screens 319 to 327, always on (CLA-156: no switch).
+/// Order: Hello, Color, Pick Your Music, Log In, Activate, Your Music.
 @Suite struct ActivationTests {
     let sam = Activation.waiting(email: "sam@example.com", mail: 1)
 
-    /// The first launch on "You’re in", after the login; the switch as given.
-    func loggedIn(switchOn: Bool) -> AppState {
+    /// The first launch on "You’re in", after the login, on a Mac not activated yet.
+    func loggedIn() -> AppState {
         var s = AppState()
-        s.activateOn = switchOn
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)  // on the color pick
         send(&s, .select, .select, .select, .authDone(token: 2, ok: true))  // the color, Spotify, Log In
         return s
@@ -17,14 +16,14 @@ import Testing
 
     /// On 319 "Join the beta" at time 200.
     func join() -> AppState {
-        var s = loggedIn(switchOn: true)
+        var s = loggedIn()
         send(&s, .tick, now: 101.5)
         return s
     }
 
     /// Card AN.1 (CLA-43, 348): Activate shows a hidden myPod when it opens.
     @Test func activateShowsTheWindow() {
-        var s = loggedIn(switchOn: true)
+        var s = loggedIn()
         #expect(send(&s, .tick, now: 101.5).contains(.showWindow))
         #expect(s.top.screen == .activate)
     }
@@ -37,11 +36,18 @@ import Testing
         return s
     }
 
-    @Test func theSwitchIsOffByDefaultAndSetupIsAsToday() {
-        #expect(!AppState().activateOn && AppState().activation == .locked)
-        var s = loggedIn(switchOn: false)
+    /// CLA-156: the gate is on in every build. A new Mac is not activated, and setup shows
+    /// Activate. A saved `activate.on` "false" from an old build turns nothing off.
+    @Test func theGateIsAlwaysOn() {
+        #expect(!AppState().activated && AppState().activateGated && AppState().activation == .locked)
+        var s = loggedIn()
         send(&s, .tick, now: 101.5)
-        #expect(s.top.screen == .yourMusic)
+        #expect(s.top.screen == .activate)
+        let store = FakeSettings()
+        store.values["activate.on"] = "false"
+        var old = AppState()
+        old.settings = Settings(from: store)
+        #expect(old.activateGated)
     }
 
     /// 319, 320, 321, 323, then Your Music after 1.5 s.
@@ -226,7 +232,6 @@ import Testing
     /// Already active (the stored activation, sent before the launch): no Activate step.
     @Test func anActiveMacSkipsTheStep() {
         var s = AppState()
-        s.activateOn = true
         send(&s, .activation(.active(), request: nil))
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)
         send(&s, .select, .select, .select, .authDone(token: 2, ok: true))
@@ -234,14 +239,12 @@ import Testing
         #expect(s.top.screen == .yourMusic)
     }
 
-    /// The switch is saved; the email never is.
-    @Test func theSwitchIsSavedAndTheEmailIsNot() {
+    /// The email is never saved, and no switch is (CLA-156).
+    @Test func theEmailAndNoSwitchAreSaved() {
         let store = FakeSettings()
-        #expect(!Settings(from: store).activateOn)
-        var s = mailOut()
-        s.activateOn = true
+        let s = mailOut()
         s.settings.save(to: store)
-        #expect(Settings(from: store).activateOn)
+        #expect(store.values["activate.on"] == nil && store.values["activate.hardwareID"] == nil)
         #expect(!store.values.keys.contains { $0.contains("mail") } && !store.values.values.contains { $0.contains("@") })
     }
 

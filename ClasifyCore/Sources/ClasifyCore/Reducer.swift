@@ -485,7 +485,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// it is missing, else the first library read, else the main menu. Apple Music does not need it.
     func setupNext() {
         if s.spotifyApp == false && s.service == .spotify { s.stack = [Frame(screen: .spotifyApp)]; return }
-        // CLA-128: Activate comes before Your Music, while the switch is on. CLA-140: also after
+        // CLA-128: Activate comes before Your Music (CLA-156: always). CLA-140: also after
         // setup (a login after a lock), and by the remembered flag, so a "no connection" answer
         // does not hold an activated Mac.
         if s.activateGated {
@@ -1293,7 +1293,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if activation == .offline && request != s.activatePressed { return }
             // CLA-140: the app remembers "activated". A launch answer that says this remembered
             // Mac is not active locks it: Activate shows over everything.
-            let lock = request == nil && s.activateOn && s.activated && s.setupDone && s.stack.first?.screen != .activate
+            let lock = request == nil && s.activated && s.setupDone && s.stack.first?.screen != .activate
             switch activation {
             case .active: s.activated = true
             case .locked, .waiting, .off: s.activated = false

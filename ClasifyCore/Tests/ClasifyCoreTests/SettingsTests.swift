@@ -33,7 +33,7 @@ final class FakeSettings: SettingsStore {
         "settings.albumArt": "Now Playing", "settings.deviceColor": "Black", "settings.clicker": "false",
         "settings.nowPlayingBar": "true", "settings.menuBar": "false", "settings.service": "Apple Music", "setup.done": "true", "hints.done": "menu",
         "hints.tour": "true", "hints.hides": "tour.next:1,tour.play:2", "arrive.done": "true",
-        "activate.on": "false", "activate.done": "false",
+        "activate.done": "false",
     ])
     #expect(Settings(from: store) == saved)
     store.values = [

@@ -80,7 +80,6 @@ import Testing
         let answers: [(Activation, SetupError)] = [(.mailBusy, .mailBusy), (.full, .betaFull), (.off, .accountOff), (.offline, .noConnection)]
         for (answer, error) in answers {
             var s = AppState()
-            s.activateOn = true
             _ = events(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select, now: 100)
             _ = events(&s, .select, .select, .select, .authDone(token: 2, ok: true), now: 100)
             #expect(events(&s, .tick, now: 101.5) == [.setupStep(.activate, seconds: 2, service: .spotify)])

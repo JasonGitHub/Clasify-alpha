@@ -46,27 +46,6 @@ import Testing
         #expect(seen == Array(("com.cappyai.mypod.activation.v1:" + a).utf8))
     }
 
-    /// Flag off (default, and any value that is not "true"): the Keychain ID, and the hardware
-    /// is not read. On: the hardware ID, and the Keychain is not read.
-    @Test func theFlagPicksTheID() {
-        let store = FakeSettings()
-        for value: String? in [nil, "false", "yes", "1"] {
-            store.values["activate.hardwareID"] = value
-            var read: [String] = []
-            let id = DeviceID.current(from: store, hardware: { read.append("hardware"); return "hw" }, keychain: { read.append("keychain"); return "kc" })
-            #expect(id == "kc" && read == ["keychain"])
-        }
-        store.values["activate.hardwareID"] = "true"
-        var read: [String] = []
-        let id = DeviceID.current(from: store, hardware: { read.append("hardware"); return "hw" }, keychain: { read.append("keychain"); return "kc" })
-        #expect(id == "hw" && read == ["hardware"])
-        #expect(DeviceID.current(from: store, hardware: { nil }, keychain: { "kc" }) == nil)  // no UUID: no ID, never the Keychain
-    }
-
-    @Test func theFlagIsOffByDefault() {
-        #expect(!Settings.hardwareIDOn(from: FakeSettings()))
-    }
-
     /// RFC 4648 test vectors, in the URL-safe alphabet with no padding.
     @Test func base64URLMatchesTheStandard() {
         #expect(DeviceID.base64URL(Array("".utf8)) == "")

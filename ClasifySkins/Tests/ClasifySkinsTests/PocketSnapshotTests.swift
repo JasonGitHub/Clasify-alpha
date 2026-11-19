@@ -1147,7 +1147,6 @@ import Testing
     /// opens, and Activation shows one selected two-line row (changes 360-362).
     @Test func aboutStatusAndActivation() throws {
         var s = sampleState()
-        s.activateOn = true
         s.activated = true
         s.activation = .active(ActiveInfo(email: "s***@example.com", since: 1_795_014_000, macs: 1, limit: 2))
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]

@@ -6,10 +6,9 @@ import Testing
 @Suite struct AboutStatusTests {
     let info = ActiveInfo(email: "s***@example.com", since: 1_795_000_000, macs: 1, limit: 2)
 
-    /// About, on a Mac with the gate on, activated, and the server's answer `answer`.
-    func about(_ answer: Activation?, activated: Bool = true, gate: Bool = true) -> AppState {
+    /// About, on a Mac activated (or not), and the server's answer `answer`.
+    func about(_ answer: Activation?, activated: Bool = true) -> AppState {
         var s = ReducerTests().openAbout()
-        s.activateOn = gate
         s.activated = activated
         if let answer { send(&s, .activation(answer, request: nil)) }
         return s
@@ -39,8 +38,7 @@ import Testing
         #expect(ActiveInfo(since: 1_788_220_800).subtitle(in: utc) == "Activated on 1 Sep 2026")  // "Sep", not "Sept"
     }
 
-    @Test func theStatusFollowsTheGateTheFlagAndTheAnswer() {
-        #expect(about(nil, gate: false).aboutStatus == .notActivated)  // activation off in this build
+    @Test func theStatusFollowsTheFlagAndTheAnswer() {
         #expect(about(nil, activated: false).aboutStatus == .notActivated)
         #expect(about(.active(info)).aboutStatus == .activated(info) && about(.active(info)).aboutStatus.opens)
         // No connection at launch (the answer is dropped) or an old server: "Activated", no chevron.
