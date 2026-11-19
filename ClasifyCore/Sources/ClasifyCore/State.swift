@@ -467,6 +467,8 @@ public struct AppState: Equatable, Sendable {
     /// CLA-97: the sender takes events (`Action.analyticsOn`). Not saved. While it is off,
     /// `first_song` is not made, so the next real play makes it again (CTO 22:40 JST).
     public var analyticsOn = false
+    /// CLA-97 (A4): `app_problem` events made in this run, at most `AppProblem.maxPerLaunch`. Not saved.
+    public var problemsSent = 0
     /// CLA-97: the newest beta build that started, for `app_updated`. Saved with the settings.
     public var lastBuild: Int?
     /// CLA-97, `app_speed`: when `.launch` came, the app's start time in ms, and the event went

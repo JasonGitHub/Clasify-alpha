@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import ClasifyCore
 
@@ -14,8 +15,25 @@ import Testing
         var s = playing()
         let hang = AppProblem(kind: .hang, hangMs: 2500)
         #expect(events(&s, .appProblems([hang])) == [.appProblem(hang, service: .spotify)])
-        #expect(events(&s, .appProblems(Array(repeating: hang, count: 14))).count == 10)
+        #expect(events(&s, .appProblems(Array(repeating: hang, count: 14))).count == 9)  // 10 in the run
+        #expect(events(&s, .appProblems([hang])).isEmpty)  // a later hand-over gets no new budget
         #expect(events(&s, .appProblems([])).isEmpty)
+    }
+
+    @Test func theStackComesFromTheAttributedThreadWithBinaryNamesOnly() {
+        // Apple's documented form: the tree under a top-level "callStackTree" key.
+        let json = Data("""
+            {"callStackTree": {"callStackPerThread": true, "callStacks": [
+              {"threadAttributed": false, "callStackRootFrames": [{"binaryName": "libother", "offsetIntoBinaryTextSegment": 1}]},
+              {"threadAttributed": true, "callStackRootFrames": [{"binaryName": "/Applications/myPod.app/Contents/MacOS/myPod",
+                "binaryUUID": "U-1", "offsetIntoBinaryTextSegment": 123,
+                "subFrames": [{"binaryName": "libswiftCore.dylib", "offsetIntoBinaryTextSegment": 45}]}]}]}}
+            """.utf8)
+        let stack = AppProblem.stack(json: json, ownBinary: "myPod")
+        #expect(stack.frames == ["myPod+123", "libswiftCore.dylib+45"] && stack.ownUUID == "U-1")
+        let bare = Data(#"{"callStacks": [{"callStackRootFrames": [{"binaryName": "myPod", "offsetIntoBinaryTextSegment": 7}]}]}"#.utf8)
+        #expect(AppProblem.stack(json: bare, ownBinary: "x").frames == ["myPod+7"])
+        #expect(AppProblem.stack(json: Data("no".utf8), ownBinary: "myPod").frames.isEmpty)
     }
 
     @Test func aCrashSendsItsNumbersReasonAndAShortStack() {

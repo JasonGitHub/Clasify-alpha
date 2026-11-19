@@ -38,29 +38,12 @@ final class BetaDiagnostics: NSObject, MXMetricManagerSubscriber, Sendable {
         return p
     }
 
+    private static let own = Bundle.main.executableURL?.lastPathComponent
+
     private static func fill(_ p: inout AppProblem, _ diagnostic: MXDiagnostic) {
         p.appBuild = diagnostic.metaData.applicationBuildVersion
         p.osVersion = diagnostic.metaData.osVersion
         let stack: MXCallStackTree? = (diagnostic as? MXCrashDiagnostic)?.callStackTree ?? (diagnostic as? MXHangDiagnostic)?.callStackTree
-        if let stack { (p.frames, p.binaryUUID) = frames(stack.jsonRepresentation()) }
-    }
-
-    /// The frames of the thread that the report points at (`threadAttributed`), else the first
-    /// one, from the innermost frame out: binary names only, never a path.
-    static func frames(_ json: Data) -> (frames: [String], ownUUID: String?) {
-        guard let tree = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
-              let stacks = tree["callStacks"] as? [[String: Any]] else { return ([], nil) }
-        let thread = stacks.first { $0["threadAttributed"] as? Bool == true } ?? stacks.first
-        let own = Bundle.main.executableURL?.lastPathComponent
-        var frames: [String] = [], ownUUID: String?
-        var frame = (thread?["callStackRootFrames"] as? [[String: Any]])?.first
-        while let f = frame, frames.count < AppProblem.maxFrames {
-            let name = ((f["binaryName"] as? String) ?? "?").split(separator: "/").last.map(String.init) ?? "?"
-            let offset = (f["offsetIntoBinaryTextSegment"] as? NSNumber)?.intValue ?? 0
-            frames.append("\(name)+\(offset)")
-            if name == own, ownUUID == nil { ownUUID = f["binaryUUID"] as? String }
-            frame = (f["subFrames"] as? [[String: Any]])?.first
-        }
-        return (frames, ownUUID)
+        if let stack { (p.frames, p.binaryUUID) = AppProblem.stack(json: stack.jsonRepresentation(), ownBinary: own) }
     }
 }

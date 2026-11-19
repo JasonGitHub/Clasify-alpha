@@ -118,7 +118,7 @@ public enum Action: Equatable, Sendable {
     /// The app sends it at start and when the switch changes.
     case analyticsOn(Bool)
     /// CLA-97 (A4): MetricKit reported crashes or hangs of earlier runs. Only the first
-    /// `AppProblem.maxPerLaunch` become events. With `analytics.on` off, the sender drops them.
+    /// `AppProblem.maxPerLaunch` of a run become events. With `analytics.on` off, the sender drops them.
     case appProblems([AppProblem])
 }
 
@@ -1383,7 +1383,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .used, .willQuit, .view3D: break  // only for `day_active` (dayEvents)
         case .analyticsOn(let on): s.analyticsOn = on
         case .appProblems(let problems):
-            for problem in problems.prefix(AppProblem.maxPerLaunch) { fx.append(.track(.appProblem(problem, service: s.service))) }
+            // The budget is for the whole run: MetricKit can hand over reports more than once.
+            for problem in problems.prefix(max(0, AppProblem.maxPerLaunch - s.problemsSent)) {
+                s.problemsSent += 1
+                fx.append(.track(.appProblem(problem, service: s.service)))
+            }
         case .appStarted(let ms): s.startMs = ms
 
         case .controlBack:
