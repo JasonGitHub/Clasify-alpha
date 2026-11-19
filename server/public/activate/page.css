@@ -45,6 +45,6 @@ footer a { color: inherit; }
   .icon .cut { fill: #2a2f35; }
   .field { background: #1f2328; border-color: #3a4048; color: #f2f4f6; }
   .note, footer { color: #7a838d; }
-  .link, footer a { color: #7db7f5; }
+  .link { color: #7db7f5; }
 }
 @media (prefers-reduced-motion: reduce) { main { animation: none; } }
