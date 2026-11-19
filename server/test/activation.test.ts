@@ -161,6 +161,28 @@ describe("activation", () => {
     expect(await activeMacs()).toBe(2);
   });
 
+  it("an unused link of a turned-off Mac stays dead when the Mac joins again (CLA-133)", async () => {
+    const hourLimit = env.MAIL_HOUR;
+    env.MAIL_HOUR = "10";
+    try {
+      await join(mac(1), "sam@example.com");
+      const unused = mail.token;
+      await call("POST", "/v1/start", { device: mac(1) });  // Send again
+      expect(await confirm(mail.token)).toBe("ok");  // only the second link is used
+      clock += 1000;
+      await activate(mac(2), "sam@example.com");
+      clock += 1000;
+      await activate(mac(3), "sam@example.com");
+      expect(await status(mac(1))).toEqual({ state: "locked" });
+      await join(mac(1), "sam@example.com");  // the Mac is on the account again, the old link has not run out
+      expect(await (await call("POST", "/v1/peek", { body: { token: unused } })).json).toEqual({ result: "expired" });
+      expect(await confirm(unused)).toBe("expired");
+      expect(await status(mac(2))).toMatchObject({ state: "active" });
+    } finally {
+      env.MAIL_HOUR = hourLimit;
+    }
+  });
+
   it("allows SWAPS swaps in SWAP_DAYS days, then answers macs, and again after the days (CLA-133)", async () => {
     await activate(mac(1), "sam@example.com");
     clock += 1000;

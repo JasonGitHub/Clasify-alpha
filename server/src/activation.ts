@@ -159,19 +159,22 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       const swap = token();
       const activeMacs = "(SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active')";
       const isActive = "EXISTS (SELECT 1 FROM macs WHERE device_hash = ? AND account_id = ? AND state = 'active')";
-      const [, , step] = await db.batch([
+      const oldest = `SELECT device_hash FROM macs WHERE account_id = ? AND state = 'active' AND device_hash != ?
+             ORDER BY COALESCE(last_seen_at, created_at), device_hash LIMIT 1`;
+      const [, , , step] = await db.batch([
         db.prepare(
           `INSERT INTO swaps (id, account_id, at) SELECT ?, ?, ?
            WHERE EXISTS (SELECT 1 FROM macs WHERE device_hash = ? AND account_id = ? AND state != 'active')
            AND ${activeMacs} >= ? AND (SELECT COUNT(*) FROM swaps WHERE account_id = ? AND at > ?) < ?
            AND (SELECT state FROM accounts WHERE id = ?) = 'active'`,
         ).bind(swap, a.id, now, m.device_hash, a.id, a.id, Number(env.MACS), a.id, now - Number(env.SWAP_DAYS) * day, Number(env.SWAPS), a.id),
-        // The turned-off Mac has no account, so /v1/status answers "locked" and its links are dead.
+        // The turned-off Mac's unused links are used up, so they stay dead if it joins again.
+        db.prepare(`UPDATE mails SET used_at = ? WHERE used_at IS NULL AND EXISTS (SELECT 1 FROM swaps WHERE id = ?) AND device_hash = (${oldest})`)
+          .bind(now, swap, a.id, m.device_hash),
+        // The turned-off Mac has no account, so /v1/status answers "locked".
         db.prepare(
           `UPDATE macs SET state = 'waiting', account_id = NULL, mail_state = 'none'
-           WHERE EXISTS (SELECT 1 FROM swaps WHERE id = ?) AND device_hash = (
-             SELECT device_hash FROM macs WHERE account_id = ? AND state = 'active' AND device_hash != ?
-             ORDER BY COALESCE(last_seen_at, created_at), device_hash LIMIT 1)`,
+           WHERE EXISTS (SELECT 1 FROM swaps WHERE id = ?) AND device_hash = (${oldest})`,
         ).bind(swap, a.id, m.device_hash),
         db.prepare(
           `UPDATE macs SET state = 'active', last_seen_at = ? WHERE device_hash = ? AND account_id = ?
