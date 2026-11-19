@@ -101,8 +101,12 @@ enum DeviceWindow {
         }
     }
 
+    /// Build 323: true from the icon's hide until a show or an unhide by any other way. Then
+    /// a click always shows, whatever AppKit reports about the hidden window.
+    static private(set) var iconHid = false
+
     /// The menu bar icon hid myPod, the same way as Cmd+H.
-    static var isHidden: Bool { NSApp.isHidden }
+    static var isHidden: Bool { NSApp.isHidden || iconHid }
 
     /// The person can see myPod now: the app is not hidden, and the device window is on this
     /// Space, not in the Dock, and not fully covered by other windows. Whether myPod is the
@@ -117,9 +121,13 @@ enum DeviceWindow {
     /// partly covered myPod to the front. A window over only the clear margin does not count.
     /// The window list gives bounds and layers with no Screen Recording permission.
     private static func isSeen(_ window: NSWindow) -> Bool {
-        guard window.occlusionState.contains(.visible) else { return false }
+        window.occlusionState.contains(.visible) && !isCovered(window)
+    }
+
+    /// Another app's window covers some part of the device.
+    private static func isCovered(_ window: NSWindow) -> Bool {
         guard let list = CGWindowListCopyWindowInfo([.optionOnScreenAboveWindow, .excludeDesktopElements],
-                                                    CGWindowID(window.windowNumber)) as? [[String: Any]] else { return true }
+                                                    CGWindowID(window.windowNumber)) as? [[String: Any]] else { return false }
         let ownPID = Int(ProcessInfo.processInfo.processIdentifier)
         let above = list.compactMap { info -> WindowCover.Window? in
             // myPod's own windows (How to Use, the menu bar icon) never cover the device.
@@ -133,7 +141,17 @@ enum DeviceWindow {
         let device = WindowCover.device(frame: box(window.frame), mainHeight: mainHeight,
                                         top: Double(margin.top), leading: Double(margin.leading),
                                         bottom: Double(margin.bottom), trailing: Double(margin.trailing))
-        return !WindowCover.isCovered(device, by: above)
+        return WindowCover.isCovered(device, by: above)
+    }
+
+    /// Build 323 debug read-out (`debug.menuBar`): what AppKit reports now. h hidden, v visible,
+    /// s on this Space, a alpha above 0, o occlusion visible, c covered, i our own hide flag.
+    static var debugState: String {
+        let window = deviceWindow
+        func bit(_ b: Bool?) -> String { b.map { $0 ? "1" : "0" } ?? "-" }
+        return "h\(bit(NSApp.isHidden)) v\(bit(window?.isVisible)) s\(bit(window?.isOnActiveSpace))"
+            + " a\(bit(window.map { $0.alphaValue > 0 })) o\(bit(window?.occlusionState.contains(.visible)))"
+            + " c\(bit(window.map(isCovered))) i\(bit(iconHid))"
     }
 
     private static func box(_ r: CGRect) -> WindowCover.Box {
@@ -155,9 +173,11 @@ enum DeviceWindow {
             hiding = nil
             // Build 321 (Jason, Finder active): alpha 1 here drew one frame before the hide took
             // effect. The window stays at alpha 0; `show()` or `unhidden()` brings it back.
+            iconHid = true
             NSApp.hide(nil)
             // The hide did not happen: do not leave an invisible window.
             try? await Task.sleep(for: .seconds(0.5))
+            // `iconHid` stays: AppKit may report not hidden after a hide that did happen.
             if !NSApp.isHidden, hiding == nil, showing == nil, window.alphaValue == 0 { window.alphaValue = 1 }
         }
     }
@@ -165,6 +185,7 @@ enum DeviceWindow {
     /// The app came back by any way: a device window that the icon faded out shows at full
     /// strength. Not while `show()` fades it in: that fade ends at alpha 1 itself.
     static func unhidden() {
+        if showing == nil { iconHid = false }
         guard let window = deviceWindow, showing !== window, hiding == nil else { return }
         window.alphaValue = 1
     }
@@ -175,7 +196,8 @@ enum DeviceWindow {
     static func show() {
         let fading = hiding
         hiding = nil  // cancels a hide that is still fading
-        let wasHidden = NSApp.isHidden
+        let wasHidden = NSApp.isHidden || iconHid
+        iconHid = false
         if wasHidden {
             deviceWindow?.alphaValue = 0
             showing = deviceWindow
@@ -213,6 +235,9 @@ enum DeviceWindow {
                 if window.isMiniaturized { window.deminiaturize(nil) }
                 window.makeKeyAndOrderFront(nil)
                 window.orderFrontRegardless()
+                // Last step: no device window at all. `open` is a WindowGroup `openWindow`, which
+                // always makes a new window, so never while the device window still exists.
+                if !window.isVisible && device == nil { open?() }
             }
         }
     }
