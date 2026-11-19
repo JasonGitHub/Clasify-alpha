@@ -205,12 +205,14 @@ enum DeviceWindow {
             if showing === window { showing = nil }
             guard hiding !== window else { return }  // a click hid it again during the fade
             window.alphaValue = 1
-            // The unhide may end late. If myPod is still not on the screen, do what the person's
-            // second click did in build 321: unhide again, then put the window in front.
-            if wasHidden && (NSApp.isHidden || !window.isVisible || !window.isOnActiveSpace) {
+            // The unhide may end late, and AppKit's window state may not tell. After every show
+            // from hidden, do what the person's second click did in build 321 (the calls of
+            // `raise()`): unhide again if needed, then put the device window in front.
+            if wasHidden {
                 if NSApp.isHidden { NSApp.unhideWithoutActivation() }
                 if window.isMiniaturized { window.deminiaturize(nil) }
-                window.orderFrontRegardless()  // the device itself, also if `raise()` would pick none
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
             }
         }
     }
