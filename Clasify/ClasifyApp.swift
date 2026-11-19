@@ -328,6 +328,8 @@ final class AppModel {
     @ObservationIgnored private var keeper: SessionKeeper?
     /// Sends the Mac's battery to the store, for the title bar.
     @ObservationIgnored private var battery: BatteryWatcher?
+    /// CLA-97: the beta events to PostHog.
+    @ObservationIgnored private var sender: BetaSender?
     /// Card AN.1 (CLA-43): the menu bar icon that shows and hides myPod.
     @ObservationIgnored private var menuBarIcon: MenuBarIcon?
 
@@ -344,6 +346,12 @@ final class AppModel {
         let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
         let activator = ServerActivator()
         let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(), activator: activator)
+        // CLA-97: the beta events go to the sender, before the first action. The person is the
+        // account ID from the activation answer, in memory only.
+        let sender = BetaSender(person: { [weak store] in store?.state.activation.account })
+        store.onBetaEvent = { [weak sender] event in sender?.take(event) }
+        store.send(.analyticsOn(sender.on))
+        sender.start()
         // CLA-140: every launch asks the server, also with no device ID yet, so a Mac that was
         // turned off locks again. CLA-156: always, in every build (no switch).
         store.checkActivationAtLaunch()
@@ -365,6 +373,7 @@ final class AppModel {
         player.send = { [weak store] action in store?.send(action) }
         appleMusic.send = { [weak store] action in store?.send(action) }
         self.store = store
+        self.sender = sender
         let haptics = Haptics(store: store)
         store.onWheelStep = { [weak haptics] in haptics?.step() }
         // Card BB: "Get Spotify App" opens Spotify's download page in the browser.
@@ -410,7 +419,15 @@ final class AppModel {
         // is the service. Pick Your Music puts Spotify on top only when it is found (CLA-103).
         store.send(.spotifyAppFound(Self.spotifyAppInstalled))
         store.send(.betaBuild(BetaSignature.read()))  // card BI v2: before the login, so an ended beta shows only its end
+        if let ms = BetaSender.msSinceProcessStart() { store.send(.appStarted(ms: ms)) }  // CLA-97: the window shows now
         store.send(.launch)  // restores the stored login
+        // CLA-97: a normal quit saves the exact day count and ends open 3D views.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak store] _ in
+            // The queue is .main, so this runs on the main actor.
+            MainActor.assumeIsolated { store?.send(.willQuit) }
+        }
         // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
