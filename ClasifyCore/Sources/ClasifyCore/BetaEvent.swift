@@ -80,11 +80,15 @@ struct BeforeEvents {
     var screen: Screen, setupDone: Bool, activateStep: ActivateStep
     /// The service row that a press on Pick Your Music picks in setup, and that screen's top row.
     var pick: MusicService?, top: MusicService
+    /// The action is the engine's report of a position past 0 for the playing load: a
+    /// confirmed play, not a scrub or the optimistic Play.
+    var played = false
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
         top = s.appleMusicFirst ? .appleMusic : .spotify
         pick = nil
+        if case .position(let t, let gen) = action, t > 0, gen == s.playGen { played = true }
         guard action == .select && !s.setupDone && screen == .pickMusic else { return }
         let rows = s.rows(for: s.top)
         if rows.indices.contains(s.top.sel), case .pickService(let service) = rows[s.top.sel] { pick = service }
@@ -112,7 +116,7 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, now: Double) -> [Effect]
             events.append(.setupError(error, service: s.service))
         }
     }
-    if !s.firstSongSent, s.firstLaunchAt != nil, s.isPlaying, s.current != nil, s.t > 0 {
+    if !s.firstSongSent, s.firstLaunchAt != nil, b.played, s.isPlaying, s.current != nil {
         s.firstSongSent = true
         events.append(.firstSong(seconds: seconds, service: s.service))
     }

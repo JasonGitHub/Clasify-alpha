@@ -95,6 +95,9 @@ import Testing
         s.firstLaunchAt = 40
         s.current = TrackRef(playlist: Playlist.likedSongsID, track: "l0"); s.isPlaying = true
         #expect(events(&s, .tick, now: 90).isEmpty)  // not yet heard
+        s.t = 30  // a scrub sets the place, but the engine has not played yet
+        #expect(events(&s, .tick, now: 95).isEmpty && !s.firstSongSent)
+        #expect(events(&s, .position(1, generation: s.playGen + 1), now: 96).isEmpty)  // another load
         #expect(events(&s, .position(1, generation: s.playGen), now: 100) == [.firstSong(seconds: 60, service: .spotify)])
         #expect(s.firstSongSent && s.settings.firstSongSent)
         #expect(events(&s, .position(2, generation: s.playGen), now: 101).isEmpty)
