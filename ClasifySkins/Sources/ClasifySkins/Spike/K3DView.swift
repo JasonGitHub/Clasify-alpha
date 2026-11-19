@@ -182,7 +182,7 @@ public struct K3DFlipView<Content: View>: View {
                 // Never 0, as for `body3D`'s own opacity: a hidden Metal view does not draw.
                 body3D(
                     angle: pose.angle, lift: pose.lift, tilt: tilt, ex: ex, scale: look.scale, black: black, shown: shown,
-                    trail: K3DShadow.trail(flip, at: date))
+                    visible: flip.bodyShows(shown: shown), trail: K3DShadow.trail(flip, at: date))
                     .opacity(max(look.opacity, 0.001))
             }
         }
@@ -201,7 +201,8 @@ public struct K3DFlipView<Content: View>: View {
 
     /// The 3D body and its shadow, under the 2D device that shows with opacity `shown`.
     private func body3D(
-        angle: Double, lift: Double, tilt: Double, ex: Double, scale: Double, black: Bool, shown: Double, trail: [K3DShadow.Trail]
+        angle: Double, lift: Double, tilt: Double, ex: Double, scale: Double, black: Bool, shown: Double, visible: Bool,
+        trail: [K3DShadow.Trail]
     ) -> some View {
         let shows = shown < 1
         let size = PocketSkin.size
@@ -224,7 +225,10 @@ public struct K3DFlipView<Content: View>: View {
                 // or through its shadow. 0.001, not 0: it rounds to nothing on screen, but the
                 // view still draws and presents, so its first frame (and `ready`) comes. At 0,
                 // SwiftUI may hide the view, and a hidden view does not draw.
-                .opacity(shows ? 1 : 0.001)
+                // CLA-138: during a Cmd turn's settle it is at 1 already, under the opaque 2D
+                // device (`K3DFlip.bodyShows`), so its layer and a frame at the new size are on
+                // screen before the 2D device goes. The shadow still follows `shows`.
+                .opacity(visible ? 1 : 0.001)
         }
         // No fade or other animation when the shadow comes and goes: the timeline drives it.
         .transaction { $0.animation = nil }
