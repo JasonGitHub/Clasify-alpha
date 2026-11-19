@@ -317,6 +317,17 @@ struct K3DPartsTests {
         #expect(!renderer.hasShadowMap, "closing frees the map")
     }
 
+    /// CLA-155 (K.3D.13): the prints and the back's etch say Cappy; lines with the copyright sign
+    /// keep CappyAI. The PNGs are the frozen K.3D.13 reference poses: the back, and three apart.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theK3D13PrintsSayCappy() throws {
+        let back = try frame(K3DPose(angle: 180), "k3d13-back-180-0")
+        #expect(width(back, row: 300) > 300)
+        for (i, (angle, tilt)) in [(300.0, 25.0), (200.0, 25.0), (345.0, 35.0)].enumerated() {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d13-apart-ref-\(i)")
+            #expect(width(bytes, row: 300) > 100)
+        }
+    }
+
     /// Apart, the plate comes 68 pt toward the eye, so the device is wider on screen. The PNGs
     /// show the open pose of PR C (305°, tilt 20°) for the design check.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func apartThePlateComesForward() throws {
