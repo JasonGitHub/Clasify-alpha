@@ -43,6 +43,14 @@ func afterSetup() -> AppState {
     return s
 }
 
+/// CLA-156: a new state on a Mac that activated before (the gate is always on), for tests of
+/// the first setup that are not about Activate.
+func activatedMac() -> AppState {
+    var s = AppState()
+    s.activated = true
+    return s
+}
+
 /// Signed in on the main menu. Nothing of the library is read yet. A press on "You’re in"
 /// goes on at once.
 func mainMenu() -> AppState {

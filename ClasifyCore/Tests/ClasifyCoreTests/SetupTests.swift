@@ -6,7 +6,7 @@ import Testing
 @Suite struct SetupTests {
     /// The first launch, on the color pick, after the restore found no stored login.
     func onColor() -> AppState {
-        var s = AppState()
+        var s = activatedMac()
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)  // the app is found
         return s
     }
@@ -99,7 +99,7 @@ import Testing
     }
 
     @Test func aFirstLaunchShowsHelloThenTheColorPick() {
-        var s = AppState()
+        var s = activatedMac()
         #expect(send(&s, .launch) == [.restoreSession(token: 1)])
         #expect(s.stack == [Frame(screen: .hello)] && s.restoring && s.navSeq == 0)  // the first screen does not slide in
         #expect(s.helloAt == 100)  // the skin times the hello from here
@@ -277,13 +277,13 @@ import Testing
     }
 
     @Test func aStoredLoginSkipsTheLoginStep() {
-        var s = AppState()
+        var s = activatedMac()
         send(&s, .launch, .restored(token: 1, ok: true))
         #expect(s.stack == [Frame(screen: .hello)] && s.signedIn)  // Hello stays until the press
         send(&s, .select, .select)
         #expect(s.top.screen == .yourMusic)
         // The restore ends while the login screen waits for it: setup goes on.
-        s = AppState()
+        s = activatedMac()
         send(&s, .spotifyAppFound(true), .launch, .select, .select, .select)
         #expect(s.top.screen == .login && s.restoring && s.rows(for: s.top).isEmpty)
         send(&s, .restored(token: 1, ok: true))
@@ -390,7 +390,7 @@ import Testing
 
 @MainActor @Test func storeSavesTheEndOfSetup() async {
     let saved = FakeSettings()
-    saved.values = ["arrive.done": "true"]  // the device has arrived (change 288)
+    saved.values = ["arrive.done": "true", "activate.done": "true"]  // the device has arrived (change 288); activated (CLA-156)
     // A real clock from 100 s: "Getting your music" holds until the playlist names have shown (CLA-74).
     let start = ContinuousClock.now
     let clock = Dependencies(now: {
@@ -415,7 +415,7 @@ import Testing
 
 /// Change 188: the library's progress reports reach the store.
 @MainActor @Test func storePassesTheReadProgressOn() {
-    var s = AppState()
+    var s = activatedMac()
     send(&s, .launch, .restored(token: 1, ok: true), .select, .select)  // "Getting your music"
     let lib = FakeLibrary()
     let store = Store(player: FakePlayer(), library: lib, state: s, env: Dependencies(now: { 100 }, random: { _ in 0 }))

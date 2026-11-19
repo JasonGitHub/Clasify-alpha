@@ -21,7 +21,7 @@ import Testing
     }
 
     @Test func setupSendsEachStepOnceWithTheSecondsSinceTheFirstLaunch() {
-        var s = AppState()
+        var s = activatedMac()
         #expect(events(&s, .spotifyAppFound(true), .launch, now: 100) == [.setupStep(.hello, seconds: 0, service: .spotify)])
         #expect(s.firstLaunchAt == 100 && s.settings.firstLaunchAt == 100)
         #expect(events(&s, .restored(token: 1, ok: false), .select, now: 110) == [.setupStep(.color, seconds: 10, service: .spotify)])

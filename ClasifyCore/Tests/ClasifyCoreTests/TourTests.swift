@@ -6,7 +6,7 @@ import Testing
 @Suite struct TourTests {
     /// "You’re all set" at the end of a first setup, with Liked Songs read, at 110 s.
     func allSet(_ songs: [Track] = liked.tracks) -> AppState {
-        var s = AppState()
+        var s = activatedMac()
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select)  // the color pick
         send(&s, .select, .select, .select, .authDone(token: 2, ok: true))
         send(&s, .tick, now: 101.5)
