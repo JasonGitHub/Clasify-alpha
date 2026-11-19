@@ -458,11 +458,11 @@ final class SpotifyConnectPlayer: Player {
         }
         let onStale: StaleHandler = { [weak self] in
             log.notice("Connect call timed out; logging in again")
-            if let self, id == self.loadID, self.ours { self.sessionLost(.timeout) }  // CLA-97: not an old load's command
+            if let self, !evenAfterStop, id == self.loadID, self.ours { self.sessionLost(.timeout) }  // CLA-97: not an old load's command
             if afterTimeout { Task { await again(true) } } else { Task { _ = await self?.relogin(true) } }
         }
         guard call(device, onStale) == LSB_ERR_NOT_LOGGED_IN else { return }
-        sessionLost(.sessionDrop)  // CLA-97
+        if !evenAfterStop { sessionLost(.sessionDrop) }  // CLA-97: a stop's Pause is no loss
         Task { await again(false) }
     }
 
