@@ -8,7 +8,7 @@ import Testing
 
 /// CLA-105: Take apart's parts in the mesh, checked against the mock's own geometry code
 /// (`k3d_src3.js` from design-review/beta-page/v3/k3d8, lines 11 to 226; CLA-129: about/k3d11/tools,
-/// all of the `D11` path) run in Node. The mesh
+/// all of the `D11` path; CLA-150: about/k3d12-frozen, the `D12` path) run in Node. The mesh
 /// puts the parts after the closed device, so the order differs from the mock's; the counts and
 /// the sums of the positions do not.
 struct K3DPartsTests {
@@ -17,23 +17,23 @@ struct K3DPartsTests {
     func value(_ i: Int, _ k: Int) -> Double { Double(mesh.vertices[i * K3DMesh.stride + k]) }
 
     @Test func theCountsMatchTheMock() {
-        #expect(mesh.vertexCount == 41974)
-        #expect(mesh.indices.count == 149430)
+        #expect(mesh.vertexCount == 45798)
+        #expect(mesh.indices.count == 167916)
         #expect(mesh.indices.count % 3 == 0)
     }
 
     /// Each part: its vertex count and the sums of its x, y and z (Node, to 3 places).
     @Test func eachPartMatchesTheMock() {
         let want: [Int: (n: Int, x: Double, y: Double, z: Double)] = [
-            0: (7129, 22680.000, 285412.000, -53530.927),
+            0: (7539, 69830.000, 394882.000, -63063.427),
             1: (8446, -0.000, 62303.000, 247089.541),
             2: (1766, -0.000, 284767.500, 57925.100),
             3: (1576, -82716.000, -195696.000, 47231.580),
             4: (1664, -520.000, 264071.000, 41878.820),
             5: (770, -0.000, -97790.000, 23139.150),
             6: (1766, -478.000, -51364.180, 38125.380),
-            7: (5058, -3942.632, -307736.341, 55804.800),
-            8: (192, 1464.000, -5784.000, 3494.400),
+            7: (7846, -3942.632, -537288.341, 58592.800),
+            8: (818, 5036.000, -22050.000, 14887.600),
             9: (13607, -228004.000, -2167861.600, 255451.110),
         ]
         var got: [Int: (n: Int, x: Double, y: Double, z: Double)] = [:]
@@ -239,6 +239,20 @@ struct K3DPartsTests {
         }
         for (angle, tilt) in [(345.0, 35.0), (150.0, 25.0)] {
             _ = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-print-\(Int(angle))-\(Int(tilt))")
+        }
+    }
+
+    /// CLA-150 PR 2 (K.3D.12 item 2): round corners on the foam pad (with its fillets), the
+    /// thinner drive bumpers, the steel jack can and the black tape. The PNGs are the frozen
+    /// reference poses and close views of the pad, the bumpers and the jack corner.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theK3D12CornersAreRound() throws {
+        #expect(K3DShader.source.contains("float2 tq3 = abs(tq2) - float2(33.0, 27.0);"))
+        for (i, (angle, tilt)) in [(300.0, 25.0), (200.0, 25.0), (0.0, 0.0)].enumerated() {
+            let bytes = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-corners-ref-\(i)")
+            #expect(width(bytes, row: 300) > 100)
+        }
+        for (angle, tilt) in [(330.0, 25.0), (60.0, 25.0), (15.0, 35.0)] {
+            _ = try frame(K3DPose(angle: angle, tilt: tilt, ex: 1), "k3d12-corners-\(Int(angle))-\(Int(tilt))")
         }
     }
 

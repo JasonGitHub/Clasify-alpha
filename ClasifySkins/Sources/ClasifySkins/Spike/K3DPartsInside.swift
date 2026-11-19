@@ -145,14 +145,15 @@ extension K3DMesh {
         slab(Self.rr(0, -80, 156, 208, 9, 12), 0, -80, -12, 14, 12, 40)
         for sx in [-1.0, 1] {
             func X(_ a: Double, _ b: Double) -> (Double, Double) { sx > 0 ? (a, b) : (-b, -a) }
-            for (y0, y1) in [(-288.0, -172.0), (-160, -44), (-32, 128)] {
-                let x = X(152, 168)
-                bx6(x.0, x.1, y0, y1, -14.5, 16.5, 36)
+            // K.3D.12 (CLA-150): thin bumpers, flush with the drive (16 to 9 pt wide), as slabs with
+            // 3.5 pt round corners, and no inner rail.
+            func bumper(_ x: (Double, Double), _ y0: Double, _ y1: Double) {
+                let cx = (x.0 + x.1) / 2, cy = (y0 + y1) / 2
+                slab(Self.rr(cx, cy, (x.1 - x.0) / 2, (y1 - y0) / 2, 3.5, 4), cx, cy, -12.5, 14.5, 36)
             }
-            let r = X(155, 162), top = X(126, 168)
-            bx6(r.0, r.1, -288, 128, -11, 13, 36)
-            bx6(top.0, top.1, 124, 133, -14.5, 16.5, 36)
-            bx6(top.0, top.1, -293, -284, -14.5, 16.5, 36)
+            for (y0, y1) in [(-288.0, -172.0), (-160, -44), (-32, 128)] { bumper(X(152, 161), y0, y1) }
+            bumper(X(126, 161), 124, 131)
+            bumper(X(126, 161), -291, -284)
         }
         bx6(-128, 128, 101, 128, -12.7, -12, 14)  // the connector, on the label side
         bx6(-70, 70, 106, 125, -15.2, -12.7, 20)
@@ -163,12 +164,54 @@ extension K3DMesh {
 
         // K.3D.11 (CLA-129): a step cut-out over the label's model, S/N and barcode lines, a wide
         // lower part and a narrow upper part on the right, and a cut top corner.
+        // K.3D.12 (CLA-150): die-cut foam with round corners, outside (8 pt), on the notch tops
+        // and the step (6 pt), and 7 round fillets (6 pt) in the inside corners of the cut-out.
         part = 8
-        let pads: [(Double, Double, Double, Double)] = [
-            (-140, -72, 86, 110), (75, 140, 86, 110), (-140, 140, 0, 86), (-140, 18, -60, 0), (88, 140, -60, 0),
-            (-140, -75, -150, -60), (88, 140, -150, -60), (-140, 140, -270, -150),
+        let pads: [(Double, Double, Double, Double, [Double])] = [
+            (-140, -72, 86, 110, [6, 8, 0, 0]), (75, 140, 86, 110, [8, 6, 0, 0]), (-140, 140, 0, 86, [0, 0, 0, 0]),
+            (-140, 18, -60, 0, [0, 0, 0, 6]), (88, 140, -60, 0, [0, 0, 0, 0]), (-140, -75, -150, -60, [0, 0, 0, 0]),
+            (88, 140, -150, -60, [0, 0, 0, 0]), (-140, 140, -270, -150, [0, 0, 8, 8]),
         ]
-        for (x0, x1, y0, y1) in pads { bx6(x0, x1, y0, y1, 15.8, 20.6, 37) }
+        for (x0, x1, y0, y1, r) in pads { slab(Self.cornerRect(x0, x1, y0, y1, r), (x0 + x1) / 2, (y0 + y1) / 2, 15.8, 20.6, 37) }
+        for (cx, cy, dx, dy) in [(-72.0, 86.0, 1.0, 1.0), (75, 86, -1, 1), (18, 0, 1, -1), (88, 0, -1, -1), (-75, -60, 1, -1), (-75, -150, 1, 1), (88, -150, -1, 1)] {
+            slab(Self.fillet(cx, cy, dx, dy, 6), cx, cy, 15.8, 20.6, 37)
+        }
+    }
+
+    /// K.3D.12 (the mock's `rrc`): a rectangle with its own radius at each corner, top right
+    /// first, counterclockwise. A corner with radius 0 gets two points, one for each side.
+    static func cornerRect(_ x0: Double, _ x1: Double, _ y0: Double, _ y1: Double, _ radii: [Double]) -> [SIMD4<Double>] {
+        var o: [SIMD4<Double>] = []
+        for (k, (px, py, a0)) in [(x1, y1, 0.0), (x0, y1, 90.0), (x0, y0, 180.0), (x1, y0, 270.0)].enumerated() {
+            let r = radii[k], h = (a0 + 45) * .pi / 180, n = r > 0 ? 8 : 1
+            let kx = px - (cos(h) < 0 ? -1 : 1) * r, ky = py - (sin(h) < 0 ? -1 : 1) * r
+            for i in 0...n {
+                let t = (a0 + 90 * Double(i) / Double(n)) * .pi / 180
+                o.append(SIMD4(kx + r * cos(t), ky + r * sin(t), cos(t), sin(t)))
+            }
+        }
+        return o
+    }
+
+    /// K.3D.12 (the mock's `fil`): the round fillet of radius `r` that fills the inside corner at
+    /// (cx, cy), whose two pads lie toward (dx, 0) and (0, dy). Wound counterclockwise.
+    static func fillet(_ cx: Double, _ cy: Double, _ dx: Double, _ dy: Double, _ r: Double) -> [SIMD4<Double>] {
+        let kx = cx + dx * r, ky = cy + dy * r, a1 = atan2(0, -dx), a2 = atan2(-dy, 0)
+        var da = a2 - a1
+        while da > .pi { da -= 2 * .pi }
+        while da < -.pi { da += 2 * .pi }
+        var o: [SIMD4<Double>] = [SIMD4(cx, cy, -dx * 0.7, -dy * 0.7), SIMD4(cx, cy + dy * r, -dx, 0)]
+        for i in 0...8 {
+            let t = a1 + da * Double(i) / 8
+            o.append(SIMD4(kx + r * cos(t), ky + r * sin(t), -cos(t), -sin(t)))
+        }
+        o.append(SIMD4(cx + dx * r, cy, 0, -dy))
+        var area = 0.0
+        for i in o.indices {
+            let p = o[i], q = o[(i + 1) % o.count]
+            area += p.x * q.y - q.x * p.y
+        }
+        return area < 0 ? Array(o.reversed()) : o
     }
 
     /// 0 inside the shell (K.3D.11, CLA-129, Jason's 4 shell photos): the battery in blue shrink
@@ -189,7 +232,7 @@ extension K3DMesh {
         for i in 0..<7 { bx(97, 99.6, 188 + Double(i) * 4, 190.4 + Double(i) * 4, z0 + 2.7, z0 + 3.3, 15) }
         bx6(104, 126, 189, 210, z0 + 2.7, z0 + 6.5, 44)
         bx6(100, 130, 218, 244, z0 + 1.5, z0 + 16, 45)
-        bx6(92, 138, 244, 290, z0 + 1.5, z0 + 18, 12)
+        slab(Self.rr(115, 267, 23, 23, 4.5, 2), 115, 267, z0 + 1.5, z0 + 18, 12)  // K.3D.12: the steel can with 4.5 pt round corners
         cylinder(x0: -156, x1: 96, yc: 288, zc: z0 + 9, r: 7, material: 12)  // the rolled bead along the top wall
         // The hold switch: a dark steel bracket, its small flex strip and the slider on top.
         bx6(-160, -40, 274, 296, z0 + 8, z0 + 17, 44)
