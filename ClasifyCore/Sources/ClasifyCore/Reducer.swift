@@ -430,9 +430,16 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// it is missing, else the first library read, else the main menu. Apple Music does not need it.
     func setupNext() {
         if s.spotifyApp == false && s.service == .spotify { s.stack = [Frame(screen: .spotifyApp)]; return }
-        guard !s.setupDone else { s.stack = [Frame(screen: .main)]; return }
-        // CLA-128: Activate comes before Your Music, while the switch is on.
-        if s.activateOn && s.activation != .active { s.stack = [Frame(screen: .activate)]; return }
+        // CLA-128: Activate comes before Your Music, while the switch is on. CLA-140: also after
+        // setup (a login after a lock), and by the remembered flag, so a "no connection" answer
+        // does not hold an activated Mac.
+        if s.activateGated { s.stack = [Frame(screen: .activate)]; return }
+        guard !s.setupDone else {
+            s.stack = [Frame(screen: .main)]
+            // CLA-140: a launch that showed Activate first restores the stored login only now.
+            if !s.signedIn && !s.restoring { restore() }
+            return
+        }
         s.tok += 1
         s.stack = [Frame(screen: .yourMusic, loading: true, token: s.tok)]
         fetch(.yourMusic)
@@ -443,6 +450,22 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.namesAt = 0
             fx.append(.refreshPlaylists)
         }
+    }
+    func restore() {
+        s.authAttempt += 1; s.restoring = true
+        fx.append(.restoreSession(token: s.authAttempt))
+    }
+    /// CLA-140: the launch check found that a remembered Mac is no longer active (turned off,
+    /// moved out by a newer Mac, or a new mail flow). Playback stops and only Activate shows.
+    func lockToActivate(_ answer: Activation) {
+        stop()
+        // A restore still on its way is stale: its result must not replace Activate (Codex on
+        // #325). After 323, setupNext() starts a new one.
+        if s.restoring { s.restoring = false; s.authAttempt += 1 }
+        if s.hint != nil { endHint(done: false) }
+        s.beatUntil = 0; s.toast = ""; s.toastUntil = 0
+        s.stack = [Frame(screen: .activate)]
+        if case .waiting = answer { startActivateChecks() }  // 321, with its checks
     }
     /// "Linked" on the Spotify App screen ended (card BB, change 174): back to where it was
     /// opened over, or on with setup.
@@ -942,6 +965,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .adopted(let id, let pl, let playing, let t, let gen):
             guard s.current == nil, gen == s.playGen else { return }  // a load or a newer one came first
+            if s.activateGated && s.stack.first?.screen == .activate { return }  // CLA-140: nothing plays behind Activate
             s.current = TrackRef(playlist: pl ?? "", track: id)  // "" is no playlist of ours
             s.isPlaying = playing; s.t = t
             shiftMainSelection(by: 1)  // the new Now Playing row goes on top: keep the pick
@@ -1090,9 +1114,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // CLA-120: after setup, the app opens on the main menu at once, with no slide, and
             // the stored login is checked behind it. Its failures show their screens as before.
             // With the Spotify app missing, the login screen stays: the restore goes on to it.
+            // CLA-140: a set-up Mac that is not activated sees only Activate. The stored login is
+            // restored after it (setupNext), so nothing reads or plays behind it.
+            if s.setupDone && s.activateGated { s.stack = [Frame(screen: .activate)]; return }
             if s.setupDone && !(s.spotifyApp == false && s.service == .spotify) { s.stack = [Frame(screen: .main)] }
-            s.authAttempt += 1; s.restoring = true
-            fx.append(.restoreSession(token: s.authAttempt))
+            restore()
 
         case .readProgress(let id, let done, let total, let albums):
             guard s.top.screen == .yourMusic, s.top.loading, s.namesHold == 0, id == s.readKey(.yourMusic) else { return }
@@ -1154,7 +1180,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 let login = (s.top.screen == .auth || s.top.screen == .pickMusic) && s.top.token == token
                 guard login || (s.restoring && s.authAttempt == token) else { return }
             } else {
-                guard s.signedIn else { return }
+                guard s.signedIn, !(s.activateGated && s.stack.first?.screen == .activate) else { return }  // CLA-140
             }
             s.restoring = false
             s.authAttempt += 1  // a late result of this login is stale
@@ -1200,6 +1226,14 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             guard request == nil || request == s.activateRequest else { return }  // an older request
             // Card BW: a timer check with no connection waits for the next one; a press shows 327.
             if activation == .offline && request != s.activatePressed { return }
+            // CLA-140: the app remembers "activated". A launch answer that says this remembered
+            // Mac is not active locks it: Activate shows over everything.
+            let lock = request == nil && s.activateOn && s.activated && s.setupDone && s.stack.first?.screen != .activate
+            switch activation {
+            case .active: s.activated = true
+            case .locked, .waiting, .off: s.activated = false
+            case .full, .mailBusy, .offline: break
+            }
             showActivateStep {
                 s.activation = activation
                 switch activation {
@@ -1209,6 +1243,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 }
                 if activation == .active && s.top.screen == .activate { s.activatedAt = now }  // 323, then Your Music
             }
+            if lock && !s.activated { lockToActivate(activation) }
 
         case .checkActivation:
             guard s.top.screen == .activate, s.activateStopAt > 0,

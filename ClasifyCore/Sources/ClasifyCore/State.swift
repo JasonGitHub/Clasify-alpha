@@ -399,6 +399,10 @@ public struct AppState: Equatable, Sendable {
     /// CLA-128: setup has the Activate step. Off by default, until the server is live; saved
     /// with the settings (UserDefaults key `activate.on`), so a test Mac can turn it on.
     public var activateOn = false
+    /// CLA-140: this Mac activated, as the app remembers it (UserDefaults key `activate.done`).
+    /// Set by the answer `.active`, cleared by `.locked`, `.waiting` and `.off`. With the gate on
+    /// and this false, the launch shows Activate before anything else. Log Out keeps it.
+    public var activated = false
     /// CLA-128: this Mac's activation. The app sends the stored one before `.launch`. Not saved here.
     public var activation = Activation.locked
     /// The newest request to the activation server; an older answer is dropped.
@@ -756,6 +760,9 @@ public struct AppState: Equatable, Sendable {
 
     /// Cover Flow's song panel shows the bar inside its bottom edge (change 112).
     public var showsPanelBar: Bool { nowPlayingBar && current != nil }
+
+    /// CLA-140: the gate is on and this Mac is not activated.
+    var activateGated: Bool { activateOn && !activated }
 
     /// The warning (change 233) may open now: on the main screens, signed in, after setup. It
     /// waits while a list loads, because a load ends only on its own frame.
