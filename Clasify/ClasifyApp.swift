@@ -139,6 +139,7 @@ enum DeviceWindow {
         if NSApp.isHidden {
             deviceWindow?.alphaValue = 0
             NSApp.unhide(nil)
+            deviceWindow?.orderFrontRegardless()  // in front even if macOS does not activate myPod
             NSApp.activate()
         } else if fading == nil && isShown {
             return
@@ -173,6 +174,9 @@ enum DeviceWindow {
         guard let window = shown ?? windows.first(where: { $0.canBecomeKey }) ?? windows.first else { return false }
         if window.isMiniaturized { window.deminiaturize(nil) }
         window.makeKeyAndOrderFront(nil)
+        // A menu bar icon click does not make myPod active, and macOS may refuse the request
+        // below. Without this, the window stays behind the other app's windows.
+        window.orderFrontRegardless()
         NSApp.activate()
         return true
     }
