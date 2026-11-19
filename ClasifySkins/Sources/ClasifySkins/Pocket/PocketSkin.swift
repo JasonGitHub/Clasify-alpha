@@ -45,7 +45,7 @@ public struct PocketSkin: View {
         VStack(spacing: 55.8) {
             PocketScreen(state: state, input: input)
             ClickWheel(
-                input: input, color: color, catchesScroll: interactive, movesBar: state.wheelMovesBar,
+                input: input, color: color, catchesScroll: interactive,
                 glowFrom: glowFrom, fingerFrom: fingerFrom, label: labelGlow, pressed: pressed, hovered: hovered)
                 .animation(colorFade, value: color)
         }

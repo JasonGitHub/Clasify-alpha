@@ -742,11 +742,6 @@ public struct AppState: Equatable, Sendable {
         set { stack[stack.count - 1] = newValue }
     }
 
-    /// The wheel moves a bar: Now Playing's volume, time, shuffle and repeat sliders. Then a
-    /// trackpad scroll with the fingers up is +1 (more). Elsewhere the wheel moves a list, and
-    /// fingers down are +1 (the next row), whatever the natural scrolling setting (CLA-48).
-    public var wheelMovesBar: Bool { top.screen == .now }
-
     /// The bar for the playing track, at the bottom of the screen (card AK, change 110): only
     /// with the Now Playing Bar setting on, while a song is loaded, on the main menu, Playlists,
     /// Albums, song lists and Settings. Not on Now Playing or the Cover Flow covers. The song
