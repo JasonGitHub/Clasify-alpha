@@ -34,7 +34,8 @@ import Testing
         #expect(under.count >= 2, "\(under.count) frames of overlap")
         #expect(frames[gone - 1].visible)  // the frame just before the 2D device goes
         #expect(frames[gone].angle > K3DShader.restAngle)  // the jump that needs the overlap
-        #expect(frames[gone...].allSatisfy(\.visible))
+        let hidden = frames[gone...].filter { !$0.visible }.count
+        #expect(hidden == 0)  // the 3D body stays on screen while the device is turned
     }
 
     /// At rest on the front, and on every timed path, the Metal view is visible only when the
