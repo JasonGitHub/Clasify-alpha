@@ -120,7 +120,7 @@ import Testing
 
     @Test func aSetUpMacThatMustActivateSendsTheStepWithNoSeconds() {
         var s = afterSetup()
-        s.activateOn = true
+        s.activated = false  // CLA-156: the gate is always on
         #expect(events(&s, .launch, now: 100) == [.setupStep(.activate, seconds: nil, service: .spotify)])
         #expect(BetaEvent.setupStep(.activate, seconds: nil, service: .spotify).properties == ["step": .text("activate"), "service": .text("spotify")])
     }
