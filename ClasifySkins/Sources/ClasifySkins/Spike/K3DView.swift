@@ -379,18 +379,22 @@ final class K3DLayerView: MTKView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        drawNow()
+        guard let renderer = K3DRenderer.shared else { return }
+        if renderer.draw(in: self) { (drewOnce, drewLast) = (true, true) }
+        preparePrintsIfNeeded(renderer)
     }
 
-    /// Draws and presents one frame now, in the current transaction. Returns false when it drew
-    /// nothing. It changes no SwiftUI state: the first frame's call and the prints' redraw come
-    /// later, from their own tasks.
-    @discardableResult func drawNow() -> Bool {
-        guard let renderer = K3DRenderer.shared else { return false }
-        let drew = renderer.draw(in: self)
-        if drew { drewOnce = true }
-        preparePrintsIfNeeded(renderer)
-        return drew
+    /// The last `draw(_:)` drew a frame.
+    private var drewLast = false
+
+    /// Draws and presents one frame now, in the current transaction, through MTKView's own
+    /// `draw()`: it gives the frame a new drawable and lets go of it after the draw, as in a
+    /// display pass. Returns false when it drew nothing. It changes no SwiftUI state: the first
+    /// frame's call and the prints' redraw come later, from their own tasks.
+    func drawNow() -> Bool {
+        drewLast = false
+        draw()
+        return drewLast
     }
 
     private func preparePrintsIfNeeded(_ renderer: K3DRenderer) {
