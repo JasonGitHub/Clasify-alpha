@@ -487,6 +487,13 @@ public struct AppState: Equatable, Sendable {
         return activateStopAt > 0 && (now >= activateStopAt || (now >= activateCheckAt && !activateAsking(at: now)))
     }
 
+    /// CLA-153: the browser shows the activate page, so myPod does not pull itself in front:
+    /// the login took the tab on to it (hand-over), or 320 and 321 wait for the mail link.
+    /// The confirmation (323) brings myPod back.
+    public var browserLeads: Bool {
+        activateHandOver || (top.screen == .activate && (activateStep == .browserOpen || activateStep == .checkMail))
+    }
+
     /// CLA-146: a request to the server is on its way and is not yet `activateStuckAfter` old.
     public func activateAsking(at now: Double) -> Bool {
         activateAsked > 0 && now < activateAskedAt + activateStuckAfter

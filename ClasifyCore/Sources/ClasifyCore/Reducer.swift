@@ -243,8 +243,10 @@ let showsWindow: [Screen] = [.betaSoon, .betaEnded, .betaNew, .activate]
 public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -> [Effect] {
     let top = s.top.screen
     var fx = reduceAction(&s, action, env)
-    // 348: a beta notice or Activate that opens shows a hidden myPod.
-    if s.top.screen != top && showsWindow.contains(s.top.screen) && !fx.contains(.showWindow) { fx.append(.showWindow) }
+    // 348: a beta notice or Activate that opens shows a hidden myPod. CLA-153: not Activate
+    // after the login hand-over (320), because the browser shows the activate page.
+    if s.top.screen != top && showsWindow.contains(s.top.screen) && !fx.contains(.showWindow)
+        && !(s.top.screen == .activate && s.browserLeads) { fx.append(.showWindow) }
     return fx
 }
 
@@ -1293,7 +1295,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 case .locked: break  // no mail yet: 320 stays
                 case .active, .full, .off, .mailBusy, .offline: s.activateOpenMail = nil; s.activateStopAt = 0
                 }
-                if activation.isActive && s.top.screen == .activate { s.activatedAt = now }  // 323, then Your Music
+                if activation.isActive && s.top.screen == .activate {  // 323, then Your Music
+                    s.activatedAt = now
+                    if !fx.contains(.showWindow) { fx.append(.showWindow) }  // CLA-153: myPod comes back from the browser
+                }
             }
             if lock && !s.activated { lockToActivate(activation) }
 

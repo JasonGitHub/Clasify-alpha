@@ -20,6 +20,9 @@ final class SpotifyConnectPlayer: Player {
 
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in }
+    /// CLA-153: false while the browser shows the activate page; then the safety net below
+    /// still hides Spotify but does not bring myPod in front of the browser.
+    var mayRaise: () -> Bool = { true }
     /// Logs in again after the session dropped. Returns true when the session works again.
     /// `force` logs in also while the session looks alive: a Connect call timed out (CLA-88).
     var reconnect: @MainActor (_ force: Bool) async -> Bool = { _ in false }
@@ -711,8 +714,10 @@ final class SpotifyConnectPlayer: Player {
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: Self.bundleID).first,
            app.isActive || !app.isHidden {
             app.hide()
-            NSApp.activate()
-            DeviceWindow.raise()  // so the device window does not stay behind (CLA-47)
+            if mayRaise() {
+                NSApp.activate()
+                DeviceWindow.raise()  // so the device window does not stay behind (CLA-47)
+            }
             log.notice("Spotify was visible after launch; hid it")
         }
     }
