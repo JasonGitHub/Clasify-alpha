@@ -343,23 +343,31 @@ final class K3DLayerView: MTKView {
     /// CLA-138 (build 330: a second, flat device front 190 pt right and 124 pt down for one frame
     /// as the first Cmd turn started): the window's room changes the margins, and SwiftUI calls
     /// `updateNSView` with the new `deviceCenter` before it gives this view its new size. A frame
-    /// drawn then put the body at the new center in the old-size view. So a frame is drawn only
-    /// when the view has the size `deviceCenter` is for. From a change of that size until such a
-    /// frame is drawn, the layer is hidden, so the old frame does not show in the new size either
-    /// (`contentsGravity` `.center` would move it by (bottom − top) / 2). The 2D device is opaque
-    /// over the body then: in a Cmd turn's settle, at rest, and as the room goes at the end.
+    /// drawn then put the body at the new center in the old-size view. So until the view has the
+    /// size `deviceCenter` is for, it draws a clear frame: no body, and not the old frame either
+    /// (`contentsGravity` `.center` would show it moved by (bottom − top) / 2). The 2D device is
+    /// opaque over the body then: in a Cmd turn's settle, at rest, and as the room goes at the
+    /// end. The frame is cleared in the view's own drawable, so nothing fights SwiftUI's opacity.
+    /// If the size never fits within `sizeWait`, the body is drawn at the real size anyway.
     var expectedSize = CGSize.zero {
-        didSet { if expectedSize != oldValue, !sizeFits { setShown(false) } }
+        didSet { if expectedSize != oldValue { sizeChanged = .now } }
     }
-    /// The view has the size `deviceCenter` is for.
-    var sizeFits: Bool { Self.fits(bounds.size, expectedSize) }
-    /// The layer shows: false from a change of `expectedSize` until a frame of that size is drawn.
-    var shows: Bool { layer?.opacity != 0 }
-    /// A size SwiftUI gave fits the expected one. SwiftUI rounds frames to whole pixels, so up to
-    /// 1.5 pt off still fits; the room changes the size by 100 pt or more.
-    nonisolated static func fits(_ size: CGSize, _ expected: CGSize) -> Bool {
-        abs(size.width - expected.width) < 1.5 && abs(size.height - expected.height) < 1.5
+    /// When `expectedSize` last changed.
+    private(set) var sizeChanged = Date.distantPast
+    /// CLA-138: the longest wait for the expected size; then the body is drawn in the real one.
+    nonisolated static let sizeWait = 0.1
+    /// The body's center for a frame of the view's real size `bounds`, or nil for a clear frame.
+    /// A size within 1.5 pt of `expected` fits (SwiftUI rounds frames to whole pixels; the room
+    /// changes the size by 100 pt or more). A size that still does not fit after `sizeWait`
+    /// seconds gets the body anyway, its center kept inside `bounds`.
+    nonisolated static func bodyCenter(_ center: CGPoint, bounds: CGSize, expected: CGSize, waited: Double) -> CGPoint? {
+        let fits = abs(bounds.width - expected.width) < 1.5 && abs(bounds.height - expected.height) < 1.5
+        if fits { return center }
+        guard waited >= sizeWait else { return nil }
+        return CGPoint(x: min(max(center.x, 0), bounds.width), y: min(max(center.y, 0), bounds.height))
     }
+    /// A redraw at the end of `sizeWait` is set, for a view that does not get its size.
+    private var waitsForSize = false
     /// Called once when the first frame is on screen, then cleared.
     var firstFrame: (@MainActor () -> Void)?
     /// A frame was drawn.
@@ -408,20 +416,28 @@ final class K3DLayerView: MTKView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let renderer = K3DRenderer.shared, sizeFits else { return }  // CLA-138: `setFrameSize` draws it
-        if renderer.draw(in: self) {
-            (drewOnce, drewLast) = (true, true)
-            if !shows { setShown(true) }  // in the same transaction as the frame's present
+        guard let renderer = K3DRenderer.shared else { return }
+        let waited = Date.now.timeIntervalSince(sizeChanged)
+        let center = Self.bodyCenter(deviceCenter, bounds: bounds.size, expected: expectedSize, waited: waited)
+        if center == nil { redrawAfterSizeWait(waited) }
+        if renderer.draw(in: self, center: center) {
+            drewLast = true
+            if center != nil { drewOnce = true }
         }
         preparePrintsIfNeeded(renderer)
     }
 
-    /// CLA-138: shows or hides the layer at once, with no implicit fade.
-    private func setShown(_ on: Bool) {
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        layer?.opacity = on ? 1 : 0
-        CATransaction.commit()
+    /// CLA-138: the safety net. A clear frame waits for `setFrameSize`; if that never comes, this
+    /// draws the body at the end of `sizeWait`, so the device is never empty for a whole turn.
+    private func redrawAfterSizeWait(_ waited: Double) {
+        guard !waitsForSize else { return }
+        waitsForSize = true
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, Self.sizeWait - waited) + 0.005))
+            guard let self else { return }
+            self.waitsForSize = false
+            self.needsDisplay = true
+        }
     }
 
     /// The last `draw(_:)` drew a frame.
@@ -792,14 +808,15 @@ final class K3DLayerView: MTKView {
     }
 
     /// Draws one frame in the view. Returns false when it drew nothing.
-    @discardableResult func draw(in view: K3DLayerView) -> Bool {
+    /// `center`: the body's center in the view, or nil for a clear frame (CLA-138).
+    @discardableResult func draw(in view: K3DLayerView, center: CGPoint?) -> Bool {
         show(screen: view.screen)
         show(old: view.oldScreen)
         guard let drawable = view.currentDrawable, let buffer = queue.makeCommandBuffer(), view.bounds.width > 0,
-              render(buffer, pose: view.pose, size: view.bounds.size, center: view.deviceCenter,
+              render(buffer, pose: view.pose, size: view.bounds.size, center: center,
                      pixelScale: Double(view.drawableSize.width / view.bounds.width), into: drawable.texture)
         else { return false }
-        if view.firstFrame != nil {
+        if view.firstFrame != nil, center != nil {  // CLA-138: a clear frame is not the body's first
             // Before the commit, so the handler cannot miss the presentation.
             drawable.addPresentedHandler(Self.presentedHandler(for: view))
         }
@@ -825,14 +842,15 @@ final class K3DLayerView: MTKView {
     /// point). The scene is drawn at `supersample` times the pixels over the body's rect only,
     /// then filtered 2:1 into the same rect of `out`, on whole pixels. The rest is clear.
     private func render(
-        _ buffer: any MTLCommandBuffer, pose: K3DPose, size: CGSize, center: CGPoint, pixelScale: Double, into out: any MTLTexture
+        _ buffer: any MTLCommandBuffer, pose: K3DPose, size: CGSize, center: CGPoint?, pixelScale: Double, into out: any MTLTexture
     ) -> Bool {
         let down = MTLRenderPassDescriptor()
         down.colorAttachments[0].texture = out
         down.colorAttachments[0].loadAction = .clear
         down.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
         down.colorAttachments[0].storeAction = .store
-        guard let rect = Self.bodyRect(Self.apartRect(ex: pose.ex) ? apartBox : closedBox, pose: pose, size: size, center: center, pixelScale: pixelScale)
+        guard let center,
+              let rect = Self.bodyRect(Self.apartRect(ex: pose.ex) ? apartBox : closedBox, pose: pose, size: size, center: center, pixelScale: pixelScale)
         else {
             buffer.makeRenderCommandEncoder(descriptor: down)?.endEncoding()
             return true
