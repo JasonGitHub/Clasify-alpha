@@ -174,7 +174,12 @@ import Testing
         s.stack.append(Frame(screen: .coverFlow))
         _ = events(&s, .tick, now: at(12))
         _ = events(&s, .used(.aboutFlip), .used(.aboutFlip), now: at(12))
-        #expect(s.today?.features == [.coverFlow, .aboutFlip] && s.today?.hadMusic == false)
+        #expect(s.today?.features == [.coverFlow, .aboutFlip] && s.today?.seconds == 0)
+        // CTO 00:08 JST: a day with features and no music goes out too, with minutes 0.
+        let sent = events(&s, .tick, now: at(12, day: 20))
+        guard case .dayActive(let day, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(day.features == [.coverFlow, .aboutFlip] && day.songs == 0 && day.hadUse)
+        #expect(!DayUse(day: 20261119, weekday: 5).hadUse)
         var set = mainMenu()
         set.stack.append(Frame(screen: .settings))
         _ = events(&set, .tick, now: at(12))
@@ -188,13 +193,80 @@ import Testing
     @Test func theDaySavesAndLoads() {
         var d = DayUse(day: 20261119, weekday: 5)
         d.songs = 3; d.bands = [0, 1.5, 1200.25, 0]; d.features = [.settings, .coverFlow]
-        d.service = .appleMusic
-        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music")
+        d.service = .appleMusic; d.views = [12.5, 0, 3]
+        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music|12.5,0.0,3.0")
         #expect(DayUse(saved: d.saved) == d && DayUse(saved: "20261119|5|x|0,0,0,0||") == nil)
+        // A day saved before the 3D views reads with views 0.
+        #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify")?.views == [0, 0, 0])
+        #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2") == nil)
         let store = FakeSettings()
         var saved = Settings()
         saved.today = d
         saved.save(to: store)
         #expect(Settings(from: store).today == d)
+    }
+
+    /// Jason 23:58 JST: the time of each 3D view, its flag, the 30 min cap and the quit.
+    @Test func the3DViewsCountTheirSecondsAndFlags() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .view3D(.turn, open: true), now: at(10) + 1)
+        #expect(s.today?.features.contains(.turn3D) == true && s.viewOpen[.turn] == at(10) + 1)
+        _ = events(&s, .view3D(.turn, open: true), now: at(10) + 2)  // already open: the first start stays
+        _ = events(&s, .view3D(.turn, open: false), now: at(10) + 4.5)
+        #expect(s.today?.views == [3.5, 0, 0] && s.viewOpen.isEmpty && s.savedToday?.views == [3.5, 0, 0])
+        _ = events(&s, .view3D(.turn, open: false), now: at(10) + 9)  // not open: nothing
+        _ = events(&s, .view3D(.apart, open: true), now: at(11))
+        _ = events(&s, .view3D(.apart, open: false), now: at(12))  // a window left open: 30 min at most
+        _ = events(&s, .view3D(.aboutFlip, open: true), now: at(12) + 5)
+        #expect(s.today?.features.isSuperset(of: [.takeApart, .aboutFlip]) == true)
+        _ = events(&s, .willQuit, now: at(12) + 15)  // a quit closes the open About flip
+        #expect(s.today?.views == [3.5, 1800, 10] && s.viewOpen.isEmpty)
+        let p = BetaEvent.dayActive(s.today!, service: .spotify).properties
+        #expect(p["seconds_3d"] == .decimal(3.5) && p["seconds_apart"] == .decimal(1800) && p["seconds_about_flip"] == .decimal(10))
+        #expect(p["used_turn3D"] == .flag(true))
+    }
+
+    /// A 3D view open over midnight: each part goes to its own day.
+    @Test func a3DViewOverMidnightSplitsAtMidnight() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))  // music, then a pause
+        _ = events(&s, .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let sent = events(&s, .view3D(.apart, open: false), now: at(0, day: 20) + 20)
+        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(old.day == 20261119 && old.views == [0, 10, 0])
+        #expect(s.today?.day == 20261120 && s.today?.views == [0, 20, 0])
+    }
+
+    /// Codex on #352: an action after midnight, while a view is open, sends the day before once,
+    /// with its part of the view; with music the same at the next report.
+    @Test func aViewOpenOverMidnightSendsTheDayBeforeOnceWhole() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))
+        _ = events(&s, .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let sent = events(&s, .tick, now: at(0, day: 20) + 1)
+        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(sent.count == 1 && old.views == [0, 10, 0])
+        #expect(events(&s, .view3D(.apart, open: false), now: at(0, day: 20) + 20).isEmpty)
+        #expect(s.today?.day == 20261120 && s.today?.views == [0, 20, 0])
+        var music = playing()
+        _ = events(&music, .position(1, generation: music.playGen), now: at(23, 59) + 50)
+        _ = events(&music, .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let atReport = events(&music, .position(12, generation: music.playGen), now: at(0, day: 20) + 1)
+        guard case .dayActive(let day, _)? = atReport.first else { Issue.record("no day_active"); return }
+        #expect(atReport.count == 1 && day.views == [0, 10, 0])
+        _ = events(&music, .view3D(.apart, open: false), now: at(0, day: 20) + 20)
+        #expect(music.today?.views == [0, 20, 0])
+    }
+
+    /// Codex on #352: two views open over two midnights: each day gets the part of both.
+    @Test func twoViewsOpenOverTwoMidnightsGiveEachDayItsPart() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))
+        _ = events(&s, .view3D(.turn, open: true), .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let sent = events(&s, .tick, now: at(9, day: 21))
+        let days = sent.compactMap { e -> DayUse? in if case .dayActive(let d, _) = e { d } else { nil } }
+        #expect(days.map(\.day) == [20261119, 20261120])
+        #expect(days.first?.views == [10, 10, 0] && days.last?.views == [1790, 1790, 0])
     }
 }

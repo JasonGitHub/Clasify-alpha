@@ -29,7 +29,7 @@ public enum BetaEvent: Equatable, Sendable {
     case appSpeed(startMs: Int?, libraryMs: Int, loaded: Bool)
     /// The service changed after setup (the Settings Service row).
     case serviceSwitch(from: MusicService, to: MusicService)
-    /// One day with music, sent on the first action of a later day.
+    /// One day with music, a feature or a 3D view, sent on the first action of a later day.
     case dayActive(DayUse, service: MusicService)
 
     /// The event name in PostHog.
@@ -88,6 +88,7 @@ public enum BetaEvent: Equatable, Sendable {
                 "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
             ]
             for f in Feature.allCases { p["used_" + f.rawValue] = .flag(d.features.contains(f)) }
+            for v in View3D.allCases { p[v.property] = .decimal(d.views[v.index]) }
             return p
         }
     }
@@ -271,14 +272,14 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
 /// A day starts with its first count, so an action with nothing to count changes nothing.
 func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
     var fx: [Effect] = []
-    /// Ends the day before `t`'s day: `day_active` for it, if it had music. While music plays
+    /// Ends the day before `t`'s day: `day_active` for it, if it had any use. While music plays
     /// with an open interval, the day ends at the next position report or the pause, which
     /// split the interval at midnight first (Codex on #348): so each day goes out once, whole.
     func roll(_ t: Double, force: Bool = false) -> (day: Int, weekday: Int, band: Int) {
         let at = DayUse.at(t, in: timeZone)
         let open = s.isPlaying && s.dayPlayAt != nil
         if let old = s.today, old.day < at.day, force || !open {
-            if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
+            if old.hadUse { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }
         return at
@@ -295,6 +296,34 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         var d = s.today ?? DayUse(day: at.day, weekday: at.weekday)
         change(&d, at.band)
         s.today = d
+    }
+    /// Counts an open 3D view from where it was counted up to `t`, at most `view3DLimit` from its
+    /// open. Each part goes to its own day, as music does.
+    func settle(_ view: View3D, upTo t: Double) {
+        guard let start = s.viewOpen[view] else { return }
+        var from = s.viewCounted[view] ?? start
+        let stop = min(t, start + view3DLimit), i = view.index
+        while from < stop {
+            let end = min(stop, DayUse.nextBand(after: from, in: timeZone)), part = end - from
+            if let old = s.today, old.day < DayUse.at(from, in: timeZone).day, s.isPlaying && s.dayPlayAt != nil {
+                s.pendingViews[i] += part  // the day before waits for the next report
+            } else {
+                count(at: from) { d, _ in d.views[i] += part }
+            }
+            from = end
+        }
+        s.viewCounted[view] = max(s.viewCounted[view] ?? start, stop)
+    }
+    // Codex on #352: views open over midnight first count their part of each day before, all
+    // views up to one midnight before the next, so each day goes out once, whole.
+    if !s.viewOpen.isEmpty, let today = s.today, today.day < DayUse.at(now, in: timeZone).day {
+        let last = DayUse.startOfDay(now, in: timeZone)
+        let from = s.viewOpen.map { s.viewCounted[$0.key] ?? $0.value }.min() ?? last
+        var midnight = DayUse.startOfDay(from, in: timeZone)
+        repeat {
+            midnight = min(last, DayUse.startOfDay(midnight + 26 * 3600, in: timeZone))  // the next midnight
+            for view in View3D.allCases { settle(view, upTo: midnight) }
+        } while midnight < last
     }
     if b.played, s.isPlaying, let current = s.current {
         if let last = s.dayPlayAt, now > last {
@@ -323,9 +352,23 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
+    // Jason 23:58 JST: the time of each 3D view, from its open to its close, at most
+    // `view3DLimit` (a window left open). A quit closes them all.
+    if case .view3D(let view, open: false) = action {
+        settle(view, upTo: now)
+        (s.viewOpen[view], s.viewCounted[view]) = (nil, nil)
+    }
+    if action == .willQuit {
+        for view in View3D.allCases { settle(view, upTo: now) }
+        (s.viewOpen, s.viewCounted) = ([:], [:])
+    }
     // At a quit no report comes after, so the day that waits ends now.
     _ = roll(now, force: action == .willQuit)
     var used: Set<Feature> = b.used.map { [$0] } ?? []
+    if case .view3D(let view, open: true) = action {
+        if s.viewOpen[view] == nil { s.viewOpen[view] = now }
+        used.insert(view.feature)
+    }
     if s.top.screen == .coverFlow { used.insert(.coverFlow) }
     if b.screen == .settings && s.settings.choices != b.choices { used.insert(.settings) }
     if let old = s.today, old.day < DayUse.at(now, in: timeZone).day {
@@ -336,13 +379,18 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         used.formUnion(s.pendingFeatures)
         s.pendingFeatures = []
         if !used.isSubset(of: s.today?.features ?? []) { count(at: now) { d, _ in d.features.formUnion(used) } }
+        if s.pendingViews.contains(where: { $0 > 0 }) {
+            let views = s.pendingViews
+            s.pendingViews = [0, 0, 0]
+            count(at: now) { d, _ in for i in views.indices { d.views[i] += views[i] } }
+        }
     }
     // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
     // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
     let saved = s.savedToday, today = s.today
     let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
-        || saved?.service != today?.service || minute(saved) != minute(today)
+        || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
     if changed || (b.playing && !s.isPlaying) || action == .willQuit { s.savedToday = today }
     return fx
 }
