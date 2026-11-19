@@ -28,7 +28,9 @@ public struct DayUse: Equatable, Sendable {
 
     /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings": the saved form.
     var saved: String {
-        "\(day)|\(weekday)|\(songs)|\(bands.map(String.init).joined(separator: ","))|\(features.map(\.rawValue).sorted().joined(separator: ","))"
+        let b: [String] = bands.map { String($0) }
+        let f: [String] = features.map(\.rawValue).sorted()
+        return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ",")].joined(separator: "|")
     }
 
     init?(saved: String) {
