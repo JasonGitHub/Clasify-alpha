@@ -88,6 +88,7 @@ public enum BetaEvent: Equatable, Sendable {
                 "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
             ]
             for f in Feature.allCases { p["used_" + f.rawValue] = .flag(d.features.contains(f)) }
+            for v in View3D.allCases { p[v.property] = .decimal(d.views[v.index]) }
             return p
         }
     }
@@ -323,9 +324,34 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
+    // Jason 23:58 JST: the time of each 3D view, from its open to its close, at most
+    // `view3DLimit` (a window left open). A quit closes them all.
+    var closing: [(View3D, Double)] = []
+    if case .view3D(let view, open: false) = action, let start = s.viewOpen.removeValue(forKey: view) { closing.append((view, start)) }
+    if action == .willQuit {
+        closing += s.viewOpen.sorted { $0.key.rawValue < $1.key.rawValue }.map { ($0.key, $0.value) }
+        s.viewOpen = [:]
+    }
+    for (view, start) in closing {
+        var t = start
+        let stop = min(now, start + view3DLimit), i = view.index
+        while t < stop {  // each part goes to its own day, as music does
+            let end = min(stop, DayUse.nextBand(after: t, in: timeZone)), from = t
+            if let old = s.today, old.day < DayUse.at(t, in: timeZone).day, s.isPlaying && s.dayPlayAt != nil {
+                s.pendingViews[i] += end - from  // the day before waits for the next report
+            } else {
+                count(at: t) { d, _ in d.views[i] += end - from }
+            }
+            t = end
+        }
+    }
     // At a quit no report comes after, so the day that waits ends now.
     _ = roll(now, force: action == .willQuit)
     var used: Set<Feature> = b.used.map { [$0] } ?? []
+    if case .view3D(let view, open: true) = action {
+        if s.viewOpen[view] == nil { s.viewOpen[view] = now }
+        used.insert(view.feature)
+    }
     if s.top.screen == .coverFlow { used.insert(.coverFlow) }
     if b.screen == .settings && s.settings.choices != b.choices { used.insert(.settings) }
     if let old = s.today, old.day < DayUse.at(now, in: timeZone).day {
@@ -336,13 +362,18 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         used.formUnion(s.pendingFeatures)
         s.pendingFeatures = []
         if !used.isSubset(of: s.today?.features ?? []) { count(at: now) { d, _ in d.features.formUnion(used) } }
+        if s.pendingViews.contains(where: { $0 > 0 }) {
+            let views = s.pendingViews
+            s.pendingViews = [0, 0, 0]
+            count(at: now) { d, _ in for i in views.indices { d.views[i] += views[i] } }
+        }
     }
     // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
     // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
     let saved = s.savedToday, today = s.today
     let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
-        || saved?.service != today?.service || minute(saved) != minute(today)
+        || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
     if changed || (b.playing && !s.isPlaying) || action == .willQuit { s.savedToday = today }
     return fx
 }

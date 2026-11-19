@@ -188,13 +188,48 @@ import Testing
     @Test func theDaySavesAndLoads() {
         var d = DayUse(day: 20261119, weekday: 5)
         d.songs = 3; d.bands = [0, 1.5, 1200.25, 0]; d.features = [.settings, .coverFlow]
-        d.service = .appleMusic
-        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music")
+        d.service = .appleMusic; d.views = [12.5, 0, 3]
+        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music|12.5,0.0,3.0")
         #expect(DayUse(saved: d.saved) == d && DayUse(saved: "20261119|5|x|0,0,0,0||") == nil)
+        // A day saved before the 3D views reads with views 0.
+        #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify")?.views == [0, 0, 0])
+        #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2") == nil)
         let store = FakeSettings()
         var saved = Settings()
         saved.today = d
         saved.save(to: store)
         #expect(Settings(from: store).today == d)
+    }
+
+    /// Jason 23:58 JST: the time of each 3D view, its flag, the 30 min cap and the quit.
+    @Test func the3DViewsCountTheirSecondsAndFlags() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .view3D(.turn, open: true), now: at(10) + 1)
+        #expect(s.today?.features.contains(.turn3D) == true && s.viewOpen[.turn] == at(10) + 1)
+        _ = events(&s, .view3D(.turn, open: true), now: at(10) + 2)  // already open: the first start stays
+        _ = events(&s, .view3D(.turn, open: false), now: at(10) + 4.5)
+        #expect(s.today?.views == [3.5, 0, 0] && s.viewOpen.isEmpty && s.savedToday?.views == [3.5, 0, 0])
+        _ = events(&s, .view3D(.turn, open: false), now: at(10) + 9)  // not open: nothing
+        _ = events(&s, .view3D(.apart, open: true), now: at(11))
+        _ = events(&s, .view3D(.apart, open: false), now: at(12))  // a window left open: 30 min at most
+        _ = events(&s, .view3D(.aboutFlip, open: true), now: at(12) + 5)
+        #expect(s.today?.features.isSuperset(of: [.takeApart, .aboutFlip]) == true)
+        _ = events(&s, .willQuit, now: at(12) + 15)  // a quit closes the open About flip
+        #expect(s.today?.views == [3.5, 1800, 10] && s.viewOpen.isEmpty)
+        let p = BetaEvent.dayActive(s.today!, service: .spotify).properties
+        #expect(p["seconds_3d"] == .decimal(3.5) && p["seconds_apart"] == .decimal(1800) && p["seconds_about_flip"] == .decimal(10))
+        #expect(p["used_turn3D"] == .flag(true))
+    }
+
+    /// A 3D view open over midnight: each part goes to its own day.
+    @Test func a3DViewOverMidnightSplitsAtMidnight() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))  // music, then a pause
+        _ = events(&s, .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let sent = events(&s, .view3D(.apart, open: false), now: at(0, day: 20) + 20)
+        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(old.day == 20261119 && old.views == [0, 10, 0])
+        #expect(s.today?.day == 20261120 && s.today?.views == [0, 20, 0])
     }
 }

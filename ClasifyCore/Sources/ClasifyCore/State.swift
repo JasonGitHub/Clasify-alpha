@@ -471,6 +471,9 @@ public struct AppState: Equatable, Sendable {
     /// CLA-97: features used after midnight while the day before waits for the next position
     /// report. They go to the new day when it starts. Not saved: a quit ends the waiting day.
     public var pendingFeatures: Set<Feature> = []
+    /// CLA-97: when each open 3D view opened, and view seconds that wait like `pendingFeatures`.
+    /// Not saved: a quit closes the views.
+    public var viewOpen: [View3D: Double] = [:], pendingViews = [0.0, 0, 0]
     /// CLA-97: today's use, for `day_active`. Saved with the settings.
     public var today: DayUse?
     /// CLA-97: the copy of `today` that the settings save: about once a minute (Jason 23:07 JST).
