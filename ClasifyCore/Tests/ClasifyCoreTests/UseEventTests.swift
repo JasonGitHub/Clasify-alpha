@@ -72,4 +72,14 @@ import Testing
         #expect(events(&s, .menu).contains(.serviceSwitch(from: .spotify, to: .appleMusic)))
         #expect(BetaEvent.serviceSwitch(from: .spotify, to: .appleMusic).properties == ["from": .text("spotify"), "to": .text("apple_music")])
     }
+
+    @Test func aServiceSwitchEndsTheOldServicesLossWithNoControlBack() {
+        var s = playing()
+        _ = events(&s, .controlLost(.spotifyQuit))
+        for _ in 0..<8 where s.top.screen != .main { _ = events(&s, .menu) }
+        s.top.sel = s.rows(for: s.top).firstIndex(of: .settings) ?? -1
+        _ = events(&s, .select, .select, .menu)  // the Service row flips to Apple Music
+        #expect(s.controlLostAt == nil && events(&s, .controlBack).isEmpty)
+        #expect(events(&s, .controlLost(.appleMusicError)) == [.controlLost(.appleMusicError, service: .appleMusic)])
+    }
 }

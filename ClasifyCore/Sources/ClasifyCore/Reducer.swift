@@ -605,6 +605,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// the top, with nothing playing. With no stored login, its login screen shows (256).
     func switchService(to service: MusicService) {
         signOut()
+        s.controlLostAt = nil  // CLA-97: the old service's loss ends with no control_back; the new one counts its own
         s.service = service
         fx.append(.setService(service))
         s.authAttempt += 1; s.restoring = true

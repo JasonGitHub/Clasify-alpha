@@ -196,7 +196,9 @@ struct K3DSpikeSkin: View {
             let apart = flip.isApart(at: now)  // also true while the apart script runs
             if apart { open.insert(.apart) }
             if store.state.deviceTurned && !apart { open.insert(.turn) }
-            if showroom && !flip.restsOnFront(at: now) && !store.state.deviceTurned && !apart { open.insert(.aboutFlip) }
+            // About flips with Play/Pause also when the showroom's drag is off, so not `showroom`.
+            let about = store.state.top.screen == .about && !flip.arriving
+            if about && !flip.restsOnFront(at: now) && !store.state.deviceTurned && !apart { open.insert(.aboutFlip) }
         }
         report(open)
     }
