@@ -31,6 +31,13 @@ public struct DayUse: Equatable, Sendable {
         return ((c.year ?? 0) * 10_000 + (c.month ?? 0) * 100 + (c.day ?? 0), c.weekday ?? 0, band)
     }
 
+    /// The start of `t`'s day.
+    static func startOfDay(_ t: Double, in timeZone: TimeZone) -> Double {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = timeZone
+        return cal.startOfDay(for: Date(timeIntervalSinceReferenceDate: t)).timeIntervalSinceReferenceDate
+    }
+
     /// The next start of a band after `t`: 6:00, 9:00, 18:00 or the next midnight.
     static func nextBand(after t: Double, in timeZone: TimeZone) -> Double {
         var cal = Calendar(identifier: .gregorian)

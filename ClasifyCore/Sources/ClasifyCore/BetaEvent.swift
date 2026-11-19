@@ -297,6 +297,29 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         change(&d, at.band)
         s.today = d
     }
+    /// Counts an open 3D view from where it was counted up to `t`, at most `view3DLimit` from its
+    /// open. Each part goes to its own day, as music does.
+    func settle(_ view: View3D, upTo t: Double) {
+        guard let start = s.viewOpen[view] else { return }
+        var from = s.viewCounted[view] ?? start
+        let stop = min(t, start + view3DLimit), i = view.index
+        while from < stop {
+            let end = min(stop, DayUse.nextBand(after: from, in: timeZone)), part = end - from
+            if let old = s.today, old.day < DayUse.at(from, in: timeZone).day, s.isPlaying && s.dayPlayAt != nil {
+                s.pendingViews[i] += part  // the day before waits for the next report
+            } else {
+                count(at: from) { d, _ in d.views[i] += part }
+            }
+            from = end
+        }
+        s.viewCounted[view] = max(s.viewCounted[view] ?? start, stop)
+    }
+    // Codex on #352: a view open over midnight first counts its part of the day before, so that
+    // day goes out once, whole.
+    if !s.viewOpen.isEmpty, let today = s.today, today.day < DayUse.at(now, in: timeZone).day {
+        let midnight = DayUse.startOfDay(now, in: timeZone)
+        for view in View3D.allCases { settle(view, upTo: midnight) }
+    }
     if b.played, s.isPlaying, let current = s.current {
         if let last = s.dayPlayAt, now > last {
             // A long gap on the same track counts the music that played in it, as the position
@@ -326,24 +349,13 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     }
     // Jason 23:58 JST: the time of each 3D view, from its open to its close, at most
     // `view3DLimit` (a window left open). A quit closes them all.
-    var closing: [(View3D, Double)] = []
-    if case .view3D(let view, open: false) = action, let start = s.viewOpen.removeValue(forKey: view) { closing.append((view, start)) }
-    if action == .willQuit {
-        closing += s.viewOpen.sorted { $0.key.rawValue < $1.key.rawValue }.map { ($0.key, $0.value) }
-        s.viewOpen = [:]
+    if case .view3D(let view, open: false) = action {
+        settle(view, upTo: now)
+        (s.viewOpen[view], s.viewCounted[view]) = (nil, nil)
     }
-    for (view, start) in closing {
-        var t = start
-        let stop = min(now, start + view3DLimit), i = view.index
-        while t < stop {  // each part goes to its own day, as music does
-            let end = min(stop, DayUse.nextBand(after: t, in: timeZone)), from = t
-            if let old = s.today, old.day < DayUse.at(t, in: timeZone).day, s.isPlaying && s.dayPlayAt != nil {
-                s.pendingViews[i] += end - from  // the day before waits for the next report
-            } else {
-                count(at: t) { d, _ in d.views[i] += end - from }
-            }
-            t = end
-        }
+    if action == .willQuit {
+        for view in View3D.allCases { settle(view, upTo: now) }
+        (s.viewOpen, s.viewCounted) = ([:], [:])
     }
     // At a quit no report comes after, so the day that waits ends now.
     _ = roll(now, force: action == .willQuit)

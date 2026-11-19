@@ -237,4 +237,25 @@ import Testing
         #expect(old.day == 20261119 && old.views == [0, 10, 0])
         #expect(s.today?.day == 20261120 && s.today?.views == [0, 20, 0])
     }
+
+    /// Codex on #352: an action after midnight, while a view is open, sends the day before once,
+    /// with its part of the view; with music the same at the next report.
+    @Test func aViewOpenOverMidnightSendsTheDayBeforeOnceWhole() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))
+        _ = events(&s, .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let sent = events(&s, .tick, now: at(0, day: 20) + 1)
+        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(sent.count == 1 && old.views == [0, 10, 0])
+        #expect(events(&s, .view3D(.apart, open: false), now: at(0, day: 20) + 20).isEmpty)
+        #expect(s.today?.day == 20261120 && s.today?.views == [0, 20, 0])
+        var music = playing()
+        _ = events(&music, .position(1, generation: music.playGen), now: at(23, 59) + 50)
+        _ = events(&music, .view3D(.apart, open: true), now: at(23, 59) + 50)
+        let atReport = events(&music, .position(12, generation: music.playGen), now: at(0, day: 20) + 1)
+        guard case .dayActive(let day, _)? = atReport.first else { Issue.record("no day_active"); return }
+        #expect(atReport.count == 1 && day.views == [0, 10, 0])
+        _ = events(&music, .view3D(.apart, open: false), now: at(0, day: 20) + 20)
+        #expect(music.today?.views == [0, 20, 0])
+    }
 }
