@@ -9,6 +9,8 @@ public struct DayUse: Equatable, Sendable {
     /// Seconds of music in each time band: night (0-6), morning (6-9), work (9-18), evening (18-24).
     public var bands = [0.0, 0, 0, 0]
     public var features: Set<Feature> = []
+    /// The service of the day's last counted music, which `day_active` sends.
+    public var service: MusicService?
 
     public init(day: Int, weekday: Int) { (self.day, self.weekday) = (day, weekday) }
 
@@ -26,21 +28,23 @@ public struct DayUse: Equatable, Sendable {
         return ((c.year ?? 0) * 10_000 + (c.month ?? 0) * 100 + (c.day ?? 0), c.weekday ?? 0, band)
     }
 
-    /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings": the saved form.
+    /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings|Spotify": the saved form.
     var saved: String {
         let b: [String] = bands.map { String($0) }
         let f: [String] = features.map(\.rawValue).sorted()
-        return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ",")].joined(separator: "|")
+        return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ","), service?.rawValue ?? ""]
+            .joined(separator: "|")
     }
 
     init?(saved: String) {
         let parts = saved.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 5, let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
+        guard parts.count == 6, let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
         let bands = parts[3].split(separator: ",").compactMap { Double($0) }
         guard bands.count == 4 else { return nil }
         self.init(day: day, weekday: weekday)
         (self.songs, self.bands) = (songs, bands)
         features = Set(parts[4].split(separator: ",").compactMap { Feature(rawValue: String($0)) })
+        service = MusicService(rawValue: parts[5])
     }
 }
 

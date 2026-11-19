@@ -35,19 +35,45 @@ import Testing
         _ = events(&s, .position(1, generation: s.playGen), now: at(10))
         _ = events(&s, .position(2, generation: s.playGen), now: at(10) + 1)
         _ = events(&s, .position(3, generation: s.playGen), now: at(10) + 2.5)
-        _ = events(&s, .position(4, generation: s.playGen), now: at(10) + 60)  // a gap counts 5 s at most
-        #expect(s.today?.songs == 1 && s.today?.bands == [0, 0, 7.5, 0] && s.today?.day == 20261119 && s.today?.weekday == 5)
+        _ = events(&s, .position(4, generation: s.playGen), now: at(10) + 60)  // a long gap counts what played: 1 s
+        #expect(s.today?.songs == 1 && s.today?.bands == [0, 0, 3.5, 0] && s.today?.day == 20261119 && s.today?.weekday == 5)
+        #expect(s.today?.service == .spotify)
         s.isPlaying = false
         _ = events(&s, .tick, now: at(10) + 61)  // a pause
         s.isPlaying = true; s.current?.track = "l1"
         _ = events(&s, .position(1, generation: s.playGen), now: at(19) + 0)
         _ = events(&s, .position(2, generation: s.playGen), now: at(19) + 2)
-        #expect(s.today?.songs == 2 && s.today?.bands == [0, 0, 7.5, 2])
+        #expect(s.today?.songs == 2 && s.today?.bands == [0, 0, 3.5, 2])
         s.isPlaying = false
         _ = events(&s, .tick, now: at(19) + 3)
         s.isPlaying = true
         _ = events(&s, .position(3, generation: s.playGen), now: at(19) + 100)  // after a pause: nothing for the gap
-        #expect(s.today?.bands == [0, 0, 7.5, 2] && s.settings.today == s.today)
+        #expect(s.today?.bands == [0, 0, 3.5, 2] && s.settings.today == s.today)
+    }
+
+    /// App Nap can slow the reports while myPod is hidden: the position says what played.
+    @Test func slowReportsCountWhatPlayedAndASeekCountsNoMore() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .position(21, generation: s.playGen), now: at(10) + 20)
+        #expect(s.today?.bands[2] == 20)
+        _ = events(&s, .position(121, generation: s.playGen), now: at(10) + 21)  // a seek forward in 1 s
+        #expect(s.today?.bands[2] == 21)
+        _ = events(&s, .position(10, generation: s.playGen), now: at(10) + 40)  // the position went back
+        #expect(s.today?.bands[2] == 26)
+        s.current?.track = "l1"
+        _ = events(&s, .position(30, generation: s.playGen), now: at(10) + 70)  // another track
+        #expect(s.today?.bands[2] == 31 && s.today?.songs == 2)
+    }
+
+    /// The day keeps the service of its music, also after a switch on a later day.
+    @Test func theDaySendsItsOwnService() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        s.service = .appleMusic
+        let sent = events(&s, .tick, now: at(10, day: 20))
+        guard case .dayActive(_, let service)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(service == .spotify)
     }
 
     @Test func theFirstActionOfALaterDaySendsTheDayBefore() {
@@ -83,8 +109,9 @@ import Testing
     @Test func theDaySavesAndLoads() {
         var d = DayUse(day: 20261119, weekday: 5)
         d.songs = 3; d.bands = [0, 1.5, 1200.25, 0]; d.features = [.settings, .coverFlow]
-        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings")
-        #expect(DayUse(saved: d.saved) == d && DayUse(saved: "20261119|5|x|0,0,0,0|") == nil)
+        d.service = .appleMusic
+        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music")
+        #expect(DayUse(saved: d.saved) == d && DayUse(saved: "20261119|5|x|0,0,0,0||") == nil)
         let store = FakeSettings()
         var saved = Settings()
         saved.today = d

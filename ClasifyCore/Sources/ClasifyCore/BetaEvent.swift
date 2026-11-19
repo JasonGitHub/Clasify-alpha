@@ -147,7 +147,7 @@ struct BeforeEvents {
     var pick: MusicService?, top: MusicService
     /// The action is the engine's report of a position past 0 for the playing load: a
     /// confirmed play, not a scrub or the optimistic Play.
-    var played = false
+    var played = false, position = 0.0
     /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
     var choices: [String], used: Feature?
 
@@ -157,7 +157,7 @@ struct BeforeEvents {
         if case .used(let feature) = action { used = feature }
         top = s.appleMusicFirst ? .appleMusic : .spotify
         pick = nil
-        if case .position(let t, let gen) = action, t > 0, gen == s.playGen { played = true }
+        if case .position(let t, let gen) = action, t > 0, gen == s.playGen { (played, position) = (true, t) }
         if case .betaBuild(let b) = action { build = b }
         guard action == .select && !s.setupDone && screen == .pickMusic else { return }
         let rows = s.rows(for: s.top)
@@ -212,7 +212,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     var fx: [Effect] = []
     let (day, weekday, band) = DayUse.at(now, in: timeZone)
     if let old = s.today, old.day != day {
-        if old.hadMusic { fx.append(.track(.dayActive(old, service: s.service))) }
+        if old.hadMusic { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
         s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
     }
     func count(_ change: (inout DayUse) -> Void) {
@@ -221,9 +221,21 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         s.today = d
     }
     if b.played, s.isPlaying, let current = s.current {
-        if let last = s.dayPlayAt, now > last { count { $0.bands[band] += min(now - last, dayGapLimit) } }
-        s.dayPlayAt = now
+        if let last = s.dayPlayAt, now > last {
+            // A long gap on the same track counts the music that played in it, as the position
+            // moved: App Nap can slow the reports while myPod is hidden. After a Mac sleep this
+            // can count too much, by at most the rest of one track. Another track, or a
+            // position that went back: at most `dayGapLimit`.
+            let wall = now - last
+            var add = min(wall, dayGapLimit)
+            if wall > dayGapLimit, s.dayTrack == current.track, let from = s.dayPosition, b.position > from {
+                add = min(wall, b.position - from)
+            }
+            count { $0.bands[band] += add }
+        }
+        (s.dayPlayAt, s.dayPosition) = (now, b.position)
         if s.dayTrack != current.track { s.dayTrack = current.track; count { $0.songs += 1 } }
+        count { $0.service = s.service }
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
