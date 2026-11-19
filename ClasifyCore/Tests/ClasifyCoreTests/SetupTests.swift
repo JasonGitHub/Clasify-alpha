@@ -403,7 +403,8 @@ import Testing
     await waitFor(store) { !$0.restoring }  // the fake restores a stored login
     store.send(.select)
     store.send(.select)
-    #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == nil)
+    // CLA-97: the launch saved the first launch time, so the settings are written with "false".
+    #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] != "true" && saved.values["analytics.firstLaunch"] != nil)
     await waitFor(store, tick: true) { $0.setupDone }
     #expect(store.state.top.screen == .yourMusic && saved.values["setup.done"] == "true")  // "You’re all set"
     #expect(store.state.readTotal == 2 && store.state.readDone >= 1)  // the bar ends full, or at the last report
