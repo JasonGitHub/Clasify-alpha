@@ -1,4 +1,5 @@
-import type { Mailer } from "./mailer";
+import { feedback } from "./feedback";
+import { noReports, type Mailer, type ReportMailer } from "./mailer";
 
 // Activation (CLA-128): the app opens the page with a one-time code, the person types an
 // email, clicks the link in the mail, and presses Confirm. This file writes nothing to the
@@ -9,6 +10,8 @@ export interface Deps {
   mailer: Mailer;
   /** The page's bot check (Turnstile): true only for a person. */
   human: (token: string) => Promise<boolean>;
+  /** CLA-166: sends problem reports. None: every report is "busy". */
+  reports?: ReportMailer;
 }
 
 const codeLife = 15 * 60_000;
@@ -103,6 +106,10 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   }
 
   switch (route) {
+    case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
+      const answer = await feedback(db, device, body, now, deps.reports ?? noReports);
+      return reply(answer.body, answer.status);
+    }
     case "POST /v1/open": {  // the app, before it opens the page
       if (!device) return reply({ error: "device" }, 401);
       const code = token();

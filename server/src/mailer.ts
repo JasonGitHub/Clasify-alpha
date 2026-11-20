@@ -7,14 +7,14 @@ export interface Mailer {
 export const noMail: Mailer = { send: async () => "busy" };
 
 /** One mail through Resend's HTTP API. Answers true only for a 2xx answer; it logs nothing. */
-export type SendMail = (mail: { to: string; subject: string; text: string; html?: string }) => Promise<boolean>;
+export type SendMail = (mail: { to: string; subject: string; text: string; html?: string; replyTo?: string }) => Promise<boolean>;
 
 export function resend(key: string, fetcher: typeof fetch = fetch): SendMail {
-  return async ({ to, subject, text, html }) => {
+  return async ({ to, subject, text, html, replyTo }) => {
     const response = await fetcher("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: "myPod <hello@getmypod.app>", reply_to: "feedback@getmypod.app", to: [to], subject, text, html }),
+      body: JSON.stringify({ from: "myPod <hello@getmypod.app>", reply_to: replyTo ?? "feedback@getmypod.app", to: [to], subject, text, html }),
       signal: AbortSignal.timeout(10_000),
     }).catch(() => null);  // a timeout or no connection is "busy"
     return response?.ok ?? false;
@@ -85,6 +85,38 @@ export function linkMailer(db: D1Database, send: SendMail, perDay: number, alert
             `The limit resets at 09:00 JST. The counts for today are in D1, table mail_days, day ${date}.`,
         });
       }
+      return "busy";
+    },
+  };
+}
+
+/** CLA-166: sends a problem report. "limit": the day's mail count is used up. */
+export interface ReportMailer {
+  send(mail: { subject: string; text: string; replyTo?: string }): Promise<"sent" | "busy" | "limit">;
+}
+
+export const noReports: ReportMailer = { send: async () => "busy" };
+
+/** Where problem reports go. */
+export const feedbackTo = "feedback@getmypod.app";
+
+/**
+ * Problem reports share the link mails' day count (`mail_days.sent`, `perDay` a day), so all
+ * our mails together stay inside Resend's 100 a day. Reports over it count as refused.
+ */
+export function reportMailer(db: D1Database, send: SendMail, perDay: number, now: () => number): ReportMailer {
+  return {
+    async send(mail) {
+      const date = new Date(now()).toISOString().slice(0, 10);
+      const slot = await db.prepare(
+        "INSERT INTO mail_days (day, sent) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET sent = sent + 1 WHERE sent < ? RETURNING sent",
+      ).bind(date, perDay).first<{ sent: number }>();
+      if (!slot) {
+        await db.prepare("INSERT INTO mail_days (day, refused) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET refused = refused + 1").bind(date).run();
+        return "limit";
+      }
+      if (await send({ to: feedbackTo, ...mail })) return "sent";
+      await db.prepare("UPDATE mail_days SET failed = failed + 1 WHERE day = ?").bind(date).run();
       return "busy";
     },
   };

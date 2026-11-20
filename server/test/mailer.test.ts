@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { linkMail, linkMailer, resend, type SendMail } from "../src/mailer";
+import { linkMail, linkMailer, reportMailer, resend, type SendMail } from "../src/mailer";
 
 const sent: Parameters<SendMail>[0][] = [];
 let resendWorks = true;
@@ -112,5 +112,35 @@ describe("link mailer", () => {
     resendWorks = false;
     await linkMailer(env.DB, send, 3, undefined, () => noon).send("sam@example.com", link);
     expect(sent.map((m) => m.to)).toEqual(["sam@example.com"]);
+  });
+});
+
+describe("reportMailer (CLA-166)", () => {
+  const report = { subject: "myPod problem report (build 1)", text: "Hi", replyTo: "sam@example.com" };
+
+  it("sends to feedback@ with the reply-to, and shares the link mails' day count", async () => {
+    expect(await mailer(2).send("a@example.com", link)).toBe("sent");
+    const reports = reportMailer(env.DB, send, 2, () => noon);
+    expect(await reports.send(report)).toBe("sent");
+    expect(sent.at(-1)).toEqual({ to: "feedback@getmypod.app", ...report });
+    expect(await reports.send(report)).toBe("limit");
+    expect(await env.DB.prepare("SELECT sent, refused FROM mail_days").first()).toEqual({ sent: 2, refused: 1 });
+  });
+
+  it("is busy when Resend fails, and counts the failure", async () => {
+    resendWorks = false;
+    expect(await reportMailer(env.DB, send, 5, () => noon).send(report)).toBe("busy");
+    expect(await env.DB.prepare("SELECT sent, failed FROM mail_days").first()).toEqual({ sent: 1, failed: 1 });
+  });
+
+  it("passes reply_to to Resend, and keeps feedback@ when there is none", async () => {
+    const bodies: Record<string, unknown>[] = [];
+    const fake = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+    await resend("k", fake)({ to: "feedback@getmypod.app", subject: "S", text: "T", replyTo: "sam@example.com" });
+    await resend("k", fake)({ to: "feedback@getmypod.app", subject: "S", text: "T" });
+    expect(bodies.map((b) => b.reply_to)).toEqual(["sam@example.com", "feedback@getmypod.app"]);
   });
 });
