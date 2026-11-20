@@ -211,7 +211,7 @@ struct K3DSpikeSkin: View {
               store.state.setupDone, store.state.isPlaying else { return }
         do { try await Task.sleep(for: .seconds(5)) } catch { return }
         let now = Date.now
-        guard store.state.isPlaying, visible, K3DFlip.canDraw, drag == nil, !store.state.deviceTurned,
+        guard Self.hintPending, store.state.isPlaying, visible, K3DFlip.canDraw, drag == nil, !store.state.deviceTurned,
               flip.restsOnFront(at: now), let window = window.window, window.isVisible else { return }
         defaults.set(true, forKey: Self.turnHintKey)
         Self.hintPending = false
