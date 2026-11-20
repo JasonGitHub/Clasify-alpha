@@ -124,7 +124,7 @@ describe("reportMailer (CLA-166)", () => {
     expect(await reports.send(report)).toBe("sent");
     expect(sent.at(-1)).toEqual({ to: "feedback@getmypod.app", ...report });
     expect(await reports.send(report)).toBe("limit");
-    expect(await env.DB.prepare("SELECT sent, refused FROM mail_days").first()).toEqual({ sent: 2, refused: 1 });
+    expect(await env.DB.prepare("SELECT sent, refused FROM mail_days").first()).toEqual({ sent: 2, refused: 0 });
   });
 
   it("keeps the last 20 mails of the day for link mails (95 a day: reports stop at 75)", async () => {
@@ -133,13 +133,24 @@ describe("reportMailer (CLA-166)", () => {
     expect(await reports.send(report)).toBe("sent");  // the 75th mail
     expect(await reports.send(report)).toBe("limit");
     expect(await mailer(95).send("a@example.com", link)).toBe("sent");  // link mails go on at 75
-    expect(await env.DB.prepare("SELECT sent, refused FROM mail_days").first()).toEqual({ sent: 76, refused: 1 });
+    expect(await env.DB.prepare("SELECT sent, refused FROM mail_days").first()).toEqual({ sent: 76, refused: 0 });
   });
 
-  it("is busy when Resend fails, and counts the failure", async () => {
+  it("is busy when Resend fails, and leaves the link mails' alert counts alone", async () => {
     resendWorks = false;
-    expect(await reportMailer(env.DB, send, 5, () => noon).send(report)).toBe("busy");
-    expect(await env.DB.prepare("SELECT sent, failed FROM mail_days").first()).toEqual({ sent: 1, failed: 1 });
+    expect(await reportMailer(env.DB, send, reportsReserve + 5, () => noon).send(report)).toBe("busy");
+    expect(await env.DB.prepare("SELECT sent, failed FROM mail_days").first()).toEqual({ sent: 1, failed: 0 });
+  });
+
+  it("Codex on #366: after reports hit their limit, the first link mail refusal still alerts", async () => {
+    resendWorks = true;
+    const reports = reportMailer(env.DB, send, reportsReserve + 1, () => noon);
+    expect(await reports.send(report)).toBe("sent");
+    expect(await reports.send(report)).toBe("limit");
+    const links = mailer(2);
+    expect(await links.send("a@example.com", link)).toBe("sent");
+    expect(await links.send("b@example.com", link)).toBe("busy");
+    expect(sent.at(-1)).toMatchObject({ to: "alert@example.com", subject: "myPod: mail limit hit" });
   });
 
   it("passes reply_to to Resend, and keeps feedback@ when there is none", async () => {

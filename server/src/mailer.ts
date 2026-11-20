@@ -105,8 +105,7 @@ export const reportsReserve = 20;
 
 /**
  * Problem reports share the link mails' day count (`mail_days.sent`, `perDay` a day), so all
- * our mails together stay inside Resend's 100 a day. Reports stop at `perDay - reportsReserve`;
- * reports over it count as refused.
+ * our mails together stay inside Resend's 100 a day. Reports stop at `perDay - reportsReserve`.
  */
 export function reportMailer(db: D1Database, send: SendMail, perDay: number, now: () => number): ReportMailer {
   return {
@@ -115,13 +114,10 @@ export function reportMailer(db: D1Database, send: SendMail, perDay: number, now
       const slot = await db.prepare(
         "INSERT INTO mail_days (day, sent) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET sent = sent + 1 WHERE sent < ? RETURNING sent",
       ).bind(date, perDay - reportsReserve).first<{ sent: number }>();
-      if (!slot) {
-        await db.prepare("INSERT INTO mail_days (day, refused) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET refused = refused + 1").bind(date).run();
-        return "limit";
-      }
-      if (await send({ to: feedbackTo, ...mail })) return "sent";
-      await db.prepare("UPDATE mail_days SET failed = failed + 1 WHERE day = ?").bind(date).run();
-      return "busy";
+      // Codex on #366: reports never touch `refused` or `failed`. Those counts send the link
+      // mails' one alert a day, and a report must not use it up.
+      if (!slot) return "limit";
+      return (await send({ to: feedbackTo, ...mail })) ? "sent" : "busy";
     },
   };
 }
