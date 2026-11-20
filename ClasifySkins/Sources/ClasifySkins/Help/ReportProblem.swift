@@ -13,6 +13,9 @@ public struct ReportProblem: View {
     static let lineGap: CGFloat = 18 - 14.3
     static let hint = "A song didn’t play, the wheel got stuck…"
 
+    /// CG.3 (396): an activated Mac sends from here. Before activation, the Write to Us screen
+    /// shows in place of the form, with the feedback address. Chosen when the window opens.
+    let activated: Bool
     let onSend: (_ text: String, _ writeBack: Bool) -> Void
     let onClose: () -> Void
     /// Snapshot tests: the text, the Thanks screen and the wave's time.
@@ -24,13 +27,15 @@ public struct ReportProblem: View {
     @State private var sentAt = Date.distantFuture
     @State private var waveDone = false
     @FocusState private var typing: Bool
+    @Environment(\.openURL) private var openURL
 
-    public init(onSend: @escaping (String, Bool) -> Void, onClose: @escaping () -> Void) {
-        self.init(text: "", sent: false, fixedTime: nil, onSend: onSend, onClose: onClose)
+    public init(activated: Bool, onSend: @escaping (String, Bool) -> Void, onClose: @escaping () -> Void) {
+        self.init(text: "", sent: false, fixedTime: nil, activated: activated, onSend: onSend, onClose: onClose)
     }
 
-    init(text: String, sent: Bool, fixedTime: Double?, onSend: @escaping (String, Bool) -> Void = { _, _ in }, onClose: @escaping () -> Void = {}) {
-        (self.onSend, self.onClose, self.fixedTime) = (onSend, onClose, fixedTime)
+    init(text: String, sent: Bool, fixedTime: Double?, activated: Bool = true,
+         onSend: @escaping (String, Bool) -> Void = { _, _ in }, onClose: @escaping () -> Void = {}) {
+        (self.onSend, self.onClose, self.fixedTime, self.activated) = (onSend, onClose, fixedTime, activated)
         _text = State(initialValue: text)
         _sent = State(initialValue: sent)
     }
@@ -54,7 +59,7 @@ public struct ReportProblem: View {
     public var body: some View {
         VStack(spacing: 0) {
             titleBar
-            if sent { thanks } else { form }
+            if !activated { writeToUs } else if sent { thanks } else { form }
         }
         .frame(width: Self.width, height: sent ? Self.thanksHeight : Self.formHeight, alignment: .top)
         .background(LinearGradient(colors: [Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec)], startPoint: .top, endPoint: .bottom))
@@ -162,7 +167,7 @@ public struct ReportProblem: View {
     /// capybara, 20 pt under the title bar; then 14 to the title, 6 to the lines, 14 to Done.
     private var thanks: some View {
         VStack(spacing: 0) {
-            capybara.padding(.top, 20)
+            capybara().padding(.top, 20)
             Text("Got it, thank you!").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(hex: 0x1b1f24)).padding(.top, 14)
             Text("Cappy reads every note.\nWe’ll look into it.")
                 .font(.system(size: 12)).lineSpacing(Self.lineGap).multilineTextAlignment(.center)
@@ -172,12 +177,39 @@ public struct ReportProblem: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// CG.3 (396), before activation: the standing capybara, the address and Done, with the
+    /// Thanks gaps. A click on the address opens a mail to it; the window stays.
+    private var writeToUs: some View {
+        VStack(spacing: 0) {
+            capybara(waves: false).padding(.top, 20)
+            Text("Write to us").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(hex: 0x1b1f24)).padding(.top, 14)
+            VStack(spacing: Self.lineGap) {
+                Text("Activate myPod to send a report from here.").foregroundStyle(Color(hex: 0x5d6772))
+                Button { openURL(Self.mail) } label: {
+                    Text(Self.address).foregroundStyle(Color(hex: 0x1f6fd1))
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(.link)
+                .accessibilityAddTraits(.isLink)
+            }
+            .font(.system(size: 12))
+            .multilineTextAlignment(.center)
+            .padding(.top, 6)
+            button("Done", filled: true, wide: true, action: onClose).keyboardShortcut(.defaultAction).padding(.top, 14)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    static let address = "feedback@getmypod.app"
+    static let mail = URL(string: "mailto:feedback@getmypod.app")!
+
     /// The About wave once (384): the stand pose 0.3 s, a cut to the wave rocking ±4° twice in
     /// 1.0 s (`PocketAbout.rock`), a cut back.
-    private var capybara: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: fixedTime != nil || waveDone)) { context in
+    /// With `waves` false, the stand pose only (CG.3).
+    private func capybara(waves: Bool = true) -> some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !waves || fixedTime != nil || waveDone)) { context in
             let t = fixedTime ?? context.date.timeIntervalSince(sentAt)
-            let waving = t >= 0.3 && t < 1.3
+            let waving = waves && t >= 0.3 && t < 1.3
             ZStack {
                 Circle()
                     .fill(RadialGradient(colors: [.white.opacity(0.95), .white.opacity(0)], center: .center, startRadius: 0, endRadius: 66))
@@ -191,7 +223,7 @@ public struct ReportProblem: View {
             .frame(width: Self.cappy, height: Self.cappy)
         }
         .accessibilityElement()
-        .accessibilityLabel("Capybara with headphones, waving")
+        .accessibilityLabel(waves ? "Capybara with headphones, waving" : "Capybara with headphones")
         .task {
             // One wave, then the timeline stops.
             try? await Task.sleep(for: .seconds(1.4))

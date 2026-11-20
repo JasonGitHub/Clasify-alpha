@@ -57,7 +57,10 @@ enum ReportProblemWindow {
             NSApp.activate()
             return
         }
-        let window = ReportProblemPanel.make { text, writeBack in ProblemReporter.shared.send(text, writeBack: writeBack) }
+        // CG.3 (396): the screen follows the activation now; an open window keeps its screen.
+        let window = ReportProblemPanel.make(activated: ProblemReporter.shared.activated()) { text, writeBack in
+            ProblemReporter.shared.send(text, writeBack: writeBack)
+        }
         place(window)
         self.window = window
         window.makeKeyAndOrderFront(nil)
@@ -505,6 +508,7 @@ final class AppModel {
         battery = BatteryWatcher(store: store)
         windowWatcher = WindowWatcher(store: store)  // CLA-162
         ProblemReporter.shared.service = { [weak store] in store?.state.service.rawValue ?? "" }  // CLA-166
+        ProblemReporter.shared.activated = { [weak store] in store?.state.activated ?? false }  // CG.3
         // A change made in the Spotify app shows when the user comes back to Clasify.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main

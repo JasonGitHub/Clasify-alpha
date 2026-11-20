@@ -18,6 +18,9 @@ final class ProblemReporter {
     var server = ServerActivator()
     /// The active service, from the store. AppModel sets it.
     var service: () -> String = { "" }
+    /// The Mac is activated now, from the store (CG.3): Report a Problem opens on the form, else
+    /// on Write to Us. AppModel sets it.
+    var activated: () -> Bool = { false }
     private var pending: [Report] = []
     private var sending = false
     private var wait: Duration = .seconds(60)

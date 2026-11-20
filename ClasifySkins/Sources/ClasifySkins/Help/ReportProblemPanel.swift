@@ -9,10 +9,11 @@ import SwiftUI
 @MainActor
 public enum ReportProblemPanel {
     /// A new window, not shown yet. It closes itself on Cancel and Done.
-    public static func make(onSend: @escaping (String, Bool) -> Void) -> NSWindow {
+    /// `activated`: the Mac is activated now, so the form shows; else Write to Us (CG.3).
+    public static func make(activated: Bool, onSend: @escaping (String, Bool) -> Void) -> NSWindow {
         let window = TopFixedWindow(contentRect: NSRect(x: 0, y: 0, width: ReportProblem.width, height: ReportProblem.formHeight),
                               styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
-        let content = ReportProblem(onSend: onSend, onClose: { [weak window] in window?.close() })
+        let content = ReportProblem(activated: activated, onSend: onSend, onClose: { [weak window] in window?.close() })
         configure(window, content)
         return window
     }
