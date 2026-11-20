@@ -41,7 +41,6 @@ import AppKit
             shape.frame = icon
         }
         for (shape, blur, strength) in [(far, 2.0, Float(0.7)), (near, 0.75, Float(0.95))] {
-            shape.shadowPath = Self.iconPath
             shape.shadowColor = NSColor(srgbRed: 90 / 255, green: 163 / 255, blue: 240 / 255, alpha: 1).cgColor
             shape.shadowOpacity = strength
             shape.shadowRadius = blur
