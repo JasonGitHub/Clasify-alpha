@@ -134,7 +134,7 @@ import Testing
         let still = renderer.cgImage
         let ways: [(String, (Double) -> Double)] = [
             ("offset", { Self.labelY(Self.variant("offset", $0)) }),
-            ("canvas-image", { still.map { image in Self.canvasImage($0, image) } ?? .nan }),
+            ("canvas-image", { y in still.map { Self.canvasImage(y, $0) } ?? .nan }),
             ("panel-offset", { Self.panel($0, layer: false) }),
             ("panel-layer", { Self.panel($0, layer: true) }),
         ]
