@@ -1,5 +1,6 @@
 import ClasifyCore
 import ClasifySkins
+import QuartzCore
 import SwiftUI
 
 /// The app: only the device shows. The window has no frame and a clear background, and it
@@ -37,7 +38,7 @@ struct HowToUseWindow: Scene {
     static let id = "how-to-use"
 
     var body: some Scene {
-        Window(HowToUse.title, id: Self.id) { HowToUse() }
+        Window(HowToUse.title, id: Self.id) { HowToUse(menuBar: HintsTrial.on) }
             .windowResizability(.contentSize)
     }
 }
@@ -93,8 +94,9 @@ enum DeviceWindow {
     /// Card AN.1: the device window. `WindowShadowOff`'s hook sets it, because only the device
     /// window has that hook. Weak: a closed window goes away.
     static weak var device: NSWindow?
-    /// The fade in and out (345).
-    private static let fade = 0.15
+    /// The fade in and out (345). CLA-163, card CE H.2 (a): with `hints.trial` on, a soft
+    /// 0.45 s fade in place that also scales the device 98 to 100 %.
+    private static var fade: Double { HintsTrial.on ? 0.45 : 0.15 }
     /// The window that is fading out now. A show during the fade cancels the hide.
     private static var hiding: NSWindow?
     /// The window that `show()` is fading in now. The unhide does not jump it to alpha 1.
@@ -162,8 +164,10 @@ enum DeviceWindow {
         hiding = window
         NSAnimationContext.runAnimationGroup { context in
             context.duration = fade
+            if HintsTrial.on { context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut) }
             window.animator().alphaValue = 0
         }
+        if HintsTrial.on { scale(window, from: 1, to: 0.98) }
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(fade))
             guard hiding === window else { return }  // a click showed it again during the fade
@@ -172,11 +176,31 @@ enum DeviceWindow {
             // effect. The window stays at alpha 0; `show()` or `unhidden()` brings it back.
             iconHid = true
             NSApp.hide(nil)
+            window.contentView?.layer?.transform = CATransform3DIdentity  // CLA-163: hidden at alpha 0, so no jump shows
             // The hide did not happen: do not leave an invisible window.
             try? await Task.sleep(for: .seconds(0.5))
             // `iconHid` stays: AppKit may report not hidden after a hide that did happen.
             if !NSApp.isHidden, hiding == nil, showing == nil, window.alphaValue == 0 { window.alphaValue = 1 }
         }
+    }
+
+    /// CLA-163, card CE H.2 (a): scales the device window's content about its center, in step
+    /// with the fade. It ends at `to`; a scale of 1 leaves no transform behind.
+    private static func scale(_ window: NSWindow, from: CGFloat, to: CGFloat) {
+        guard let view = window.contentView else { return }
+        view.wantsLayer = true
+        guard let layer = view.layer else { return }
+        let mid = CGPoint(x: layer.bounds.midX, y: layer.bounds.midY)
+        func transform(_ s: CGFloat) -> CATransform3D {
+            CATransform3DTranslate(CATransform3DScale(CATransform3DMakeTranslation(mid.x, mid.y, 0), s, s, 1), -mid.x, -mid.y, 0)
+        }
+        let animation = CABasicAnimation(keyPath: "transform")
+        animation.fromValue = transform(from)
+        animation.toValue = transform(to)
+        animation.duration = fade
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.transform = to == 1 ? CATransform3DIdentity : transform(to)
+        layer.add(animation, forKey: "hintsTrialScale")
     }
 
     /// The app came back by any way: a device window that the icon faded out shows at full
@@ -216,8 +240,10 @@ enum DeviceWindow {
         showing = window
         NSAnimationContext.runAnimationGroup { context in
             context.duration = fade
+            if HintsTrial.on { context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut) }
             window.animator().alphaValue = 1
         }
+        if HintsTrial.on { scale(window, from: 0.98, to: 1) }
         // The fade's end: the window is fully on, even when the animation did not run.
         Task { @MainActor in
             try? await Task.sleep(for: .seconds(fade))
