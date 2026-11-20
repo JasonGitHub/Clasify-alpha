@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Help › How to Use myPod (Round 14 card BC, change 152, with the BC.1 look, change 196):
-/// each wheel action with its mark, how to do it, and its keys. Then Shuffle / Repeat, which
-/// are not on the wheel. It shows words only and sends no actions.
+/// each wheel action with its mark, how to do it, and its keys. Then Shuffle / Repeat and the
+/// 3D turn, take apart and move (card CH, 378-380), which are not on the wheel. It shows words only and sends no actions.
 public struct HowToUse: View {
     public static let title = "How to Use myPod"
     public static let width: CGFloat = 549
@@ -22,7 +22,7 @@ public struct HowToUse: View {
 
     /// The wheel's marks, in the blue of the selection, as SF Symbols where they match.
     enum Mark: Sendable {
-        case turn, select, menu, playPause, prevNext, shuffle, menuBar
+        case turn, select, menu, playPause, prevNext, shuffle, turn3D, takeApart, move, menuBar
     }
 
     /// A key as printed on the Mac keyboard: a word, a letter, or an arrow.
@@ -42,6 +42,10 @@ public struct HowToUse: View {
     static let otherRows = [
         Row(mark: .shuffle, action: "Shuffle / Repeat", how: "Click their marks on Now Playing, or press S or R",
             keys: [.letter("S"), .letter("R")]),
+        // Card CH, 378-380 (CLA-165).
+        Row(mark: .turn3D, action: "Turn myPod", how: "Hold ⌘, then drag or swipe with two fingers", keys: [.letter("⌘")]),
+        Row(mark: .takeApart, action: "Take apart", how: "Hold ⌘, then press still or pinch out", keys: [.letter("⌘")]),
+        Row(mark: .move, action: "Move myPod", how: "Drag it by its body", keys: []),
     ]
     /// CLA-163, card CE H.2 (c).
     static let menuBarRow = Row(mark: .menuBar, action: "Menu bar icon", how: "Click it to show or hide myPod", keys: [])
@@ -107,6 +111,9 @@ public struct HowToUse: View {
                 }
                 .font(.system(size: 10, weight: .medium))  // 25 points wide in all, as printed on the wheel
             case .shuffle: Image(systemName: "shuffle")
+            case .turn3D: Image(systemName: "rotate.3d")
+            case .takeApart: Image(systemName: "square.3.layers.3d")
+            case .move: Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
             case .menuBar: MenuBarMark().fill(style: FillStyle(eoFill: true)).frame(width: 18, height: 18)
             }
         }
