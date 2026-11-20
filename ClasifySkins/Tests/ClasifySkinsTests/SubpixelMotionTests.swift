@@ -108,11 +108,11 @@ import Testing
         host.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: layer ? -y : 0))  // the layer's y goes up
         let (rep, context) = bitmap()
         if layer {
-            // `render(in:)` draws the layer tree with its transforms, in the layer's own (flipped) space.
+            // `render(in:)` draws the layer tree with its transforms. The container is not
+            // flipped: its y goes up, as in the bitmap.
             let cg = context.cgContext
             cg.saveGState()
             cg.scaleBy(x: 2, y: 2)
-            if !(box.layer?.isGeometryFlipped ?? false) { cg.translateBy(x: 0, y: 100); cg.scaleBy(x: 1, y: -1) }
             box.layer?.render(in: cg)
             cg.restoreGState()
         } else {
