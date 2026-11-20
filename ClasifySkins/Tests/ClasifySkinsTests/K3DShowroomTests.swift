@@ -138,16 +138,25 @@ import simd
     }
 
     /// Change 297: 16° and back in 0.9 s, a sine bump on a quad in-out. The 2D device hands
-    /// over within 2° of the front (CLA-119).
+    /// over within 2° of the front (CLA-119). 386: it turns the way a right-to-left drag does.
     @Test func theNudgeTurns16DegreesAndBack() {
         let flip = K3DFlip().nudge(at: t0)
         #expect(flip.length == 0.9)
-        #expect(abs(flip.angle(at: t0.addingTimeInterval(0.45)) - 16) < 1e-9)
+        #expect(abs(flip.angle(at: t0.addingTimeInterval(0.45)) + 16) < 1e-9)
         #expect(abs(flip.angle(at: t0.addingTimeInterval(0.9))) < 1e-9)
         let early = flip.flatOpacity(at: t0.addingTimeInterval(0.1))  // 1.2°
         #expect(flip.flatOpacity(at: t0) == 1 && early > 0 && early < 0.5)
         #expect(flip.flatOpacity(at: t0.addingTimeInterval(0.2)) == 0 && flip.flatOpacity(at: t0.addingTimeInterval(0.45)) == 0)
         #expect(flip.flatOpacity(at: t0.addingTimeInterval(1)) == 1)
+    }
+
+    /// CLA-163, card CE.1 (393): the turn hint's nudge is the same bump in 1.6 s.
+    @Test func theTurnHintNudgeTakes1point6Seconds() {
+        let flip = K3DFlip().nudge(at: t0, time: K3DFlip.hintNudgeTime)
+        #expect(flip.length == 1.6)
+        #expect(abs(flip.angle(at: t0.addingTimeInterval(0.8)) + 16) < 1e-9)
+        #expect(abs(flip.angle(at: t0.addingTimeInterval(1.6))) < 1e-9)
+        #expect(flip.flatOpacity(at: t0.addingTimeInterval(0.8)) == 0 && flip.flatOpacity(at: t0.addingTimeInterval(1.7)) == 1)
     }
 
     /// CLA-119: the 2D device hands over within 2° of the front, by angle. The turn-over that

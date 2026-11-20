@@ -841,15 +841,18 @@ public struct AppState: Equatable, Sendable {
         tourOn ? tourSteps.first(where: { !hintsDone.contains($0) }) : nil
     }
     /// The tour's steps in order. CLA-163, card CE.1: with the hints trial on, the menu bar
-    /// hint comes after MENU, only while the Menu Bar setting is on (389).
+    /// hint comes after MENU, only while the Menu Bar setting is on (389), and the turn hint
+    /// comes last.
     public var tourSteps: [Hint] {
-        hintsTrial && menuBar ? [.tourPlay, .tourNext, .tourMenu, .tourMenuBar] : [.tourPlay, .tourNext, .tourMenu]
+        guard hintsTrial else { return [.tourPlay, .tourNext, .tourMenu] }
+        return [.tourPlay, .tourNext, .tourMenu] + (menuBar ? [.tourMenuBar] : []) + [.tourTurn]
     }
     /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
     /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
     public var tourPlace: Bool {
         guard let tour, setupDone, signedIn, stack.first?.screen == .main else { return false }
         if tour == .tourMenuBar { return true }  // the icon glows over any screen
+        if tour == .tourTurn { return top.screen != .about }  // under the device; About turns it its own way
         return tour == .tourPlay ? top.screen == .main : top.screen == .now && current != nil && nowMode == .volume
     }
     /// When the waiting tour hint shows. Play glows first and its words come `tourTipAfter`
@@ -1202,10 +1205,14 @@ public enum Hint: String, CaseIterable, Sendable {
     /// CLA-163, card CE.1, only with the hints trial on: after MENU, the menu bar icon glows
     /// until its first click. It has no look on the device: the app draws it in the icon.
     case tourMenuBar = "tour.menuBar"
+    /// CLA-163, card CE.1, only with the hints trial on, last: the ⌘ key and "Hold ⌘ and drag
+    /// to turn" under the device, until the first ⌘ turn (`Action.deviceTurned`). The app
+    /// draws it in its own window.
+    case tourTurn = "tour.turn"
 
-    public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu || self == .tourMenuBar }
-    /// The hint shows on the device: a wheel label and words. Not the menu bar hint.
-    public var onDevice: Bool { self != .tourMenuBar }
+    public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu || self == .tourMenuBar || self == .tourTurn }
+    /// The hint shows on the device: a wheel label and words. Not the menu bar and turn hints.
+    public var onDevice: Bool { self != .tourMenuBar && self != .tourTurn }
 }
 
 extension Track {

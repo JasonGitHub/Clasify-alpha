@@ -88,7 +88,7 @@ public struct PocketSkin: View {
         case .playPause, .tourPlay: [.play]
         case .next: [.next]
         case .tourNext: [.prev, .next]
-        case .tourMenuBar: []  // not on the device (`onDevice`)
+        case .tourMenuBar, .tourTurn: []  // not on the device (`onDevice`)
         }
         return ClickWheel.LabelGlow(zones: zones, from: state.hintAt)
     }

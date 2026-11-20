@@ -1505,11 +1505,13 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .next, .prev: s.hintsDone.insert(.tourNext)
         case .menu where s.stack.count < before.0: s.hintsDone.insert(.tourMenu)  // MENU that went back
         case .menuBarClick where s.tourSteps.contains(.tourMenuBar): s.hintsDone.insert(.tourMenuBar)  // 388: any click
+        case .deviceTurned(true) where s.tourSteps.contains(.tourTurn): s.hintsDone.insert(.tourTurn)  // the first ⌘ turn
         default: break
         }
         if s.isPlaying { s.hintsDone.insert(.tourPlay) }  // the music started another way
         switch action {
-        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat:
+        // CE.1: a click on the menu bar icon is input too (mock), so the next hint waits 3 s.
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat, .menuBarClick:
             if let hint = tourShown, !s.hintsDone.contains(hint) {
                 let n = s.tourHides[hint, default: 0] + 1
                 s.tourHides[hint] = n
@@ -1549,7 +1551,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()
             case .next: return playing() && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
-            case .tourPlay, .tourNext, .tourMenu, .tourMenuBar: return false  // see `tour()`
+            case .tourPlay, .tourNext, .tourMenu, .tourMenuBar, .tourTurn: return false  // see `tour()`
             }
         }
         if s.tour != nil {  // the tour shows its own hints
