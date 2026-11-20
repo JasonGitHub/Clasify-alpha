@@ -111,7 +111,7 @@ public struct HowToUse: View {
                 }
                 .font(.system(size: 10, weight: .medium))  // 25 points wide in all, as printed on the wheel
             case .shuffle: Image(systemName: "shuffle")
-            case .turn3D: Image(systemName: "rotate.3d")
+            case .turn3D: Image(systemName: "cube")
             case .takeApart: Image(systemName: "square.3.layers.3d")
             case .move: Image(systemName: "arrow.up.and.down.and.arrow.left.and.right")
             case .menuBar: MenuBarMark().fill(style: FillStyle(eoFill: true)).frame(width: 18, height: 18)
