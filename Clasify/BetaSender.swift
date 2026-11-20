@@ -12,7 +12,7 @@ import Foundation
 /// active. Before that they go out at once as `analytics.installID`: a random UUID made at the
 /// first start with analytics on, for analytics only (never the activation device ID, never
 /// sent to our server). The first batch with the account ID links the two with `$identify`
-/// (Jason "ok 1" 21:00 JST 11-20); `analytics.linked` remembers it. A reinstall or `defaults
+/// (Jason "ok 1" 21:00 JST 11-20); `analytics.linked` holds the install ID it linked. A reinstall or `defaults
 /// delete` makes a new install ID. Sent events go only after PostHog answers 200.
 @MainActor final class BetaSender {
     static let host = URL(string: "https://us.i.posthog.com/batch/")!
@@ -88,7 +88,8 @@ import Foundation
         guard on else { return forget() }
         let account = person(), install = self.install
         guard Date() >= nextTry, !queue.events.isEmpty, let person = BetaQueue.person(account: account, install: install) else { return }
-        let linking = BetaQueue.linking(account: account, install: install, linked: defaults.bool(forKey: Self.linkedKey))
+        // The link is for this install ID: a new one (after off and on) links again (Codex on #369).
+        let linking = BetaQueue.linking(account: account, install: install, linked: install != nil && defaults.string(forKey: Self.linkedKey) == install)
         nextTry = .distantFuture  // one request at a time
         var batch = queue.events.filter { refused.contains($0.id) }  // the queue may have dropped some
         if batch.isEmpty { (refused, batch) = ([], Array(queue.events.prefix(Self.batchSize))) }
@@ -100,7 +101,7 @@ import Foundation
         if status == 200 || (status == 400 && !refused.isEmpty) {
             // A batch that PostHog refuses twice goes: it can never be sent (CTO 00:25 JST).
             (failures, refused) = (0, [])
-            if linking != nil, status == 200 { defaults.set(true, forKey: Self.linkedKey) }
+            if let linking, status == 200, on { defaults.set(linking, forKey: Self.linkedKey) }
             queue.remove(Set(batch.map(\.id)))
             save()
             nextTry = queue.events.isEmpty ? Date() + 30 : Date()
