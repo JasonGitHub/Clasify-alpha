@@ -25,8 +25,8 @@ import Testing
     @Test func theEmptyFormShowsTheBoxAndTheOnCheckBox() throws {
         let bitmap = try render(ReportProblem(text: "", sent: false, fixedTime: nil), "report-problem.png")
         #expect(bitmap.pixelsWide == 380 * 2 && bitmap.pixelsHigh == 262 * 2)
-        // 383: the check box is on by default, so it is blue (14 pt at 14, 25 + 145).
-        #expect(blue(bitmap, 21, 26 + 145 + 7))
+        // 383: the check box is on by default, so it is blue (14 pt at 14, 26 + 145), off the tick.
+        #expect(blue(bitmap, 17, 26 + 145 + 3))
         // The box's blue border at its left edge, the middle of its height.
         #expect((10...14).contains { blue(bitmap, $0, 26 + 29 + 52) })
         #expect(ReportProblem(text: "  \n ", sent: false, fixedTime: nil).report.isEmpty)

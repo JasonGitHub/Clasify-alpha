@@ -99,19 +99,18 @@ public struct ReportProblem: View {
             if text.isEmpty {
                 Text(Self.hint).foregroundStyle(Color(hex: 0x8a949e)).padding(.horizontal, 5).allowsHitTesting(false)
             }
-            TextEditor(text: $text)
-                .scrollContentBackground(.hidden)
-                .focused($typing)
-                .onChange(of: text) { _, new in
-                    let cut = Self.capped(new)
-                    if cut != new { text = cut }
-                }
-                .foregroundStyle(Color(hex: 0x1b1f24))
-                .tint(Color(hex: 0x1f6fd1))
+            if fixedTime != nil {
+                // Snapshot tests: ImageRenderer cannot draw the AppKit text view, so the text
+                // shows as plain text in the same place.
+                Text(text).foregroundStyle(Color(hex: 0x1b1f24)).padding(.horizontal, 5)
+            } else {
+                editor
+            }
         }
         .font(.helvetica(12.5))
         .lineSpacing(1.5)
         .padding(.vertical, 6).padding(.horizontal, 3)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(shape.fill(.white))
         .overlay {
             shape.fill(LinearGradient(colors: [.black.opacity(0.12), .clear], startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.03)))
@@ -120,6 +119,18 @@ public struct ReportProblem: View {
         .overlay { shape.strokeBorder(Color(hex: 0x5aa3f0), lineWidth: 1) }
         .background { shape.inset(by: -2).stroke(Color(hex: 0x5aa3f0, opacity: 0.35), lineWidth: 4) }
         .onAppear { typing = true }
+    }
+
+    private var editor: some View {
+        TextEditor(text: $text)
+                .scrollContentBackground(.hidden)
+                .focused($typing)
+                .onChange(of: text) { _, new in
+                    let cut = Self.capped(new)
+                    if cut != new { text = cut }
+                }
+                .foregroundStyle(Color(hex: 0x1b1f24))
+                .tint(Color(hex: 0x1f6fd1))
     }
 
     /// 383: on by default; it only adds the account email.
@@ -168,7 +179,8 @@ public struct ReportProblem: View {
                     .fill(RadialGradient(colors: [.white.opacity(0.95), .white.opacity(0)], center: .center, startRadius: 0, endRadius: 66))
                     .frame(width: 132, height: 132)
                 if let image = PocketAbout.poses[waving ? .wave : .stand] {
-                    Image(nsImage: image).resizable().interpolation(.high)
+                    Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
+                        .frame(width: 96, height: 96)
                         .rotationEffect(.degrees(waving ? PocketAbout.rock(t - 0.3) : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
                 }
             }
