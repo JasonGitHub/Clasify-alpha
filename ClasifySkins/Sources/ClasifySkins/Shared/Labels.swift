@@ -15,6 +15,7 @@ enum Labels {
         case .tourPlay: ("Press Play to start your music", nil, "", "Press Play to start your music")
         case .tourNext: ("Press Next for the next song", nil, "", "Press Next for the next song")
         case .tourMenu: ("Press MENU to go back", nil, "", "Press MENU to go back")
+        case .tourMenuBar: ("", nil, "", "")  // CLA-163, card CE.1: the menu bar icon glows, with no words
         }
     }
 

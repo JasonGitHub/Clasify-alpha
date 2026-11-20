@@ -463,6 +463,7 @@ final class AppModel {
         let sender = BetaSender(person: { [weak store] in store?.state.activation.account })
         store.onBetaEvent = { [weak sender] event in sender?.take(event) }
         store.send(.analyticsOn(sender.on))
+        store.send(.hintsTrial(HintsTrial.on))  // CLA-163, card CE.1: the menu bar step of the tour
         sender.start()
         // CLA-140: every launch asks the server, also with no device ID yet, so a Mac that was
         // turned off locks again. CLA-156: always, in every build (no switch).
