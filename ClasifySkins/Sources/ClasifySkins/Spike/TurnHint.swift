@@ -158,40 +158,46 @@ public struct TurnHint: View {
     /// 78 x 60 pt, corner 12, down 4 pt at `look.down` 1. Up, its side shows 6 pt (#c3c8ce)
     /// over a soft shadow; down, 2 pt: the side's bottom stays still.
     private func key(_ look: Frame) -> some View {
-        let m = Self.margin, d = look.down, glow = look.glow, blue = look.blue
-        let faceImage = Self.faceImage, blueImage = Self.blueImage
-        let ring = Color(red: 90 / 255, green: 163 / 255, blue: 240 / 255)
-        let dark = Color(red: 20 / 255, green: 30 / 255, blue: 60 / 255)
-        return Color.clear
+        Color.clear
             .frame(width: 78, height: 60)
             .overlay(alignment: .topLeading) {
-                Canvas { context, _ in
-                    let rect = CGRect(x: m, y: m + 4 * d, width: 78, height: 60)
-                    let shape = RoundedRectangle(cornerRadius: 12).path(in: rect)
-                    // The glow: three rings of #5aa3f0, 4, 10 and 18 pt, at 0.95, 0.65 and 0.4.
-                    if glow > 0 {
-                        var rings = context
-                        rings.addFilter(.shadow(color: ring.opacity(0.95 * glow), radius: 2))
-                        rings.addFilter(.shadow(color: ring.opacity(0.65 * glow), radius: 5))
-                        rings.addFilter(.shadow(color: ring.opacity(0.4 * glow), radius: 9))
-                        rings.fill(shape, with: .color(.white))
-                    }
-                    // The side, a copy of the face 6 - 4d pt lower, and the soft shadow of both.
-                    var body = context
-                    body.addFilter(.shadow(color: dark.opacity(0.35 - 0.05 * d), radius: 11 - 6 * d, y: 12 - 7 * d))
-                    body.drawLayer { layer in
-                        layer.fill(shape.offsetBy(dx: 0, dy: 6 - 4 * d), with: .color(Color(hex: 0xc3c8ce)))
-                        layer.fill(shape, with: .color(.white))
-                    }
-                    if let faceImage { context.draw(faceImage, in: rect) }
-                    if blue > 0, let blueImage {
-                        var tint = context
-                        tint.opacity = blue
-                        tint.draw(blueImage, in: rect)
-                    }
-                }
-                .frame(width: 78 + 2 * m, height: 60 + 4 + 2 * m)
-                .offset(x: -m, y: -m)
+                Self.drawing(look)
+                    .frame(width: 78 + 2 * Self.margin, height: 60 + 4 + 2 * Self.margin)
+                    .offset(x: -Self.margin, y: -Self.margin)
             }
+    }
+
+    /// The key drawn at `look`, with `margin` round it.
+    private static func drawing(_ look: Frame) -> Canvas<EmptyView> {
+        let m = margin, d = look.down, glow = look.glow, blue = look.blue
+        let face = faceImage, mark = blueImage
+        let ring = Color(red: 90 / 255, green: 163 / 255, blue: 240 / 255)
+        let dark = Color(red: 20 / 255, green: 30 / 255, blue: 60 / 255)
+        let side = Color(hex: 0xc3c8ce)
+        return Canvas { (context: inout GraphicsContext, _: CGSize) in
+            let rect = CGRect(x: m, y: m + 4 * d, width: 78, height: 60)
+            let shape = RoundedRectangle(cornerRadius: 12).path(in: rect)
+            // The glow: three rings of #5aa3f0, 4, 10 and 18 pt, at 0.95, 0.65 and 0.4.
+            if glow > 0 {
+                var rings = context
+                rings.addFilter(.shadow(color: ring.opacity(0.95 * glow), radius: 2))
+                rings.addFilter(.shadow(color: ring.opacity(0.65 * glow), radius: 5))
+                rings.addFilter(.shadow(color: ring.opacity(0.4 * glow), radius: 9))
+                rings.fill(shape, with: .color(.white))
+            }
+            // The side, a copy of the face 6 - 4d pt lower, and the soft shadow of both.
+            var shade = context
+            shade.addFilter(.shadow(color: dark.opacity(0.35 - 0.05 * d), radius: 11 - 6 * d, y: 12 - 7 * d))
+            shade.drawLayer { (layer: inout GraphicsContext) in
+                layer.fill(shape.offsetBy(dx: 0, dy: 6 - 4 * d), with: .color(side))
+                layer.fill(shape, with: .color(.white))
+            }
+            if let face { context.draw(face, in: rect) }
+            if blue > 0, let mark {
+                var tint = context
+                tint.opacity = blue
+                tint.draw(mark, in: rect)
+            }
+        }
     }
 }
