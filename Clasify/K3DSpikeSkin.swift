@@ -189,7 +189,7 @@ struct K3DSpikeSkin: View {
             report([])  // the window closed
             turnHint?.remove()
         }
-        .task(id: HintWatch(playing: store.state.isPlaying, touched: touched, setupDone: store.state.setupDone, visible: visible)) {
+        .task(id: HintWatch(playing: store.state.isPlaying, touched: touched, setupDone: store.state.setupDone, visible: visible, tour: store.state.tour != nil)) {
             await showTurnHint()
         }
     }
@@ -199,6 +199,8 @@ struct K3DSpikeSkin: View {
         let playing: Bool, touched: Date, setupDone: Bool
         /// A window that was covered when the 5 s ended waits again once it shows (Codex on #363).
         let visible: Bool
+        /// CLA-163, card CE.1: the turn hint comes after the tour, its menu bar hint included.
+        let tour: Bool
     }
 
     /// CLA-163, card BZ option A v2, only with `hints.trial` on: once ever, after setup, when a
@@ -208,10 +210,10 @@ struct K3DSpikeSkin: View {
     private func showTurnHint() async {
         let defaults = UserDefaults.standard
         guard Self.hintPending, turnHint == nil, !defaults.bool(forKey: Self.turnHintKey),
-              store.state.setupDone, store.state.isPlaying else { return }
+              store.state.setupDone, store.state.isPlaying, store.state.tour == nil else { return }
         do { try await Task.sleep(for: .seconds(5)) } catch { return }
         let now = Date.now
-        guard Self.hintPending, store.state.isPlaying, visible, K3DFlip.canDraw, drag == nil, !store.state.deviceTurned,
+        guard Self.hintPending, store.state.isPlaying, store.state.tour == nil, visible, K3DFlip.canDraw, drag == nil, !store.state.deviceTurned,
               flip.restsOnFront(at: now), let window = window.window, window.isVisible else { return }
         defaults.set(true, forKey: Self.turnHintKey)
         Self.hintPending = false

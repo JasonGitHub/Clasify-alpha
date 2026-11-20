@@ -120,6 +120,8 @@ public enum Action: Equatable, Sendable {
     /// CLA-97: the sender takes events: a PostHog key is in the build and `analytics.on` is on.
     /// The app sends it at start and when the switch changes.
     case analyticsOn(Bool)
+    /// CLA-163: the hints trial switch (`hints.trial`). The app sends it at start.
+    case hintsTrial(Bool)
     /// CLA-97 (A4): MetricKit reported crashes or hangs of earlier runs. Only the first
     /// `AppProblem.maxPerLaunch` of a run become events. With `analytics.on` off, the sender drops them.
     case appProblems([AppProblem])
@@ -1369,6 +1371,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .used, .willQuit, .view3D, .window: break  // only for `day_active` (dayEvents)
         case .analyticsOn(let on): s.analyticsOn = on
+        case .hintsTrial(let on): s.hintsTrial = on
         case .appProblems(let problems):
             // The budget is for the whole run: MetricKit can hand over reports more than once.
             for problem in problems.prefix(max(0, AppProblem.maxPerLaunch - s.problemsSent)) {
@@ -1491,11 +1494,17 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if !s.tourOn && before.1 == .yourMusic && s.top.screen == .main && s.setupDone && s.hintsDone.isDisjoint(with: steps) {
             s.tourOn = true; s.tourRestAt = now  // saved: once ever
         }
+        // CLA-163, card CE.1: a tour that ended before the trial's step came goes on with it.
+        if !s.tourOn && s.setupDone && s.hintsDone.isSuperset(of: steps)
+            && s.tourSteps.contains(where: { !s.hintsDone.contains($0) }) {
+            s.tourOn = true; s.tourRestAt = now
+        }
         guard s.tourOn else { return }
         switch action {
         case .play: s.hintsDone.insert(.tourPlay)
         case .next, .prev: s.hintsDone.insert(.tourNext)
         case .menu where s.stack.count < before.0: s.hintsDone.insert(.tourMenu)  // MENU that went back
+        case .menuBarClick where s.tourSteps.contains(.tourMenuBar): s.hintsDone.insert(.tourMenuBar)  // 388: any click
         default: break
         }
         if s.isPlaying { s.hintsDone.insert(.tourPlay) }  // the music started another way
@@ -1540,7 +1549,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()
             case .next: return playing() && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
-            case .tourPlay, .tourNext, .tourMenu: return false  // see `tour()`
+            case .tourPlay, .tourNext, .tourMenu, .tourMenuBar: return false  // see `tour()`
             }
         }
         if s.tour != nil {  // the tour shows its own hints

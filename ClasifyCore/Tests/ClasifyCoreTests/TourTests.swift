@@ -188,4 +188,71 @@ import Testing
         send(&s, .expire, now: 119)
         #expect(s.top.screen == .login && s.hint == nil && s.tourOn && s.tour == .tourNext && s.hintDue == 0)
     }
+
+    /// CLA-163, card CE.1: the tour up to the MENU hint, at 208 s, with the hints trial on.
+    func atMenuWithTrial(menuBar: Bool = true) -> AppState {
+        var s = allSet()
+        send(&s, .hintsTrial(true), now: 110.5)
+        s.menuBar = menuBar
+        send(&s, .select, now: 111)
+        send(&s, .play, now: 201)
+        send(&s, .next, now: 205)
+        send(&s, .tick, now: 208)
+        return s
+    }
+
+    /// CE.1: with the trial on, the menu bar hint comes after MENU. It shows after 3 s of rest
+    /// on any screen, with no look on the device. The first icon click ends it for good.
+    @Test func theTrialAddsTheMenuBarHintAfterMenu() {
+        var s = atMenuWithTrial()
+        #expect(s.hintsTrial && s.hint == .tourMenu)
+        send(&s, .menu, now: 209)
+        #expect(s.top.screen == .main && s.tourOn && s.tour == .tourMenuBar && s.hint == nil && s.hintDue == 212)
+        send(&s, .tick, now: 212)
+        #expect(s.hint == .tourMenuBar && s.hintTip && s.hintDue == 0 && !Hint.tourMenuBar.onDevice)
+        send(&s, .tick, now: 300)
+        #expect(s.hint == .tourMenuBar)  // no timer ends it
+        #expect(send(&s, .menuBarClick(shown: true), now: 301) == [.hideWindow])  // 388: it hides myPod as always
+        #expect(!s.tourOn && s.tour == nil && s.hint == nil && s.hintsDone.contains(.tourMenuBar))
+        #expect(s.settings.hintsDone.contains(.tourMenuBar) && !s.settings.tourOn)
+    }
+
+    /// CE.1: other input hides the menu bar hint, and it comes back after 3 s of rest. After
+    /// 3 hides it is done.
+    @Test func theMenuBarHintHidesThreeTimes() {
+        var s = atMenuWithTrial()
+        send(&s, .menu, now: 209)
+        var t = 209.0
+        for n in 1...3 {
+            send(&s, .tick, now: t + 3)
+            #expect(s.hint == .tourMenuBar)
+            t += 4
+            send(&s, .wheel(1), now: t)
+            #expect(s.hint == nil && s.tourHides[.tourMenuBar] == n)
+        }
+        #expect(!s.tourOn && s.hintsDone.contains(.tourMenuBar))
+    }
+
+    /// 389: with the Menu Bar setting off there is no icon, so the tour ends after MENU. With
+    /// the trial off, it is as before.
+    @Test func noMenuBarHintWithTheIconOffOrTheTrialOff() {
+        var s = atMenuWithTrial(menuBar: false)
+        send(&s, .menu, now: 209)
+        #expect(!s.tourOn && s.tour == nil && !s.hintsDone.contains(.tourMenuBar))
+        send(&s, .hintsTrial(false), now: 210)
+        #expect(!s.hintsTrial && s.tourSteps == [.tourPlay, .tourNext, .tourMenu])
+    }
+
+    /// CE.1: a tour that ended before the trial goes on with the menu bar step when the trial
+    /// is on. A click on the icon before the hint shows ends it too.
+    @Test func aDoneTourGoesOnWithTheTrial() {
+        var s = mainMenu()
+        s.hintsDone = [.tourPlay, .tourNext, .tourMenu, .menu, .playPause, .next]
+        send(&s, .hintsTrial(true), now: 150)
+        #expect(s.tourOn && s.tour == .tourMenuBar && s.hintDue == 153)
+        send(&s, .menuBarClick(shown: true), now: 151)
+        #expect(!s.tourOn && s.hint == nil && s.hintsDone.contains(.tourMenuBar))
+        send(&s, .tick, now: 160)
+        #expect(!s.tourOn && s.hint == nil)
+    }
 }

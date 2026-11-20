@@ -464,6 +464,9 @@ public struct AppState: Equatable, Sendable {
     /// CLA-97: the sender takes events (`Action.analyticsOn`). Not saved. While it is off,
     /// `first_song` is not made, so the next real play makes it again (CTO 22:40 JST).
     public var analyticsOn = false
+    /// CLA-163, card CE.1: the hints trial (`hints.trial`) is on, so the tour has the menu bar
+    /// step (`Action.hintsTrial`). Not saved: the app sends it at start.
+    public var hintsTrial = false
     /// CLA-97 (A4): `app_problem` events made in this run, at most `AppProblem.maxPerLaunch`. Not saved.
     public var problemsSent = 0
     /// CLA-97: the newest beta build that started, for `app_updated`. Saved with the settings.
@@ -835,12 +838,18 @@ public struct AppState: Equatable, Sendable {
     /// The tour step that runs, also while it waits to show: the first one not done. `hint` is
     /// that step while it shows. nil when no tour runs.
     public var tour: Hint? {
-        tourOn ? [Hint.tourPlay, .tourNext, .tourMenu].first(where: { !hintsDone.contains($0) }) : nil
+        tourOn ? tourSteps.first(where: { !hintsDone.contains($0) }) : nil
+    }
+    /// The tour's steps in order. CLA-163, card CE.1: with the hints trial on, the menu bar
+    /// hint comes after MENU, only while the Menu Bar setting is on (389).
+    public var tourSteps: [Hint] {
+        hintsTrial && menuBar ? [.tourPlay, .tourNext, .tourMenu, .tourMenuBar] : [.tourPlay, .tourNext, .tourMenu]
     }
     /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
     /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
     public var tourPlace: Bool {
         guard let tour, setupDone, signedIn, stack.first?.screen == .main else { return false }
+        if tour == .tourMenuBar { return true }  // the icon glows over any screen
         return tour == .tourPlay ? top.screen == .main : top.screen == .now && current != nil && nowMode == .volume
     }
     /// When the waiting tour hint shows. Play glows first and its words come `tourTipAfter`
@@ -1190,8 +1199,13 @@ public enum Hint: String, CaseIterable, Sendable {
     /// main menu, then Previous or Next on Now Playing, then MENU. In `hintsDone`: that step is
     /// done. Other input only hides the hint (see `AppState.tour`).
     case tourPlay = "tour.play", tourNext = "tour.next", tourMenu = "tour.menu"
+    /// CLA-163, card CE.1, only with the hints trial on: after MENU, the menu bar icon glows
+    /// until its first click. It has no look on the device: the app draws it in the icon.
+    case tourMenuBar = "tour.menuBar"
 
-    public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu }
+    public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu || self == .tourMenuBar }
+    /// The hint shows on the device: a wheel label and words. Not the menu bar hint.
+    public var onDevice: Bool { self != .tourMenuBar }
 }
 
 extension Track {
