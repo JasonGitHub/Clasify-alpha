@@ -46,9 +46,13 @@ import Foundation
         self.key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         (self.defaults, self.person) = (defaults, person)
         queue = BetaQueue(saved: defaults.string(forKey: Self.unsentKey))
-        if !on { forget() } else if defaults.string(forKey: Self.installKey) == nil {
-            defaults.set(UUID().uuidString, forKey: Self.installKey)
-        }
+        if !on { forget() } else { makeInstallID() }
+    }
+
+    /// At the first start with analytics on, and again when the switch comes back on while the
+    /// app runs (Codex on #369): `forget()` removed the old one.
+    private func makeInstallID() {
+        if defaults.string(forKey: Self.installKey) == nil { defaults.set(UUID().uuidString, forKey: Self.installKey) }
     }
 
     private var install: String? { defaults.string(forKey: Self.installKey) }
@@ -61,6 +65,7 @@ import Foundation
 
     func take(_ event: BetaEvent) {
         guard on else { return forget() }
+        makeInstallID()
         queue.add(event, at: Date().timeIntervalSinceReferenceDate)
         save()
         if queue.events.count >= 20 && failures == 0 { nextTry = .distantPast }
