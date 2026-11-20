@@ -840,12 +840,12 @@ public struct AppState: Equatable, Sendable {
     public var tour: Hint? {
         tourOn ? tourSteps.first(where: { !hintsDone.contains($0) }) : nil
     }
-    /// The tour's steps in order. CLA-163, card CE.1: with the hints trial on, the menu bar
-    /// hint comes after MENU, only while the Menu Bar setting is on (389), and the turn hint
-    /// comes last.
+    /// The tour's steps in order. CLA-163, card CE.1: with the hints trial on, the turn hint
+    /// comes after MENU, and the menu bar hint comes last, only while the Menu Bar setting is
+    /// on (389). Jason 00:32 JST 11-21: the turn hint first, then the menu bar hint.
     public var tourSteps: [Hint] {
         guard hintsTrial else { return [.tourPlay, .tourNext, .tourMenu] }
-        return [.tourPlay, .tourNext, .tourMenu] + (menuBar ? [.tourMenuBar] : []) + [.tourTurn]
+        return [.tourPlay, .tourNext, .tourMenu, .tourTurn] + (menuBar ? [.tourMenuBar] : [])
     }
     /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
     /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
@@ -1202,11 +1202,11 @@ public enum Hint: String, CaseIterable, Sendable {
     /// main menu, then Previous or Next on Now Playing, then MENU. In `hintsDone`: that step is
     /// done. Other input only hides the hint (see `AppState.tour`).
     case tourPlay = "tour.play", tourNext = "tour.next", tourMenu = "tour.menu"
-    /// CLA-163, card CE.1, only with the hints trial on: after MENU, the menu bar icon glows
-    /// until its first click. It has no look on the device: the app draws it in the icon.
+    /// CLA-163, card CE.1, only with the hints trial on, last: the menu bar icon glows until
+    /// its first click. It has no look on the device: the app draws it in the icon.
     case tourMenuBar = "tour.menuBar"
-    /// CLA-163, card CE.1, only with the hints trial on, last: the ⌘ key and "Hold ⌘ and drag
-    /// to turn" under the device, until the first ⌘ turn (`Action.deviceTurned`). The app
+    /// CLA-163, card CE.1, only with the hints trial on, after MENU: the ⌘ key and "Hold ⌘ and
+    /// drag to turn" under the device, until the first ⌘ turn (`Action.deviceTurned`). The app
     /// draws it in its own window.
     case tourTurn = "tour.turn"
 
