@@ -83,13 +83,14 @@ public struct TurnHint: View {
         let shape = RoundedRectangle(cornerRadius: 12)
         let d = look.down, ring = Color(red: 90 / 255, green: 163 / 255, blue: 240 / 255)
         return ZStack {
-            Text("⌘").font(.system(size: 20, weight: .medium))
-                .foregroundStyle(Color(hex: 0x3d454e))
-                .overlay { Text("⌘").font(.system(size: 20, weight: .medium)).foregroundStyle(Color(hex: 0x3f8de0)).opacity(look.glow) }
+            Text("⌘").font(.system(size: 22, weight: .regular))
+                .foregroundStyle(Color(hex: 0x2c3137))
+                .overlay { Text("⌘").font(.system(size: 22, weight: .regular)).foregroundStyle(Color(hex: 0x3f8de0)).opacity(look.glow) }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 11))
-            Text("command").font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(Color(hex: 0x5d6772))
+                .padding(EdgeInsets(top: 7, leading: 0, bottom: 0, trailing: 10))
+            Text("command").font(.system(size: 10, weight: .medium))
+                .tracking(0.2)
+                .foregroundStyle(Color(hex: 0x5b636c))
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 .padding(EdgeInsets(top: 0, leading: 10, bottom: 8, trailing: 0))
         }
