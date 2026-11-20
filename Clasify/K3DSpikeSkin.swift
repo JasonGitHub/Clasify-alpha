@@ -71,15 +71,8 @@ struct K3DSpikeSkin: View {
     @State private var viewsOpen: Set<View3D> = []
     /// CLA-97: the window is on screen and not fully covered (its occlusion state).
     @State private var visible = true
-    /// CLA-163: the last input on myPod: a key, a click, a drag, or a Cmd turn.
-    @State private var touched = Date.now
     /// CLA-163: the turn hint under the device, while it shows.
     @State private var turnHint: TurnHintWindow?
-    /// CLA-163: the turn hint showed once. Saved, so it never shows again.
-    static let turnHintKey = "hints.turnShown"
-    /// CLA-163: the turn hint may still come. Read once at launch, so with the switch off (or
-    /// the hint already shown) input writes no state and costs nothing.
-    @MainActor static var hintPending = HintsTrial.on && !UserDefaults.standard.bool(forKey: turnHintKey)
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -108,7 +101,6 @@ struct K3DSpikeSkin: View {
             }
         ) {
             PocketSkin(state: store.state) { action in
-                touch()
                 if store.state.deviceTurned { return }  // CLA-130: the screen faces away
                 // CLA-117: the full arrival takes no input until it lands. The short one lands in
                 // 0.25 s at most, and the input still does its job.
@@ -180,57 +172,39 @@ struct K3DSpikeSkin: View {
             guard let shown = note.object as? NSWindow, shown === window.window else { return }
             visible = shown.occlusionState.contains(.visible)
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMoveNotification)) { note in
-            // CLA-163: a drag of the window counts as a touch (Codex on #363). A move for the 3D
-            // room comes only with a turn, a spin or the nudge, which wait for no hint.
-            if note.object as? NSWindow === window.window { touch() }
-        }
         .onDisappear {
             report([])  // the window closed
             turnHint?.remove()
         }
-        .task(id: HintWatch(playing: store.state.isPlaying, touched: touched, setupDone: store.state.setupDone, visible: visible, tour: store.state.tour != nil)) {
-            await showTurnHint()
+        .onChange(of: turnHintShows, initial: true) { _, shows in showTurnHint(shows) }
+    }
+
+    /// CLA-163, card CE.1: the tour shows the turn hint (`Hint.tourTurn`, only with
+    /// `hints.trial` on), and the device window shows. The tour gives the 3 s of rest, the
+    /// hide on other input, the return, and the end at the first ⌘ turn (`.deviceTurned`).
+    private var turnHintShows: Bool {
+        store.state.hint == .tourTurn && visible && K3DFlip.canDraw
+    }
+
+    /// CLA-163, card CE.1: puts the ⌘ key and its words under the device, or fades them out.
+    private func showTurnHint(_ shows: Bool) {
+        guard shows else {
+            turnHint?.end()
+            turnHint = nil
+            return
         }
-    }
-
-    /// CLA-163: what `showTurnHint` waits again for.
-    private struct HintWatch: Equatable {
-        let playing: Bool, touched: Date, setupDone: Bool
-        /// A window that was covered when the 5 s ended waits again once it shows (Codex on #363).
-        let visible: Bool
-        /// CLA-163, card CE.1: the turn hint comes after the tour, its menu bar hint included.
-        let tour: Bool
-    }
-
-    /// CLA-163, card BZ option A v2, only with `hints.trial` on: once ever, after setup, when a
-    /// song plays and nobody touches myPod for 5 s, the ⌘ key and its words show under the
-    /// device. At 2.0 s the device nudges 16° and back once (the change-297 nudge, not with
-    /// Reduce Motion). The first Cmd turn ends the hint early.
-    private func showTurnHint() async {
-        let defaults = UserDefaults.standard
-        guard Self.hintPending, turnHint == nil, !defaults.bool(forKey: Self.turnHintKey),
-              store.state.setupDone, store.state.isPlaying, store.state.tour == nil else { return }
-        do { try await Task.sleep(for: .seconds(5)) } catch { return }
-        let now = Date.now
-        guard Self.hintPending, store.state.isPlaying, store.state.tour == nil, visible, K3DFlip.canDraw, drag == nil, !store.state.deviceTurned,
-              flip.restsOnFront(at: now), let window = window.window, window.isVisible else { return }
-        defaults.set(true, forKey: Self.turnHintKey)
-        Self.hintPending = false
+        guard turnHint == nil, let window = window.window, window.isVisible else { return }
         let hint = TurnHintWindow(under: window, room: room)
-        hint.onEnd = { turnHint = nil }
+        hint.onNudge = { nudgeForHint() }
         turnHint = hint
-        // A touch in these 2 s starts this task again, so the nudge does not come.
-        do { try await Task.sleep(for: .seconds(2)) } catch { return }
-        guard !reduceMotion, drag == nil, !store.state.deviceTurned, flip.restsOnFront(at: .now) else { return }
-        flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
-        flip = flip.nudge(at: .now)
     }
 
-    /// CLA-163: input on myPod, for the turn hint's 5 s of rest. Only while the hint may come
-    /// or shows: a touch while it shows cancels the nudge that waits (Codex on #363).
-    private func touch() {
-        if Self.hintPending || turnHint != nil { touched = .now }
+    /// 393: on each press of the hint's ⌘ key, the device turns −16° and back in 1.6 s. Not
+    /// with Reduce Motion, and only while it rests on the front with nobody moving it.
+    private func nudgeForHint() {
+        guard !reduceMotion, !showroom, drag == nil, !store.state.deviceTurned, flip.restsOnFront(at: .now) else { return }
+        flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
+        flip = flip.nudge(at: .now, time: K3DFlip.hintNudgeTime)
     }
 
     /// CLA-97: what `watchViews` runs again for.
@@ -371,7 +345,6 @@ struct K3DSpikeSkin: View {
     /// Change 305 and 307: the device follows the drag once it passes 4 points. A turn that runs
     /// stops where it is at the press.
     private func dragged(_ translation: CGSize) {
-        touch()
         let now = Date.now
         if holdOpened || store.state.deviceTurned || (self.drag == nil && flip.apartRuns(at: now)) { return }
         if self.drag == nil, K3DShowroom.canHold(flip: flip, at: now) { startHold() }
@@ -430,7 +403,7 @@ struct K3DSpikeSkin: View {
         flip = K3DShowroom(flip: flip, at: .now).ended(flip: flip, reduceMotion: reduceMotion, at: .now)
     }
 
-    /// Change 297: 1.4 s after About opens for the first time ever, the device turns 16° and back.
+    /// Change 297: 1.4 s after About opens for the first time ever, the device turns −16° and back (386).
     /// Not with Reduce Motion, and only when the device rests on the front.
     private func nudge() async {
         let defaults = UserDefaults.standard
@@ -444,8 +417,6 @@ struct K3DSpikeSkin: View {
 
     /// Change 351: the swipe turns and tilts the device. A turn that runs stops where it is.
     private func swiped(_ dx: Double, _ dy: Double) {
-        touch()
-        turnHint?.end()
         guard startTurn() else { return }
         flip = cmdTurn.swipe(dx: dx, dy: dy, flip: flip, at: .now)
         // Build 308: a single wheel line or a short drag sends no more events, so the travel
@@ -461,8 +432,6 @@ struct K3DSpikeSkin: View {
 
     /// Change 354: the pinch takes the device apart or puts it together.
     private func pinched(_ amount: Double, began: Bool) {
-        touch()
-        turnHint?.end()
         if began, !flip.isApart(at: .now) { K3DFlip.prepareApart() }
         guard startTurn() else { return }
         flip = cmdTurn.pinched(amount, flip: flip, at: .now)
@@ -470,13 +439,11 @@ struct K3DSpikeSkin: View {
 
     /// Change 355: a Cmd press with the mouse. The prints get ready, so a hold opens with no wait.
     private func cmdPressed() {
-        touch()
         if !flip.isApart(at: .now) { K3DFlip.prepareApart() }
     }
 
     /// Change 355: a Cmd hold of 1.2 s with no move takes the device apart (the 308 motion).
     private func cmdHeld() {
-        turnHint?.end()
         guard !flip.isApart(at: .now), startTurn() else { return }
         flip = flip.apart(at: .now)
     }

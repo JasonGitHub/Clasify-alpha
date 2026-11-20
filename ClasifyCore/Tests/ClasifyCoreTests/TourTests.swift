@@ -213,8 +213,8 @@ import Testing
         send(&s, .tick, now: 300)
         #expect(s.hint == .tourMenuBar)  // no timer ends it
         #expect(send(&s, .menuBarClick(shown: true), now: 301) == [.hideWindow])  // 388: it hides myPod as always
-        #expect(!s.tourOn && s.tour == nil && s.hint == nil && s.hintsDone.contains(.tourMenuBar))
-        #expect(s.settings.hintsDone.contains(.tourMenuBar) && !s.settings.tourOn)
+        #expect(s.tourOn && s.tour == .tourTurn && s.hint == nil && s.hintsDone.contains(.tourMenuBar))
+        #expect(s.settings.hintsDone.contains(.tourMenuBar) && s.settings.tourOn)
     }
 
     /// CE.1: other input hides the menu bar hint, and it comes back after 3 s of rest. After
@@ -230,17 +230,18 @@ import Testing
             send(&s, .wheel(1), now: t)
             #expect(s.hint == nil && s.tourHides[.tourMenuBar] == n)
         }
-        #expect(!s.tourOn && s.hintsDone.contains(.tourMenuBar))
+        #expect(s.tour == .tourTurn && s.hintsDone.contains(.tourMenuBar))
     }
 
-    /// 389: with the Menu Bar setting off there is no icon, so the tour ends after MENU. With
+    /// 389: with the Menu Bar setting off there is no icon, so the turn hint follows MENU. With
     /// the trial off, it is as before.
     @Test func noMenuBarHintWithTheIconOffOrTheTrialOff() {
         var s = atMenuWithTrial(menuBar: false)
         send(&s, .menu, now: 209)
-        #expect(!s.tourOn && s.tour == nil && !s.hintsDone.contains(.tourMenuBar))
+        #expect(s.tourOn && s.tour == .tourTurn && !s.hintsDone.contains(.tourMenuBar))
         send(&s, .hintsTrial(false), now: 210)
         #expect(!s.hintsTrial && s.tourSteps == [.tourPlay, .tourNext, .tourMenu])
+        #expect(!s.tourOn && s.tour == nil)
     }
 
     /// CE.1: a tour that ended before the trial goes on with the menu bar step when the trial
@@ -251,8 +252,57 @@ import Testing
         send(&s, .hintsTrial(true), now: 150)
         #expect(s.tourOn && s.tour == .tourMenuBar && s.hintDue == 153)
         send(&s, .menuBarClick(shown: true), now: 151)
-        #expect(!s.tourOn && s.hint == nil && s.hintsDone.contains(.tourMenuBar))
+        #expect(s.tour == .tourTurn && s.hint == nil && s.hintsDone.contains(.tourMenuBar))
+        send(&s, .deviceTurned(true), now: 152)
+        send(&s, .deviceTurned(false), now: 153)
+        #expect(!s.tourOn && s.hint == nil && s.hintsDone.contains(.tourTurn))
         send(&s, .tick, now: 160)
         #expect(!s.tourOn && s.hint == nil)
+    }
+
+    /// CE.1: the turn hint comes last. It shows after 3 s of rest under the device (not on
+    /// it), on any screen but About, and no timer ends it. Other input hides it, and it comes
+    /// back after 3 s of rest. The first ⌘ turn ends it for good.
+    @Test func theTurnHintComesLastAndWaitsForTheFirstTurn() {
+        var s = atMenuWithTrial()
+        send(&s, .menu, now: 209)
+        send(&s, .menuBarClick(shown: true), now: 210)
+        send(&s, .menuBarClick(shown: false), now: 211)
+        #expect(s.tour == .tourTurn && s.hint == nil && s.hintDue == 212)  // the icon clicks are no input on myPod
+        send(&s, .tick, now: 212)
+        #expect(s.hint == .tourTurn && s.hintTip && s.hintDue == 0 && !Hint.tourTurn.onDevice)
+        send(&s, .tick, now: 400)
+        #expect(s.hint == .tourTurn)  // no timer ends it
+        send(&s, .wheel(1), now: 401)
+        #expect(s.hint == nil && s.tourHides[.tourTurn] == 1)
+        send(&s, .tick, now: 404)
+        #expect(s.hint == .tourTurn)
+        send(&s, .deviceTurned(true), now: 405)
+        #expect(!s.tourOn && s.tour == nil && s.hint == nil && s.hintsDone.contains(.tourTurn))
+        #expect(s.settings.hintsDone.contains(.tourTurn) && !s.settings.tourOn)
+        send(&s, .deviceTurned(false), now: 406)
+        send(&s, .tick, now: 420)
+        #expect(!s.tourOn && s.hint == nil)
+    }
+
+    /// CE.1: after 3 hides the turn hint is done. It does not show on About.
+    @Test func theTurnHintHidesThreeTimesAndWaitsOffAbout() {
+        var s = atMenuWithTrial(menuBar: false)
+        send(&s, .menu, now: 209)
+        var t = 209.0
+        for n in 1...3 {
+            send(&s, .tick, now: t + 3)
+            #expect(s.hint == .tourTurn)
+            t += 4
+            send(&s, .wheel(1), now: t)
+            #expect(s.hint == nil && s.tourHides[.tourTurn] == n)
+        }
+        #expect(!s.tourOn && s.hintsDone.contains(.tourTurn))
+
+        var a = atMenuWithTrial(menuBar: false)
+        send(&a, .menu, now: 209)
+        a.stack.append(Frame(screen: .about))
+        send(&a, .tick, now: 230)
+        #expect(a.tour == .tourTurn && !a.tourPlace && a.hint == nil)
     }
 }
