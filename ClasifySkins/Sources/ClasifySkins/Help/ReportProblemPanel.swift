@@ -4,7 +4,7 @@ import SwiftUI
 /// CLA-166, card CG: the Report a Problem window, an AppKit window round `ReportProblem`. The
 /// SwiftUI `Window` scene with a hidden title bar made the window taller than the view: it
 /// added the title bar's height under the Cancel and Send row (Jason's build 382). Here the
-/// window is exactly the view: 380 x 262, then 380 x 246 on Thanks. macOS draws its close and
+/// window is exactly the view: 380 x 262, on Thanks too (CG.2). macOS draws its close and
 /// minimize buttons over the device title bar's left end.
 @MainActor
 public enum ReportProblemPanel {
@@ -35,8 +35,8 @@ public enum ReportProblemPanel {
     }
 }
 
-/// When the form turns into Thanks (262 to 246 pt), the top edge stays still and the bottom
-/// moves up. AppKit keeps the bottom-left corner when the content's size changes; a move keeps
+/// If the view's height changes (the form and Thanks are both 262 pt since CG.2), the top edge
+/// stays still and the bottom moves. AppKit keeps the bottom-left corner when the content's size changes; a move keeps
 /// its size and is left as it is.
 final class TopFixedWindow: NSWindow {
     override func setFrame(_ frameRect: NSRect, display flag: Bool) { super.setFrame(topFixed(frameRect), display: flag) }

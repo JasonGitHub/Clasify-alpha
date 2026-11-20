@@ -54,9 +54,9 @@ import Testing
 
     @Test func theThanksScreenShowsTheWave() throws {
         let bitmap = try render(ReportProblem(text: "x", sent: true, fixedTime: 0.8), "report-problem-thanks.png")
-        #expect(bitmap.pixelsWide == 380 * 2 && bitmap.pixelsHigh == 246 * 2)
+        #expect(bitmap.pixelsWide == 380 * 2 && bitmap.pixelsHigh == 262 * 2)
         // The wide Done button: the selected-row blue, at the middle, near the bottom.
-        #expect((180...235).contains { y in blue(bitmap, 190, y) })
+        #expect((200...255).contains { y in blue(bitmap, 190, y) })
     }
 }
 
@@ -82,8 +82,8 @@ import Testing
         try check(ReportProblem(text: "", sent: false, fixedTime: 0), height: ReportProblem.formHeight, "report-problem-window.png")
     }
 
-    /// CTO 21:38 JST: from the form to Thanks, the top edge stays still and the bottom moves up.
-    @Test func theTopStaysWhenTheFormTurnsIntoThanks() async throws {
+    /// CG.2 (395): from the form to Thanks, the window keeps its place and its size.
+    @Test func theWindowStaysStillWhenTheFormTurnsIntoThanks() async throws {
         let window = TopFixedWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
         ReportProblemPanel.configure(window, ReportProblem(text: "x", sent: false, fixedTime: 0))
         window.layoutIfNeeded()
@@ -97,12 +97,12 @@ import Testing
             try await Task.sleep(for: .milliseconds(20))
             host.layoutSubtreeIfNeeded()
         }
-        #expect(window.frame.height == ReportProblem.thanksHeight, "\(window.frame)")
+        #expect(window.frame.height == ReportProblem.thanksHeight && ReportProblem.thanksHeight == ReportProblem.formHeight, "\(window.frame)")
         #expect(window.frame.maxY == top && window.frame.minX == 200, "\(window.frame)")
         window.close()
     }
 
-    @Test func theThanksWindowIs380By246() throws {
+    @Test func theThanksWindowIs380By262() throws {
         try check(ReportProblem(text: "x", sent: true, fixedTime: 0.8), height: ReportProblem.thanksHeight, "report-problem-window-thanks.png")
     }
 }

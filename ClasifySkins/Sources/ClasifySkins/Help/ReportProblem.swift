@@ -7,7 +7,10 @@ import SwiftUI
 public struct ReportProblem: View {
     public static let title = "Report a Problem"
     public static let width: CGFloat = 380
-    static let formHeight: CGFloat = 262, thanksHeight: CGFloat = 246
+    /// CG.2 (395): both screens are 262 pt, so the window does not change its size on Send.
+    static let formHeight: CGFloat = 262, thanksHeight: CGFloat = 262
+    /// CG.2 (395): 12 pt text with 18 pt lines (1.5). SF's own line at 12 pt is about 14.3 pt.
+    static let lineGap: CGFloat = 18 - 14.3
     static let hint = "A song didn’t play, the wheel got stuck…"
 
     let onSend: (_ text: String, _ writeBack: Bool) -> Void
@@ -55,7 +58,7 @@ public struct ReportProblem: View {
         }
         .frame(width: Self.width, height: sent ? Self.thanksHeight : Self.formHeight, alignment: .top)
         .background(LinearGradient(colors: [Color(hex: 0xf4f8fb), Color(hex: 0xd6e2ec)], startPoint: .top, endPoint: .bottom))
-        .font(.helvetica(12))
+        .font(.system(size: 12))  // CG.2 (395): text outside the device is in the Mac system font
     }
 
     /// The device title bar (.a-hdr): 26 pt and its 1 pt line. macOS draws the window buttons over its left end.
@@ -74,7 +77,7 @@ public struct ReportProblem: View {
     private var form: some View {
         ZStack(alignment: .topLeading) {
             Text("What went wrong?")
-                .font(.helvetica(11, bold: true))
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color(hex: 0x5d6772))
                 .offset(x: 14, y: 12)
             box.frame(width: Self.width - 24, height: 104).offset(x: 12, y: 29)
@@ -107,8 +110,8 @@ public struct ReportProblem: View {
                 editor
             }
         }
-        .font(.helvetica(12.5))
-        .lineSpacing(1.5)
+        .font(.system(size: 12))
+        .lineSpacing(Self.lineGap)
         .padding(.vertical, 6).padding(.horizontal, 3)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(shape.fill(.white))
@@ -145,8 +148,8 @@ public struct ReportProblem: View {
                 }
                 .frame(width: 14, height: 14)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Let us write back to you").font(.helvetica(12, bold: true)).foregroundStyle(Color(hex: 0x1b1f24))
-                    Text("We’ll reply to your myPod account email.").font(.helvetica(10.5)).foregroundStyle(Color(hex: 0x5d6772))
+                    Text("Let us write back to you").font(.system(size: 12, weight: .semibold)).foregroundStyle(Color(hex: 0x1b1f24))
+                    Text("We’ll reply to your myPod account email.").font(.system(size: 11)).foregroundStyle(Color(hex: 0x5d6772))
                 }
             }
             .contentShape(Rectangle())
@@ -155,15 +158,16 @@ public struct ReportProblem: View {
         .accessibilityAddTraits(writeBack ? .isSelected : [])
     }
 
-    /// 384: the About capybara on a soft white glow, the words and Done.
+    /// 384: the About capybara on a soft white glow, the words and Done. CG.2 (395): an 88 pt
+    /// capybara, 20 pt under the title bar; then 14 to the title, 6 to the lines, 14 to Done.
     private var thanks: some View {
         VStack(spacing: 0) {
-            capybara.padding(.top, 14)
-            Text("Got it, thank you!").font(.helvetica(15, bold: true)).foregroundStyle(Color(hex: 0x1b1f24)).padding(.top, 8)
+            capybara.padding(.top, 20)
+            Text("Got it, thank you!").font(.system(size: 15, weight: .semibold)).foregroundStyle(Color(hex: 0x1b1f24)).padding(.top, 14)
             Text("Cappy reads every note.\nWe’ll look into it.")
-                .font(.helvetica(11)).lineSpacing(3).multilineTextAlignment(.center)
-                .foregroundStyle(Color(hex: 0x5d6772)).padding(.top, 4)
-            button("Done", filled: true, wide: true, action: onClose).keyboardShortcut(.defaultAction).padding(.top, 12)
+                .font(.system(size: 12)).lineSpacing(Self.lineGap).multilineTextAlignment(.center)
+                .foregroundStyle(Color(hex: 0x5d6772)).padding(.top, 6)
+            button("Done", filled: true, wide: true, action: onClose).keyboardShortcut(.defaultAction).padding(.top, 14)
         }
         .frame(maxWidth: .infinity)
     }
@@ -180,11 +184,11 @@ public struct ReportProblem: View {
                     .frame(width: 132, height: 132)
                 if let image = PocketAbout.poses[waving ? .wave : .stand] {
                     Image(nsImage: image).resizable().interpolation(.high).scaledToFit()
-                        .frame(width: 96, height: 96)
+                        .frame(width: Self.cappy, height: Self.cappy)
                         .rotationEffect(.degrees(waving ? PocketAbout.rock(t - 0.3) : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
                 }
             }
-            .frame(width: 96, height: 96)
+            .frame(width: Self.cappy, height: Self.cappy)
         }
         .accessibilityElement()
         .accessibilityLabel("Capybara with headphones, waving")
@@ -195,6 +199,9 @@ public struct ReportProblem: View {
         }
     }
 
+    /// The Thanks capybara's size (CG.2, 395; was 96).
+    static let cappy: CGFloat = 88
+
     private func send() {
         guard !report.isEmpty else { return }
         onSend(report, writeBack)
@@ -204,11 +211,11 @@ public struct ReportProblem: View {
 
     static let blue = LinearGradient(colors: [Color(hex: 0x5aa3f0), Color(hex: 0x1f6fd1)], startPoint: .top, endPoint: .bottom)
 
-    /// 24 pt, corner 6, bold 13: blue text, or white on the selected-row blue.
+    /// 24 pt, corner 6, semibold 13: blue text, or white on the selected-row blue.
     private func button(_ title: String, filled: Bool, wide: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(.helvetica(13, bold: true))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(filled ? Color.white : Color(hex: 0x1f6fd1))
                 .padding(.horizontal, wide ? 22 : 14)
                 .frame(height: 24)
