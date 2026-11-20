@@ -35,6 +35,19 @@ public struct ReportProblem: View {
     /// An empty box cannot be sent (384).
     var report: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// The server takes at most 4000 characters (code points) after the trim, and answers 400
+    /// to more. The box stops there, so a long report is never lost.
+    static let maxCount = 4000
+
+    /// The text cut to `maxCount` code points after its leading spaces; shorter text as it is.
+    static func capped(_ text: String) -> String {
+        let start = text.unicodeScalars.prefix { CharacterSet.whitespacesAndNewlines.contains($0) }.count
+        guard text.trimmingCharacters(in: .whitespacesAndNewlines).unicodeScalars.count > maxCount else { return text }
+        var kept = String.UnicodeScalarView()
+        kept.append(contentsOf: text.unicodeScalars.dropFirst(start).prefix(maxCount))
+        return String(kept)
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             titleBar
@@ -89,6 +102,10 @@ public struct ReportProblem: View {
             TextEditor(text: $text)
                 .scrollContentBackground(.hidden)
                 .focused($typing)
+                .onChange(of: text) { _, new in
+                    let cut = Self.capped(new)
+                    if cut != new { text = cut }
+                }
                 .foregroundStyle(Color(hex: 0x1b1f24))
                 .tint(Color(hex: 0x1f6fd1))
         }

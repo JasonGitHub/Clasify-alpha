@@ -33,6 +33,18 @@ import Testing
         #expect(ReportProblem(text: " The wheel got stuck\n", sent: false, fixedTime: nil).report == "The wheel got stuck")
     }
 
+    /// The CTO on #367: the server answers 400 above 4000 code points after the trim, so the box
+    /// stops at 4000 and a long report is never dropped.
+    @Test func theBoxStopsAt4000Characters() {
+        #expect(ReportProblem.capped("short") == "short")
+        let exact = "  " + String(repeating: "a", count: 4000) + "\n"
+        #expect(ReportProblem.capped(exact) == exact)
+        let long = "\n " + String(repeating: "é", count: 3999) + "👍🏽 more"
+        let cut = ReportProblem.capped(long)
+        #expect(cut.unicodeScalars.count == 4000 && cut.hasPrefix("é") && cut.unicodeScalars.last == "👍")
+        #expect(ReportProblem(text: cut, sent: false, fixedTime: nil).report.unicodeScalars.count <= ReportProblem.maxCount)
+    }
+
     @Test func aTypedReportEnablesSend() throws {
         _ = try render(ReportProblem(text: "Song skipped twice in a row.", sent: false, fixedTime: nil), "report-problem-typed.png")
     }
