@@ -64,11 +64,82 @@ import Testing
         return weight > 0 ? sum / weight / 2 : .nan
     }
 
+    /// The label's centre of ink in a 2x bitmap of a 100 x 100 pt picture.
+    private static func ink(_ bitmap: NSBitmapImageRep) -> Double {
+        var weight = 0.0, sum = 0.0
+        for py in 88..<136 {
+            for px in 28..<120 {
+                guard let c = bitmap.colorAt(x: px, y: py)?.usingColorSpace(.sRGB) else { continue }
+                let ink = max(0, 0.8 - (c.redComponent + c.greenComponent + c.blueComponent) / 3)
+                weight += ink
+                sum += ink * (Double(py) + 0.5)
+            }
+        }
+        return weight > 0 ? sum / weight / 2 : .nan
+    }
+
+    /// A 2x bitmap, 100 x 100 pt, filled dark, for AppKit drawing.
+    private static func bitmap() -> (NSBitmapImageRep, NSGraphicsContext) {
+        let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 200, pixelsHigh: 200, bitsPerSample: 8, samplesPerPixel: 4,
+                                   hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)!
+        rep.size = NSSize(width: 100, height: 100)
+        let context = NSGraphicsContext(bitmapImageRep: rep)!
+        context.cgContext.setFillColor(CGColor(red: 0.16, green: 0.2, blue: 0.28, alpha: 1))
+        context.cgContext.fill(CGRect(x: 0, y: 0, width: 200, height: 200))
+        return (rep, context)
+    }
+
+    /// The face in a real clear panel, 100 x 100 pt: in a container view whose layer moves it
+    /// down by `y` (a Core Animation transform), or by `.offset` when `layer` is false.
+    private static func panel(_ y: Double, layer: Bool) -> Double {
+        let content = face().offset(y: layer ? 0 : y).frame(width: 78, height: 64, alignment: .top)
+            .padding(.top, 10).padding(.leading, 10).frame(width: 100, height: 100, alignment: .topLeading)
+        let host = NSHostingView(rootView: content)
+        host.frame = NSRect(x: 0, y: 0, width: 100, height: 100)
+        let box = NSView(frame: host.frame)
+        box.wantsLayer = true
+        box.addSubview(host)
+        let panel = NSPanel(contentRect: host.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.contentView = box
+        defer { panel.close() }
+        box.layoutSubtreeIfNeeded()
+        host.layer?.setAffineTransform(CGAffineTransform(translationX: 0, y: layer ? -y : 0))  // the layer's y goes up
+        let (rep, context) = bitmap()
+        if layer {
+            // `render(in:)` draws the layer tree with its transforms, in the layer's own (flipped) space.
+            let cg = context.cgContext
+            cg.saveGState()
+            cg.scaleBy(x: 2, y: 2)
+            if !(box.layer?.isGeometryFlipped ?? false) { cg.translateBy(x: 0, y: 100); cg.scaleBy(x: 1, y: -1) }
+            box.layer?.render(in: cg)
+            cg.restoreGState()
+        } else {
+            box.cacheDisplay(in: box.bounds, to: rep)
+        }
+        return ink(rep)
+    }
+
+    /// The face rendered once to an image, then drawn by a Canvas at `y`.
+    private static func canvasImage(_ y: Double, _ image: CGImage) -> Double {
+        labelY(Canvas { context, _ in
+            context.draw(Image(decorative: image, scale: 2), in: CGRect(x: 0, y: y, width: 78, height: 60))
+        }.frame(width: 78, height: 64))
+    }
+
     @Test func whichWaysMoveByAFractionOfAPoint() {
-        let names = ["offset", "transformEffect", "offset+drawingGroup", "transformEffect+drawingGroup",
-                     "drawingGroup+offset", "geometryEffect", "visualEffect", "canvas"]
-        for name in names {
-            let ys = (0...30).map { Self.labelY(Self.variant(name, 4 * Double($0) / 30)) }
+        let renderer = ImageRenderer(content: Self.face())
+        renderer.scale = 2
+        let still = renderer.cgImage
+        let ways: [(String, (Double) -> Double)] = [
+            ("offset", { Self.labelY(Self.variant("offset", $0)) }),
+            ("canvas-image", { still.map { image in Self.canvasImage($0, image) } ?? .nan }),
+            ("panel-offset", { Self.panel($0, layer: false) }),
+            ("panel-layer", { Self.panel($0, layer: true) }),
+        ]
+        for (name, measure) in ways {
+            let ys = (0...30).map { measure(4 * Double($0) / 30) }
             let moved = zip(ys, ys.dropFirst()).filter { $1 > $0 + 0.01 }.count
             print("subpixel-motion \(name): moved \(moved) of 30 steps; y:", ys.map { String(format: "%.3f", $0) }.joined(separator: " "))
         }
