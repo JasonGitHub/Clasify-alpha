@@ -71,6 +71,12 @@ struct K3DSpikeSkin: View {
     @State private var viewsOpen: Set<View3D> = []
     /// CLA-97: the window is on screen and not fully covered (its occlusion state).
     @State private var visible = true
+    /// CLA-163: the last input on myPod: a key, a click, a drag, or a Cmd turn.
+    @State private var touched = Date.now
+    /// CLA-163: the turn hint under the device, while it shows.
+    @State private var turnHint: TurnHintWindow?
+    /// CLA-163: the turn hint showed once. Saved, so it never shows again.
+    static let turnHintKey = "hints.turnShown"
 
     /// Change 288: at the first launch, the very first frame already waits for the arrival, so
     /// the 2D device does not flash before the turn. The cold-start arrival waits the same way.
@@ -99,6 +105,7 @@ struct K3DSpikeSkin: View {
             }
         ) {
             PocketSkin(state: store.state) { action in
+                touched = .now
                 if store.state.deviceTurned { return }  // CLA-130: the screen faces away
                 // CLA-117: the full arrival takes no input until it lands. The short one lands in
                 // 0.25 s at most, and the input still does its job.
@@ -170,7 +177,41 @@ struct K3DSpikeSkin: View {
             guard let shown = note.object as? NSWindow, shown === window.window else { return }
             visible = shown.occlusionState.contains(.visible)
         }
-        .onDisappear { report([]) }  // the window closed
+        .onDisappear {
+            report([])  // the window closed
+            turnHint?.remove()
+        }
+        .task(id: HintWatch(playing: store.state.isPlaying, touched: touched, setupDone: store.state.setupDone)) {
+            await showTurnHint()
+        }
+    }
+
+    /// CLA-163: what `showTurnHint` waits again for.
+    private struct HintWatch: Equatable {
+        let playing: Bool, touched: Date, setupDone: Bool
+    }
+
+    /// CLA-163, card BZ option A v2, only with `hints.trial` on: once ever, after setup, when a
+    /// song plays and nobody touches myPod for 5 s, the ⌘ key and its words show under the
+    /// device. At 2.0 s the device nudges 16° and back once (the change-297 nudge, not with
+    /// Reduce Motion). The first Cmd turn ends the hint early.
+    private func showTurnHint() async {
+        let defaults = UserDefaults.standard
+        guard HintsTrial.on, turnHint == nil, !defaults.bool(forKey: Self.turnHintKey),
+              store.state.setupDone, store.state.isPlaying else { return }
+        do { try await Task.sleep(for: .seconds(5)) } catch { return }
+        let now = Date.now
+        guard store.state.isPlaying, visible, K3DFlip.canDraw, drag == nil, !store.state.deviceTurned,
+              flip.restsOnFront(at: now), let window = window.window, window.isVisible else { return }
+        defaults.set(true, forKey: Self.turnHintKey)
+        let hint = TurnHintWindow(under: window, room: room)
+        hint.onEnd = { turnHint = nil }
+        turnHint = hint
+        // A touch in these 2 s starts this task again, so the nudge does not come.
+        do { try await Task.sleep(for: .seconds(2)) } catch { return }
+        guard !reduceMotion, drag == nil, !store.state.deviceTurned, flip.restsOnFront(at: .now) else { return }
+        flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork))
+        flip = flip.nudge(at: .now)
     }
 
     /// CLA-97: what `watchViews` runs again for.
@@ -311,6 +352,7 @@ struct K3DSpikeSkin: View {
     /// Change 305 and 307: the device follows the drag once it passes 4 points. A turn that runs
     /// stops where it is at the press.
     private func dragged(_ translation: CGSize) {
+        touched = .now
         let now = Date.now
         if holdOpened || store.state.deviceTurned || (self.drag == nil && flip.apartRuns(at: now)) { return }
         if self.drag == nil, K3DShowroom.canHold(flip: flip, at: now) { startHold() }
@@ -383,6 +425,8 @@ struct K3DSpikeSkin: View {
 
     /// Change 351: the swipe turns and tilts the device. A turn that runs stops where it is.
     private func swiped(_ dx: Double, _ dy: Double) {
+        touched = .now
+        turnHint?.end()
         guard startTurn() else { return }
         flip = cmdTurn.swipe(dx: dx, dy: dy, flip: flip, at: .now)
         // Build 308: a single wheel line or a short drag sends no more events, so the travel
@@ -398,6 +442,8 @@ struct K3DSpikeSkin: View {
 
     /// Change 354: the pinch takes the device apart or puts it together.
     private func pinched(_ amount: Double, began: Bool) {
+        touched = .now
+        turnHint?.end()
         if began, !flip.isApart(at: .now) { K3DFlip.prepareApart() }
         guard startTurn() else { return }
         flip = cmdTurn.pinched(amount, flip: flip, at: .now)
@@ -405,6 +451,7 @@ struct K3DSpikeSkin: View {
 
     /// Change 355: a Cmd press with the mouse. The prints get ready, so a hold opens with no wait.
     private func cmdPressed() {
+        touched = .now
         if !flip.isApart(at: .now) { K3DFlip.prepareApart() }
     }
 
