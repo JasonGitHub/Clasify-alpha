@@ -82,6 +82,14 @@ import Testing
         #expect(send(&s, .select).contains { if case .load(_, Playlist.songsID, true, _) = $0 { true } else { false } })
     }
 
+    /// CLA-161: on Apple Music, Play with nothing to resume shuffles all library songs, as Shuffle Songs does.
+    @Test func playWithNothingToResumeShufflesAllLibrarySongs() {
+        var s = withRows()
+        #expect(!s.shuffle && send(&s, .play) == [.fetchTracks(token: 1, playlist: Playlist.songsID)])
+        send(&s, .tracksLoaded(token: 1, playlist: Playlist.songsID, tracks: focus.tracks))
+        #expect(s.current?.playlist == Playlist.songsID && s.shuffle && s.top.screen == .now)
+    }
+
     @Test func aPlaylistRereadKeepsTheReadSongsAndArtistLists() {
         var s = withRows()
         send(&s, .wheel(4), .select, .tracksLoaded(token: 1, playlist: Playlist.songsID, tracks: focus.tracks), .menu)
