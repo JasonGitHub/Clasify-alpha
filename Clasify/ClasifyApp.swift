@@ -51,7 +51,8 @@ enum ReportProblemWindow {
     private static var window: NSWindow?
 
     static func show() {
-        if let window, window.isVisible {
+        if let window, window.isVisible || window.isMiniaturized {  // a minimized draft comes back (Codex on #370)
+            if window.isMiniaturized { window.deminiaturize(nil) }
             window.makeKeyAndOrderFront(nil)
             NSApp.activate()
             return
