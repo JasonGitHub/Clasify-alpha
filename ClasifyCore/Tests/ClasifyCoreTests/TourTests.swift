@@ -239,9 +239,11 @@ import Testing
         var s = atMenuWithTrial()
         send(&s, .menu, now: 209)
         send(&s, .deviceTurned(true), now: 210)
-        send(&s, .deviceTurned(false), now: 211)
-        #expect(s.tour == .tourMenuBar && s.hintDue == 214)
-        var t = 211.0
+        send(&s, .tick, now: 214)  // a long turn: no hint while the device is turned (Codex on #375)
+        #expect(s.tour == .tourMenuBar && s.hint == nil && s.hintDue == 0)
+        send(&s, .deviceTurned(false), now: 215)
+        #expect(s.tour == .tourMenuBar && s.hintDue == 218 && s.tourHides[.tourMenuBar] == nil)
+        var t = 215.0
         for n in 1...3 {
             send(&s, .tick, now: t + 3)
             #expect(s.hint == .tourMenuBar)

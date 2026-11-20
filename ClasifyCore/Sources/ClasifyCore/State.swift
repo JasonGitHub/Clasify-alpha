@@ -850,7 +850,8 @@ public struct AppState: Equatable, Sendable {
     /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
     /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
     public var tourPlace: Bool {
-        guard let tour, setupDone, signedIn, stack.first?.screen == .main else { return false }
+        // Not while a ⌘ turn holds the device (Codex on #375): the next hint waits for the landing.
+        guard let tour, setupDone, signedIn, stack.first?.screen == .main, !deviceTurned else { return false }
         if tour == .tourMenuBar { return true }  // the icon glows over any screen
         if tour == .tourTurn { return top.screen != .about }  // under the device; About turns it its own way
         return tour == .tourPlay ? top.screen == .main : top.screen == .now && current != nil && nowMode == .volume
