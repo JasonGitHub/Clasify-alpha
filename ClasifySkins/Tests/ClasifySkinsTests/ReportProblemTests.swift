@@ -59,3 +59,50 @@ import Testing
         #expect((180...235).contains { y in blue(bitmap, 190, y) })
     }
 }
+
+/// CTO 21:06 JST 11-20 (Jason's build 382): the real window is exactly the view, with no strip
+/// under the buttons. Its snapshot shows the title bar with the macOS window buttons.
+@Suite @MainActor struct ReportProblemWindowTests {
+    private func check(_ content: ReportProblem, height: CGFloat, _ name: String) throws {
+        let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
+        ReportProblemPanel.configure(window, content)
+        window.layoutIfNeeded()
+        #expect(window.frame.size == CGSize(width: ReportProblem.width, height: height), "\(window.frame.size)")
+        #expect(window.contentView?.frame.size == CGSize(width: ReportProblem.width, height: height))
+        let frame = try #require(window.contentView?.superview)  // with the title bar and its buttons
+        let rep = try #require(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
+        frame.cacheDisplay(in: frame.bounds, to: rep)
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"], let png = rep.representation(using: .png, properties: [:]) {
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent(name))
+        }
+        window.close()
+    }
+
+    @Test func theFormWindowIs380By262() throws {
+        try check(ReportProblem(text: "", sent: false, fixedTime: 0), height: ReportProblem.formHeight, "report-problem-window.png")
+    }
+
+    /// CTO 21:38 JST: from the form to Thanks, the top edge stays still and the bottom moves up.
+    @Test func theTopStaysWhenTheFormTurnsIntoThanks() async throws {
+        let window = TopFixedWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
+        ReportProblemPanel.configure(window, ReportProblem(text: "x", sent: false, fixedTime: 0))
+        window.layoutIfNeeded()
+        window.setFrameOrigin(NSPoint(x: 200, y: 300))
+        let top = window.frame.maxY
+        #expect(window.frame.height == ReportProblem.formHeight)
+        let host = try #require(window.contentView as? FittingHost)
+        host.rootView = AnyView(ReportProblem(text: "x", sent: true, fixedTime: 0.8).id("thanks"))  // a new view: Send was pressed
+        host.layoutSubtreeIfNeeded()
+        for _ in 0..<50 where window.frame.height != ReportProblem.thanksHeight {  // the fit runs on the next main-actor turn
+            try await Task.sleep(for: .milliseconds(20))
+            host.layoutSubtreeIfNeeded()
+        }
+        #expect(window.frame.height == ReportProblem.thanksHeight, "\(window.frame)")
+        #expect(window.frame.maxY == top && window.frame.minX == 200, "\(window.frame)")
+        window.close()
+    }
+
+    @Test func theThanksWindowIs380By246() throws {
+        try check(ReportProblem(text: "x", sent: true, fixedTime: 0.8), height: ReportProblem.thanksHeight, "report-problem-window-thanks.png")
+    }
+}

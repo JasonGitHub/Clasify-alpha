@@ -29,7 +29,6 @@ struct PlainWindowApp: App {
         .windowBackgroundDragBehavior(.enabled)
         .commands { DebugCommands(model: model); HelpCommands() }
         HowToUseWindow()
-        ReportProblemWindow()
     }
 }
 
@@ -44,58 +43,41 @@ struct HowToUseWindow: Scene {
     }
 }
 
-/// CLA-166, card CG (381-385): Help › Report a Problem. The device's own title bar, so the
-/// window hides the macOS one; it opens next to the device. One window: a second click brings
-/// it to the front.
-struct ReportProblemWindow: Scene {
-    static let id = "report-problem"
+/// CLA-166, card CG (381-385): Help › Report a Problem. An AppKit window
+/// (`ReportProblemPanel`), exactly the size of the view; it opens next to the device. One
+/// window: a second click brings it to the front.
+@MainActor
+enum ReportProblemWindow {
+    private static var window: NSWindow?
 
-    var body: some Scene {
-        Window(ReportProblem.title, id: Self.id) { ReportProblemContent() }
-            .windowStyle(.hiddenTitleBar)
-            .windowResizability(.contentSize)
-    }
-}
-
-private struct ReportProblemContent: View {
-    @Environment(\.dismissWindow) private var dismissWindow
-
-    var body: some View {
-        ReportProblem(
-            onSend: { text, writeBack in ProblemReporter.shared.send(text, writeBack: writeBack) },
-            onClose: { dismissWindow(id: ReportProblemWindow.id) }
-        )
-        .ignoresSafeArea()  // the device title bar sits where the hidden macOS one was
-        .background(NextToDevice())
-    }
-}
-
-/// Puts the report window 16 pt to the right of the device, top edges in line; with no room
-/// there, to its left. Always inside the screen's visible frame.
-private struct NextToDevice: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { Hook() }
-    func updateNSView(_ view: NSView, context: Context) {}
-
-    final class Hook: NSView {
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            // After SwiftUI's own placement.
-            Task { @MainActor [weak self] in self?.place() }
+    static func show() {
+        if let window, window.isVisible || window.isMiniaturized {  // a minimized draft comes back (Codex on #370)
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate()
+            return
         }
+        let window = ReportProblemPanel.make { text, writeBack in ProblemReporter.shared.send(text, writeBack: writeBack) }
+        place(window)
+        self.window = window
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
 
-        private func place() {
-            guard let window, let device = DeviceWindow.device, device.isVisible, let screen = device.screen ?? window.screen else { return }
-            let margin = DeviceWindow.margin, room = DeviceWindow.room
-            let left = device.frame.minX + margin.leading + room.leading
-            let right = device.frame.maxX - margin.trailing - room.trailing
-            let top = device.frame.maxY - margin.top - room.top
-            let size = window.frame.size, visible = screen.visibleFrame
-            var x = right + 16
-            if x + size.width > visible.maxX { x = left - 16 - size.width }
-            x = min(max(x, visible.minX), visible.maxX - size.width)
-            let y = min(max(top - size.height, visible.minY), visible.maxY - size.height)
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        }
+    /// 16 pt to the right of the device, top edges in line; with no room there, to its left.
+    /// Always inside the screen's visible frame. With no device showing, the screen's center.
+    private static func place(_ window: NSWindow) {
+        guard let device = DeviceWindow.device, device.isVisible, let screen = device.screen ?? NSScreen.main else { return window.center() }
+        let margin = DeviceWindow.margin, room = DeviceWindow.room
+        let left = device.frame.minX + margin.leading + room.leading
+        let right = device.frame.maxX - margin.trailing - room.trailing
+        let top = device.frame.maxY - margin.top - room.top
+        let size = window.frame.size, visible = screen.visibleFrame
+        var x = right + 16
+        if x + size.width > visible.maxX { x = left - 16 - size.width }
+        x = min(max(x, visible.minX), visible.maxX - size.width)
+        let y = min(max(top - size.height, visible.minY), visible.maxY - size.height)
+        window.setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
 
@@ -107,7 +89,7 @@ struct HelpCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .help) {
             Button(HowToUse.title) { openWindow(id: HowToUseWindow.id) }
-            Button(ReportProblem.title + "…") { openWindow(id: ReportProblemWindow.id) }  // card CG, 381
+            Button(ReportProblem.title + "…") { ReportProblemWindow.show() }  // card CG, 381
         }
     }
 }
@@ -146,7 +128,7 @@ enum DeviceWindow {
     /// The How to Use window (CLA-77) and the Report a Problem window (CLA-166) are not the device.
     private static func isHelp(_ window: NSWindow) -> Bool {
         window.title == HowToUse.title || window.identifier?.rawValue.hasPrefix(HowToUseWindow.id) == true
-            || window.title == ReportProblem.title || window.identifier?.rawValue.hasPrefix(ReportProblemWindow.id) == true
+            || window.title == ReportProblem.title
     }
 
     /// Card AN.1: the device window. `WindowShadowOff`'s hook sets it, because only the device
