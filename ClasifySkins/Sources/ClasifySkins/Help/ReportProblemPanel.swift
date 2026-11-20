@@ -25,7 +25,7 @@ public enum ReportProblemPanel {
         window.isReleasedWhenClosed = false
         window.isMovableByWindowBackground = true
         window.standardWindowButton(.zoomButton)?.isHidden = true
-        let host = NSHostingView(rootView: AnyView(content))
+        let host = FittingHost(rootView: AnyView(content))
         // No safe area: the view starts at the window's top, under the transparent title bar,
         // so the window's size is the view's size and nothing more.
         host.safeAreaRegions = []
@@ -49,5 +49,20 @@ final class TopFixedWindow: NSWindow {
         var fixed = rect
         fixed.origin.y = frame.maxY - rect.height
         return fixed
+    }
+}
+
+/// The window follows the view's size: when the form turns into Thanks, the view gets smaller
+/// and the window fits it (CI showed AppKit does not do it by itself).
+final class FittingHost: NSHostingView<AnyView> {
+    override func invalidateIntrinsicContentSize() {
+        super.invalidateIntrinsicContentSize()
+        Task { @MainActor [weak self] in self?.fit() }
+    }
+
+    func fit() {
+        let size = intrinsicContentSize
+        guard let window, size.width > 0, size.height > 0, window.contentRect(forFrameRect: window.frame).size != size else { return }
+        window.setContentSize(size)
     }
 }

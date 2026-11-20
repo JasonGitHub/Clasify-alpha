@@ -83,17 +83,20 @@ import Testing
     }
 
     /// CTO 21:38 JST: from the form to Thanks, the top edge stays still and the bottom moves up.
-    @Test func theTopStaysWhenTheFormTurnsIntoThanks() throws {
+    @Test func theTopStaysWhenTheFormTurnsIntoThanks() async throws {
         let window = TopFixedWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
         ReportProblemPanel.configure(window, ReportProblem(text: "x", sent: false, fixedTime: 0))
         window.layoutIfNeeded()
         window.setFrameOrigin(NSPoint(x: 200, y: 300))
         let top = window.frame.maxY
         #expect(window.frame.height == ReportProblem.formHeight)
-        let host = try #require(window.contentView as? NSHostingView<AnyView>)
+        let host = try #require(window.contentView as? FittingHost)
         host.rootView = AnyView(ReportProblem(text: "x", sent: true, fixedTime: 0.8).id("thanks"))  // a new view: Send was pressed
         host.layoutSubtreeIfNeeded()
-        window.layoutIfNeeded()
+        for _ in 0..<50 where window.frame.height != ReportProblem.thanksHeight {  // the fit runs on the next main-actor turn
+            try await Task.sleep(for: .milliseconds(20))
+            host.layoutSubtreeIfNeeded()
+        }
         #expect(window.frame.height == ReportProblem.thanksHeight, "\(window.frame)")
         #expect(window.frame.maxY == top && window.frame.minX == 200, "\(window.frame)")
         window.close()
