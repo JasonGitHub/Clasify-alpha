@@ -103,7 +103,7 @@ public struct TurnHint: View {
     private func look(at t: Double) -> some View {
         let look = Self.frame(at: t, end: ended?.timeIntervalSince(start), press: press)
         return VStack(spacing: 16) {
-            key(look).offset(y: 4 * look.down)
+            key(look)
             Text(Self.words)
                 .font(.system(size: 14, weight: .medium))
                 .tracking(0.1)
@@ -115,16 +115,10 @@ public struct TurnHint: View {
         .opacity(look.opacity)
     }
 
-    /// 78 x 60 pt, corner 12. Up, its side shows 6 pt (#c3c8ce) over a soft shadow; down, 2 pt.
-    private func key(_ look: Frame) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 12)
-        let d = look.down, ring = Color(red: 90 / 255, green: 163 / 255, blue: 240 / 255)
-        return ZStack {
-            Text("⌘").font(.system(size: 22, weight: .regular))
-                .foregroundStyle(Color(hex: 0x2c3137))
-                .overlay { Text("⌘").font(.system(size: 22, weight: .regular)).foregroundStyle(Color(hex: 0x3f8de0)).opacity(look.blue) }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                .padding(EdgeInsets(top: 7, leading: 0, bottom: 0, trailing: 10))
+    /// The key's face at rest: the gradient, the gray ⌘ and "command". 78 x 60 pt, corner 12.
+    private static var face: some View {
+        ZStack {
+            mark(Color(hex: 0x2c3137))
             Text("command").font(.system(size: 10, weight: .medium))
                 .tracking(0.2)
                 .foregroundStyle(Color(hex: 0x5b636c))
@@ -132,18 +126,72 @@ public struct TurnHint: View {
                 .padding(EdgeInsets(top: 0, leading: 10, bottom: 8, trailing: 0))
         }
         .frame(width: 78, height: 60)
-        .background {
-            ZStack {
-                // The glow: three rings of #5aa3f0, 4, 10 and 18 pt, at 0.95, 0.65 and 0.4.
-                shape.fill(.white)
-                    .shadow(color: ring.opacity(0.95 * look.glow), radius: 2)
-                    .shadow(color: ring.opacity(0.65 * look.glow), radius: 5)
-                    .shadow(color: ring.opacity(0.4 * look.glow), radius: 9)
-                shape.fill(LinearGradient(colors: [.white, Color(hex: 0xf2f4f6)], startPoint: .top, endPoint: .bottom))
-                    .shadow(color: Color(hex: 0xc3c8ce), radius: 0, y: 6 - 4 * d)
-                    .shadow(color: Color(red: 20 / 255, green: 30 / 255, blue: 60 / 255).opacity(0.35 - 0.05 * d),
-                            radius: 11 - 6 * d, y: 12 - 7 * d)
+        .background(RoundedRectangle(cornerRadius: 12)
+            .fill(LinearGradient(colors: [.white, Color(hex: 0xf2f4f6)], startPoint: .top, endPoint: .bottom)))
+    }
+
+    /// The ⌘ in its place on the face, in `color`.
+    private static func mark(_ color: Color) -> some View {
+        Text("⌘").font(.system(size: 22, weight: .regular))
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .padding(EdgeInsets(top: 7, leading: 0, bottom: 0, trailing: 10))
+            .frame(width: 78, height: 60)
+    }
+
+    /// Jason (build 390): the press moved in whole-pixel steps. SwiftUI places views and text
+    /// on whole device pixels, so a 4 pt move was 8 steps at 2x. The face and the blue ⌘ are
+    /// drawn once as pictures, and a Canvas draws them at the exact fraction of a point in each
+    /// frame (`TurnHintMotionTests` measures it). Shapes and shadows in a Canvas move smoothly.
+    @MainActor private static let faceImage = picture(face)
+    @MainActor private static let blueImage = picture(mark(Color(hex: 0x3f8de0)))
+
+    @MainActor private static func picture(_ view: some View) -> Image? {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        return renderer.cgImage.map { Image(decorative: $0, scale: 2) }
+    }
+
+    /// Room round the key for its glow and its shadow, in the Canvas.
+    private static let margin = 24.0
+
+    /// 78 x 60 pt, corner 12, down 4 pt at `look.down` 1. Up, its side shows 6 pt (#c3c8ce)
+    /// over a soft shadow; down, 2 pt: the side's bottom stays still.
+    private func key(_ look: Frame) -> some View {
+        let m = Self.margin, d = look.down, glow = look.glow, blue = look.blue
+        let faceImage = Self.faceImage, blueImage = Self.blueImage
+        let ring = Color(red: 90 / 255, green: 163 / 255, blue: 240 / 255)
+        let dark = Color(red: 20 / 255, green: 30 / 255, blue: 60 / 255)
+        return Color.clear
+            .frame(width: 78, height: 60)
+            .overlay(alignment: .topLeading) {
+                Canvas { context, _ in
+                    let rect = CGRect(x: m, y: m + 4 * d, width: 78, height: 60)
+                    let shape = RoundedRectangle(cornerRadius: 12).path(in: rect)
+                    // The glow: three rings of #5aa3f0, 4, 10 and 18 pt, at 0.95, 0.65 and 0.4.
+                    if glow > 0 {
+                        var rings = context
+                        rings.addFilter(.shadow(color: ring.opacity(0.95 * glow), radius: 2))
+                        rings.addFilter(.shadow(color: ring.opacity(0.65 * glow), radius: 5))
+                        rings.addFilter(.shadow(color: ring.opacity(0.4 * glow), radius: 9))
+                        rings.fill(shape, with: .color(.white))
+                    }
+                    // The side, a copy of the face 6 - 4d pt lower, and the soft shadow of both.
+                    var body = context
+                    body.addFilter(.shadow(color: dark.opacity(0.35 - 0.05 * d), radius: 11 - 6 * d, y: 12 - 7 * d))
+                    body.drawLayer { layer in
+                        layer.fill(shape.offsetBy(dx: 0, dy: 6 - 4 * d), with: .color(Color(hex: 0xc3c8ce)))
+                        layer.fill(shape, with: .color(.white))
+                    }
+                    if let faceImage { context.draw(faceImage, in: rect) }
+                    if blue > 0, let blueImage {
+                        var tint = context
+                        tint.opacity = blue
+                        tint.draw(blueImage, in: rect)
+                    }
+                }
+                .frame(width: 78 + 2 * m, height: 60 + 4 + 2 * m)
+                .offset(x: -m, y: -m)
             }
-        }
     }
 }
