@@ -88,7 +88,9 @@ struct HelpCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .help) {
-            Button(HowToUse.title) { openWindow(id: HowToUseWindow.id) }
+            // Card CG.1 (391, 392): a light bulb on How to Use, none on Report a Problem, a line between.
+            Button(HowToUse.title, systemImage: "lightbulb") { openWindow(id: HowToUseWindow.id) }
+            Divider()
             Button(ReportProblem.title + "…") { ReportProblemWindow.show() }  // card CG, 381
         }
     }
