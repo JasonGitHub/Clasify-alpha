@@ -134,11 +134,13 @@ enum DeviceWindow {
         let f = window.frame
         let center = CGPoint(x: f.minX + margin.leading + (f.width - margin.leading - margin.trailing) / 2,
                              y: f.minY + margin.bottom + (f.height - margin.top - margin.bottom) / 2)
-        let screens = NSScreen.screens  // the first one has the menu bar: the main screen
+        let screens = NSScreen.screens
         guard let screen = screens.first(where: { $0.frame.contains(center) }) ?? window.screen else { return nil }
         let s = screen.frame
         let column = Int((center.x - s.minX) / s.width * 3), row = Int((s.maxY - center.y) / s.height * 3)
-        return WindowSpot(area: min(2, max(0, row)) * 3 + min(2, max(0, column)), mainScreen: screen == screens.first,
+        // The main screen (with the menu bar) is the one at origin zero. Not by NSScreen object
+        // identity: AppKit can give new objects after a screen change.
+        return WindowSpot(area: min(2, max(0, row)) * 3 + min(2, max(0, column)), mainScreen: s.origin == .zero,
                           screens: screens.count, width: Int(s.width), height: Int(s.height))
     }
 
