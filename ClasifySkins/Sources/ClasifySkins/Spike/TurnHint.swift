@@ -168,13 +168,13 @@ public struct TurnHint: View {
     }
 
     /// The key drawn at `look`, with `margin` round it.
-    private static func drawing(_ look: Frame) -> Canvas<EmptyView> {
+    private static func drawing(_ look: Frame) -> SwiftUI.Canvas<EmptyView> {
         let m = margin, d = look.down, glow = look.glow, blue = look.blue
         let face = faceImage, mark = blueImage
         let ring = Color(red: 90 / 255, green: 163 / 255, blue: 240 / 255)
         let dark = Color(red: 20 / 255, green: 30 / 255, blue: 60 / 255)
         let side = Color(hex: 0xc3c8ce)
-        return Canvas { (context: inout GraphicsContext, _: CGSize) in
+        return SwiftUI.Canvas { (context: inout GraphicsContext, _: CGSize) in
             let rect = CGRect(x: m, y: m + 4 * d, width: 78, height: 60)
             let shape = RoundedRectangle(cornerRadius: 12).path(in: rect)
             // The glow: three rings of #5aa3f0, 4, 10 and 18 pt, at 0.95, 0.65 and 0.4.
