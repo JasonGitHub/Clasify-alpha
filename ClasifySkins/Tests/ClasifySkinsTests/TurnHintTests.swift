@@ -166,6 +166,7 @@ import Testing
                                                 bytesPerRow: 0, bitsPerPixel: 0))
         rep.size = TurnHint.size
         view.cacheDisplay(in: view.bounds, to: rep)
+        if t == times[0] { print("turn hint window backingScaleFactor:", panel.backingScaleFactor) }
         return rep
     }
 
@@ -176,7 +177,7 @@ import Testing
         for py in Int(62 * scale)..<Int(83 * scale) {  // the label, up or down, and only the face round it
             for px in Int(115 * scale)..<Int(160 * scale) {  // the label's left part
                 guard let c = bitmap.colorAt(x: px, y: py)?.usingColorSpace(.sRGB) else { continue }
-                let ink = c.alphaComponent * max(0, 0.8 - (c.redComponent + c.greenComponent + c.blueComponent) / 3)
+                let ink = c.alphaComponent * max(0, 0.94 - (c.redComponent + c.greenComponent + c.blueComponent) / 3)
                 weight += ink
                 sum += ink * (Double(py) + 0.5)
             }
