@@ -82,6 +82,23 @@ import Testing
         try check(ReportProblem(text: "", sent: false, fixedTime: 0), height: ReportProblem.formHeight, "report-problem-window.png")
     }
 
+    /// CTO 21:38 JST: from the form to Thanks, the top edge stays still and the bottom moves up.
+    @Test func theTopStaysWhenTheFormTurnsIntoThanks() throws {
+        let window = TopFixedWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
+        ReportProblemPanel.configure(window, ReportProblem(text: "x", sent: false, fixedTime: 0))
+        window.layoutIfNeeded()
+        window.setFrameOrigin(NSPoint(x: 200, y: 300))
+        let top = window.frame.maxY
+        #expect(window.frame.height == ReportProblem.formHeight)
+        let host = try #require(window.contentView as? NSHostingView<AnyView>)
+        host.rootView = AnyView(ReportProblem(text: "x", sent: true, fixedTime: 0.8).id("thanks"))  // a new view: Send was pressed
+        host.layoutSubtreeIfNeeded()
+        window.layoutIfNeeded()
+        #expect(window.frame.height == ReportProblem.thanksHeight, "\(window.frame)")
+        #expect(window.frame.maxY == top && window.frame.minX == 200, "\(window.frame)")
+        window.close()
+    }
+
     @Test func theThanksWindowIs380By246() throws {
         try check(ReportProblem(text: "x", sent: true, fixedTime: 0.8), height: ReportProblem.thanksHeight, "report-problem-window-thanks.png")
     }
