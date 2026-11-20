@@ -141,7 +141,8 @@ enum DeviceWindow {
         // The main screen (with the menu bar) is the one at origin zero. Not by NSScreen object
         // identity: AppKit can give new objects after a screen change.
         return WindowSpot(area: min(2, max(0, row)) * 3 + min(2, max(0, column)), mainScreen: s.origin == .zero,
-                          screens: screens.count, width: Int(s.width), height: Int(s.height))
+                          screens: screens.count, width: Int(s.width), height: Int(s.height),
+                          display: (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.intValue ?? 0)
     }
 
     /// The one rule for a partly covered myPod (Jason, 13:10 JST 11-19): it counts as shown

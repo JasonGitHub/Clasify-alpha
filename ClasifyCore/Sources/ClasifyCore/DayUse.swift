@@ -65,7 +65,7 @@ public struct DayUse: Equatable, Sendable {
                 v.joined(separator: ","), windowSaved].joined(separator: "|")
     }
 
-    /// "0.0,…,60.0,…;2;1x1512x982=60.0": the areas, the screen count and the seconds per screen.
+    /// "0.0,…,60.0,…;2;1x1512x982x1=60.0": the areas, the screen count and the seconds per screen.
     private var windowSaved: String {
         let screens = self.screens.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
         return [areas.map { String($0) }.joined(separator: ","), String(screenCount), screens.joined(separator: ",")].joined(separator: ";")
@@ -113,14 +113,15 @@ public struct WindowSpot: Equatable, Sendable {
     public var area: Int
     /// That screen is the main screen (the one with the menu bar), and how many screens there are.
     public var mainScreen: Bool, screens: Int
-    /// That screen's size in points.
-    public var width: Int, height: Int
+    /// That screen's size in points, and its display number, so two screens of one size count apart.
+    public var width: Int, height: Int, display: Int
 
-    public init(area: Int, mainScreen: Bool, screens: Int, width: Int, height: Int) {
-        (self.area, self.mainScreen, self.screens, self.width, self.height) = (min(8, max(0, area)), mainScreen, screens, width, height)
+    public init(area: Int, mainScreen: Bool, screens: Int, width: Int, height: Int, display: Int = 0) {
+        (self.area, self.mainScreen, self.screens) = (min(8, max(0, area)), mainScreen, screens)
+        (self.width, self.height, self.display) = (width, height, display)
     }
 
-    var screenKey: String { "\(mainScreen ? 1 : 0)x\(width)x\(height)" }
+    var screenKey: String { "\(mainScreen ? 1 : 0)x\(width)x\(height)x\(display)" }
     static let areaNames = ["top_left", "top", "top_right", "left", "center", "right", "bottom_left", "bottom", "bottom_right"]
 }
 

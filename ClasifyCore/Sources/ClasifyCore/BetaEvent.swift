@@ -99,7 +99,7 @@ public enum BetaEvent: Equatable, Sendable {
             if let area = d.topArea { p["spot"] = .text(WindowSpot.areaNames[area]) }
             if let key = d.topScreen {
                 let n = key.split(separator: "x").compactMap { Int($0) }
-                if n.count == 3 {
+                if n.count >= 3 {
                     p["main_screen"] = .flag(n[0] == 1)
                     p["screen_width"] = .number(n[1])
                     p["screen_height"] = .number(n[2])

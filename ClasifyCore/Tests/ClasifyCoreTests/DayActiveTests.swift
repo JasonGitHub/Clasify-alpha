@@ -196,7 +196,7 @@ import Testing
         d.service = .appleMusic; d.views = [12.5, 0, 3]
         #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music|12.5,0.0,3.0|"
             + "0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0;0;")
-        d.areas[4] = 60; d.screens = ["1x1512x982": 50, "0x2560x1440": 10]; d.screenCount = 2
+        d.areas[4] = 60; d.screens = ["1x1512x982x1": 50, "0x2560x1440x2": 10]; d.screenCount = 2
         #expect(DayUse(saved: d.saved) == d)
         // A day saved before the window part reads with no window time.
         #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2,3")?.areas == Array(repeating: 0, count: 9))
@@ -236,8 +236,8 @@ import Testing
     @Test func windowReportsCountWhereTheWindowIs() {
         var s = playing()
         _ = events(&s, .position(1, generation: s.playGen), now: at(10))
-        let center = WindowSpot(area: 4, mainScreen: true, screens: 2, width: 1512, height: 982)
-        let side = WindowSpot(area: 2, mainScreen: false, screens: 2, width: 2560, height: 1440)
+        let center = WindowSpot(area: 4, mainScreen: true, screens: 2, width: 1512, height: 982, display: 1)
+        let side = WindowSpot(area: 2, mainScreen: false, screens: 2, width: 2560, height: 1440, display: 2)
         _ = events(&s, .window(center), now: at(10) + 1)
         #expect(s.windowSpot == center && s.today?.visible == 0)
         _ = events(&s, .window(center), now: at(10) + 61)
@@ -246,13 +246,17 @@ import Testing
         _ = events(&s, .window(side), now: at(12))  // a Mac sleep: 90 s at most
         _ = events(&s, .willQuit, now: at(12) + 30)
         #expect(s.today?.areas == [0, 0, 120, 0, 120, 0, 0, 0, 0] && s.windowSpot == nil && s.windowAt == nil)
-        #expect(s.today?.screens == ["1x1512x982": 120, "0x2560x1440": 120] && s.today?.screenCount == 2)
-        s.today?.areas[2] += 1; s.today?.screens["0x2560x1440"]? += 1
+        #expect(s.today?.screens == ["1x1512x982x1": 120, "0x2560x1440x2": 120] && s.today?.screenCount == 2)
+        s.today?.areas[2] += 1; s.today?.screens["0x2560x1440x2"]? += 1
         let p = BetaEvent.dayActive(s.today!, service: .spotify).properties
         #expect(p["spot"] == .text("top_right") && p["minutes_visible"] == .decimal(241.0 / 60) && p["screens"] == .number(2))
         #expect(p["main_screen"] == .flag(false) && p["screen_width"] == .number(2560) && p["screen_height"] == .number(1440))
         let none = BetaEvent.dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify).properties
         #expect(none["spot"] == nil && none["screens"] == nil && none["minutes_visible"] == .decimal(0))
+        // Codex on #360: two screens of one size count apart.
+        let a = WindowSpot(area: 0, mainScreen: false, screens: 3, width: 1920, height: 1080, display: 3)
+        var b = a; b.display = 4
+        #expect(a.screenKey != b.screenKey)
         // An area off the grid goes to the nearest edge.
         #expect(WindowSpot(area: 12, mainScreen: true, screens: 1, width: 1, height: 1).area == 8)
     }
