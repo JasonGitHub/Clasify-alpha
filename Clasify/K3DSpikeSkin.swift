@@ -184,7 +184,7 @@ struct K3DSpikeSkin: View {
             report([])  // the window closed
             turnHint?.remove()
         }
-        .task(id: HintWatch(playing: store.state.isPlaying, touched: touched, setupDone: store.state.setupDone)) {
+        .task(id: HintWatch(playing: store.state.isPlaying, touched: touched, setupDone: store.state.setupDone, visible: visible)) {
             await showTurnHint()
         }
     }
@@ -192,6 +192,8 @@ struct K3DSpikeSkin: View {
     /// CLA-163: what `showTurnHint` waits again for.
     private struct HintWatch: Equatable {
         let playing: Bool, touched: Date, setupDone: Bool
+        /// A window that was covered when the 5 s ended waits again once it shows (Codex on #363).
+        let visible: Bool
     }
 
     /// CLA-163, card BZ option A v2, only with `hints.trial` on: once ever, after setup, when a
@@ -218,9 +220,10 @@ struct K3DSpikeSkin: View {
         flip = flip.nudge(at: .now)
     }
 
-    /// CLA-163: input on myPod, for the turn hint's 5 s of rest. Only while the hint may come.
+    /// CLA-163: input on myPod, for the turn hint's 5 s of rest. Only while the hint may come
+    /// or shows: a touch while it shows cancels the nudge that waits (Codex on #363).
     private func touch() {
-        if Self.hintPending { touched = .now }
+        if Self.hintPending || turnHint != nil { touched = .now }
     }
 
     /// CLA-97: what `watchViews` runs again for.
