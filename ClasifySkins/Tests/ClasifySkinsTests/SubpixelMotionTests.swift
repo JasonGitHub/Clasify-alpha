@@ -36,7 +36,7 @@ import Testing
                 context.translateBy(x: 0, y: y)
                 context.fill(Path(roundedRect: CGRect(x: 0, y: 0, width: 78, height: 60), cornerRadius: 12), with: .color(.white))
                 let text = context.resolve(Text("command").font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color(red: 0.36, green: 0.39, blue: 0.42)))
+                    .foregroundStyle(Color(red: 0.36, green: 0.39, blue: 0.42)))
                 context.draw(text, at: CGPoint(x: 10, y: 52), anchor: .bottomLeading)
             }.frame(width: 78, height: 64))
         default: AnyView(EmptyView())
