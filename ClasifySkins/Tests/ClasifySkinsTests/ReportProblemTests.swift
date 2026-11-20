@@ -25,12 +25,12 @@ import Testing
     @Test func theEmptyFormShowsTheBoxAndTheOnCheckBox() throws {
         let bitmap = try render(ReportProblem(text: "", sent: false, fixedTime: 0), "report-problem.png")
         #expect(bitmap.pixelsWide == 380 * 2 && bitmap.pixelsHigh == 262 * 2)
-        // 383: the check box is on by default, so it is blue (14 pt at 14, 26 + 145), off the tick.
-        #expect(blue(bitmap, 17, 26 + 145 + 3))
+        // 383: the check box is on by default, so it is blue (14 pt at 14, 27 + 145), off the tick.
+        #expect(blue(bitmap, 17, 27 + 145 + 3))
         // The box's blue border at its left edge, the middle of its height.
-        #expect((10...14).contains { blue(bitmap, $0, 26 + 29 + 52) })
+        #expect((10...14).contains { blue(bitmap, $0, 27 + 29 + 52) })
         // The box is white inside (the snapshot draws the text as Text, not the AppKit view).
-        let inside = try #require(bitmap.colorAt(x: 190 * 2, y: (26 + 29 + 70) * 2)?.usingColorSpace(.sRGB))
+        let inside = try #require(bitmap.colorAt(x: 190 * 2, y: (27 + 29 + 70) * 2)?.usingColorSpace(.sRGB))
         #expect(inside.redComponent > 0.95 && inside.greenComponent > 0.95 && inside.blueComponent > 0.95)
         #expect(ReportProblem(text: "  \n ", sent: false, fixedTime: nil).report.isEmpty)
         #expect(ReportProblem(text: " The wheel got stuck\n", sent: false, fixedTime: nil).report == "The wheel got stuck")

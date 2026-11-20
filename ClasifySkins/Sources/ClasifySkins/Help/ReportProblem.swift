@@ -58,13 +58,13 @@ public struct ReportProblem: View {
         .font(.helvetica(12))
     }
 
-    /// The device title bar (.a-hdr): 26 pt. macOS draws the window buttons over its left end.
+    /// The device title bar (.a-hdr): 26 pt and its 1 pt line. macOS draws the window buttons over its left end.
     private var titleBar: some View {
         Text(Self.title)
             .font(.helvetica(11.7, bold: true))
             .foregroundStyle(Color(hex: 0x1b1f24))
             .frame(maxWidth: .infinity)
-            .frame(height: 25)
+            .frame(height: 26)
             .background(LinearGradient(colors: [.white, Color(hex: 0xc9d2db)], startPoint: .top, endPoint: .bottom))
             .overlay(alignment: .bottom) { Rectangle().fill(Color(hex: 0x8f99a3)).frame(height: 1).offset(y: 1) }
             .padding(.bottom, 1)
@@ -117,7 +117,7 @@ public struct ReportProblem: View {
                 .allowsHitTesting(false)
         }
         .overlay { shape.strokeBorder(Color(hex: 0x5aa3f0), lineWidth: 1) }
-        .background { shape.inset(by: -2).stroke(Color(hex: 0x5aa3f0, opacity: 0.35), lineWidth: 4) }
+        .background { shape.inset(by: -1).stroke(Color(hex: 0x5aa3f0, opacity: 0.35), lineWidth: 2) }
         .onAppear { typing = true }
     }
 
