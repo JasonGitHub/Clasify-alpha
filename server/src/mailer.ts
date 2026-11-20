@@ -100,9 +100,13 @@ export const noReports: ReportMailer = { send: async () => "busy" };
 /** Where problem reports go. */
 export const feedbackTo = "feedback@getmypod.app";
 
+/** The last mails of each day are only for link mails: they are the way in (CTO 19:38 JST 11-20). */
+export const reportsReserve = 20;
+
 /**
  * Problem reports share the link mails' day count (`mail_days.sent`, `perDay` a day), so all
- * our mails together stay inside Resend's 100 a day. Reports over it count as refused.
+ * our mails together stay inside Resend's 100 a day. Reports stop at `perDay - reportsReserve`;
+ * reports over it count as refused.
  */
 export function reportMailer(db: D1Database, send: SendMail, perDay: number, now: () => number): ReportMailer {
   return {
@@ -110,7 +114,7 @@ export function reportMailer(db: D1Database, send: SendMail, perDay: number, now
       const date = new Date(now()).toISOString().slice(0, 10);
       const slot = await db.prepare(
         "INSERT INTO mail_days (day, sent) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET sent = sent + 1 WHERE sent < ? RETURNING sent",
-      ).bind(date, perDay).first<{ sent: number }>();
+      ).bind(date, perDay - reportsReserve).first<{ sent: number }>();
       if (!slot) {
         await db.prepare("INSERT INTO mail_days (day, refused) VALUES (?, 1) ON CONFLICT (day) DO UPDATE SET refused = refused + 1").bind(date).run();
         return "limit";

@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { linkMail, linkMailer, reportMailer, resend, type SendMail } from "../src/mailer";
+import { linkMail, linkMailer, reportMailer, reportsReserve, resend, type SendMail } from "../src/mailer";
 
 const sent: Parameters<SendMail>[0][] = [];
 let resendWorks = true;
@@ -119,12 +119,21 @@ describe("reportMailer (CLA-166)", () => {
   const report = { subject: "myPod problem report (build 1)", text: "Hi", replyTo: "sam@example.com" };
 
   it("sends to feedback@ with the reply-to, and shares the link mails' day count", async () => {
-    expect(await mailer(2).send("a@example.com", link)).toBe("sent");
-    const reports = reportMailer(env.DB, send, 2, () => noon);
+    expect(await mailer(reportsReserve + 2).send("a@example.com", link)).toBe("sent");
+    const reports = reportMailer(env.DB, send, reportsReserve + 2, () => noon);
     expect(await reports.send(report)).toBe("sent");
     expect(sent.at(-1)).toEqual({ to: "feedback@getmypod.app", ...report });
     expect(await reports.send(report)).toBe("limit");
     expect(await env.DB.prepare("SELECT sent, refused FROM mail_days").first()).toEqual({ sent: 2, refused: 1 });
+  });
+
+  it("keeps the last 20 mails of the day for link mails (95 a day: reports stop at 75)", async () => {
+    await env.DB.prepare("INSERT INTO mail_days (day, sent) VALUES ('2026-11-18', 74)").run();
+    const reports = reportMailer(env.DB, send, 95, () => noon);
+    expect(await reports.send(report)).toBe("sent");  // the 75th mail
+    expect(await reports.send(report)).toBe("limit");
+    expect(await mailer(95).send("a@example.com", link)).toBe("sent");  // link mails go on at 75
+    expect(await env.DB.prepare("SELECT sent, refused FROM mail_days").first()).toEqual({ sent: 76, refused: 1 });
   });
 
   it("is busy when Resend fails, and counts the failure", async () => {
