@@ -30,6 +30,19 @@ import Testing
         return context.makeImage()
     }
 
+    /// An sRGB color as a plain layer of it comes out of `render(in:)`.
+    static func rendered(_ rgb: (Double, Double, Double)) -> NSColor? {
+        guard let context = CGContext(data: nil, width: 4, height: 4, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let layer = CALayer()
+        layer.frame = CGRect(x: 0, y: 0, width: 4, height: 4)
+        layer.backgroundColor = CGColor(srgbRed: rgb.0 / 255, green: rgb.1 / 255, blue: rgb.2 / 255, alpha: 1)
+        layer.render(in: context)
+        guard let image = context.makeImage() else { return nil }
+        return NSBitmapImageRep(cgImage: image).colorAt(x: 2, y: 2)?.usingColorSpace(.sRGB)
+    }
+
     @Test func theIconGlowsBlueInsideItsSlot() throws {
         let light = try #require(slot(dark: false)), dark = try #require(slot(dark: true))
         // Both side by side, 4 pt apart, for the designer's check.
@@ -50,10 +63,13 @@ import Testing
             }
             // The body, left of the screen cut-out: #3f8de0, or #5aa3f0 on a dark bar.
             let body = try color(6 + 4.5, 11)
-            let blue: [Double] = dark ? [90, 163, 240] : [63, 141, 224]
-            let got: [Double] = [Double(body.redComponent), Double(body.greenComponent), Double(body.blueComponent)].map { $0 * 255 }
-            let off: Double = zip(got, blue).map { abs($0 - $1) }.max() ?? 255
-            #expect(off < 12, "body \(body) dark \(dark)")
+            // Compared with that blue drawn the same way (a layer rendered into an sRGB bitmap),
+            // because `render(in:)` moves layer colors a little in a test (by about 17 of 255).
+            let reference = try #require(Self.rendered(dark ? (90, 163, 240) : (63, 141, 224)))
+            let got: [Double] = [Double(body.redComponent), Double(body.greenComponent), Double(body.blueComponent)]
+            let want: [Double] = [Double(reference.redComponent), Double(reference.greenComponent), Double(reference.blueComponent)]
+            let off: Double = zip(got, want).map { abs($0 - $1) * 255 }.max() ?? 255
+            #expect(off < 4, "body \(body) reference \(reference) dark \(dark)")
             // The halo, 1 pt left of the body's edge, is blue.
             let halo = try color(6 + 2.6, 11)
             #expect(halo.blueComponent > halo.redComponent + 0.08, "halo \(halo) dark \(dark)")
