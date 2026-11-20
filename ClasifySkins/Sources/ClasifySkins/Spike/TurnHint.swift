@@ -1,21 +1,22 @@
 import SwiftUI
 
-/// CLA-163, card CE.1 (from BZ D), a trial behind `hints.trial`: the last hint of the tour,
-/// under the device, a ⌘ key and the words "Hold ⌘ and drag to turn". The app puts this view
-/// in its own clear window, its top at the device's bottom edge, while the tour shows the hint
-/// (`Hint.tourTurn`). No timer ends it. The timeline, in seconds from when it shows: the key
-/// fades in (0.5 s) and rises 8 pt (0.85 s). From 1.4 s its glow is on (0.7 s): the blue rings
-/// pulse from 0.15 to 1 every 2.4 s, and the ⌘ is blue. From 1.4 s the key presses itself in a
-/// 7.2 s loop (393): it sinks 4 pt in 0.7 s, stays down until 3.0 s, rises in 0.7 s and rests.
-/// The app nudges the device on each press (`nudges`). After the person's first own ⌘ press,
-/// the key only follows their ⌘ key, 0.08 s down and up, and never loops again (394). When the
-/// hint ends, all fades out in 0.5 s and sinks 8 pt in 0.85 s. CSS blurs are halved for SwiftUI radii.
+/// CLA-163, card CE.1 (from BZ D), a trial behind `hints.trial`: a hint of the tour, under
+/// the device, a ⌘ key and the words "Hold ⌘ and drag to turn". The app puts this view in its
+/// own clear window, its top at the device's bottom edge, while the tour shows the hint
+/// (`Hint.tourTurn`). No timer ends it. The timeline, in seconds from when it shows: all fades
+/// in place in 0.5 s, with no rise (Jason 00:34 JST 11-21: "it shouldnt rise"). From 1.4 s
+/// its glow is on (0.7 s): the blue rings pulse from 0.15 to 1 every 2.4 s, and the ⌘ is blue.
+/// From 1.4 s the key presses itself in a 7.2 s loop (393): it sinks 4 pt in 0.7 s, stays down
+/// until 3.0 s, rises in 0.7 s and rests. The app nudges the device on each press
+/// (`nextNudge`). After the person's first own ⌘ press, the key only follows their ⌘ key,
+/// 0.08 s down and up, and never loops again (394). When the hint ends, all fades out in place
+/// in 0.5 s. CSS blurs are halved for SwiftUI radii.
 public struct TurnHint: View {
     /// The view's size: the key's top is 27 pt down, the words 16 pt under the key.
     public static let size = CGSize(width: 300, height: 150)
     public static let words = "Hold ⌘ and drag to turn"
-    /// The fade in and out, and the 8 pt rise in and sink out.
-    public static let fade = 0.5, rise = 0.85
+    /// The fade in and out, in place.
+    public static let fade = 0.5
     /// The loop (393): its first press, its length, how long a press stays down (its sink
     /// included), the sink and the rise, and the person's own press (394).
     public static let loopStart = 1.4, loop = 7.2, downTime = 3.0, move = 0.7, keyMove = 0.08
@@ -47,9 +48,9 @@ public struct TurnHint: View {
 
     /// The look at one moment.
     struct Frame: Equatable {
-        /// The whole hint's opacity, how far the key and the words are still under their place
-        /// (pt), how far the key is down (0 up, 1 down 4 pt), the rings' strength and the blue ⌘'s.
-        var opacity: Double, rise: Double, down: Double, glow: Double, blue: Double
+        /// The whole hint's opacity, how far the key is down (0 up, 1 down 4 pt), the rings'
+        /// strength and the blue ⌘'s.
+        var opacity: Double, down: Double, glow: Double, blue: Double
     }
 
     private static func ramp(_ t: Double, _ a: Double, _ b: Double) -> Double { min(max((t - a) / (b - a), 0), 1) }
@@ -67,20 +68,16 @@ public struct TurnHint: View {
 
     /// The look `t` seconds after the start; `end` is when the hint ended, if it did.
     static func frame(at t: Double, end: Double? = nil, press: Press? = nil) -> Frame {
-        var opacity = ease(ramp(t, 0, Self.fade))
-        var rise = 8 * (1 - ease(ramp(t, 0, Self.rise)))
-        if let end {
-            opacity *= 1 - ease(ramp(t, end, end + Self.fade))
-            rise += 8 * ease(ramp(t, end, end + Self.rise))
-        }
+        var opacity = ease(ramp(t, 0, fade))
+        if let end { opacity *= 1 - ease(ramp(t, end, end + fade)) }
         let on = ease(ramp(t, loopStart, loopStart + move))
         let pulse = 0.15 + 0.85 * (0.5 - 0.5 * cos(2 * .pi * t / 2.4))
-        return Frame(opacity: opacity, rise: rise, down: down(at: t, press: press), glow: on * pulse,
+        return Frame(opacity: opacity, down: down(at: t, press: press), glow: on * pulse,
                      blue: ease(ramp(t, loopStart, loopStart + 0.3)))
     }
 
     /// When the hint is gone, in seconds from the start, after it ended at `end`.
-    public static func over(end: Double) -> Double { end + max(fade, rise) }
+    public static func over(end: Double) -> Double { end + fade }
 
     /// The first nudge of the loop after `t` seconds from the start.
     public static func nextNudge(after t: Double) -> Double {
@@ -106,13 +103,12 @@ public struct TurnHint: View {
     private func look(at t: Double) -> some View {
         let look = Self.frame(at: t, end: ended?.timeIntervalSince(start), press: press)
         return VStack(spacing: 16) {
-            key(look).offset(y: look.rise + 4 * look.down)
+            key(look).offset(y: 4 * look.down)
             Text(Self.words)
                 .font(.system(size: 14, weight: .medium))
                 .tracking(0.1)
                 .foregroundStyle(.white)
                 .shadow(color: Color(red: 10 / 255, green: 20 / 255, blue: 50 / 255).opacity(0.45), radius: 4, y: 1)
-                .offset(y: look.rise)
         }
         .padding(.top, 27)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
