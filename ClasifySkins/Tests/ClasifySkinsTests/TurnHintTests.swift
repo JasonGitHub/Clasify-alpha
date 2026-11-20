@@ -1,4 +1,5 @@
 import AppKit
+import ImageIO
 import SwiftUI
 import Testing
 
@@ -8,10 +9,10 @@ import Testing
 @Suite @MainActor struct TurnHintTests {
     @Test func theKeyRisesInAndWaits() {
         let start = TurnHint.frame(at: 0)
-        #expect(start.opacity == 0 && start.rise == 8 && start.down == 0)
+        #expect(start.opacity == 0 && start.down == 0)
         #expect(TurnHint.frame(at: 0.5).opacity == 1)
         let shown = TurnHint.frame(at: 0.85)
-        #expect(shown.rise == 0 && shown.down == 0 && shown.glow == 0 && shown.blue == 0)
+        #expect(shown.down == 0 && shown.glow == 0 && shown.blue == 0)
         #expect(TurnHint.frame(at: 600).opacity == 1)  // no timer ends it
     }
 
@@ -48,13 +49,12 @@ import Testing
         #expect(TurnHint.down(at: 9.4, press: up) == 0)
     }
 
-    /// When the hint ends, all fades out in 0.5 s and sinks 8 pt in 0.85 s.
+    /// When the hint ends, all fades out in place in 0.5 s (Jason: "it shouldnt rise").
     @Test func theEndFadesAllOut() {
         #expect(TurnHint.frame(at: 10, end: 10).opacity == 1)
         #expect(abs(TurnHint.frame(at: 10.25, end: 10).opacity - 0.5) < 1e-9)
         #expect(TurnHint.frame(at: 10.5, end: 10).opacity < 1e-9)
-        #expect(TurnHint.frame(at: 10.9, end: 10).rise == 8)
-        #expect(abs(TurnHint.over(end: 10) - 10.85) < 1e-9)
+        #expect(abs(TurnHint.over(end: 10) - 10.5) < 1e-9)
     }
 
     /// The look at 3.6 s (the key down, the glow full), on a dark ground so the white words show.
@@ -133,5 +133,116 @@ import Testing
     /// 394: the person holds ⌘, so the key is down by their hand, at 1.0 s with no glow yet.
     @Test func theWindowWithThePersonsCommandKeyDown() throws {
         _ = try check(at: 1.0, press: TurnHint.Press(at: 0.9, down: true, from: 0), "turn-hint-window-held")
+    }
+}
+
+/// Jason (build 390): "the button press on the turn hint seemed not smooth". The key moved in
+/// whole device pixels: 8 steps for its 4 pt at 2x, each held for several frames. These tests
+/// draw one press of the key's loop at 60 fps and measure where the key is in each frame from
+/// the pixels (the "command" label's centre of ink), not from the model: drawn by ImageRenderer
+/// at 2x, and drawn by the real hint window (`TurnHintPanel`) into a 2x bitmap. Each frame of
+/// the sink and the rise must move the key on: no step, no repeat. They also save the frames as
+/// a GIF and the measures as a CSV for the designer.
+@Suite @MainActor struct TurnHintMotionTests {
+    /// One whole press: 1.4 s to 5.4 s (sink 0.7 s, down until 3.0 s, rise 0.7 s, rest).
+    private let times = (0...240).map { 1.4 + Double($0) / 60 }
+
+    /// One frame at `t` seconds by ImageRenderer, at 2x, on the dark desktop colour.
+    private func rendered(_ t: Double) throws -> NSBitmapImageRep {
+        let renderer = ImageRenderer(content: TurnHint(start: .now, fixed: t)
+            .background(Color(red: 0.16, green: 0.2, blue: 0.28)))
+        renderer.scale = 2
+        return NSBitmapImageRep(cgImage: try #require(renderer.cgImage))
+    }
+
+    /// One frame at `t` seconds as the real hint window draws it, into a 2x bitmap.
+    private func windowed(_ t: Double) throws -> NSBitmapImageRep {
+        let (panel, _) = TurnHintPanel.make(TurnHint(start: .now, fixed: t), frame: NSRect(origin: .zero, size: TurnHint.size))
+        defer { panel.close() }
+        let view = try #require(panel.contentView)
+        view.layoutSubtreeIfNeeded()
+        let rep = try #require(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 600, pixelsHigh: 300, bitsPerSample: 8,
+                                                samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+                                                bytesPerRow: 0, bitsPerPixel: 0))
+        rep.size = TurnHint.size
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep
+    }
+
+    /// The label's centre of ink, in points from the top: dark pixels on the key's white face.
+    private func labelY(_ bitmap: NSBitmapImageRep) -> Double {
+        let scale = Double(bitmap.pixelsWide) / TurnHint.size.width
+        var weight = 0.0, sum = 0.0
+        for py in Int(62 * scale)..<Int(83 * scale) {  // the label, up or down, and only the face round it
+            for px in Int(115 * scale)..<Int(160 * scale) {  // the label's left part
+                guard let c = bitmap.colorAt(x: px, y: py)?.usingColorSpace(.sRGB) else { continue }
+                let ink = c.alphaComponent * max(0, 0.94 - (c.redComponent + c.greenComponent + c.blueComponent) / 3)
+                weight += ink
+                sum += ink * (Double(py) + 0.5)
+            }
+        }
+        return weight > 0 ? sum / weight / scale : .nan
+    }
+
+    /// Checks one way of drawing, and saves its CSV (and GIF) as `name`.
+    /// `share` is the part of the moving frames that must move the drawn key on; 1 is every frame.
+    private func check(_ name: String, gif: Bool, share: Double = 1, _ draw: (Double) throws -> NSBitmapImageRep) throws {
+        var rows = ["t,model_down_pt,measured_label_y_pt"]
+        var measured: [Double] = []
+        var images: [CGImage] = []
+        for (n, t) in times.enumerated() {
+            let bitmap = try draw(t)
+            let y = labelY(bitmap)
+            measured.append(y)
+            rows.append(String(format: "%.4f,%.4f,%.4f", t, 4 * TurnHint.down(at: t, press: nil), y))
+            if gif, n % 2 == 0, let image = bitmap.cgImage { images.append(image) }  // 30 fps for the GIF
+        }
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"] {
+            let url = URL(fileURLWithPath: dir)
+            try rows.joined(separator: "\n").write(to: url.appendingPathComponent(name + ".csv"), atomically: true, encoding: .utf8)
+            if gif { writeGIF(images, to: url.appendingPathComponent(name + ".gif")) }
+        }
+        print("\(name) measured label y (pt):", measured.map { String(format: "%.3f", $0) }.joined(separator: " "))
+        // Each frame where the model moves the key 0.05 pt or more (the sink from 1.4 s, the
+        // rise from 4.4 s) moves the drawn key on by at least a third of that.
+        var moving = 0, moved = 0, stalled = false
+        for n in 1..<times.count {
+            let step = 4 * (TurnHint.down(at: times[n], press: nil) - TurnHint.down(at: times[n - 1], press: nil))
+            guard abs(step) >= 0.05 else { continue }
+            moving += 1
+            let on = (measured[n] - measured[n - 1]) * (step > 0 ? 1 : -1) > abs(step) / 3
+            if on { moved += 1 }
+            if share == 1 {
+                #expect(on, "\(name) frame \(n) at \(times[n]) s: model \(step) pt, drawn \(measured[n - 1]) -> \(measured[n])")
+            } else {
+                // Never two frames in a row with no move: whole-pixel steps hold for several.
+                #expect(on || !stalled, "\(name) frame \(n) at \(times[n]) s: a second frame with no move")
+            }
+            stalled = !on
+        }
+        print("\(name): \(moved) of \(moving) moving frames move the drawn key on")
+        #expect(Double(moved) >= share * Double(moving), "\(name): \(moved) of \(moving)")
+        // Down, the key is 4 pt lower than up.
+        #expect(abs(measured[60] - measured[0] - 4) < 0.25, "\(name): \(measured[0]) -> \(measured[60])")
+    }
+
+    @Test func thePressMovesTheKeyOnInEveryFrame() throws {
+        try check("turn-hint-press", gif: true) { try rendered($0) }
+    }
+
+    @Test func theRealWindowMovesTheKeyOnInMostFrames() throws {
+        // The macOS CI screen is 1x (`backingScaleFactor` 1), so the window draws 1 pixel a
+        // point, and the label's ink at 1x does not follow the key in every frame. A Retina Mac
+        // draws at 2x, as `thePressMovesTheKeyOnInEveryFrame` does. Here: most frames move.
+        try check("turn-hint-press-window", gif: false, share: 0.75) { try windowed($0) }
+    }
+
+    private func writeGIF(_ images: [CGImage], to url: URL) {
+        guard let destination = CGImageDestinationCreateWithURL(url as CFURL, "com.compuserve.gif" as CFString, images.count, nil) else { return }
+        CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        for image in images {
+            CGImageDestinationAddImage(destination, image, [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1.0 / 30]] as CFDictionary)
+        }
+        CGImageDestinationFinalize(destination)
     }
 }
