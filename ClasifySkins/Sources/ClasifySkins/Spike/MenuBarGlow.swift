@@ -50,8 +50,8 @@ import AppKit
         }
         halo.frame = CGRect(origin: .zero, size: frame.size)
         glow.frame = halo.frame
-        glow.addSublayer(fill)
         glow.addSublayer(halo)
+        glow.addSublayer(fill)  // over the halo, so the icon is its own blue at every breath
         if let breath {
             halo.opacity = breath
         } else {
