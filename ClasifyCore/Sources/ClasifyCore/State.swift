@@ -480,6 +480,8 @@ public struct AppState: Equatable, Sendable {
     /// The time up to which each open view is counted: a view open over midnight counts its part
     /// of the day before at the day change.
     public var viewCounted: [View3D: Double] = [:]
+    /// CLA-162: the last window report and its time. Not saved: a quit ends it.
+    public var windowSpot: WindowSpot?, windowAt: Double?
     /// CLA-97: today's use, for `day_active`. Saved with the settings.
     public var today: DayUse?
     /// CLA-97: the copy of `today` that the settings save: about once a minute (Jason 23:07 JST).

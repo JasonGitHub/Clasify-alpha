@@ -114,6 +114,9 @@ public enum Action: Equatable, Sendable {
     case willQuit
     /// CLA-97: a 3D view opened or closed, for the view times of `day_active`. The skin sends it.
     case view3D(View3D, open: Bool)
+    /// CLA-162: where the device window is now, or nil when the person cannot see it. The app
+    /// sends it about once a minute and at each change.
+    case window(WindowSpot?)
     /// CLA-97: the sender takes events: a PostHog key is in the build and `analytics.on` is on.
     /// The app sends it at start and when the switch changes.
     case analyticsOn(Bool)
@@ -1364,7 +1367,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.controlLostAt = now
             fx.append(.track(.controlLost(reason, service: s.service)))
 
-        case .used, .willQuit, .view3D: break  // only for `day_active` (dayEvents)
+        case .used, .willQuit, .view3D, .window: break  // only for `day_active` (dayEvents)
         case .analyticsOn(let on): s.analyticsOn = on
         case .appProblems(let problems):
             // The budget is for the whole run: MetricKit can hand over reports more than once.
