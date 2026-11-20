@@ -13,10 +13,15 @@ public struct DayUse: Equatable, Sendable {
     public var views = [0.0, 0, 0]
     /// The service of the day's last counted music, which `day_active` sends.
     public var service: MusicService?
+    /// CLA-162: seconds the device window was visible in each area of its screen (`WindowSpot.area`).
+    public var areas = [Double](repeating: 0, count: 9)
+    /// CLA-162: visible seconds on each screen (`WindowSpot.screenKey`), and the most screens seen.
+    public var screens: [String: Double] = [:], screenCount = 0
 
     public init(day: Int, weekday: Int) { (self.day, self.weekday) = (day, weekday) }
 
     public var seconds: Double { bands.reduce(0, +) }
+    public var visible: Double { areas.reduce(0, +) }
     /// The day had music, a feature or a 3D view: `day_active` goes out for it (CTO 00:08 JST
     /// 11-20: a day with no music shows as minutes 0).
     public var hadUse: Bool { songs > 0 || seconds > 0 || !features.isEmpty || views.contains { $0 > 0 } }
@@ -50,31 +55,78 @@ public struct DayUse: Equatable, Sendable {
     }
 
     /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings|Spotify|12.5,0.0,3.0": the saved
-    /// form. A day saved before the 3D views has no last part: its views are 0.
+    /// form, then CLA-162's window part "areas;screen count;screens". A day saved before the 3D
+    /// views or the window has no such part: its counts are 0.
     var saved: String {
         let b: [String] = bands.map { String($0) }
         let f: [String] = features.map(\.rawValue).sorted()
         let v: [String] = views.map { String($0) }
         return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ","), service?.rawValue ?? "",
-                v.joined(separator: ",")].joined(separator: "|")
+                v.joined(separator: ","), windowSaved].joined(separator: "|")
+    }
+
+    /// "0.0,…,60.0,…;2;1x1512x982=60.0": the areas, the screen count and the seconds per screen.
+    private var windowSaved: String {
+        let screens = self.screens.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }
+        return [areas.map { String($0) }.joined(separator: ","), String(screenCount), screens.joined(separator: ",")].joined(separator: ";")
     }
 
     init?(saved: String) {
         let parts = saved.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard parts.count == 6 || parts.count == 7, let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
+        guard (6...8).contains(parts.count), let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
         let bands = parts[3].split(separator: ",").compactMap { Double($0) }
         guard bands.count == 4 else { return nil }
         self.init(day: day, weekday: weekday)
         (self.songs, self.bands) = (songs, bands)
         features = Set(parts[4].split(separator: ",").compactMap { Feature(rawValue: String($0)) })
         service = MusicService(rawValue: parts[5])
-        if parts.count == 7 {
+        if parts.count >= 7 {
             let views = parts[6].split(separator: ",").compactMap { Double($0) }
             guard views.count == 3 else { return nil }
             self.views = views
         }
+        if parts.count == 8 {
+            let window = parts[7].split(separator: ";", omittingEmptySubsequences: false)
+            guard window.count == 3, let count = Int(window[1]) else { return nil }
+            let areas = window[0].split(separator: ",").compactMap { Double($0) }
+            guard areas.count == 9 else { return nil }
+            (self.areas, screenCount) = (areas, count)
+            for pair in window[2].split(separator: ",") {
+                let kv = pair.split(separator: "=")
+                guard kv.count == 2, let seconds = Double(kv[1]) else { return nil }
+                screens[String(kv[0])] = seconds
+            }
+        }
     }
+
+    /// CLA-162: the area with the most visible seconds (a tie goes to the first, top left first),
+    /// and the screen with the most (a tie goes to the first key). Nil with no visible time.
+    var topArea: Int? { visible > 0 ? areas.indices.max { areas[$0] < areas[$1] || (areas[$0] == areas[$1] && $0 > $1) } : nil }
+    var topScreen: String? { screens.max { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }?.key }
 }
+
+/// CLA-162 (Jason 15:09 JST 11-20): where the device window is, for `day_active`. The app sends
+/// it about once a minute and at each change, nil when the person cannot see the window.
+/// Nothing about other apps or the screen's content.
+public struct WindowSpot: Equatable, Sendable {
+    /// The area of the device's center on its screen, a 3x3 grid: 0 top left, 1 top, … 8 bottom right.
+    public var area: Int
+    /// That screen is the main screen (the one with the menu bar), and how many screens there are.
+    public var mainScreen: Bool, screens: Int
+    /// That screen's size in points.
+    public var width: Int, height: Int
+
+    public init(area: Int, mainScreen: Bool, screens: Int, width: Int, height: Int) {
+        (self.area, self.mainScreen, self.screens, self.width, self.height) = (min(8, max(0, area)), mainScreen, screens, width, height)
+    }
+
+    var screenKey: String { "\(mainScreen ? 1 : 0)x\(width)x\(height)" }
+    static let areaNames = ["top_left", "top", "top_right", "left", "center", "right", "bottom_left", "bottom", "bottom_right"]
+}
+
+/// The longest gap between two window reports that counts: the app reports about once a minute,
+/// so a longer gap is a Mac sleep.
+let windowGapLimit = 90.0
 
 /// CLA-97: features of `day_active`, one flag a day each.
 public enum Feature: String, CaseIterable, Sendable {

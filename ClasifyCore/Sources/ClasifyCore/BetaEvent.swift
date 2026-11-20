@@ -94,6 +94,18 @@ public enum BetaEvent: Equatable, Sendable {
             ]
             for f in Feature.allCases { p["used_" + f.rawValue] = .flag(d.features.contains(f)) }
             for v in View3D.allCases { p[v.property] = .decimal(d.views[v.index]) }
+            // CLA-162: where the window was. Only with visible time; no other app, no screen content.
+            p["minutes_visible"] = .decimal(d.visible / 60)
+            if let area = d.topArea { p["spot"] = .text(WindowSpot.areaNames[area]) }
+            if let key = d.topScreen {
+                let n = key.split(separator: "x").compactMap { Int($0) }
+                if n.count == 3 {
+                    p["main_screen"] = .flag(n[0] == 1)
+                    p["screen_width"] = .number(n[1])
+                    p["screen_height"] = .number(n[2])
+                }
+                p["screens"] = .number(d.screenCount)
+            }
             return p
         }
     }
@@ -363,7 +375,21 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         settle(view, upTo: now)
         (s.viewOpen[view], s.viewCounted[view]) = (nil, nil)
     }
+    // CLA-162: the time since the last window report goes to that report's area and screen, at
+    // most `windowGapLimit`. Near midnight up to that much can go to the new day.
+    var windowReport = action == .willQuit
+    if case .window = action { windowReport = true }
+    if windowReport, let spot = s.windowSpot, let last = s.windowAt, now > last {
+        let add = min(now - last, windowGapLimit)
+        count(at: now) { d, _ in
+            d.areas[spot.area] += add
+            d.screens[spot.screenKey, default: 0] += add
+            d.screenCount = max(d.screenCount, spot.screens)
+        }
+    }
+    if case .window(let spot) = action { (s.windowSpot, s.windowAt) = (spot, now) }
     if action == .willQuit {
+        (s.windowSpot, s.windowAt) = (nil, nil)
         for view in View3D.allCases { settle(view, upTo: now) }
         (s.viewOpen, s.viewCounted) = ([:], [:])
     }
@@ -396,6 +422,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
         || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
+        || saved?.visible != today?.visible
     if changed || (b.playing && !s.isPlaying) || action == .willQuit { s.savedToday = today }
     return fx
 }

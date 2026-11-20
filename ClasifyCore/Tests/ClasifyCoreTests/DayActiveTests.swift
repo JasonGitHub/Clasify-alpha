@@ -194,7 +194,12 @@ import Testing
         var d = DayUse(day: 20261119, weekday: 5)
         d.songs = 3; d.bands = [0, 1.5, 1200.25, 0]; d.features = [.settings, .coverFlow]
         d.service = .appleMusic; d.views = [12.5, 0, 3]
-        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music|12.5,0.0,3.0")
+        #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music|12.5,0.0,3.0|"
+            + "0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0;0;")
+        d.areas[4] = 60; d.screens = ["1x1512x982": 50, "0x2560x1440": 10]; d.screenCount = 2
+        #expect(DayUse(saved: d.saved) == d)
+        // A day saved before the window part reads with no window time.
+        #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2,3")?.areas == Array(repeating: 0, count: 9))
         #expect(DayUse(saved: d.saved) == d && DayUse(saved: "20261119|5|x|0,0,0,0||") == nil)
         // A day saved before the 3D views reads with views 0.
         #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify")?.views == [0, 0, 0])
@@ -225,6 +230,31 @@ import Testing
         let p = BetaEvent.dayActive(s.today!, service: .spotify).properties
         #expect(p["seconds_3d"] == .decimal(3.5) && p["seconds_apart"] == .decimal(1800) && p["seconds_about_flip"] == .decimal(10))
         #expect(p["used_turn3D"] == .flag(true))
+    }
+
+    /// CLA-162: window reports count visible seconds by area and screen, at most 90 s a gap.
+    @Test func windowReportsCountWhereTheWindowIs() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        let center = WindowSpot(area: 4, mainScreen: true, screens: 2, width: 1512, height: 982)
+        let side = WindowSpot(area: 2, mainScreen: false, screens: 2, width: 2560, height: 1440)
+        _ = events(&s, .window(center), now: at(10) + 1)
+        #expect(s.windowSpot == center && s.today?.visible == 0)
+        _ = events(&s, .window(center), now: at(10) + 61)
+        _ = events(&s, .window(nil), now: at(10) + 121)  // covered: the minute before still counts
+        _ = events(&s, .window(side), now: at(11))  // not visible since: nothing
+        _ = events(&s, .window(side), now: at(12))  // a Mac sleep: 90 s at most
+        _ = events(&s, .willQuit, now: at(12) + 30)
+        #expect(s.today?.areas == [0, 0, 120, 0, 120, 0, 0, 0, 0] && s.windowSpot == nil && s.windowAt == nil)
+        #expect(s.today?.screens == ["1x1512x982": 120, "0x2560x1440": 120] && s.today?.screenCount == 2)
+        s.today?.areas[2] += 1; s.today?.screens["0x2560x1440"]? += 1
+        let p = BetaEvent.dayActive(s.today!, service: .spotify).properties
+        #expect(p["spot"] == .text("top_right") && p["minutes_visible"] == .decimal(241.0 / 60) && p["screens"] == .number(2))
+        #expect(p["main_screen"] == .flag(false) && p["screen_width"] == .number(2560) && p["screen_height"] == .number(1440))
+        let none = BetaEvent.dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify).properties
+        #expect(none["spot"] == nil && none["screens"] == nil && none["minutes_visible"] == .decimal(0))
+        // An area off the grid goes to the nearest edge.
+        #expect(WindowSpot(area: 12, mainScreen: true, screens: 1, width: 1, height: 1).area == 8)
     }
 
     /// A 3D view open over midnight: each part goes to its own day.

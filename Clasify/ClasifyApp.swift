@@ -123,6 +123,25 @@ enum DeviceWindow {
         return window.isVisible && !window.isMiniaturized && window.isOnActiveSpace && isSeen(window)
     }
 
+    /// CLA-162: where the device is now, for `day_active`, or nil when the person cannot see it:
+    /// hidden, in the Dock, on another Space, faded out or fully covered. A partly covered
+    /// device counts as seen here. The area is that of the device's center (not the clear
+    /// margin), on the screen that holds the center, so a window across 2 screens counts once.
+    /// Only myPod's own window: nothing about other apps or the screen's content.
+    static var spot: WindowSpot? {
+        guard !NSApp.isHidden, hiding == nil, let window = deviceWindow, window.isVisible, !window.isMiniaturized,
+              window.isOnActiveSpace, window.alphaValue > 0, window.occlusionState.contains(.visible) else { return nil }
+        let f = window.frame
+        let center = CGPoint(x: f.minX + margin.leading + (f.width - margin.leading - margin.trailing) / 2,
+                             y: f.minY + margin.bottom + (f.height - margin.top - margin.bottom) / 2)
+        let screens = NSScreen.screens  // the first one has the menu bar: the main screen
+        guard let screen = screens.first(where: { $0.frame.contains(center) }) ?? window.screen else { return nil }
+        let s = screen.frame
+        let column = Int((center.x - s.minX) / s.width * 3), row = Int((s.maxY - center.y) / s.height * 3)
+        return WindowSpot(area: min(2, max(0, row)) * 3 + min(2, max(0, column)), mainScreen: screen == screens.first,
+                          screens: screens.count, width: Int(s.width), height: Int(s.height))
+    }
+
     /// The one rule for a partly covered myPod (Jason, 13:10 JST 11-19): it counts as shown
     /// only when no other window covers any part of the device, so the first click brings a
     /// partly covered myPod to the front. A window over only the clear margin does not count.
@@ -328,6 +347,8 @@ final class AppModel {
     @ObservationIgnored private var keeper: SessionKeeper?
     /// Sends the Mac's battery to the store, for the title bar.
     @ObservationIgnored private var battery: BatteryWatcher?
+    /// CLA-162: where the device window is, for `day_active`.
+    @ObservationIgnored private var windowWatcher: WindowWatcher?
     /// CLA-97: the beta events to PostHog.
     @ObservationIgnored private var sender: BetaSender?
     @ObservationIgnored private var diagnostics: BetaDiagnostics?
@@ -407,6 +428,7 @@ final class AppModel {
         player.mayRaise = { [weak store] in store?.state.browserLeads != true }  // CLA-153
         self.keeper = keeper
         battery = BatteryWatcher(store: store)
+        windowWatcher = WindowWatcher(store: store)  // CLA-162
         // A change made in the Spotify app shows when the user comes back to Clasify.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
