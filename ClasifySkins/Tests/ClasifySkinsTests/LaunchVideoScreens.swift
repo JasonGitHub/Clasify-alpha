@@ -34,14 +34,22 @@ import Testing
         s.stack = [Frame(screen: .main)]
         s.library = [
             Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: [
-            Track(id: "spotify:track:v1", title: "Late Summer", artist: "June Harbor", duration: 214, coverID: Self.coverID(1)),
-            Track(id: "spotify:track:v2", title: "Night Bus", artist: "Mara Lune", duration: 231, coverID: Self.coverID(2)),
-            Track(id: "spotify:track:v3", title: "Three Rings", artist: "Studio Ono", duration: 198, coverID: Self.coverID(3)),
-            Track(id: "spotify:track:v4", title: "Signal", artist: "Kōji & the Wires", duration: 246, coverID: Self.coverID(4)),
-            Track(id: "spotify:track:v5", title: "Low Tide", artist: "Ines Vale", duration: 189, coverID: Self.coverID(5)),
-            Track(id: "spotify:track:v6", title: "Peak Hours", artist: "Bright Annex", duration: 207, coverID: Self.coverID(6)),
-            Track(id: "spotify:track:v7", title: "Golden Hour", artist: "Satori Sound", duration: 223, coverID: Self.coverID(7)),
-            Track(id: "spotify:track:v8", title: "Moss", artist: "Field Notes", duration: 201, coverID: Self.coverID(8))
+            Track(id: "spotify:track:v1", title: "Late Summer", artist: "June Harbor", duration: 214, coverID: Self.coverID(1),
+                  album: Album(id: "spotify:album:v1", name: "Late Summer", artist: "June Harbor")),
+            Track(id: "spotify:track:v2", title: "Night Bus", artist: "Mara Lune", duration: 231, coverID: Self.coverID(2),
+                  album: Album(id: "spotify:album:v2", name: "Night Bus", artist: "Mara Lune")),
+            Track(id: "spotify:track:v3", title: "Three Rings", artist: "Studio Ono", duration: 198, coverID: Self.coverID(3),
+                  album: Album(id: "spotify:album:v3", name: "Three Rings", artist: "Studio Ono")),
+            Track(id: "spotify:track:v4", title: "Signal", artist: "Kōji & the Wires", duration: 246, coverID: Self.coverID(4),
+                  album: Album(id: "spotify:album:v4", name: "Signal", artist: "Kōji & the Wires")),
+            Track(id: "spotify:track:v5", title: "Low Tide", artist: "Ines Vale", duration: 189, coverID: Self.coverID(5),
+                  album: Album(id: "spotify:album:v5", name: "Low Tide", artist: "Ines Vale")),
+            Track(id: "spotify:track:v6", title: "Peak Hours", artist: "Bright Annex", duration: 207, coverID: Self.coverID(6),
+                  album: Album(id: "spotify:album:v6", name: "Peak Hours", artist: "Bright Annex")),
+            Track(id: "spotify:track:v7", title: "Golden Hour", artist: "Satori Sound", duration: 223, coverID: Self.coverID(7),
+                  album: Album(id: "spotify:album:v7", name: "Golden Hour", artist: "Satori Sound")),
+            Track(id: "spotify:track:v8", title: "Moss", artist: "Field Notes", duration: 201, coverID: Self.coverID(8),
+                  album: Album(id: "spotify:album:v8", name: "Moss", artist: "Field Notes"))
             ]),
             Playlist(id: "spotify:playlist:v1", name: "Night Drive", tracks: []),
             Playlist(id: "spotify:playlist:v2", name: "Sunday Morning", tracks: []),
