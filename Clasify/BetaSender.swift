@@ -1,10 +1,11 @@
 import ClasifyCore
 import Foundation
 
-/// CLA-97 (A3b): sends the beta events to PostHog, project "myPod", US host. Only Jason tests it:
-/// it sends only with a key in the build (`PostHogKey` in Info.plist, put in by the signed
-/// build) and the switch `analytics.on` on (off by default). Without them it sends nothing and
-/// keeps nothing.
+/// CLA-97 (A3b): sends the beta events to PostHog, project "myPod", US host. It sends only with
+/// a key in the build (`PostHogKey` in Info.plist, put in by the signed build) and the switch
+/// `analytics.on` on. The switch is on when it is not set (Jason 20:31 JST 11-20: on for
+/// everyone); `defaults write com.cappyai.mypod analytics.on -bool false` turns it off. Without
+/// a key, or with the switch off, it sends nothing and keeps nothing.
 ///
 /// The events wait in `analytics.unsent` (UserDefaults, one JSON string, at most 200), written
 /// at each change, so a crash loses none. They go out with the account ID once this Mac is
@@ -44,7 +45,10 @@ import Foundation
     }
 
     /// The sender takes events: a key in the build and the switch on.
-    var on: Bool { !key.isEmpty && defaults.bool(forKey: Self.onKey) }
+    var on: Bool { !key.isEmpty && Self.switchOn(defaults) }
+
+    /// The switch `analytics.on`: on when it is not set.
+    static func switchOn(_ defaults: UserDefaults) -> Bool { defaults.object(forKey: onKey) as? Bool ?? true }
 
     func take(_ event: BetaEvent) {
         guard on else { return forget() }
