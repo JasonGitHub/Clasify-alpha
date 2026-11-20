@@ -42,16 +42,35 @@ public struct BetaQueue: Equatable, Sendable {
     /// old ones go while a send runs.
     public mutating func remove(_ ids: Set<String>) { events.removeAll { ids.contains($0.id) } }
 
-    /// The body of a POST to PostHog's `/batch/`. `person` is the account ID (`distinct_id`).
-    public static func body(_ events: [QueuedEvent], key: String, person: String) -> Data {
+    /// The body of a POST to PostHog's `/batch/`. `person` is the `distinct_id`: the account ID,
+    /// or before activation the install ID (CLA-97, Jason "ok 1" 21:00 JST 11-20). With `linking`
+    /// (the install ID), a `$identify` goes first: PostHog then merges the install ID's earlier
+    /// events into the account's person.
+    public static func body(_ events: [QueuedEvent], key: String, person: String, linking anon: String? = nil, linkID: String = UUID().uuidString) -> Data {
         let time = ISO8601DateFormatter()
         time.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let batch = events.map { e in
+        var batch = events.map { e in
             var properties = e.properties
             properties["distinct_id"] = .text(person)
             return Item(event: e.name, uuid: e.id, timestamp: time.string(from: Date(timeIntervalSinceReferenceDate: e.time)), properties: properties)
         }
+        if let anon, anon != person, let first = events.first {
+            let link = Item(event: "$identify", uuid: linkID, timestamp: time.string(from: Date(timeIntervalSinceReferenceDate: first.time)),
+                            properties: ["distinct_id": .text(person), "$anon_distinct_id": .text(anon)])
+            batch.insert(link, at: 0)
+        }
         return (try? JSONEncoder().encode(Body(api_key: key, batch: batch))) ?? Data()
+    }
+
+    /// Who the events go out as: the account ID once this Mac has one, before that the random
+    /// install ID. Nil with neither: the events wait.
+    public static func person(account: String?, install: String?) -> String? { account ?? install }
+
+    /// The install ID to link to the account, once: when an account ID is there and the link has
+    /// not gone out yet.
+    public static func linking(account: String?, install: String?, linked: Bool) -> String? {
+        guard account != nil, !linked else { return nil }
+        return install
     }
 
     private struct Body: Encodable { var api_key: String, batch: [Item] }

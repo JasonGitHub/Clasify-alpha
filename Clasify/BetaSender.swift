@@ -9,10 +9,15 @@ import Foundation
 ///
 /// The events wait in `analytics.unsent` (UserDefaults, one JSON string, at most 200), written
 /// at each change, so a crash loses none. They go out with the account ID once this Mac is
-/// active: setup events made before that wait. Sent events go only after PostHog answers 200.
+/// active. Before that they go out at once as `analytics.installID`: a random UUID made at the
+/// first start with analytics on, for analytics only (never the activation device ID, never
+/// sent to our server). The first batch with the account ID links the two with `$identify`
+/// (Jason "ok 1" 21:00 JST 11-20); `analytics.linked` remembers it. A reinstall or `defaults
+/// delete` makes a new install ID. Sent events go only after PostHog answers 200.
 @MainActor final class BetaSender {
     static let host = URL(string: "https://us.i.posthog.com/batch/")!
     static let unsentKey = "analytics.unsent", onKey = "analytics.on"
+    static let installKey = "analytics.installID", linkedKey = "analytics.linked"
     /// At most this many events in one request.
     static let batchSize = 50
 
@@ -41,8 +46,12 @@ import Foundation
         self.key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         (self.defaults, self.person) = (defaults, person)
         queue = BetaQueue(saved: defaults.string(forKey: Self.unsentKey))
-        if !on { forget() }
+        if !on { forget() } else if defaults.string(forKey: Self.installKey) == nil {
+            defaults.set(UUID().uuidString, forKey: Self.installKey)
+        }
     }
+
+    private var install: String? { defaults.string(forKey: Self.installKey) }
 
     /// The sender takes events: a key in the build and the switch on.
     var on: Bool { !key.isEmpty && Self.switchOn(defaults) }
@@ -72,18 +81,21 @@ import Foundation
 
     private func sendIfDue() async {
         guard on else { return forget() }
-        guard Date() >= nextTry, !queue.events.isEmpty, let person = person() else { return }
+        let account = person(), install = self.install
+        guard Date() >= nextTry, !queue.events.isEmpty, let person = BetaQueue.person(account: account, install: install) else { return }
+        let linking = BetaQueue.linking(account: account, install: install, linked: defaults.bool(forKey: Self.linkedKey))
         nextTry = .distantFuture  // one request at a time
         var batch = queue.events.filter { refused.contains($0.id) }  // the queue may have dropped some
         if batch.isEmpty { (refused, batch) = ([], Array(queue.events.prefix(Self.batchSize))) }
         var request = URLRequest(url: Self.host)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = BetaQueue.body(batch, key: key, person: person)
+        request.httpBody = BetaQueue.body(batch, key: key, person: person, linking: linking)
         let status = (try? await Self.session.data(for: request)).flatMap { ($0.1 as? HTTPURLResponse)?.statusCode }
         if status == 200 || (status == 400 && !refused.isEmpty) {
             // A batch that PostHog refuses twice goes: it can never be sent (CTO 00:25 JST).
             (failures, refused) = (0, [])
+            if linking != nil, status == 200 { defaults.set(true, forKey: Self.linkedKey) }
             queue.remove(Set(batch.map(\.id)))
             save()
             nextTry = queue.events.isEmpty ? Date() + 30 : Date()
@@ -98,10 +110,10 @@ import Foundation
 
     private func save() { defaults.set(queue.saved, forKey: Self.unsentKey) }
 
-    /// Off: nothing waits, nothing is kept.
+    /// Off: nothing waits, nothing is kept, the install ID too.
     private func forget() {
         if !queue.events.isEmpty { queue = BetaQueue() }
-        defaults.removeObject(forKey: Self.unsentKey)
+        for key in [Self.unsentKey, Self.installKey, Self.linkedKey] { defaults.removeObject(forKey: key) }
     }
 }
 

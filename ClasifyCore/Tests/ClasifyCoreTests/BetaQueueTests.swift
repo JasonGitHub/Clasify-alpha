@@ -44,6 +44,32 @@ import Testing
         #expect(p["distinct_id"] as? String == "acct-1" && p["seconds"] as? Int == 60 && p["service"] as? String == "spotify")
     }
 
+    /// Jason "ok 1" (21:00 JST 11-20): before activation the events go out as the random install
+    /// ID; with the account ID they go out as the account, and the first such batch links the two.
+    @Test func theInstallIDSendsBeforeActivationAndLinksOnce() throws {
+        #expect(BetaQueue.person(account: nil, install: nil) == nil)
+        #expect(BetaQueue.person(account: nil, install: "i1") == "i1")
+        #expect(BetaQueue.person(account: "acct-1", install: "i1") == "acct-1")
+        #expect(BetaQueue.linking(account: nil, install: "i1", linked: false) == nil)
+        #expect(BetaQueue.linking(account: "acct-1", install: "i1", linked: false) == "i1")
+        #expect(BetaQueue.linking(account: "acct-1", install: "i1", linked: true) == nil)
+        #expect(BetaQueue.linking(account: "acct-1", install: nil, linked: false) == nil)
+
+        let e = QueuedEvent(song, at: 816_789_600, id: "u1")
+        let body = BetaQueue.body([e], key: "k", person: "acct-1", linking: "i1", linkID: "l1")
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let batch = try #require(json["batch"] as? [[String: Any]])
+        #expect(batch.count == 2 && batch[0]["event"] as? String == "$identify" && batch[0]["uuid"] as? String == "l1")
+        let link = try #require(batch[0]["properties"] as? [String: Any])
+        #expect(link["distinct_id"] as? String == "acct-1" && link["$anon_distinct_id"] as? String == "i1")
+        #expect(batch[1]["event"] as? String == "first_song" && (batch[1]["properties"] as? [String: Any])?["distinct_id"] as? String == "acct-1")
+        // No link without one, or to itself.
+        for plain in [BetaQueue.body([e], key: "k", person: "i1"), BetaQueue.body([e], key: "k", person: "i1", linking: "i1")] {
+            let items = try #require((try JSONSerialization.jsonObject(with: plain) as? [String: Any])?["batch"] as? [[String: Any]])
+            #expect(items.count == 1 && items[0]["event"] as? String == "first_song")
+        }
+    }
+
     /// CTO 23:46 JST: no device ID, hardware UUID, token or email in any event.
     @Test func noEventHoldsADeviceIDATokenOrAnEmail() {
         let all: [BetaEvent] = [

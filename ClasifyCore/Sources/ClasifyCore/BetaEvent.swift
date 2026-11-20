@@ -1,8 +1,8 @@
 import Foundation
 
 /// CLA-97: a beta analytics event. The reducer decides it and returns it as `Effect.track`;
-/// the app's sender (A3) adds the account ID, the build and the macOS version, and sends it
-/// only from a signed beta build with a key, on an activated Mac, with `analytics.on`. No
+/// the app's sender (A3) adds the account ID (before activation, a random install ID), the build
+/// and the macOS version, and sends it only from a signed beta build with a key, with `analytics.on`. No
 /// email, no song or playlist names.
 public enum BetaEvent: Equatable, Sendable {
     /// Each setup screen a person reaches, once in a row (`log_in` covers the login and the browser).
