@@ -95,6 +95,7 @@ struct K3DSpikeSkin: View {
                 let new = needs && shown ? WindowRoom.fit(K3DRoom.extra, in: window.window) : EdgeInsets()
                 split?.set(new)  // before `room`, so no layout pass sees the new room with the old split
                 room = new
+                DeviceWindow.room = new  // CLA-162: `DeviceWindow.spot` finds the device inside the room
             }
         ) {
             PocketSkin(state: store.state) { action in

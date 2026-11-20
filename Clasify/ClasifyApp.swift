@@ -123,6 +123,9 @@ enum DeviceWindow {
         return window.isVisible && !window.isMiniaturized && window.isOnActiveSpace && isSeen(window)
     }
 
+    /// CLA-119: the 3D room the skin adds round the margin now (Codex on #360).
+    static var room = EdgeInsets()
+
     /// CLA-162: where the device is now, for `day_active`, or nil when the person cannot see it:
     /// hidden, in the Dock, on another Space, faded out or fully covered. A partly covered
     /// device counts as seen here. The area is that of the device's center (not the clear
@@ -131,9 +134,9 @@ enum DeviceWindow {
     static var spot: WindowSpot? {
         guard !NSApp.isHidden, hiding == nil, let window = deviceWindow, window.isVisible, !window.isMiniaturized,
               window.isOnActiveSpace, window.alphaValue > 0, window.occlusionState.contains(.visible) else { return nil }
-        let f = window.frame
-        let center = CGPoint(x: f.minX + margin.leading + (f.width - margin.leading - margin.trailing) / 2,
-                             y: f.minY + margin.bottom + (f.height - margin.top - margin.bottom) / 2)
+        let f = window.frame, m = margin + room
+        let center = CGPoint(x: f.minX + m.leading + (f.width - m.leading - m.trailing) / 2,
+                             y: f.minY + m.bottom + (f.height - m.top - m.bottom) / 2)
         let screens = NSScreen.screens
         guard let screen = screens.first(where: { $0.frame.contains(center) }) ?? window.screen else { return nil }
         let s = screen.frame
