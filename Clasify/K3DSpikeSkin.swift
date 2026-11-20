@@ -180,6 +180,11 @@ struct K3DSpikeSkin: View {
             guard let shown = note.object as? NSWindow, shown === window.window else { return }
             visible = shown.occlusionState.contains(.visible)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMoveNotification)) { note in
+            // CLA-163: a drag of the window counts as a touch (Codex on #363). A move for the 3D
+            // room comes only with a turn, a spin or the nudge, which wait for no hint.
+            if note.object as? NSWindow === window.window { touch() }
+        }
         .onDisappear {
             report([])  // the window closed
             turnHint?.remove()
