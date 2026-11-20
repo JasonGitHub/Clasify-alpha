@@ -7,7 +7,10 @@ public struct HowToUse: View {
     public static let title = "How to Use myPod"
     public static let width: CGFloat = 549
 
-    public init() {}
+    /// CLA-163, card CE H.2 (c): the menu bar icon row, only with the `hints.trial` switch on.
+    let menuBar: Bool
+
+    public init(menuBar: Bool = false) { self.menuBar = menuBar }
 
     /// One row: the wheel mark, the action, how to do it, and the keys.
     struct Row: Sendable {
@@ -19,7 +22,7 @@ public struct HowToUse: View {
 
     /// The wheel's marks, in the blue of the selection, as SF Symbols where they match.
     enum Mark: Sendable {
-        case turn, select, menu, playPause, prevNext, shuffle
+        case turn, select, menu, playPause, prevNext, shuffle, menuBar
     }
 
     /// A key as printed on the Mac keyboard: a word, a letter, or an arrow.
@@ -40,6 +43,8 @@ public struct HowToUse: View {
         Row(mark: .shuffle, action: "Shuffle / Repeat", how: "Click their marks on Now Playing, or press S or R",
             keys: [.letter("S"), .letter("R")]),
     ]
+    /// CLA-163, card CE H.2 (c).
+    static let menuBarRow = Row(mark: .menuBar, action: "Menu bar icon", how: "Click it to show or hide myPod", keys: [])
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -53,6 +58,7 @@ public struct HowToUse: View {
                 .foregroundStyle(Color(hex: 0x8a929b))
                 .padding(EdgeInsets(top: 16, leading: 16, bottom: 5, trailing: 16))
             ForEach(Self.otherRows.indices, id: \.self) { row(Self.otherRows[$0]) }
+            if menuBar { row(Self.menuBarRow) }
             Spacer().frame(height: 8)
         }
         .frame(width: Self.width, alignment: .leading)
@@ -101,6 +107,7 @@ public struct HowToUse: View {
                 }
                 .font(.system(size: 10, weight: .medium))  // 25 points wide in all, as printed on the wheel
             case .shuffle: Image(systemName: "shuffle")
+            case .menuBar: MenuBarMark().fill(style: FillStyle(eoFill: true)).frame(width: 18, height: 18)
             }
         }
         .font(.system(size: 13.5, weight: .medium))
@@ -127,5 +134,22 @@ public struct HowToUse: View {
                 .shadow(color: .black.opacity(0.06), radius: 1, y: 1)
         }
         .overlay { shape.strokeBorder(Color.black.opacity(0.16), lineWidth: 0.5) }
+    }
+}
+
+/// CLA-163: the menu bar icon (card AN.1, 343 option C) as a shape, 18 points: the solid body
+/// with the screen and the wheel cut out, and the wheel's center button.
+struct MenuBarMark: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = rect.width / 18
+        func box(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat) -> CGRect {
+            CGRect(x: rect.minX + x * k, y: rect.minY + y * k, width: w * k, height: h * k)
+        }
+        var p = Path()
+        p.addRoundedRect(in: box(3.6, 1, 10.8, 16), cornerSize: CGSize(width: 2.4 * k, height: 2.4 * k))
+        p.addRoundedRect(in: box(5.4, 2.9, 7.2, 5), cornerSize: CGSize(width: 0.7 * k, height: 0.7 * k))
+        p.addEllipse(in: box(6.1, 9.7, 5.8, 5.8))
+        p.addEllipse(in: box(8, 11.6, 2, 2))
+        return p
     }
 }

@@ -32,4 +32,28 @@ import Testing
         #expect(HowToUse.wheelRows.map(\.action) == ["Turn", "Select", "Back", "Play / Pause", "Previous / Next"])
         #expect(HowToUse.otherRows.map(\.action) == ["Shuffle / Repeat"])
     }
+
+    /// CLA-163, card CE H.2 (c): with the `hints.trial` switch on, one more row under "Not on the
+    /// wheel": the menu bar icon in blue. Off, the window is as before.
+    @Test func theTrialAddsTheMenuBarIconRow() throws {
+        let plain = try #require(ImageRenderer(content: HowToUse()).cgImage)
+        let renderer = ImageRenderer(content: HowToUse(menuBar: true))
+        renderer.scale = 2
+        let image = try #require(renderer.cgImage)
+        #expect(image.height == (plain.height + 42) * 2)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("how-to-use-trial.png"))
+        }
+        // The last row's mark is blue, in its 30 point box 16 points from the left.
+        let top = plain.height - 8  // under the Shuffle / Repeat row, above the 8 point foot
+        #expect((top..<(top + 42)).contains { y in
+            (16..<46).contains { x in
+                guard let c = bitmap.colorAt(x: x * 2, y: y * 2)?.usingColorSpace(.sRGB) else { return false }
+                return c.blueComponent > c.redComponent + 0.3 && c.blueComponent > 0.6
+            }
+        })
+        #expect(HowToUse.menuBarRow.action == "Menu bar icon" && HowToUse.menuBarRow.how == "Click it to show or hide myPod")
+    }
 }
