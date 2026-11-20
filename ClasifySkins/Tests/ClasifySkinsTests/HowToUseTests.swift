@@ -10,9 +10,9 @@ import Testing
         let renderer = ImageRenderer(content: HowToUse())
         renderer.scale = 2
         let image = try #require(renderer.cgImage)
-        // 549 points wide. The top line, 5 wheel rows and the Shuffle / Repeat row of 42 points.
+        // 549 points wide. The top line, 5 wheel rows and 4 rows not on the wheel, of 42 points.
         #expect(image.width == 549 * 2)
-        #expect(image.height > (6 * 42 + 60) * 2 && image.height < (6 * 42 + 120) * 2, "height \(image.height)")
+        #expect(image.height > (9 * 42 + 60) * 2 && image.height < (9 * 42 + 120) * 2, "height \(image.height)")
         let bitmap = NSBitmapImageRep(cgImage: image)
         if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
            let png = bitmap.representation(using: .png, properties: [:]) {
@@ -30,7 +30,16 @@ import Testing
         }
         #expect(HowToUse.title == "How to Use myPod")
         #expect(HowToUse.wheelRows.map(\.action) == ["Turn", "Select", "Back", "Play / Pause", "Previous / Next"])
-        #expect(HowToUse.otherRows.map(\.action) == ["Shuffle / Repeat"])
+        // Card CH (CLA-165): under the section label, each of the 4 rows has its blue mark too.
+        let other = topLine + 5 * 42 + 16 + 14 + 5  // the section label's padding and its text
+        for row in 0..<4 {
+            let top = other + row * 42
+            #expect((top..<(top + 42)).contains { y in (16..<46).contains { x in blue(x, y) } }, "other row \(row)")
+        }
+        #expect(HowToUse.otherRows.map(\.action) == ["Shuffle / Repeat", "Turn myPod", "Take apart", "Move myPod"])
+        #expect(HowToUse.otherRows.map(\.how).dropFirst() == [
+            "Hold ⌘, then drag or swipe with two fingers", "Hold ⌘, then press still or pinch out", "Drag it by its body",
+        ])
     }
 
     /// CLA-163, card CE H.2 (c): with the `hints.trial` switch on, one more row under "Not on the
@@ -47,7 +56,7 @@ import Testing
             try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("how-to-use-trial.png"))
         }
         // The last row's mark is blue, in its 30 point box 16 points from the left.
-        let top = plain.height - 8  // under the Shuffle / Repeat row, above the 8 point foot
+        let top = plain.height - 8  // under the Move myPod row, above the 8 point foot
         #expect((top..<(top + 42)).contains { y in
             (16..<46).contains { x in
                 guard let c = bitmap.colorAt(x: x * 2, y: y * 2)?.usingColorSpace(.sRGB) else { return false }
