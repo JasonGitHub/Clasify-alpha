@@ -1510,7 +1510,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         }
         if s.isPlaying { s.hintsDone.insert(.tourPlay) }  // the music started another way
         switch action {
-        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat:
+        // CE.1: a click on the menu bar icon is input too (mock), so the next hint waits 3 s.
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat, .menuBarClick:
             if let hint = tourShown, !s.hintsDone.contains(hint) {
                 let n = s.tourHides[hint, default: 0] + 1
                 s.tourHides[hint] = n

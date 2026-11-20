@@ -268,8 +268,8 @@ import Testing
         send(&s, .menu, now: 209)
         send(&s, .menuBarClick(shown: true), now: 210)
         send(&s, .menuBarClick(shown: false), now: 211)
-        #expect(s.tour == .tourTurn && s.hint == nil && s.hintDue == 212)  // the icon clicks are no input on myPod
-        send(&s, .tick, now: 212)
+        #expect(s.tour == .tourTurn && s.hint == nil && s.hintDue == 214)  // an icon click is input too
+        send(&s, .tick, now: 214)
         #expect(s.hint == .tourTurn && s.hintTip && s.hintDue == 0 && !Hint.tourTurn.onDevice)
         send(&s, .tick, now: 400)
         #expect(s.hint == .tourTurn)  // no timer ends it
