@@ -29,11 +29,12 @@ import Foundation
                                    mScope: kAudioDevicePropertyScopeOutput, mElement: kAudioObjectPropertyElementMain)
     }
 
-    // Core Audio calls these on the main queue (the queue given when they are added).
-    private lazy var deviceChanged: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+    // Core Audio calls these on the main queue (the queue given when they are added). They are
+    // @Sendable and hold only a weak reference to this main-actor object, so they are safe there.
+    private lazy var deviceChanged: AudioObjectPropertyListenerBlock = { @Sendable [weak self] _, _ in
         MainActor.assumeIsolated { self?.follow() }
     }
-    private lazy var volumeChanged: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+    private lazy var volumeChanged: AudioObjectPropertyListenerBlock = { @Sendable [weak self] _, _ in
         MainActor.assumeIsolated { self?.report() }
     }
 
