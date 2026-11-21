@@ -115,3 +115,49 @@ export function formLine(state, kind) {
 
 /** The path each form sends to. */
 export const formPath = { waitlist: "/v1/waitlist", link: "/v1/link" };
+
+/** Vote items by their card title on the page (the website thread's list). "Something else?" is a mail link, not a vote. */
+export const voteItems = /** @type {const} */ ({
+  "Your own music files": "local-music", "Nano": "nano", "Radio": "radio", "Like from the wheel": "like-from-wheel", "More colors": "more-colors",
+});
+/** @typedef {typeof voteItems[keyof typeof voteItems]} VoteItem */
+
+/** The localStorage key for this browser's votes: one vote per item per browser. */
+export const votesStore = "mypod.votes";
+
+/**
+ * The items this browser voted for, from the stored text. Anything else is dropped.
+ * @param {string | null} raw
+ * @returns {Set<VoteItem>}
+ */
+export function votedFrom(raw) {
+  /** @type {readonly string[]} */
+  const known = Object.values(voteItems);
+  try {
+    const list = JSON.parse(raw ?? "[]");
+    return new Set(Array.isArray(list) ? list.filter((i) => known.includes(i)) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * The stored text with one more vote.
+ * @param {string | null} raw
+ * @param {VoteItem} item
+ */
+export function withVote(raw, item) {
+  return JSON.stringify([...votedFrom(raw).add(item)].sort());
+}
+
+/**
+ * The answer of POST /v1/vote. Only "ok" keeps the vote; any other answer gives the button back.
+ * @param {unknown} answer
+ * @returns {"ok" | "busy" | "bad" | "offline"}
+ */
+export function voteState(answer) {
+  const r = answer && typeof answer === "object" ? /** @type {{ result?: unknown }} */ (answer).result : undefined;
+  return r === "ok" || r === "busy" || r === "bad" ? r : "offline";
+}
+
+export const voteWords = { idle: "I’d love this", voted: "Thanks, noted" };
