@@ -444,7 +444,8 @@ final class AppModel {
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
         let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
         let activator = ServerActivator()
-        let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(), activator: activator)
+        let betaLink = BetaDownloadLink()  // CLA-171: the newest DMG, from the beta feed
+        let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(link: betaLink), activator: activator)
         // CLA-97: the beta events go to the sender, before the first action. The person is the
         // account ID from the activation answer, in memory only.
         let sender = BetaSender(person: { [weak store] in store?.state.activation.account })
@@ -494,7 +495,8 @@ final class AppModel {
             }
         }
         // Card BI v2: "Get New Beta" opens the download page; "Quit" on the ended beta quits.
-        store.onGetNewBeta = { NSWorkspace.shared.open(BetaSignature.downloadPage) }
+        // CLA-171: it downloads the newest DMG directly when the beta feed named a good one.
+        store.onGetNewBeta = { NSWorkspace.shared.open(betaLink.target) }
         store.onQuit = { NSApplication.shared.terminate(nil) }
         // Card AN.1 (CLA-43): the menu bar icon, and the window's fade in and out.
         store.onShowWindow = { DeviceWindow.show() }
