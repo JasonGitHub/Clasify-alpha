@@ -106,3 +106,31 @@ describe("downloadURL", () => {
     ]) expect(downloadURL(value), String(value)).toBeNull();
   });
 });
+
+describe("TEST_BUILD (test server only)", () => {
+  const withEnv = async (vars: Partial<Env>) => {
+    forgetBeta();
+    const response = await handle(new Request("https://api.example/v1/beta", { headers: { Origin: page } }), { ...env, ...vars } as Env,
+      { now: () => clock, mailer: noMail, human: async () => false, fetcher });
+    return (await response.json()) as Record<string, unknown>;
+  };
+
+  it("names a stand-in build on the test server when there is no feed", async () => {
+    feed = async () => new Response("", { status: 404 });
+    expect(await withEnv({ TEST_SERVER: "1", TEST_BUILD: "999" }))
+      .toMatchObject({ build: 999, url: "https://dl.getmypod.app/beta/myPod-beta-999.dmg" });
+  });
+
+  it("lets a real feed win", async () => {
+    expect(await withEnv({ TEST_SERVER: "1", TEST_BUILD: "999" })).toMatchObject({ build: 400, url: good.url });
+  });
+
+  it("is ignored on live, and when it is not a whole number from 1", async () => {
+    feed = async () => new Response("", { status: 404 });
+    expect(await withEnv({ TEST_SERVER: undefined, TEST_BUILD: "999" })).toMatchObject({ build: null, url: null });
+    expect(await withEnv({ TEST_SERVER: "0", TEST_BUILD: "999" })).toMatchObject({ build: null, url: null });
+    for (const value of ["abc", "-1", "0", "1.5", "07", "1e3", "9999999999", " 9", ""]) {
+      expect(await withEnv({ TEST_SERVER: "1", TEST_BUILD: value }), value).toMatchObject({ build: null, url: null });
+    }
+  });
+});

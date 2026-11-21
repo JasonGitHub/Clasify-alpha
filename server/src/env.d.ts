@@ -25,6 +25,8 @@ declare namespace Cloudflare {
     TEST_SERVER?: string;
     /** CLA-172: the host the test Turnstile key answers with. Read only when TEST_SERVER is "1". */
     TURNSTILE_HOST?: string;
+    /** CLA-172: the test server's stand-in beta build when there is no feed. Read only when TEST_SERVER is "1". */
+    TEST_BUILD?: string;
     /** The static files; bound only on the test server, which runs the Worker first. */
     ASSETS?: Fetcher;
   }
