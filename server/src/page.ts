@@ -28,11 +28,15 @@ export async function betaPage(request: Request, env: Env, assets: Fetcher, fetc
   const answer = await Promise.race([beta(env.DB, Number(env.CAP), fetcher, Date.now(), testBuild(env)), late]).catch(() => null);
   clearTimeout(timer);
   if (!answer) return page;
-  return filled(page, fill(parseBeta(answer)));
+  return await filled(page, fill(parseBeta(answer)));
 }
 
-/** The page with one fill written in. Same headers (the CSP), but kept 30 s at most, with no validator. */
-export function filled(page: Response, f: Fill): Response {
+/**
+ * The page with one fill written in. Same headers (the CSP), but kept 30 s at most, with no validator.
+ * It goes out in one piece with its length, as the plain asset does: a page sent in pieces lets the
+ * browser paint the hero half-parsed, and the next frame moves it.
+ */
+export async function filled(page: Response, f: Fill): Promise<Response> {
   let rewriter = new HTMLRewriter();
   for (const e of edits(f)) {
     rewriter = rewriter.on(e.selector, {
@@ -45,10 +49,11 @@ export function filled(page: Response, f: Fill): Response {
     });
   }
   const out = rewriter.transform(page);
-  const answer = new Response(out.body, out);
+  const body = await out.arrayBuffer();
+  const answer = new Response(body, out);
   answer.headers.set("Cache-Control", "max-age=30");
+  answer.headers.set("Content-Length", String(body.byteLength));
   answer.headers.delete("ETag");
   answer.headers.delete("Last-Modified");
-  answer.headers.delete("Content-Length");
   return answer;
 }

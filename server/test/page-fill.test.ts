@@ -88,6 +88,7 @@ describe("the server-filled beta page", () => {
     expect(response.headers.get("ETag")).toBeNull();
     expect(asked[0].headers.get("If-None-Match")).toBeNull();  // never a 304 with an old page
     const html = await response.text();
+    expect(response.headers.get("Content-Length")).toBe(String(new TextEncoder().encode(html).byteLength));  // one piece
     const styles = (t: string) => t.match(/\sstyle="/g)?.length ?? 0;
     expect(styles(html)).toBe(styles(page));  // no new style attribute: the CSP allows only the page's own
   });
@@ -106,5 +107,13 @@ describe("the server-filled beta page", () => {
     const response = await betaPage(get(), broken, assets, feed(good));
     expect(response.status).toBe(200);
     expect(await response.text()).toBe(page);
+  });
+
+  it("holds the first paint until the hero is whole, so a half-parsed hero never shows", () => {
+    // <link rel="expect"> blocks rendering until #next is parsed. #next must come right after <main>.
+    expect(page).toMatch(/<head>[\s\S]*<link rel="expect" href="#next" blocking="render">[\s\S]*<\/head>/);
+    expect(page.match(/id="next"/g)).toHaveLength(1);
+    expect(page.indexOf('id="next"')).toBeGreaterThan(page.indexOf("</main>"));
+    expect(page.slice(page.indexOf("</main>"), page.indexOf('id="next"'))).toBe('</main>\n<div class="nextband"><section class="next" ');
   });
 });
