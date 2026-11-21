@@ -977,23 +977,22 @@ import Testing
         #expect(box + 60 < side, "box \(box), side \(side)")  // the tip, by its middle; it does not fill the width
     }
 
-    /// CLA-163, card CE option A (a test behind `hints.menuBarStyle`): the menu bar hint also
+    /// CLA-163, card CE look A (the default, Jason 16:23 JST 11-21): the menu bar hint also
     /// shows the dark device label "The menu bar icon shows or hides myPod", 16 points above the
-    /// screen's bottom like a toast (15 on Now Playing). No wheel label lights. Without option A,
-    /// the device shows nothing.
-    @Test func optionAShowsTheMenuBarLabelOnTheDevice() throws {
+    /// screen's bottom like a toast (15 on Now Playing). No wheel label lights.
+    @Test func theMenuBarHintShowsItsLabelOnTheDevice() throws {
         var s = sampleState()
         s.stack = [Frame(screen: .main)]
         s.albumArt = .off  // glass under the label, as in the toast test
         let plain = try render(s, "hint-menubar-none")
         s.hint = .tourMenuBar
-        s.hintAt = -7; s.hintTip = true
-        let ce1 = try render(s, "hint-menubar-ce1")
-        s.menuBarLabel = true
+        s.hintAt = -7
+        let glow = try render(s, "hint-menubar-glow")  // the icon glows first: nothing on the device yet
+        s.hintTip = true
         let label = try render(s, "menu-bar-label-a")
         func light(_ shot: Snapshot, _ x: Int, _ y: Int) -> Int { let c = shot.rgb(x, y); return max(c.r, c.g, c.b) }
         let y = Self.screenBottom - 16 - 6
-        #expect(light(ce1, Self.screenLeft + 150, y) == light(plain, Self.screenLeft + 150, y))  // CE.1: nothing on the device
+        #expect(light(glow, Self.screenLeft + 150, y) == light(plain, Self.screenLeft + 150, y))
         let box = light(label, Self.screenLeft + 150, y), side = light(label, Self.screenLeft + 4, y)
         #expect(box + 60 < side, "box \(box), side \(side)")  // the label, by its middle; it does not fill the width
         // The screen's last glass row is `screenBottom`, so this row is 1 pt under a 16 pt label,
