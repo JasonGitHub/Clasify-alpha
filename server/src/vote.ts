@@ -17,7 +17,7 @@ export async function vote(db: D1Database, body: Record<string, unknown>, ip: st
     db.prepare("INSERT INTO vote_salts (day, salt) VALUES (?, ?) ON CONFLICT (day) DO NOTHING").bind(day, newSalt()),
   ]);
   const salt = (await db.prepare("SELECT salt FROM vote_salts WHERE day = ?").bind(day).first<{ salt: string }>())!.salt;
-  const net = await hash(`${salt}:${ip}`);
+  const net = await hash(`${salt}:${network(ip)}`);
   // The try and the count in one batch; the count goes up only when the try is new.
   const [tried] = await db.batch([
     db.prepare("INSERT INTO vote_tries (net_hash, item, day) VALUES (?, ?, ?) ON CONFLICT DO NOTHING").bind(net, item, day),
@@ -27,4 +27,22 @@ export async function vote(db: D1Database, body: Record<string, unknown>, ip: st
     ).bind(item),
   ]);
   return tried.meta.changes ? "ok" : "busy";
+}
+
+/**
+ * The part of the address that names one network. IPv4: the whole address. IPv6: the first 64 bits
+ * (the /64 prefix), because many home and mobile networks give each person a /64 and browsers
+ * change the rest often. Any other text is used as it is.
+ */
+export function network(ip: string): string {
+  const address = ip.trim().toLowerCase().split("%")[0];
+  if (!address.includes(":")) return address;
+  if (/^::ffff:\d+\.\d+\.\d+\.\d+$/.test(address)) return address.slice(7);  // IPv4 in IPv6 form
+  const halves = address.split("::");
+  if (halves.length > 2) return address;
+  const head = halves[0] ? halves[0].split(":") : [];
+  const tail = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  const groups = halves.length === 2 ? [...head, ...Array(Math.max(0, 8 - head.length - tail.length)).fill("0"), ...tail] : head;
+  if (groups.length !== 8 || !groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return address;
+  return groups.slice(0, 4).map((g) => g.replace(/^0+(?=.)/, "")).join(":") + "::/64";
 }

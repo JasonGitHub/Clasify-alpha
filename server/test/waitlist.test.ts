@@ -58,9 +58,13 @@ describe("POST /v1/waitlist", () => {
     expect(await accounts()).toEqual([]);
   });
 
-  it("allows 3 tries an hour per address", async () => {
+  it("allows 3 tries an hour per address; more are \"ok\" and write nothing", async () => {
     for (let i = 0; i < waitPerHour; i++) expect((await join({ email: "sam@example.com", human: "person" })).result).toBe("ok");
-    expect((await join({ email: "sam@example.com", human: "person" })).result).toBe("busy");
+    const tries = async () => (await env.DB.prepare("SELECT COUNT(*) AS n FROM page_tries").first<{ n: number }>())?.n;
+    expect(await tries()).toBe(waitPerHour);
+    expect((await join({ email: "sam@example.com", human: "person" })).result).toBe("ok");  // already on the list
+    expect(await tries()).toBe(waitPerHour);
+    expect((await accounts()).map((a) => a.email)).toEqual(["sam@example.com"]);
     expect((await join({ email: "kim@example.com", human: "person" })).result).toBe("ok");  // another address
     clock += hour;
     expect((await join({ email: "sam@example.com", human: "person" })).result).toBe("ok");
