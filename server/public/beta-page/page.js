@@ -1,6 +1,6 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, votesStore, voteWords, withVote } from "./logic.js";
+import { apiBase, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
@@ -58,22 +58,30 @@ async function load() {
   }
 }
 
-/** The bot check runs without a box, unless Cloudflare asks. A new token for each send. */
-function human() {
-  return new Promise((resolve) => {
-    const w = /** @type {any} */ (window).turnstile;
-    if (!w) return resolve(null);
-    // Under the row, not in the form: an empty item in the form's flex row would add a gap.
-    let box = document.querySelector(".row + .ts");
-    if (box) w.remove?.(box), box.remove();
-    box = document.createElement("div");
-    box.className = "ts";
-    form.parentElement?.after(box);
-    w.render(box, {
-      sitekey: turnstileSiteKey, appearance: "interaction-only",
-      callback: resolve, "error-callback": () => resolve(null), "expired-callback": () => resolve(null),
-    });
+/** The bot check runs without a box, unless Cloudflare asks. A new token for each send; null after
+ * an error, an expired token, or no answer in `humanWait` (a challenge the person ignores). */
+async function human() {
+  const w = /** @type {any} */ (window).turnstile;
+  if (!w) return null;
+  // Under the row, not in the form: an empty item in the form's flex row would add a gap.
+  const box = document.createElement("div");
+  box.className = "ts";
+  form.parentElement?.after(box);
+  /** @type {Promise<string | null>} */
+  const token = new Promise((resolve) => {
+    try {
+      w.render(box, {
+        sitekey: turnstileSiteKey, appearance: "interaction-only",
+        callback: resolve, "error-callback": () => resolve(null), "expired-callback": () => resolve(null),
+      });
+    } catch {
+      resolve(null);
+    }
   });
+  const result = await withLimit(token, humanWait, null);
+  try { w.remove?.(box); } catch { /* already gone */ }
+  box.remove();
+  return result;
 }
 
 /** POST, or null with no answer in 10 s. */

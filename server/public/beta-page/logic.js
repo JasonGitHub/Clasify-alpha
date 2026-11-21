@@ -161,3 +161,21 @@ export function voteState(answer) {
 }
 
 export const voteWords = { idle: "I’d love this", voted: "Thanks, noted" };
+
+/** How long a send waits for the bot check, a challenge the person ignores included. */
+export const humanWait = 60_000;
+
+/**
+ * `promise`'s value, or `fallback` when it fails or takes longer than `ms`.
+ * @template T, F
+ * @param {Promise<T>} promise
+ * @param {number} ms
+ * @param {F} fallback
+ * @returns {Promise<T | F>}
+ */
+export function withLimit(promise, ms, fallback) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    promise.then((v) => { clearTimeout(timer); resolve(v); }, () => { clearTimeout(timer); resolve(fallback); });
+  });
+}

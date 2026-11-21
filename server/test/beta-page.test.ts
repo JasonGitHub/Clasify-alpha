@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, withVote } from "../public/beta-page/logic.js";
+import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
 function policy(path: string): string {
@@ -154,5 +154,23 @@ describe("beta page forms (CLA-172)", () => {
     expect(voteState({ result: "busy" })).toBe("busy");
     expect(voteState({ result: "bad" })).toBe("bad");
     for (const a of [null, {}, { result: "bot" }, "ok"]) expect(voteState(a)).toBe("offline");
+  });
+
+  it("stops waiting for the bot check after the limit, so the button works again", async () => {
+    vi.useFakeTimers();
+    try {
+      const never = withLimit(new Promise<string>(() => {}), 60_000, null);
+      vi.advanceTimersByTime(59_999);
+      let done = false;
+      void never.then(() => { done = true; });
+      await Promise.resolve();
+      expect(done).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(await never).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await withLimit(Promise.resolve("tok"), 60_000, null)).toBe("tok");
+    expect(await withLimit(Promise.reject(new Error("x")), 60_000, null)).toBeNull();
   });
 });
