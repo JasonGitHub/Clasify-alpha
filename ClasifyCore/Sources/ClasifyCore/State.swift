@@ -465,7 +465,8 @@ public struct AppState: Equatable, Sendable {
     /// `first_song` is not made, so the next real play makes it again (CTO 22:40 JST).
     public var analyticsOn = false
     /// CLA-163, card CE.1: the hints trial (`hints.trial`) is on, so the tour has the menu bar
-    /// step (`Action.hintsTrial`). Not saved: the app sends it at start.
+    /// step (`Action.hintsTrial`). Not saved: the app sends it at start. The switch is on when
+    /// it is not set, so this is on for everyone unless the switch is set off.
     public var hintsTrial = false
     /// CLA-97 (A4): `app_problem` events made in this run, at most `AppProblem.maxPerLaunch`. Not saved.
     public var problemsSent = 0
