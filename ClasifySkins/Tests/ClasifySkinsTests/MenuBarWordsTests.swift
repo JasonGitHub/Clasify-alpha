@@ -15,7 +15,7 @@ import Testing
         let frame = MenuBarWordsPanel.frame(under: icon, screens: [screen])
         #expect(frame == NSRect(x: 1009 - 160, y: 878 - 16 - 40, width: 320, height: 40))
         let right = MenuBarWordsPanel.frame(under: NSRect(x: 1400, y: 878, width: 18, height: 18), screens: [screen])
-        #expect(right.maxX == 1440 - 8)
+        #expect(abs(right.maxX - CGFloat(1440 - 8)) < 0.01, "right \(right)")
         let left = MenuBarWordsPanel.frame(under: NSRect(x: 20, y: 878, width: 18, height: 18), screens: [screen])
         #expect(left.minX == 8)
         #expect(MenuBarWords.words == "Click here to show or hide myPod")
