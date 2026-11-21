@@ -984,6 +984,7 @@ import Testing
     @Test func optionAShowsTheMenuBarLabelOnTheDevice() throws {
         var s = sampleState()
         s.stack = [Frame(screen: .main)]
+        s.albumArt = .off  // glass under the label, as in the toast test
         let plain = try render(s, "hint-menubar-none")
         s.hint = .tourMenuBar
         s.hintAt = -7; s.hintTip = true
@@ -995,7 +996,9 @@ import Testing
         #expect(light(ce1, Self.screenLeft + 150, y) == light(plain, Self.screenLeft + 150, y))  // CE.1: nothing on the device
         let box = light(label, Self.screenLeft + 150, y), side = light(label, Self.screenLeft + 4, y)
         #expect(box + 60 < side, "box \(box), side \(side)")  // the label, by its middle; it does not fill the width
-        let under = light(label, Self.screenLeft + 150, Self.screenBottom - 16)  // just under its bottom edge
+        // The screen's last glass row is `screenBottom`, so this row is 1 pt under a 16 pt label,
+        // and inside a 15 pt one.
+        let under = light(label, Self.screenLeft + 150, Self.screenBottom - 15)
         #expect(box + 40 < under, "box \(box), under \(under)")  // 16 points up, as the toast
         #expect(HintTip.bottom(.tourMenuBar, onNow: false) == 16 && HintTip.bottom(.tourMenuBar, onNow: true) == 15)
         #expect(HintTip.bottom(.tourNext, onNow: true) == 15 && HintTip.bottom(.menu, onNow: false) == 16)
