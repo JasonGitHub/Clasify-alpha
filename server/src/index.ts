@@ -1,6 +1,7 @@
 import { handle } from "./activation";
 import { linkMailer, noMail, noReports, reportMailer, resend } from "./mailer";
 import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
+import { betaPage, isBetaPage } from "./page";
 import { openSpots } from "./spots";
 import { turnstile } from "./turnstile";
 
@@ -9,7 +10,10 @@ export default {
     // CLA-172: the test server (wrangler env "test") sends every page and answer with noindex.
     if (env.TEST_SERVER === "1") {
       const path = new URL(request.url).pathname;
-      const answer = path.startsWith("/v1/") || !env.ASSETS ? await serve(request, env) : await env.ASSETS.fetch(request);
+      // The beta page comes filled (src/page.ts). Only where the Worker has the page's files
+      // (ASSETS): the live Worker has none today, so it is unchanged.
+      const answer = env.ASSETS && isBetaPage(request) ? await betaPage(request, env, env.ASSETS)
+        : path.startsWith("/v1/") || !env.ASSETS ? await serve(request, env) : await env.ASSETS.fetch(request);
       const marked = new Response(answer.body, answer);
       marked.headers.set("X-Robots-Tag", "noindex, nofollow");
       return marked;

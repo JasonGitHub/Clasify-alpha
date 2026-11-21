@@ -2,8 +2,7 @@
 // server tests check them. page.js draws them; the look is the frozen page's.
 
 /** @typedef {{ taken: number, cap: number, full: boolean, build: number | null, url: string | null }} Beta */
-/** @typedef {{ kind: "limited" | "bar" | "full" | "none", taken: number, cap: number, width: number }} Spots */
-/** @typedef {{ loading: boolean, full: boolean, soon: boolean, form: "none" | "link" | "waitlist", download: string | null, version: string | null, spots: Spots }} View */
+/** @typedef {{ kind: "limited" | "bar" | "full", taken: number, cap: number, width: number }} Spots */
 
 /** The live host. Any other host is a test address. */
 export const liveHost = "getmypod.app";
@@ -61,39 +60,100 @@ export function parseBeta(json) {
   return { taken, cap, full: j.full === true || taken >= cap, build: build && url ? build : null, url: build && url ? url : null };
 }
 
-/**
- * What the page shows while it waits for GET /v1/beta: the most likely answer (open spots, a
- * bar, the button or the phone form), drawn invisible so the rows keep their final size and
- * nothing moves when the answer comes. No link: the button gets its href only from the answer.
- * @param {boolean} phone
- * @returns {View}
- */
-export function loadingView(phone) {
-  return { loading: true, full: false, soon: false, form: phone ? "link" : "none", download: null, version: "Beta",
-    spots: { kind: "bar", taken: 0, cap: defaultCap, width: 0 } };
-}
-
-/**
- * What the page shows. `beta` is null with no answer (offline, an error, a bad answer).
- * `phone` is a phone or touch screen: it gets "Email me the link" in place of the download.
- * @param {Beta | null} beta
- * @param {boolean} phone
- * @returns {View}
- */
-export function view(beta, phone) {
-  // No answer, or no public build: "The download is on its way", with no button and no form.
-  if (!beta) return { loading: false, full: false, soon: true, form: "none", download: null, version: null, spots: { kind: "limited", taken: 0, cap: defaultCap, width: 0 } };
-  const { taken, cap } = beta;
-  if (beta.full) return { loading: false, full: true, soon: false, form: "waitlist", download: null, version: null, spots: { kind: "full", taken: cap, cap, width: 100 } };
-  const spots = taken < barFrom ? { kind: /** @type {const} */ ("limited"), taken, cap, width: 0 }
-    : { kind: /** @type {const} */ ("bar"), taken, cap, width: Math.min(100, (taken / cap) * 100) };
-  const version = beta.build && beta.url ? `Beta ${beta.build}` : null;
-  if (!version) return { loading: false, full: false, soon: true, form: "none", download: null, version: null, spots };
-  if (phone) return { loading: false, full: false, soon: false, form: "link", download: null, version, spots };
-  return { loading: false, full: false, soon: false, form: "none", download: beta.url, version, spots };
-}
-
 /** @typedef {"waitlist" | "link"} FormKind */
+/** @typedef {"loading" | "open" | "full" | "soon"} PageState */
+/**
+ * What the page shows: the body class that picks the layout (with the CSS phone query), and the
+ * live parts. The server writes it into the page (src/page.ts) and page.js draws it, through
+ * the same `edits`, so the two cannot differ.
+ * @typedef {{ state: PageState, kind: FormKind, download: string | null, version: string, spotsClass: string, spots: string }} Fill
+ */
+
+/** The body classes of the four states; exactly one is on. */
+export const pageStates = /** @type {const} */ (["loading", "open", "full", "soon"]);
+
+/**
+ * The count line and the bar. The bar is an SVG whose width is an attribute, so the CSP needs
+ * no style attribute, and the server can write it.
+ * @param {Spots} s
+ */
+export function spotsHTML(s) {
+  if (s.kind === "limited") return `<p><b>Limited to ${s.cap} testers.</b></p>`;
+  const width = `${Number(s.width.toFixed(2))}%`;
+  return `<p><b>${s.taken} of ${s.cap}</b> beta spots taken</p><div class="bar"><svg width="100%" height="8" aria-hidden="true">`
+    + `<defs><linearGradient id="bf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#86c3fb"/><stop offset=".49" stop-color="#4a98ec"/>`
+    + `<stop offset=".51" stop-color="#3083e3"/><stop offset="1" stop-color="#2a76d8"/></linearGradient></defs>`
+    + `<rect width="${width}" height="8" rx="4" fill="url(#bf)"/></svg></div>`;
+}
+
+/**
+ * @param {PageState} state
+ * @param {FormKind} kind
+ * @param {string | null} download
+ * @param {string} version
+ * @param {Spots} spots
+ * @returns {Fill}
+ */
+function make(state, kind, download, version, spots) {
+  return { state, kind, download, version, spotsClass: spots.kind === "full" ? "spots full" : "spots", spots: spotsHTML(spots) };
+}
+
+/**
+ * The page before the answer: the open state, invisible (body.loading), so the rows keep their
+ * final size. No link: the button gets its href only from an answer. This is the static page.
+ * @returns {Fill}
+ */
+export function loadingFill() {
+  return make("loading", "link", null, "Beta", { kind: "bar", taken: 0, cap: defaultCap, width: 0 });
+}
+
+/**
+ * The page for an answer of GET /v1/beta; `beta` is null with no answer, an error or a bad answer.
+ * - open: the Download button (desktop) or "Email me the link" (phone, by CSS), "Beta N", the count.
+ * - full: the waitlist form on every screen.
+ * - soon: no answer, or no public build: "The download is on its way", no button, no form.
+ * @param {Beta | null} beta
+ * @returns {Fill}
+ */
+export function fill(beta) {
+  if (!beta) return make("soon", "link", null, "", { kind: "limited", taken: 0, cap: defaultCap, width: 0 });
+  const { taken, cap } = beta;
+  if (beta.full) return make("full", "waitlist", null, "", { kind: "full", taken: cap, cap, width: 100 });
+  /** @type {Spots} */
+  const spots = taken < barFrom ? { kind: "limited", taken, cap, width: 0 } : { kind: "bar", taken, cap, width: Math.min(100, (taken / cap) * 100) };
+  if (!beta.build || !beta.url) return make("soon", "link", null, "", spots);
+  return make("open", "link", beta.url, `Beta ${beta.build}`, spots);
+}
+
+/**
+ * The changes one fill makes to the page, for both the server (HTMLRewriter) and page.js (DOM).
+ * `value` null removes the attribute; `classes` swaps the state class and keeps the others.
+ * @param {Fill} f
+ * @returns {{ selector: string, attr?: string, value?: string | null, text?: string, html?: string, state?: PageState }[]}
+ */
+export function edits(f) {
+  return [
+    { selector: "body", state: f.state },
+    { selector: ".row > a.cta", attr: "href", value: f.download },
+    { selector: ".row > .bver b", text: f.version },
+    { selector: "#wl button", text: f.kind === "waitlist" ? "Save me a spot" : "Email me the link" },
+    { selector: "#wl .ok", text: formLine("ok", f.kind) },
+    { selector: "#spots", attr: "class", value: f.spotsClass },
+    { selector: "#spots", html: f.spots },
+  ];
+}
+
+/**
+ * The body class after a state change: the other state classes go, the rest stays.
+ * @param {string} classes
+ * @param {PageState} state
+ */
+export function withState(classes, state) {
+  /** @type {readonly string[]} */
+  const states = pageStates;
+  return [...classes.split(/\s+/).filter((c) => c && !states.includes(c)), state].join(" ");
+}
+
 /** @typedef {"ok" | "busy" | "bot" | "bad" | "offline"} FormState */
 
 /** The line each answer shows in the form. "ok" hides the field and the button. */
