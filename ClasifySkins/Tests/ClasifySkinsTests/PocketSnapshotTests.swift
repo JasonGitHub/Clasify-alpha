@@ -978,8 +978,9 @@ import Testing
     }
 
     /// CLA-163, card CE option A (a test behind `hints.menuBarStyle`): the menu bar hint also
-    /// shows the dark device label "The menu bar icon shows or hides myPod", 15 points above the
-    /// screen's bottom. No wheel label lights. Without option A, the device shows nothing.
+    /// shows the dark device label "The menu bar icon shows or hides myPod", 16 points above the
+    /// screen's bottom like a toast (15 on Now Playing). No wheel label lights. Without option A,
+    /// the device shows nothing.
     @Test func optionAShowsTheMenuBarLabelOnTheDevice() throws {
         var s = sampleState()
         s.stack = [Frame(screen: .main)]
@@ -990,10 +991,14 @@ import Testing
         s.menuBarLabel = true
         let label = try render(s, "menu-bar-label-a")
         func light(_ shot: Snapshot, _ x: Int, _ y: Int) -> Int { let c = shot.rgb(x, y); return max(c.r, c.g, c.b) }
-        let y = Self.screenBottom - 15 - 6
+        let y = Self.screenBottom - 16 - 6
         #expect(light(ce1, Self.screenLeft + 150, y) == light(plain, Self.screenLeft + 150, y))  // CE.1: nothing on the device
         let box = light(label, Self.screenLeft + 150, y), side = light(label, Self.screenLeft + 4, y)
         #expect(box + 60 < side, "box \(box), side \(side)")  // the label, by its middle; it does not fill the width
+        let under = light(label, Self.screenLeft + 150, Self.screenBottom - 16)  // just under its bottom edge
+        #expect(box + 40 < under, "box \(box), under \(under)")  // 16 points up, as the toast
+        #expect(HintTip.bottom(.tourMenuBar, onNow: false) == 16 && HintTip.bottom(.tourMenuBar, onNow: true) == 15)
+        #expect(HintTip.bottom(.tourNext, onNow: true) == 15 && HintTip.bottom(.menu, onNow: false) == 16)
         // No wheel label lights: the MENU label stays as it was.
         func lit(_ shot: Snapshot) -> Bool {
             (325..<354).contains { y in (153..<213).contains { x in shot.isBlue(x, y) } }
