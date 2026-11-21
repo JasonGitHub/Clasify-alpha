@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
+import { apiBase, dmgURL, formLine, formPath, formState, loadingView, parseBeta, siteKey, view, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
 function policy(path: string): string {
@@ -99,20 +99,20 @@ describe("beta page live parts (CLA-172)", () => {
   });
 
   it("shows the count, the bar, the button and the version for each answer", () => {
-    expect(view(parseBeta({ ...live, taken: 3 }), false)).toEqual({ full: false, soon: false, form: "none", download: live.url, version: "Beta 400",
+    expect(view(parseBeta({ ...live, taken: 3 }), false)).toEqual({ loading: false, full: false, soon: false, form: "none", download: live.url, version: "Beta 400",
       spots: { kind: "limited", taken: 3, cap: 25, width: 0 } });
-    expect(view(parseBeta(live), false)).toEqual({ full: false, soon: false, form: "none", download: live.url, version: "Beta 400",
+    expect(view(parseBeta(live), false)).toEqual({ loading: false, full: false, soon: false, form: "none", download: live.url, version: "Beta 400",
       spots: { kind: "bar", taken: 12, cap: 25, width: 48 } });
-    expect(view(parseBeta(live), true)).toEqual({ full: false, soon: false, form: "link", download: null, version: "Beta 400",
+    expect(view(parseBeta(live), true)).toEqual({ loading: false, full: false, soon: false, form: "link", download: null, version: "Beta 400",
       spots: { kind: "bar", taken: 12, cap: 25, width: 48 } });
-    expect(view(parseBeta({ ...live, taken: 25, full: true }), false)).toEqual({ full: true, soon: false, form: "waitlist", download: null, version: null,
+    expect(view(parseBeta({ ...live, taken: 25, full: true }), false)).toEqual({ loading: false, full: true, soon: false, form: "waitlist", download: null, version: null,
       spots: { kind: "full", taken: 25, cap: 25, width: 100 } });
     // No build or url: the count stays, then "on its way", with no button, no form and no version.
     for (const phone of [false, true]) {
-      expect(view(parseBeta({ ...live, build: null, url: null }), phone)).toEqual({ full: false, soon: true, form: "none", download: null, version: null,
+      expect(view(parseBeta({ ...live, build: null, url: null }), phone)).toEqual({ loading: false, full: false, soon: true, form: "none", download: null, version: null,
         spots: { kind: "bar", taken: 12, cap: 25, width: 48 } });
       // No answer: "Limited to 25 testers.", then the same line.
-      expect(view(null, phone)).toEqual({ full: false, soon: true, form: "none", download: null, version: null, spots: { kind: "limited", taken: 0, cap: 25, width: 0 } });
+      expect(view(null, phone)).toEqual({ loading: false, full: false, soon: true, form: "none", download: null, version: null, spots: { kind: "limited", taken: 0, cap: 25, width: 0 } });
     }
     // Full with no build: the waitlist still works.
     expect(view(parseBeta({ ...live, taken: 25, build: null, url: null }), true)).toMatchObject({ full: true, soon: false, form: "waitlist" });
@@ -177,5 +177,21 @@ describe("beta page forms (CLA-172)", () => {
     }
     expect(await withLimit(Promise.resolve("tok"), 60_000, null)).toBe("tok");
     expect(await withLimit(Promise.reject(new Error("x")), 60_000, null)).toBeNull();
+  });
+
+  it("waits for the answer with the open state drawn invisible, with no link", () => {
+    // Desktop: the button row and the count with its bar, at their final size; no href.
+    expect(loadingView(false)).toEqual({ loading: true, full: false, soon: false, form: "none", download: null, version: "Beta",
+      spots: { kind: "bar", taken: 0, cap: 25, width: 0 } });
+    // Phone: the link form in place of the button.
+    expect(loadingView(true)).toMatchObject({ loading: true, form: "link", download: null });
+    // Every answer ends the wait.
+    for (const phone of [false, true]) {
+      expect(view(null, phone).loading).toBe(false);
+      expect(view(parseBeta({ taken: 12, cap: 25, full: false, build: 400, url: "https://dl.getmypod.app/beta/a.dmg" }), phone).loading).toBe(false);
+    }
+    // The static page starts in the wait, and its count row is already there (no jump on the first draw).
+    expect(page).toContain('<body class="one hm loading">');
+    expect(page).toContain('<div id="spots" class="spots"><p><b>0 of 25</b> beta spots taken</p><div class="bar"><i></i></div></div>');
   });
 });

@@ -3,7 +3,7 @@
 
 /** @typedef {{ taken: number, cap: number, full: boolean, build: number | null, url: string | null }} Beta */
 /** @typedef {{ kind: "limited" | "bar" | "full" | "none", taken: number, cap: number, width: number }} Spots */
-/** @typedef {{ full: boolean, soon: boolean, form: "none" | "link" | "waitlist", download: string | null, version: string | null, spots: Spots }} View */
+/** @typedef {{ loading: boolean, full: boolean, soon: boolean, form: "none" | "link" | "waitlist", download: string | null, version: string | null, spots: Spots }} View */
 
 /** The live host. Any other host is a test address. */
 export const liveHost = "getmypod.app";
@@ -62,6 +62,18 @@ export function parseBeta(json) {
 }
 
 /**
+ * What the page shows while it waits for GET /v1/beta: the most likely answer (open spots, a
+ * bar, the button or the phone form), drawn invisible so the rows keep their final size and
+ * nothing moves when the answer comes. No link: the button gets its href only from the answer.
+ * @param {boolean} phone
+ * @returns {View}
+ */
+export function loadingView(phone) {
+  return { loading: true, full: false, soon: false, form: phone ? "link" : "none", download: null, version: "Beta",
+    spots: { kind: "bar", taken: 0, cap: defaultCap, width: 0 } };
+}
+
+/**
  * What the page shows. `beta` is null with no answer (offline, an error, a bad answer).
  * `phone` is a phone or touch screen: it gets "Email me the link" in place of the download.
  * @param {Beta | null} beta
@@ -70,15 +82,15 @@ export function parseBeta(json) {
  */
 export function view(beta, phone) {
   // No answer, or no public build: "The download is on its way", with no button and no form.
-  if (!beta) return { full: false, soon: true, form: "none", download: null, version: null, spots: { kind: "limited", taken: 0, cap: defaultCap, width: 0 } };
+  if (!beta) return { loading: false, full: false, soon: true, form: "none", download: null, version: null, spots: { kind: "limited", taken: 0, cap: defaultCap, width: 0 } };
   const { taken, cap } = beta;
-  if (beta.full) return { full: true, soon: false, form: "waitlist", download: null, version: null, spots: { kind: "full", taken: cap, cap, width: 100 } };
+  if (beta.full) return { loading: false, full: true, soon: false, form: "waitlist", download: null, version: null, spots: { kind: "full", taken: cap, cap, width: 100 } };
   const spots = taken < barFrom ? { kind: /** @type {const} */ ("limited"), taken, cap, width: 0 }
     : { kind: /** @type {const} */ ("bar"), taken, cap, width: Math.min(100, (taken / cap) * 100) };
   const version = beta.build && beta.url ? `Beta ${beta.build}` : null;
-  if (!version) return { full: false, soon: true, form: "none", download: null, version: null, spots };
-  if (phone) return { full: false, soon: false, form: "link", download: null, version, spots };
-  return { full: false, soon: false, form: "none", download: beta.url, version, spots };
+  if (!version) return { loading: false, full: false, soon: true, form: "none", download: null, version: null, spots };
+  if (phone) return { loading: false, full: false, soon: false, form: "link", download: null, version, spots };
+  return { loading: false, full: false, soon: false, form: "none", download: beta.url, version, spots };
 }
 
 /** @typedef {"waitlist" | "link"} FormKind */
