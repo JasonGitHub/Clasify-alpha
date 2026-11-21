@@ -17,6 +17,12 @@ declare namespace Cloudflare {
     TURNSTILE_SECRET?: string;
     RESEND_KEY?: string;
     ALERT_TO?: string;
+    /** CLA-172: "1" only on the test server (wrangler env "test"): noindex on every answer. */
+    TEST_SERVER?: string;
+    /** CLA-172: the host the test Turnstile key answers with. Read only when TEST_SERVER is "1". */
+    TURNSTILE_HOST?: string;
+    /** The static files; bound only on the test server, which runs the Worker first. */
+    ASSETS?: Fetcher;
   }
 }
 type Env = Cloudflare.Env;
