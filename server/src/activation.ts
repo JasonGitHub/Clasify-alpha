@@ -1,6 +1,7 @@
 import { beta } from "./beta";
 import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
+import { waitlist } from "./waitlist";
 
 // Activation (CLA-128): the app opens the page with a one-time code, the person types an
 // email, clicks the link in the mail, and presses Confirm. This file writes nothing to the
@@ -35,7 +36,9 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   const now = deps.now();
   const db = env.DB;
   const device = await deviceHash(request);
-  const body = request.method === "POST" ? await request.json().catch(() => ({})) as Record<string, unknown> : {};
+  // Any body that is not a JSON object (bad JSON, null, a number, a list) reads as {}.
+  const json: unknown = request.method === "POST" ? await request.json().catch(() => ({})) : {};
+  const body = (json !== null && typeof json === "object" && !Array.isArray(json) ? json : {}) as Record<string, unknown>;
 
   const mac = (hash: string) => db.prepare("SELECT * FROM macs WHERE device_hash = ?").bind(hash).first<Mac>();
   const account = (id: string) => db.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first<Account>();
@@ -114,6 +117,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       answer.headers.set("Vary", "Origin");  // cacheable, so also without CORS
       return answer;
     }
+    case "POST /v1/waitlist":  // the beta page's waitlist form (CLA-172)
+      return reply({ result: await waitlist(db, body, now, Number(env.WAIT_DAY), deps.human, sha256, token) }, 200, cors);
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
       const answer = await feedback(db, device, body, now, deps.reports ?? noReports);
       return reply(answer.body, answer.status);
@@ -237,7 +242,7 @@ function token(): string {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function sha256(text: string): Promise<string> {
+export async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
