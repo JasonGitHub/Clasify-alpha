@@ -96,6 +96,15 @@ describe("bot check", () => {
 });
 
 describe("test server (CLA-172)", () => {
+  it("uses TURNSTILE_HOST only on the test server", async () => {
+    const { botCheckHost } = await import("../src/index");
+    const live = { ...env, PAGE_ORIGIN: "https://getmypod.app" } as Env;
+    expect(botCheckHost(live)).toBe("getmypod.app");
+    expect(botCheckHost({ ...live, TURNSTILE_HOST: "example.com" } as Env)).toBe("getmypod.app");  // live: ignored
+    expect(botCheckHost({ ...live, TEST_SERVER: "1", TURNSTILE_HOST: "example.com" } as Env)).toBe("example.com");
+    expect(botCheckHost({ ...live, TEST_SERVER: "1" } as Env)).toBe("getmypod.app");
+  });
+
   it("marks every answer noindex, and the live Worker does not", async () => {
     const worker = (await import("../src/index")).default;
     const ask = (url: string, vars: Partial<Env>) => worker.fetch(new Request(url), { ...env, ...vars } as Env);

@@ -23,5 +23,15 @@ function serve(request: Request, env: Env): Promise<Response> {
   // CLA-166: problem reports share the link mails' day count.
   const reports = env.RESEND_KEY ? reportMailer(env.DB, resend(env.RESEND_KEY), Number(env.MAIL_DAY), now) : noReports;
   // Until Jason adds the TURNSTILE_SECRET secret, every page start is refused as a bot.
-  return handle(request, env, { now, mailer, reports, human: turnstile(env.TURNSTILE_SECRET, new URL(env.PAGE_ORIGIN || "https://getmypod.app").hostname) });
+  return handle(request, env, { now, mailer, reports, human: turnstile(env.TURNSTILE_SECRET, botCheckHost(env)) });
+}
+
+/**
+ * The host that the bot check's answer must name: PAGE_ORIGIN's. CLA-172: only the test server
+ * (TEST_SERVER "1") may name another with TURNSTILE_HOST, for the test key's answers. The live
+ * Worker ignores TURNSTILE_HOST.
+ */
+export function botCheckHost(env: Env): string {
+  if (env.TEST_SERVER === "1" && env.TURNSTILE_HOST) return env.TURNSTILE_HOST;
+  return new URL(env.PAGE_ORIGIN || "https://getmypod.app").hostname;
 }
