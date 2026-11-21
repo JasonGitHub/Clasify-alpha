@@ -1,0 +1,39 @@
+# CLA-172: deploys the TEST server only (Worker mypod-activation-test with its own D1
+# mypod-activation-test, workers.dev only), for the beta page before go-live (Jason OK 23:45 JST
+# and 23:49 JST 11-21). Only a hand-started run on main does it. Every wrangler command here names
+# --env test and the test database, so this file never deploys or migrates the live Worker or D1.
+# The GitHub environment "server" holds CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID.
+# Never print a secret, and never add set -x here (CLA-69). The test host is not printed either.
+name: Server test deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: server-test-deploy
+  cancel-in-progress: false
+jobs:
+  deploy-test:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: server
+    defaults: { run: { working-directory: server, shell: bash } }  # bash -eo pipefail
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38  # v6.5.0
+        with: { node-version: "22" }
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+      - name: Apply the D1 migrations to the test database only
+        run: npx wrangler d1 migrations apply mypod-activation-test --env test --remote
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # wrangler prints the workers.dev address, which names the account; the log shows it masked.
+      - name: Deploy the test Worker only
+        run: npx wrangler deploy --env test 2>&1 | sed -E 's#[A-Za-z0-9.-]*\.workers\.dev#<test host>#g'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

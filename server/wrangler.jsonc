@@ -26,7 +26,8 @@
   // `wrangler deploy --env test` makes a second Worker with its own empty D1, on workers.dev only:
   // no route, so it never touches getmypod.app or api.getmypod.app. No RESEND_KEY: every mail is
   // "busy". Every answer, the static pages too (run_worker_first), carries X-Robots-Tag: noindex.
-  // The test Turnstile secret is added on the test Worker only, like the live secrets.
+  // PAGE_ORIGIN and the test Turnstile secret are Worker secrets on the test Worker only (vars are
+  // not inherited by an env, so no PAGE_ORIGIN var hides them). The test host is never in the repo.
   "env": {
     "test": {
       "name": "mypod-activation-test",
@@ -34,10 +35,10 @@
       "routes": [],
       "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
       "d1_databases": [
-        { "binding": "DB", "database_name": "mypod-activation-test", "database_id": "TEST_D1_ID_FROM_CTO" }
+        { "binding": "DB", "database_name": "mypod-activation-test", "database_id": "6398b99e-5891-451b-9132-b125747d6af0" }
       ],
       "vars": { "CAP": "25", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5",
-        "PAGE_ORIGIN": "https://mypod-activation-test.WORKERS_SUBDOMAIN.workers.dev", "TEST_SERVER": "1" },
+        "TEST_SERVER": "1" },
       "observability": { "enabled": false }
     }
   }
