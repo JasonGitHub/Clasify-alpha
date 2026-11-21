@@ -16,15 +16,10 @@ final class MenuBarIcon: NSObject {
     /// 388: the click that ended the hint hid myPod. The glow stays until myPod is back.
     private var keep = false
     private var unhides: NSObjectProtocol?
-    /// CLA-163, card CE option F: the words under the icon, while the hint shows.
-    private var words: MenuBarWordsPanel?
-    private var wordsOn = false
-    private var wordsWait: Task<Void, Never>?
 
     init(store: Store) {
         self.store = store
         super.init()
-        store.send(.menuBarLabel(MenuBarHintStyle.current == .a))  // CLA-163, card CE option A
         follow()
         // myPod came back another way (the Dock, the app switcher): the kept glow ends.
         unhides = NotificationCenter.default.addObserver(forName: NSApplication.didUnhideNotification, object: nil, queue: .main) { [weak self] _ in
@@ -41,7 +36,6 @@ final class MenuBarIcon: NSObject {
         withObservationTracking {
             sync(on: store.state.menuBar)
             syncGlow()
-            syncWords()
         } onChange: { [weak self] in
             Task { @MainActor in self?.follow() }
         }
@@ -70,36 +64,6 @@ final class MenuBarIcon: NSObject {
         }
     }
 
-    /// CLA-163, card CE option F: the words fade in 1 s after the glow, over 0.9 s. When the
-    /// hint ends or hides, they fade out over 0.45 s; a glow that the click keeps stays alone.
-    private func syncWords() {
-        let on = HintsTrial.on && MenuBarHintStyle.current == .f && store.state.hint == .tourMenuBar && item != nil
-        guard on != wordsOn else { return }
-        wordsOn = on
-        wordsWait?.cancel()
-        guard on else { words?.hide(); return }
-        wordsWait = Task { @MainActor [weak self] in
-            do { try await Task.sleep(for: .seconds(1)) } catch { return }
-            guard let self, self.wordsOn else { return }
-            if let words = self.words, words.panel.isVisible {
-                words.show()  // a fade-out that runs turns back
-            } else if let icon = self.iconOnScreen {
-                let words = MenuBarWordsPanel(under: icon)
-                self.words = words
-                words.show()
-            }
-        }
-    }
-
-    /// The 18 pt icon's frame on the screen.
-    private var iconOnScreen: NSRect? {
-        guard let button = item?.button, let window = button.window else { return nil }
-        let box = button.bounds
-        let icon = (button.cell as? NSButtonCell)?.imageRect(forBounds: box)
-            ?? NSRect(x: (box.width - 18) / 2, y: (box.height - 18) / 2, width: 18, height: 18)
-        return window.convertToScreen(button.convert(icon, to: nil))
-    }
-
     private func sync(on: Bool) {
         if on, item == nil {
             let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -113,9 +77,6 @@ final class MenuBarIcon: NSObject {
             NSStatusBar.system.removeStatusItem(item)
             self.item = nil
             (glow, glowOn, keep) = (nil, false, false)
-            wordsWait?.cancel()
-            words?.panel.orderOut(nil)
-            (words, wordsOn) = (nil, false)
             if DeviceWindow.isHidden { DeviceWindow.show() }  // with no icon, myPod does not stay hidden
         }
     }

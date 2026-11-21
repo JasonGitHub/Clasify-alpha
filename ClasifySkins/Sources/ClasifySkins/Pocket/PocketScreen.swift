@@ -447,7 +447,7 @@ struct HintTip: View {
     }
 
     /// The tip's bottom edge above the screen's bottom: 16 pt as a toast, 15 pt in the time
-    /// bar's place. Card CE option A's menu bar label is a toast on a menu or list (Jason
+    /// bar's place. Card CE look A's menu bar label is a toast on a menu or list (Jason
     /// 15:49 JST 11-21, "match exactly"), and like Next on Now Playing.
     static func bottom(_ hint: Hint, onNow: Bool) -> CGFloat {
         hint == .menu || hint == .tourPlay || (hint == .tourMenuBar && !onNow) ? 16 : 15

@@ -204,7 +204,8 @@ import Testing
     /// CE.1 (Jason 00:32 JST 11-21): with the trial on, the turn hint comes after MENU. It
     /// shows after 3 s of rest under the device (not on it), and no timer ends it. Other input
     /// hides it, and it comes back after 3 s of rest. The first ⌘ turn ends it for good. The
-    /// menu bar hint comes last: 3 s after the turn lands, the icon glows until its first click.
+    /// menu bar hint comes last: the icon glows 0.6 s after the turn lands, and its device label
+    /// shows at 3 s (card CE look A), until the icon's first click.
     @Test func theTurnHintThenTheMenuBarHintComeAfterMenu() {
         var s = atMenuWithTrial()
         #expect(s.hintsTrial && s.hint == .tourMenu)
@@ -223,9 +224,11 @@ import Testing
         #expect(s.tourOn && s.tour == .tourMenuBar && s.hint == nil && s.hintsDone.contains(.tourTurn))
         #expect(s.settings.hintsDone.contains(.tourTurn) && s.settings.tourOn)
         send(&s, .deviceTurned(false), now: 406)
-        #expect(s.hint == nil && s.hintDue == 409)  // the turn is input: the glow waits 3 s after it lands
+        #expect(s.hint == nil && s.hintDue == 406.6)  // the turn is input: the hint waits for rest after it lands
+        send(&s, .tick, now: 406.6)
+        #expect(s.hint == .tourMenuBar && !s.hintTip && s.hintDue == 409 && !Hint.tourMenuBar.onDevice && s.hintOnDevice)
         send(&s, .tick, now: 409)
-        #expect(s.hint == .tourMenuBar && s.hintTip && s.hintDue == 0 && !Hint.tourMenuBar.onDevice)
+        #expect(s.hintTip && s.hintTipAt == 409 && s.hintDue == 0)
         send(&s, .tick, now: 500)
         #expect(s.hint == .tourMenuBar)  // no timer ends it
         #expect(send(&s, .menuBarClick(shown: true), now: 501) == [.hideWindow])  // 388: it hides myPod as always
@@ -234,7 +237,7 @@ import Testing
     }
 
     /// CE.1: other input hides the menu bar hint, and it comes back after 3 s of rest. After
-    /// 3 hides it is done.
+    /// 3 hides while its label shows, it is done.
     @Test func theMenuBarHintHidesThreeTimes() {
         var s = atMenuWithTrial()
         send(&s, .menu, now: 209)
@@ -242,11 +245,12 @@ import Testing
         send(&s, .tick, now: 214)  // a long turn: no hint while the device is turned (Codex on #375)
         #expect(s.tour == .tourMenuBar && s.hint == nil && s.hintDue == 0)
         send(&s, .deviceTurned(false), now: 215)
-        #expect(s.tour == .tourMenuBar && s.hintDue == 218 && s.tourHides[.tourMenuBar] == nil)
+        #expect(s.tour == .tourMenuBar && s.hintDue == 215.6 && s.tourHides[.tourMenuBar] == nil)
         var t = 215.0
         for n in 1...3 {
+            send(&s, .tick, now: t + 0.6)
             send(&s, .tick, now: t + 3)
-            #expect(s.hint == .tourMenuBar)
+            #expect(s.hint == .tourMenuBar && s.hintTip)
             t += 4
             send(&s, .wheel(1), now: t)
             #expect(s.hint == nil && s.tourHides[.tourMenuBar] == n)
@@ -285,14 +289,12 @@ import Testing
         #expect(!s.tourOn && s.hint == nil)
     }
 
-    /// Card CE option A (Jason 14:07 JST 11-21, `hints.menuBarStyle` A): the menu bar hint also
-    /// has a device label. Like Play, the icon glows first and the words come 2.4 s later.
-    /// Other input hides both, and they come back. The first icon click ends it.
-    @Test func optionAAddsADeviceLabelLikePlay() {
+    /// Card CE look A (the default, Jason 16:23 JST 11-21): the menu bar hint also has a device
+    /// label. Like Play, the icon glows first and the words come 2.4 s later. Other input hides
+    /// both, and they come back. The first icon click ends it.
+    @Test func theMenuBarHintHasADeviceLabelLikePlay() {
         var s = mainMenu()
         s.hintsDone = [.tourPlay, .tourNext, .tourMenu, .tourTurn, .menu, .playPause, .next]
-        send(&s, .menuBarLabel(true), now: 149)
-        #expect(s.menuBarLabel && s.hint == nil)
         send(&s, .hintsTrial(true), now: 150)
         #expect(s.tour == .tourMenuBar && s.hintDue == 150.6)
         send(&s, .tick, now: 150.6)  // the glow at 0.6 s of rest
@@ -306,24 +308,19 @@ import Testing
         #expect(s.hint == .tourMenuBar && s.hintTip)
         send(&s, .menuBarClick(shown: true), now: 158)
         #expect(!s.tourOn && s.hint == nil && s.hintsDone.contains(.tourMenuBar) && !s.hintOnDevice)
-        send(&s, .menuBarLabel(false), now: 159)
-        #expect(!s.menuBarLabel && !s.glowsFirst(.tourMenuBar) && s.glowsFirst(.tourPlay))
+        #expect(s.glowsFirst(.tourMenuBar) && s.glowsFirst(.tourPlay) && !s.glowsFirst(.tourNext))
     }
 
-    /// Option A's label waits for a Shuffle or Repeat slider to hide (Codex on #377): the glow
+    /// The menu bar label waits for a Shuffle or Repeat slider to hide (Codex on #377): the glow
     /// comes 2.4 s before the slider's end, and the label when it ends.
-    @Test func optionALabelWaitsForTheSlider() {
+    @Test func theMenuBarLabelWaitsForTheSlider() {
         var s = mainMenu()
         s.hintsDone = [.tourPlay, .tourNext, .tourMenu, .tourTurn, .menu, .playPause, .next]
-        s.menuBarLabel = true
         s.overlayUntil = 160
         send(&s, .hintsTrial(true), now: 150)
         #expect(s.tour == .tourMenuBar && s.tourShowAt == 157.6)
         s.overlayUntil = 0
         #expect(s.tourShowAt == 150.6)
-        s.menuBarLabel = false
-        s.overlayUntil = 160
-        #expect(s.tourShowAt == 160)  // CE.1, glow only: as Next and MENU
     }
 
     /// CE.1: after 3 hides the turn hint is done. It does not show on About.

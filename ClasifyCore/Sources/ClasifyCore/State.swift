@@ -468,10 +468,6 @@ public struct AppState: Equatable, Sendable {
     /// step (`Action.hintsTrial`). Not saved: the app sends it at start. The switch is on when
     /// it is not set, so this is on for everyone unless the switch is set off.
     public var hintsTrial = false
-    /// CLA-163, card CE option A (Jason 14:07 JST 11-21, a test behind `hints.menuBarStyle`):
-    /// the menu bar hint also shows a label on the device screen, like Play's
-    /// (`Action.menuBarLabel`). Not saved: the app sends it at start.
-    public var menuBarLabel = false
     /// CLA-97 (A4): `app_problem` events made in this run, at most `AppProblem.maxPerLaunch`. Not saved.
     public var problemsSent = 0
     /// CLA-97: the newest beta build that started, for `app_updated`. Saved with the settings.
@@ -835,15 +831,16 @@ public struct AppState: Equatable, Sendable {
         return glowsFirst(hint) ? hintAt + Self.tourTipAfter : hintAt
     }
     /// The tour hint glows first and its words come `tourTipAfter` later: Play, and the menu
-    /// bar hint with its device label (card CE option A, `menuBarLabel`).
+    /// bar hint with its device label (card CE look A, the default since Jason's OK at 16:23
+    /// JST 11-21).
     public func glowsFirst(_ hint: Hint?) -> Bool {
-        hint == .tourPlay || (hint == .tourMenuBar && menuBarLabel)
+        hint == .tourPlay || hint == .tourMenuBar
     }
     /// The hint that shows has a look on the device: a wheel label glow or words. The menu bar
-    /// hint has words there only with card CE option A.
+    /// hint glows in the menu bar, and its words show on the device (card CE look A).
     public var hintOnDevice: Bool {
         guard let hint else { return false }
-        return hint.onDevice || (hint == .tourMenuBar && menuBarLabel)
+        return hint.onDevice || hint == .tourMenuBar
     }
     /// The first-run hints (card BA.2, change 238): a queue of Play, Next and MENU. It starts
     /// at "You’re all set" after the first setup and runs until all three are done. Saved.
@@ -876,10 +873,10 @@ public struct AppState: Equatable, Sendable {
     }
     /// When the waiting tour hint shows. Play glows first and its words come `tourTipAfter`
     /// later, so they show after `tourRest` like the words of Next and MENU. Next and MENU
-    /// also wait for the volume bar to hide. The menu bar hint's device label (card CE option A)
+    /// also wait for the volume bar to hide. The menu bar hint's device label (card CE look A)
     /// waits for a Shuffle or Repeat slider to hide (Codex on #377).
     public var tourShowAt: Double {
-        if tour == .tourMenuBar && menuBarLabel {
+        if tour == .tourMenuBar {
             return max(tourRestAt + Self.tourRest, overlayUntil) - Self.tourTipAfter
         }
         return glowsFirst(tour) ? tourRestAt + Self.tourRest - Self.tourTipAfter : max(tourRestAt + Self.tourRest, overlayUntil)

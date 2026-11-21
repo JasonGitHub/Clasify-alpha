@@ -16,7 +16,7 @@ enum Labels {
         case .tourNext: ("Press Next for the next song", nil, "", "Press Next for the next song")
         case .tourMenu: ("Press MENU to go back", nil, "", "Press MENU to go back")
         case .tourTurn: ("", nil, "", "")  // CLA-163, card CE.1: the app draws it, not the device
-        // CLA-163: words only with card CE option A (`AppState.menuBarLabel`); CE.1 has none.
+        // CLA-163, card CE look A: the menu bar hint's words on the device.
         case .tourMenuBar: ("The menu bar icon shows or hides myPod", nil, "", "The menu bar icon shows or hides myPod")
         }
     }
