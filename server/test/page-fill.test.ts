@@ -4,7 +4,7 @@ import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import { edits, fill, loadingFill, parseBeta } from "../public/beta-page/logic.js";
 import { forgetBeta } from "../src/beta";
-import { betaPage, fillWait, isBetaPage } from "../src/page";
+import { betaPage, fillWait, isBetaPage, rewriteWait } from "../src/page";
 
 // CLA-172: the Worker writes the beta state into the page before it sends it.
 
@@ -115,5 +115,38 @@ describe("the server-filled beta page", () => {
     expect(page.match(/id="next"/g)).toHaveLength(1);
     expect(page.indexOf('id="next"')).toBeGreaterThan(page.indexOf("</main>"));
     expect(page.slice(page.indexOf("</main>"), page.indexOf('id="next"'))).toBe('</main>\n<div class="nextband"><section class="next" ');
+  });
+
+  it("sends the plain page when the rewrite fails, never a 500", async () => {
+    await accounts(12);
+    let reads = 0;
+    const breaking = { fetch: async (request: Request) => {
+      reads++;
+      if (reads > 1) return assets.fetch(request);
+      let n = 0;
+      const body = new ReadableStream({ pull(c) { if (n++ === 0) c.enqueue(new TextEncoder().encode(page.slice(0, 1000))); else c.error(new Error("cut")); } });
+      return new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": csp } });
+    } } as unknown as Fetcher;
+    const response = await betaPage(get(), testEnv, breaking, feed(good));
+    expect(response.status).toBe(200);
+    expect(reads).toBe(2);
+    expect(await response.text()).toBe(page);
+  });
+
+  it("sends the plain page when the rewrite stalls, never a hang", async () => {
+    await accounts(12);
+    let reads = 0;
+    const stalling = { fetch: async (request: Request) => {
+      reads++;
+      if (reads > 1) return assets.fetch(request);
+      const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(page.slice(0, 1000))); } });  // never ends
+      return new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": csp } });
+    } } as unknown as Fetcher;
+    const started = Date.now();
+    const response = await betaPage(get(), testEnv, stalling, feed(good));
+    expect(Date.now() - started).toBeLessThan(rewriteWait + 1000);
+    expect(response.status).toBe(200);
+    expect(reads).toBe(2);
+    expect(await response.text()).toBe(page);
   });
 });
