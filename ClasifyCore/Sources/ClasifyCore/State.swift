@@ -724,6 +724,8 @@ public struct AppState: Equatable, Sendable {
     public var t: Double = 0
     public var isPlaying = false
     public var volume = 60
+    /// CLA-168: Spotify's volume while Apple Music is active (then `volume` is the Mac's).
+    public var spotifyVolume = 60
     public var shuffle = false
     public var repeatMode = RepeatMode.off
     public var skin = Skin.pocket

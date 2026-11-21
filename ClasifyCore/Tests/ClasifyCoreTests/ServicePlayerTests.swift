@@ -32,3 +32,12 @@ import Testing
     #expect(spotify.calls == ["shuffle true", "repeat All"])
     #expect(appleMusic.calls == ["shuffle true", "repeat All"])
 }
+
+/// CLA-168: the active service's player knows it is active, at start and after each switch.
+@MainActor @Test func servicePlayerTellsEachPlayerWhetherItIsActive() {
+    let spotify = FakePlayer(), appleMusic = FakePlayer()
+    let player = ServicePlayer(spotify: spotify, appleMusic: appleMusic, service: .appleMusic)
+    #expect(appleMusic.active == true && spotify.active == nil)
+    player.service = .spotify
+    #expect(appleMusic.active == false && spotify.active == true)
+}

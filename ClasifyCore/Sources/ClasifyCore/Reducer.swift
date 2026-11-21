@@ -62,6 +62,9 @@ public enum Action: Equatable, Sendable {
     /// The engine moved on to another track in the same context (its own next, prev or auto-advance).
     /// `playing` is the engine's play state after the change.
     case trackChanged(String, playing: Bool, generation: Int)
+    /// CLA-168: the engine reports its own volume, in percent: on Apple Music, the Mac's output
+    /// volume, also when the volume keys change it. Applied only on Apple Music.
+    case volumeReported(Int)
     /// The details of one track that `.readTrack` asked for. nil when the read failed.
     case trackRead(String, Track?)
     /// The engine found a track that Spotify already plays on this Mac, with no load from
@@ -608,13 +611,21 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         s.tourRestAt = now  // the tour queue stays for the next login (card BA.2)
         s.pendingService = nil
     }
+    /// Makes `service` the active one. CLA-168: `volume` is the active service's volume; on
+    /// Apple Music it is the Mac's output volume. Spotify's waits in `spotifyVolume` and comes
+    /// back on the switch back. The Spotify player kept it too: only the active one gets volume.
+    func use(_ service: MusicService) {
+        if s.service == .spotify && service != .spotify { s.spotifyVolume = s.volume }
+        if s.service != .spotify && service == .spotify { s.volume = s.spotifyVolume }
+        s.service = service
+    }
     /// Card BM, change 260: leaving Settings with another service. The old one stops, its
     /// library leaves, and the new one logs in with its stored login: its main menu opens at
     /// the top, with nothing playing. With no stored login, its login screen shows (256).
     func switchService(to service: MusicService) {
         signOut()
         s.controlLostAt = nil  // CLA-97: the old service's loss ends with no control_back; the new one counts its own
-        s.service = service
+        use(service)
         fx.append(.setService(service))
         s.authAttempt += 1; s.restoring = true
         fx.append(.restoreSession(token: s.authAttempt))
@@ -883,7 +894,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 s.deviceColor = color
                 if s.signedIn { setupNext() } else { s.stack.append(pickMusic()) }
             case .pickService(let service):
-                if service != s.service { s.service = service; fx.append(.setService(service)) }
+                if service != s.service { use(service); fx.append(.setService(service)) }
                 if service == .spotify {
                     // Today's Log In. After a log out on Apple Music, a Spotify login that is
                     // still stored goes on with no browser: "Signing in…" first. In the first
@@ -1017,6 +1028,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if gen == s.seekGen && s.current?.track == s.seekTrack && since < seekSettle && !wrapped
                 && abs(t - s.seekTarget) > seekSlack + since { return }
             if s.current != nil && gen == s.playGen { s.t = t; s.beforeLoad = nil; s.loadPending = false }  // the load plays
+
+        case .volumeReported(let percent):  // Spotify's volume stays in `volume` / `spotifyVolume`
+            guard s.service == .appleMusic else { return }
+            s.volume = clamp(percent, 0, 100)
 
         case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end
             guard s.isPlaying, s.current != nil, gen == s.playGen else { return }

@@ -47,6 +47,27 @@ import Testing
         #expect(s.service == .spotify)
     }
 
+    /// CLA-168: on Apple Music the volume bar is the Mac's own volume, as the engine reports it.
+    /// Spotify's volume is kept, and comes back on the switch back. On Spotify a report does nothing.
+    @Test func theSpotifyVolumeSurvivesAnAppleMusicSession() {
+        var s = playing()
+        send(&s, .volumeReported(20))
+        #expect(s.volume == 60)  // Spotify: not the Mac's volume
+        s.volume = 35
+        openSettings(&s)
+        send(&s, .select, .menu)
+        send(&s, .restored(token: s.authAttempt, ok: true))
+        #expect(s.service == .appleMusic)
+        send(&s, .volumeReported(80))
+        #expect(s.volume == 80)
+        send(&s, .volumeReported(130))
+        #expect(s.volume == 100)
+        openSettings(&s)
+        send(&s, .select)
+        #expect(send(&s, .menu) == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
+        #expect(s.volume == 35 && s.spotifyVolume == 35)
+    }
+
     /// Change 256: a service with no stored login shows its login screen after the switch.
     @Test func aServiceWithNoLoginShowsItsLogin() {
         var s = mainMenu()
