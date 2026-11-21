@@ -1,5 +1,6 @@
 import { handle } from "./activation";
 import { linkMailer, noMail, noReports, reportMailer, resend } from "./mailer";
+import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
 import { turnstile } from "./turnstile";
 
 export default {
@@ -23,7 +24,17 @@ function serve(request: Request, env: Env): Promise<Response> {
   // CLA-166: problem reports share the link mails' day count.
   const reports = env.RESEND_KEY ? reportMailer(env.DB, resend(env.RESEND_KEY), Number(env.MAIL_DAY), now) : noReports;
   // Until Jason adds the TURNSTILE_SECRET secret, every page start is refused as a bot.
-  return handle(request, env, { now, mailer, reports, human: turnstile(env.TURNSTILE_SECRET, botCheckHost(env)) });
+  return handle(request, env, { now, mailer, reports, pageMail: pageMailFor(env, now), human: turnstile(env.TURNSTILE_SECRET, botCheckHost(env)) });
+}
+
+/**
+ * CLA-172: the beta page's mails share the day count of all mails and stop 40 before its end.
+ * With no RESEND_KEY they are "busy", except on the test server: there a mail goes nowhere, but
+ * answers "sent" and counts against the same limits, so every page state can be tested.
+ */
+export function pageMailFor(env: Env, now: () => number): PageMailer {
+  if (env.RESEND_KEY) return pageMailer(env.DB, resend(env.RESEND_KEY), Number(env.MAIL_DAY), now);
+  return env.TEST_SERVER === "1" ? pageMailer(env.DB, async () => true, Number(env.MAIL_DAY), now) : noPageMail;
 }
 
 /**

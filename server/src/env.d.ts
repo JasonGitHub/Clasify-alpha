@@ -13,6 +13,8 @@ declare namespace Cloudflare {
     MAIL_DAY_EACH: string;
     /** CLA-172: waitlist tries a day from the beta page, all addresses together. */
     WAIT_DAY: string;
+    /** CLA-172: "Email me the link" mails a day, all addresses together. */
+    LINK_DAY: string;
     /** The Origin of the activation page; its path is /activate/. Default https://getmypod.app. */
     PAGE_ORIGIN?: string;
     /** Worker secrets that Jason adds. Never in the repo. */
