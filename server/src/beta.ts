@@ -12,12 +12,27 @@ export interface Beta { taken: number; cap: number; full: boolean; build: number
 export const keepFor = 30_000;
 let kept: { at: number; cap: number; answer: Beta } | null = null;
 
-export async function beta(db: D1Database, cap: number, fetcher: typeof fetch, now: number): Promise<Beta> {
+/** `testBuild`: the test server's stand-in build, used only when the feed has none (see testBuild()). */
+export async function beta(db: D1Database, cap: number, fetcher: typeof fetch, now: number, testBuild: number | null = null): Promise<Beta> {
   if (kept && kept.cap === cap && now >= kept.at && now - kept.at < keepFor) return kept.answer;
   const taken = (await db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE state = 'active'").first<{ n: number }>())?.n ?? 0;
-  const answer = { taken, cap, full: taken >= cap, ...await latest(fetcher) };
+  let newest = await latest(fetcher);
+  if (newest.build === null && testBuild !== null) {
+    newest = { build: testBuild, url: downloadURL(`https://${downloadHost}/beta/myPod-beta-${testBuild}.dmg`) };
+  }
+  const answer = { taken, cap, full: taken >= cap, ...newest };
   kept = { at: now, cap, answer };
   return answer;
+}
+
+/**
+ * CLA-172: the test server has no public beta feed, so TEST_BUILD names a stand-in build. The
+ * page then shows its download states; the link names a file that does not exist. Only with
+ * TEST_SERVER "1", and only a whole number from 1: the live Worker never reads it.
+ */
+export function testBuild(env: Env): number | null {
+  if (env.TEST_SERVER !== "1" || !env.TEST_BUILD || !/^[1-9][0-9]{0,8}$/.test(env.TEST_BUILD)) return null;
+  return Number(env.TEST_BUILD);
 }
 
 /** For tests: the next call reads again. */

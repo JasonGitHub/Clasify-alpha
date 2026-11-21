@@ -1,4 +1,4 @@
-import { beta } from "./beta";
+import { beta, testBuild } from "./beta";
 import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
 import { noPageMail, type PageMailer } from "./pagemail";
@@ -116,7 +116,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
 
   switch (route) {
     case "GET /v1/beta": {  // the beta page (CLA-172): the count and the newest beta, cached 30 s
-      const answer = reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch, now), 200, cors, "max-age=30");
+      const answer = reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch, now, testBuild(env)), 200, cors, "max-age=30");
       answer.headers.set("Vary", "Origin");  // cacheable, so also without CORS
       return answer;
     }
