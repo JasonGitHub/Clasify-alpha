@@ -114,4 +114,22 @@ describe("test server (CLA-172)", () => {
     expect([await page.text(), page.headers.get("X-Robots-Tag")]).toEqual(["page", "noindex, nofollow"]);
     expect((await ask("https://x.example/v1/nothing", {})).headers.get("X-Robots-Tag")).toBeNull();
   });
+
+  it("live: fills only GET /, sends other methods on / to the files, and keeps /v1/ and unknown paths", async () => {
+    const worker = (await import("../src/index")).default;
+    const html = '<html><body class="one hm loading"><div id="spots" class="spots"></div></body></html>';
+    const asked: string[] = [];
+    const assets = { fetch: async (r: Request) => { asked.push(`${r.method} ${new URL(r.url).pathname}`); return new Response(html, { headers: { "Content-Type": "text/html" } }); } } as unknown as Fetcher;
+    const ask = (url: string, method = "GET") => worker.fetch(new Request(url, { method }), { ...env, ASSETS: assets } as Env);
+    const page = await ask("https://getmypod.app/");
+    expect(page.status).toBe(200);
+    expect(await page.text()).not.toContain("loading");  // filled from the live count
+    expect(page.headers.get("X-Robots-Tag")).toBeNull();
+    expect((await ask("https://getmypod.app/", "HEAD")).status).toBe(200);
+    expect(asked).toEqual(["GET /", "HEAD /"]);
+    expect((await ask("https://getmypod.app/v1/beta")).headers.get("Content-Type")).toContain("application/json");
+    expect((await ask("https://getmypod.app/nothing")).status).toBe(404);  // the Worker's 404, as today
+    expect(asked).toHaveLength(2);
+  });
 });
+

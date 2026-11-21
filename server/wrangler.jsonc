@@ -2,18 +2,20 @@
 {
   "name": "mypod-activation",
   "main": "src/index.ts",
-  // The activation page (card BX): static files at /activate/, with their headers in public/_headers.
-  "assets": { "directory": "./public" },
+  // The static files (the beta page, /privacy/, the activation page at /activate/), with their
+  // headers in public/_headers. "/" runs the Worker first, so the beta page comes filled (src/page.ts).
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/"] },
   "compatibility_date": "2026-11-01",
   "d1_databases": [
     { "binding": "DB", "database_name": "mypod-activation", "database_id": "45674323-433f-468e-be42-149642c17893" }
   ],
-  // The app's API on its own host, and the page at getmypod.app/activate/. Every other path on
-  // getmypod.app stays with the Launch website. /activate (no slash) goes to /activate/ (the
-  // assets' trailing-slash rule); a path with no file under the route gets the Worker's 404.
+  // The app's API on its own host, and all of getmypod.app (CLA-172 go-live, Jason OK): the beta
+  // page at /, /privacy/ and the activation page at /activate/. /activate and /privacy (no slash)
+  // go to their folders (the assets' trailing-slash rule); /beta, the app's fallback download page,
+  // goes to / (public/_redirects); a path with no file gets the Worker's 404.
   "routes": [
     { "pattern": "api.getmypod.app", "custom_domain": true },
-    { "pattern": "getmypod.app/activate*", "zone_name": "getmypod.app" }
+    { "pattern": "getmypod.app/*", "zone_name": "getmypod.app" }
   ],
   // The beta cap (accounts; 25, CLA-172), the Mac limit per account, and link mails a day (Resend free: 100).
   // MAIL_HOUR and MAIL_DAY_EACH: link mails per address and per device, an hour and a day.

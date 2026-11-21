@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import privacy from "../public/privacy/index.html?raw";
+import redirects from "../public/_redirects?raw";
 import { apiBase, dmgURL, edits, fill, formLine, formPath, formState, loadingFill, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
@@ -226,4 +227,8 @@ describe("beta page forms (CLA-172)", () => {
     expect(page).toContain('<button class="cta" type="submit">Email me the link</button><p class="ok">Sent. Open it on your Mac.</p>');
   });
 
+  it("sends the app's fallback download page /beta to the beta page", () => {
+    const rules = redirects.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => l.trim().split(/\s+/));
+    expect(rules).toEqual([["/beta", "/", "302"], ["/beta/", "/", "302"]]);
+  });
 });
