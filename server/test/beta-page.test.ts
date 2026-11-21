@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import { dmgURL, parseBeta, view } from "../public/beta-page/logic.js";
+import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
 function policy(path: string): string {
@@ -33,8 +33,11 @@ describe("beta page CSP (CLA-172)", () => {
     expect(sources(csp, "frame-ancestors")).toEqual(["'none'"]);
     expect(csp).not.toContain("unsafe-inline");
     expect(csp).not.toContain("unsafe-eval");
-    // The only script with a source is the page's own module; no other host.
-    expect([...page.matchAll(/<script\s[^>]*>/g)].map((m) => m[0])).toEqual(['<script type="module" src="beta-page/page.js">']);
+    // The only scripts with a source: Turnstile and the page's own module.
+    expect([...page.matchAll(/<script\s[^>]*>/g)].map((m) => m[0])).toEqual([
+      '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer>',
+      '<script type="module" src="beta-page/page.js">',
+    ]);
     const scripts = inline(page, "script");
     expect(scripts.length).toBeGreaterThan(0);
     for (const s of scripts) expect(sources(csp, "script-src")).toContain(await hash(s));
@@ -113,5 +116,26 @@ describe("beta page live parts (CLA-172)", () => {
     }
     // Full with no build: the waitlist still works.
     expect(view(parseBeta({ ...live, taken: 25, build: null, url: null }), true)).toMatchObject({ full: true, soon: false, form: "waitlist" });
+  });
+});
+
+describe("beta page forms (CLA-172)", () => {
+  it("shows one state for each answer, and no answer is offline", () => {
+    for (const r of ["ok", "busy", "bot", "bad"]) expect(formState({ result: r })).toBe(r);
+    for (const bad of [null, undefined, "ok", {}, { result: "full" }, { error: "x" }]) expect(formState(bad)).toBe("offline");
+    expect(formLine("ok", "waitlist")).toBe("You’re on the list. We’ll write to you.");
+    expect(formLine("ok", "link")).toBe("Sent. Open it on your Mac.");
+    const lines = new Set((["busy", "bot", "bad", "offline"] as const).map((st) => formLine(st, "link")));
+    expect(lines.size).toBe(4);
+    expect(formPath).toEqual({ waitlist: "/v1/waitlist", link: "/v1/link" });
+  });
+
+  it("uses the real API and Turnstile key only on getmypod.app", () => {
+    expect(apiBase("getmypod.app")).toBe("https://api.getmypod.app");
+    expect(siteKey("getmypod.app")).toBe("0x4AAAAAAGIRWYxmCoZOyxc0");
+    for (const host of ["www.getmypod.app", "localhost", "example.workers.dev", "getmypod.app.evil.com"]) {
+      expect(apiBase(host)).toBe("");  // the page's own origin
+      expect(siteKey(host)).toBe("1x00000000000000000000AA");  // Cloudflare's always-pass test key
+    }
   });
 });

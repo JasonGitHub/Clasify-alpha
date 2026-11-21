@@ -5,6 +5,26 @@
 /** @typedef {{ kind: "limited" | "bar" | "full" | "none", taken: number, cap: number, width: number }} Spots */
 /** @typedef {{ full: boolean, soon: boolean, form: "none" | "link" | "waitlist", download: string | null, version: string | null, spots: Spots }} View */
 
+/** The live host. Any other host is a test address. */
+export const liveHost = "getmypod.app";
+
+/**
+ * Where the API is: its own host on getmypod.app, the page's own origin on a test address.
+ * @param {string} hostname
+ */
+export function apiBase(hostname) {
+  return hostname === liveHost ? "https://api.getmypod.app" : "";
+}
+
+/**
+ * The Turnstile site key (public): the real one on getmypod.app; on any other host, Cloudflare's
+ * documented always-pass test key. That is safe: the live server's secret refuses test tokens.
+ * @param {string} hostname
+ */
+export function siteKey(hostname) {
+  return hostname === liveHost ? "0x4AAAAAAGIRWYxmCoZOyxc0" : "1x00000000000000000000AA";
+}
+
 /** Under this many taken spots the page says "Limited to N testers." with no bar. */
 export const barFrom = 8;
 /** The cap the page names while it has no answer. */
@@ -60,3 +80,38 @@ export function view(beta, phone) {
   if (phone) return { full: false, soon: false, form: "link", download: null, version, spots };
   return { full: false, soon: false, form: "none", download: beta.url, version, spots };
 }
+
+/** @typedef {"waitlist" | "link"} FormKind */
+/** @typedef {"ok" | "busy" | "bot" | "bad" | "offline"} FormState */
+
+/** The line each answer shows in the form. "ok" hides the field and the button. */
+export const formWords = {
+  ok: { waitlist: "You’re on the list. We’ll write to you.", link: "Sent. Open it on your Mac." },
+  busy: "Lots of people are writing right now. Please try again in a few minutes.",
+  bot: "We couldn’t check that you’re a person. Please try again.",
+  bad: "Please check your email address.",
+  offline: "No connection. Please try again.",
+};
+
+/**
+ * One state for each answer of POST /v1/waitlist or /v1/link. No answer, or one the page does
+ * not know, is "offline": the person can try again.
+ * @param {unknown} answer
+ * @returns {FormState}
+ */
+export function formState(answer) {
+  const r = answer && typeof answer === "object" ? /** @type {Record<string, unknown>} */ (answer).result : undefined;
+  return r === "ok" || r === "busy" || r === "bot" || r === "bad" ? r : "offline";
+}
+
+/**
+ * The words for a state.
+ * @param {FormState} state
+ * @param {FormKind} kind
+ */
+export function formLine(state, kind) {
+  return state === "ok" ? formWords.ok[kind] : formWords[state];
+}
+
+/** The path each form sends to. */
+export const formPath = { waitlist: "/v1/waitlist", link: "/v1/link" };
