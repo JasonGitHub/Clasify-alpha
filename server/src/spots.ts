@@ -14,18 +14,16 @@ export const spotsPerRun = 10;
  * out clears its invited_at again and ends the run. Answers the number of mails sent.
  */
 export async function openSpots(db: D1Database, cap: number, mailer: PageMailer, now: number): Promise<number> {
-  const counts = await db.prepare(
-    `SELECT (SELECT COUNT(*) FROM accounts WHERE state = 'active') AS active,
-            (SELECT COUNT(*) FROM accounts WHERE state != 'active' AND invited_at > ?) AS open`,
-  ).bind(now - inviteOpen).first<{ active: number; open: number }>();
-  const free = Math.min(cap - (counts?.active ?? 0) - (counts?.open ?? 0), spotsPerRun);
-  if (free <= 0) return 0;
-  // Claim the rows first, so two runs at once cannot mail one person twice.
+  // One statement counts the free spots and claims that many rows, so two runs at once can never
+  // mail more people than there are spots, nor one person twice. LIMIT is kept at 0 or more: a
+  // negative LIMIT in SQLite means no limit.
   const picked = (await db.prepare(
     `UPDATE accounts SET invited_at = ?1 WHERE id IN (
-       SELECT id FROM accounts WHERE state = 'waitlist' AND off = 0 AND invited_at IS NULL ORDER BY created_at, id LIMIT ?2)
+       SELECT id FROM accounts WHERE state = 'waitlist' AND off = 0 AND invited_at IS NULL ORDER BY created_at, id
+       LIMIT max(0, min(?2, ?3 - (SELECT COUNT(*) FROM accounts WHERE state = 'active')
+         - (SELECT COUNT(*) FROM accounts WHERE state != 'active' AND invited_at > ?4))))
      AND invited_at IS NULL RETURNING id, email, created_at`,
-  ).bind(now, free).all<{ id: string; email: string; created_at: number }>()).results
+  ).bind(now, spotsPerRun, cap, now - inviteOpen).all<{ id: string; email: string; created_at: number }>()).results
     .sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id));
   let sent = 0;
   for (const [i, who] of picked.entries()) {

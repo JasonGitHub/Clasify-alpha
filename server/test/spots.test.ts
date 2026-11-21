@@ -81,6 +81,16 @@ describe("open-spot mails", () => {
     expect(await invited()).toEqual([]);
   });
 
+  it("never mails more people than free spots, even when two runs overlap", async () => {
+    await actives(24);
+    await add("w1", "waitlist", 1);
+    await add("w2", "waitlist", 2);
+    const runs = await Promise.all([openSpots(env.DB, 25, mailer, now), openSpots(env.DB, 25, mailer, now)]);
+    expect(runs[0] + runs[1]).toBe(1);
+    expect(sent).toEqual(["w1@example.com"]);
+    expect(await invited()).toEqual(["w1"]);
+  });
+
   it("gives the spot back to the waitlist when a mail does not go out", async () => {
     await actives(20);
     for (let i = 1; i <= 4; i++) await add(`w${i}`, "waitlist", i);
