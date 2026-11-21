@@ -2,6 +2,7 @@ import { beta, testBuild } from "./beta";
 import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
 import { noPageMail, type PageMailer } from "./pagemail";
+import { vote } from "./vote";
 import { link, waitlist } from "./waitlist";
 
 // Activation (CLA-128): the app opens the page with a one-time code, the person types an
@@ -124,6 +125,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       return reply({ result: await waitlist(db, body, now, Number(env.WAIT_DAY), deps.human, sha256, token) }, 200, cors);
     case "POST /v1/link":  // the beta page's "Email me the link" (CLA-172)
       return reply({ result: await link(db, body, now, Number(env.LINK_DAY), deps.human, sha256, deps.pageMail ?? noPageMail) }, 200, cors);
+    case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); no bot check, one a day per item per network
+      return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
       const answer = await feedback(db, device, body, now, deps.reports ?? noReports);
       return reply(answer.body, answer.status);
