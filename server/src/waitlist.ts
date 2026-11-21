@@ -18,23 +18,26 @@ export function pageEmail(value: unknown): string | null {
 
 /**
  * Writes the try first, in one statement with both counts, so tries at once cannot pass a limit:
- * `perKey` an hour for this key, and `perDay` in 24 hours for this kind. False: over a limit.
+ * `perKey` tries within `perKey.within` for this key, and `perDay` in 24 hours for this kind.
+ * "key": this address is over its own limit. "total": the day's total for all addresses is used up.
  */
 export async function tryOnce(db: D1Database, kind: "wait" | "link", keyHash: string, now: number,
-  perKey: { count: number; within: number }, perDay: number): Promise<boolean> {
+  perKey: { count: number; within: number }, perDay: number): Promise<"ok" | "key" | "total"> {
   await db.prepare("DELETE FROM page_tries WHERE at < ?").bind(now - 2 * day).run();
+  const keyCount = `(SELECT COUNT(*) FROM page_tries WHERE kind = ?1 AND key_hash = ?2 AND at > ?3 - ?4)`;
   const room = await db.prepare(
     `INSERT INTO page_tries (kind, key_hash, at) SELECT ?1, ?2, ?3
-     WHERE (SELECT COUNT(*) FROM page_tries WHERE kind = ?1 AND key_hash = ?2 AND at > ?3 - ?4) < ?5
-     AND (SELECT COUNT(*) FROM page_tries WHERE kind = ?1 AND at > ?3 - ?6) < ?7`,
+     WHERE ${keyCount} < ?5 AND (SELECT COUNT(*) FROM page_tries WHERE kind = ?1 AND at > ?3 - ?6) < ?7`,
   ).bind(kind, keyHash, now, perKey.within, perKey.count, day, perDay).run();
-  return room.meta.changes > 0;
+  if (room.meta.changes > 0) return "ok";
+  const mine = await db.prepare(`SELECT ${keyCount} AS n`).bind(kind, keyHash, now, perKey.within).first<{ n: number }>();
+  return (mine?.n ?? 0) >= perKey.count ? "key" : "total";
 }
 
 /**
  * "Email me the link": one mail with the download page's link. Stores no email, only its hash and
  * the time: 1 a day per address, and `perDay` link mails a day in all. A mail that did not go out
- * does not count.
+ * does not count. A second ask in a day for one address is "ok" with no mail.
  */
 export async function link(db: D1Database, body: Record<string, unknown>, now: number, perDay: number,
   human: (token: string) => Promise<boolean>, hash: (s: string) => Promise<string>, mailer: PageMailer): Promise<PageResult> {
@@ -42,7 +45,10 @@ export async function link(db: D1Database, body: Record<string, unknown>, now: n
   const email = pageEmail(body.email);
   if (!email) return "bad";
   const key = await hash(email);
-  if (!(await tryOnce(db, "link", key, now, { count: 1, within: day }, perDay))) return "busy";
+  // Over this address's own limit: it already has the mail today, so "ok", with no new mail and no
+  // new row. Only the day's total, the mail budget and a failed send are "busy".
+  const room = await tryOnce(db, "link", key, now, { count: 1, within: day }, perDay);
+  if (room !== "ok") return room === "key" ? "ok" : "busy";
   if ((await mailer.send(email, "link")) === "sent") return "ok";
   await db.prepare("DELETE FROM page_tries WHERE kind = 'link' AND key_hash = ? AND at = ?").bind(key, now).run();
   return "busy";
@@ -54,7 +60,9 @@ export async function waitlist(db: D1Database, body: Record<string, unknown>, no
   if (typeof body.human !== "string" || !(await human(body.human))) return "bot";
   const email = pageEmail(body.email);
   if (!email) return "bad";
-  if (!(await tryOnce(db, "wait", await hash(email), now, { count: waitPerHour, within: hour }, perDay))) return "busy";
+  // Over this address's own limit: it is already on the list, so "ok" and nothing new is written.
+  const room = await tryOnce(db, "wait", await hash(email), now, { count: waitPerHour, within: hour }, perDay);
+  if (room !== "ok") return room === "key" ? "ok" : "busy";
   // A known address, in any state, stays as it is.
   await db.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'waitlist', ?) ON CONFLICT (email) DO NOTHING")
     .bind(newID(), email, now).run();

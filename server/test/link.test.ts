@@ -48,9 +48,12 @@ describe("POST /v1/link", () => {
     expect(sent).toEqual([]);
   });
 
-  it("sends 1 a day per address", async () => {
+  it("sends 1 a day per address; a second ask is \"ok\" with no mail and no new row", async () => {
     expect(await ask({ email: "sam@example.com", human: "person" })).toBe("ok");
-    expect(await ask({ email: "SAM@example.com", human: "person" })).toBe("busy");
+    expect(await ask({ email: "SAM@example.com", human: "person" })).toBe("ok");  // it already has the mail
+    expect(sent).toHaveLength(1);
+    expect(await dayCount()).toBe(1);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM page_tries").first<{ n: number }>())?.n).toBe(1);
     clock += 24 * hour;
     expect(await ask({ email: "sam@example.com", human: "person" })).toBe("ok");
     expect(sent).toHaveLength(2);
