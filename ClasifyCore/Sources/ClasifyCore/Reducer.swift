@@ -122,6 +122,8 @@ public enum Action: Equatable, Sendable {
     case analyticsOn(Bool)
     /// CLA-163: the hints trial switch (`hints.trial`). The app sends it at start.
     case hintsTrial(Bool)
+    /// CLA-163, card CE option A: the menu bar hint has a device label (`hints.menuBarStyle` A).
+    case menuBarLabel(Bool)
     /// CLA-97 (A4): MetricKit reported crashes or hangs of earlier runs. Only the first
     /// `AppProblem.maxPerLaunch` of a run become events. With `analytics.on` off, the sender drops them.
     case appProblems([AppProblem])
@@ -1372,6 +1374,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .used, .willQuit, .view3D, .window: break  // only for `day_active` (dayEvents)
         case .analyticsOn(let on): s.analyticsOn = on
         case .hintsTrial(let on): s.hintsTrial = on
+        case .menuBarLabel(let on): s.menuBarLabel = on
         case .appProblems(let problems):
             // The budget is for the whole run: MetricKit can hand over reports more than once.
             for problem in problems.prefix(max(0, AppProblem.maxPerLaunch - s.problemsSent)) {
@@ -1534,7 +1537,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         guard shown != s.hint else { return }
         if shown == nil { return endHint(done: false) }
         if s.hint == nil && !s.toast.isEmpty { return }  // a status toast goes first
-        s.hint = shown; s.hintAt = now; s.hintTip = shown != .tourPlay
+        s.hint = shown; s.hintAt = now; s.hintTip = !s.glowsFirst(shown)
     }
     if case .reset = action {} else { tour() }
     if case .reset = action {} else {
