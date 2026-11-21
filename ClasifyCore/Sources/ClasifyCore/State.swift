@@ -721,8 +721,9 @@ public struct AppState: Equatable, Sendable {
     public var extraTracks: [Track] = []
     /// Track IDs whose read runs or failed in this session, so each is read only once.
     public var trackReads: Set<String> = []
-    /// CLA-170: the reads in `trackReads` that have not answered yet.
-    public var readsPending: Set<String> = []
+    /// CLA-170: the reads in `trackReads` that have not answered yet, with when each was asked.
+    /// A read silent for `readWait` seconds is dropped here by `.tick` (a late answer still applies).
+    public var readsPending: [String: Double] = [:]
     /// CLA-170: the words of the last current song we knew, kept when Spotify moves on to a song
     /// we do not know yet. Nil when there was none (an adopted song).
     public var heldWords: NowWords?
@@ -1147,7 +1148,7 @@ public struct AppState: Equatable, Sendable {
     /// earlier song's words (empty with none), as the cover keeps the earlier cover. Nil when
     /// the song is known, or its read failed or never ran: then the service name shows.
     public func waitingWords(_ ref: TrackRef) -> NowWords? {
-        guard track(ref) == nil, readsPending.contains(ref.track) else { return nil }
+        guard track(ref) == nil, readsPending[ref.track] != nil else { return nil }
         return heldWords ?? NowWords(title: "", artist: "")
     }
 
