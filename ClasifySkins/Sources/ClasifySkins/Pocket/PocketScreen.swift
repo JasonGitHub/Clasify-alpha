@@ -258,7 +258,7 @@ struct PocketScreen: View {
         .overlay(alignment: .bottom) {
             if !state.toast.isEmpty {
                 Self.toast(state.toast, bottom: top.screen == .now ? 44 : 16)
-            } else if state.hintTip, let hint = state.hint, hint.onDevice {
+            } else if state.hintTip, let hint = state.hint, state.hintOnDevice {
                 HintTip(hint: hint, from: state.hintTipAt)
             }
         }
