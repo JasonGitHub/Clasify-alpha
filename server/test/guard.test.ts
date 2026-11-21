@@ -94,3 +94,15 @@ describe("bot check", () => {
     expect(asked).toBe(false);
   });
 });
+
+describe("test server (CLA-172)", () => {
+  it("marks every answer noindex, and the live Worker does not", async () => {
+    const worker = (await import("../src/index")).default;
+    const ask = (url: string, vars: Partial<Env>) => worker.fetch(new Request(url), { ...env, ...vars } as Env);
+    expect((await ask("https://x.example/v1/nothing", { TEST_SERVER: "1" })).headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+    const assets = { fetch: async () => new Response("page") } as unknown as Fetcher;
+    const page = await ask("https://x.example/", { TEST_SERVER: "1", ASSETS: assets });
+    expect([await page.text(), page.headers.get("X-Robots-Tag")]).toEqual(["page", "noindex, nofollow"]);
+    expect((await ask("https://x.example/v1/nothing", {})).headers.get("X-Robots-Tag")).toBeNull();
+  });
+});
