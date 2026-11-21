@@ -36,7 +36,9 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   const now = deps.now();
   const db = env.DB;
   const device = await deviceHash(request);
-  const body = request.method === "POST" ? await request.json().catch(() => ({})) as Record<string, unknown> : {};
+  // Any body that is not a JSON object (bad JSON, null, a number, a list) reads as {}.
+  const json: unknown = request.method === "POST" ? await request.json().catch(() => ({})) : {};
+  const body = (json !== null && typeof json === "object" && !Array.isArray(json) ? json : {}) as Record<string, unknown>;
 
   const mac = (hash: string) => db.prepare("SELECT * FROM macs WHERE device_hash = ?").bind(hash).first<Mac>();
   const account = (id: string) => db.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first<Account>();

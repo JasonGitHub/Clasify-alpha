@@ -45,7 +45,9 @@ describe("POST /v1/waitlist", () => {
     expect((await join({ email: "not an address", human: "robot" })).result).toBe("bot");
     expect((await join({ email: "sam@example.com" })).result).toBe("bot");
     expect((await join({ email: "sam@example.com", human: 5 })).result).toBe("bot");
-    expect((await join("nonsense")).result).toBe("bot");
+    for (const body of ["nonsense", null, 5, [{ email: "sam@example.com", human: "person" }]]) {
+      expect((await join(body)).result, JSON.stringify(body)).toBe("bot");
+    }
     expect(await accounts()).toEqual([]);
   });
 
