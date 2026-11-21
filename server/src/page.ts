@@ -7,6 +7,9 @@ import { beta, testBuild } from "./beta";
 /** How long the page waits for the count. Slower, and the page comes as it is (body.loading) and asks itself. */
 export const fillWait = 300;
 
+/** How long the rewrite of the whole page may take before the plain page goes out instead. */
+export const rewriteWait = 2000;
+
 /** The page paths the Worker fills. Every other asset goes out as it is. */
 export function isBetaPage(request: Request): boolean {
   return request.method === "GET" && new URL(request.url).pathname === "/";
@@ -21,18 +24,29 @@ export async function betaPage(request: Request, env: Env, assets: Fetcher, fetc
   const plain = new Headers(request.headers);
   plain.delete("If-None-Match");
   plain.delete("If-Modified-Since");
-  const page = await assets.fetch(new Request(request.url, { method: "GET", headers: plain }));
+  const asset = () => assets.fetch(new Request(request.url, { method: "GET", headers: plain }));
+  const page = await asset();
   if (!page.ok || !(page.headers.get("Content-Type") ?? "").startsWith("text/html")) return page;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), fillWait); });
   const answer = await Promise.race([beta(env.DB, Number(env.CAP), fetcher, Date.now(), testBuild(env)), late]).catch(() => null);
   clearTimeout(timer);
   if (!answer) return page;
-  return filled(page, fill(parseBeta(answer)));
+  // The rewrite reads the whole page. If it fails or stalls, the first body is used up: send the
+  // plain page again. Never a 500, never a hang.
+  let stall: ReturnType<typeof setTimeout> | null = null;
+  const stalled = new Promise<null>((resolve) => { stall = setTimeout(() => resolve(null), rewriteWait); });
+  const out = await Promise.race([filled(page, fill(parseBeta(answer))), stalled]).catch(() => null);
+  clearTimeout(stall);
+  return out ?? asset();
 }
 
-/** The page with one fill written in. Same headers (the CSP), but kept 30 s at most, with no validator. */
-export function filled(page: Response, f: Fill): Response {
+/**
+ * The page with one fill written in. Same headers (the CSP), but kept 30 s at most, with no validator.
+ * It goes out in one piece with its length, as the plain asset does: a page sent in pieces lets the
+ * browser paint the hero half-parsed, and the next frame moves it.
+ */
+export async function filled(page: Response, f: Fill): Promise<Response> {
   let rewriter = new HTMLRewriter();
   for (const e of edits(f)) {
     rewriter = rewriter.on(e.selector, {
@@ -45,10 +59,11 @@ export function filled(page: Response, f: Fill): Response {
     });
   }
   const out = rewriter.transform(page);
-  const answer = new Response(out.body, out);
+  const body = await out.arrayBuffer();
+  const answer = new Response(body, out);
   answer.headers.set("Cache-Control", "max-age=30");
+  answer.headers.set("Content-Length", String(body.byteLength));
   answer.headers.delete("ETag");
   answer.headers.delete("Last-Modified");
-  answer.headers.delete("Content-Length");
   return answer;
 }

@@ -4,7 +4,7 @@ import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import { edits, fill, loadingFill, parseBeta } from "../public/beta-page/logic.js";
 import { forgetBeta } from "../src/beta";
-import { betaPage, fillWait, isBetaPage } from "../src/page";
+import { betaPage, fillWait, isBetaPage, rewriteWait } from "../src/page";
 
 // CLA-172: the Worker writes the beta state into the page before it sends it.
 
@@ -88,6 +88,7 @@ describe("the server-filled beta page", () => {
     expect(response.headers.get("ETag")).toBeNull();
     expect(asked[0].headers.get("If-None-Match")).toBeNull();  // never a 304 with an old page
     const html = await response.text();
+    expect(response.headers.get("Content-Length")).toBe(String(new TextEncoder().encode(html).byteLength));  // one piece
     const styles = (t: string) => t.match(/\sstyle="/g)?.length ?? 0;
     expect(styles(html)).toBe(styles(page));  // no new style attribute: the CSP allows only the page's own
   });
@@ -105,6 +106,54 @@ describe("the server-filled beta page", () => {
     const broken = { ...testEnv, DB: { prepare() { throw new Error("D1 down"); } } } as unknown as Env;
     const response = await betaPage(get(), broken, assets, feed(good));
     expect(response.status).toBe(200);
+    expect(await response.text()).toBe(page);
+  });
+
+  it("holds the first paint until the hero is whole, so a half-parsed hero never shows", () => {
+    // <link rel="expect"> blocks rendering until #next is parsed. #next must come right after <main>.
+    expect(page).toMatch(/<head>[\s\S]*<link rel="expect" href="#next" blocking="render">[\s\S]*<\/head>/);
+    expect(page.match(/id="next"/g)).toHaveLength(1);
+    // Every browser: html.hero-wait hides the hero until the script right after </main> runs. If that
+    // script never runs, a CSS animation shows the hero after 3 s, in one step (no fade).
+    const head = page.slice(0, page.indexOf("</head>"));
+    expect(head).toContain('<script>document.documentElement.classList.add("hero-wait")</script>');
+    expect(page.slice(page.indexOf("<body"), page.indexOf("</main>"))).not.toContain("<script");
+    expect(page).toContain(".hero-wait main{opacity:0;animation:waited 0s 3s forwards}@keyframes waited{to{opacity:1}}");
+    expect(page.match(/hero-wait/g)).toHaveLength(3);  // add, remove, the rule: nothing else uses it
+    expect(page.indexOf('id="next"')).toBeGreaterThan(page.indexOf("</main>"));
+    expect(page.slice(page.indexOf("</main>"), page.indexOf('id="next"'))).toBe('</main>\n<script>document.documentElement.classList.remove("hero-wait")</script>\n<div class="nextband"><section class="next" ');
+  });
+
+  it("sends the plain page when the rewrite fails, never a 500", async () => {
+    await accounts(12);
+    let reads = 0;
+    const breaking = { fetch: async (request: Request) => {
+      reads++;
+      if (reads > 1) return assets.fetch(request);
+      let n = 0;
+      const body = new ReadableStream({ pull(c) { if (n++ === 0) c.enqueue(new TextEncoder().encode(page.slice(0, 1000))); else c.error(new Error("cut")); } });
+      return new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": csp } });
+    } } as unknown as Fetcher;
+    const response = await betaPage(get(), testEnv, breaking, feed(good));
+    expect(response.status).toBe(200);
+    expect(reads).toBe(2);
+    expect(await response.text()).toBe(page);
+  });
+
+  it("sends the plain page when the rewrite stalls, never a hang", async () => {
+    await accounts(12);
+    let reads = 0;
+    const stalling = { fetch: async (request: Request) => {
+      reads++;
+      if (reads > 1) return assets.fetch(request);
+      const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode(page.slice(0, 1000))); } });  // never ends
+      return new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": csp } });
+    } } as unknown as Fetcher;
+    const started = Date.now();
+    const response = await betaPage(get(), testEnv, stalling, feed(good));
+    expect(Date.now() - started).toBeLessThan(rewriteWait + 1000);
+    expect(response.status).toBe(200);
+    expect(reads).toBe(2);
     expect(await response.text()).toBe(page);
   });
 });
