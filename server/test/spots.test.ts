@@ -1,5 +1,8 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { handle } from "../src/activation";
+import { forgetBeta } from "../src/beta";
+import type { Mailer } from "../src/mailer";
 import type { PageMailer } from "../src/pagemail";
 import { inviteOpen, openSpots, spotsPerRun } from "../src/spots";
 
@@ -96,5 +99,44 @@ describe("open-spot mails", () => {
     expect(await invited()).toEqual([]);  // live with no RESEND_KEY: busy, so the spot waits
     await worker.scheduled({} as ScheduledController, { ...env, RESEND_KEY: undefined, TEST_SERVER: "1" } as Env);
     expect(await invited()).toEqual(["w"]);  // the test server's mailer answers sent
+  });
+});
+
+describe("the whole path (CLA-172)", () => {
+  it("joins from the page, gets the spot mail, activates in the app, and the one account is active", async () => {
+    let clock = now;
+    const links: string[] = [];
+    const mail: Mailer = { send: async (_to, link) => { links.push(link); return "sent"; } };
+    const call = async (path: string, body?: unknown, device?: string) => {
+      const headers: Record<string, string> = { Origin: "https://getmypod.app" };
+      if (device) headers.Authorization = `Device ${device}`;
+      const request = new Request(`https://api.example${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      const response = await handle(request, env, { now: () => clock, mailer: mail, human: async (t: string) => t === "person", fetcher: async () => new Response("", { status: 404 }) });
+      return (await response.json()) as Record<string, unknown>;
+    };
+    await actives(24);  // one spot left
+
+    // 1. The page: the person joins the waitlist.
+    expect(await call("/v1/waitlist", { email: "Sam@Example.com", human: "person" })).toEqual({ result: "ok" });
+    // 2. The cron: one spot is free, so Sam gets the spot mail.
+    clock += 60 * 60_000;
+    expect(await openSpots(env.DB, Number(env.CAP), mailer, clock)).toBe(1);
+    expect(sent).toEqual(["sam@example.com"]);
+    // 3. The app: Sam opens the page with the Mac's code, types the same email, and confirms.
+    clock += 60_000;
+    const device = "device-sam".padEnd(40, "x");
+    const { code } = await call("/v1/open", {}, device);
+    expect(await call("/v1/start", { code, email: "sam@example.com", turnstile: "person" }))
+      .toMatchObject({ state: "waiting", email: "sam@example.com" });
+    const token = new URL(links.at(-1)!).searchParams.get("c");
+    expect(await call("/v1/confirm", { token })).toEqual({ result: "ok" });
+    // 4. Active, not full, and still one account for the address.
+    expect(await call("/v1/status", undefined, device)).toMatchObject({ state: "active" });
+    const rows = (await env.DB.prepare("SELECT state, invited_at FROM accounts WHERE email = 'sam@example.com'").all()).results;
+    expect(rows).toEqual([{ state: "active", invited_at: now + 60 * 60_000 }]);
+    forgetBeta();
+    expect(await call("/v1/beta")).toMatchObject({ taken: 25, cap: 25, full: true });
+    // The next run has no free spot.
+    expect(await openSpots(env.DB, Number(env.CAP), mailer, clock + 60 * 60_000)).toBe(0);
   });
 });
