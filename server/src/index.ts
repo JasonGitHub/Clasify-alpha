@@ -1,6 +1,7 @@
 import { handle } from "./activation";
 import { linkMailer, noMail, noReports, reportMailer, resend } from "./mailer";
 import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
+import { openSpots } from "./spots";
 import { turnstile } from "./turnstile";
 
 export default {
@@ -14,6 +15,10 @@ export default {
       return marked;
     }
     return serve(request, env);
+  },
+  // CLA-172: once an hour, open beta spots go to the oldest waitlist people by mail.
+  async scheduled(_controller: ScheduledController, env: Env) {
+    await openSpots(env.DB, Number(env.CAP), pageMailFor(env, Date.now), Date.now());
   },
 } satisfies ExportedHandler<Env>;
 
