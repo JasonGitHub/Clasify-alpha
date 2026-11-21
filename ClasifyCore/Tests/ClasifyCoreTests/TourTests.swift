@@ -310,6 +310,22 @@ import Testing
         #expect(!s.menuBarLabel && !s.glowsFirst(.tourMenuBar) && s.glowsFirst(.tourPlay))
     }
 
+    /// Option A's label waits for a Shuffle or Repeat slider to hide (Codex on #377): the glow
+    /// comes 2.4 s before the slider's end, and the label when it ends.
+    @Test func optionALabelWaitsForTheSlider() {
+        var s = mainMenu()
+        s.hintsDone = [.tourPlay, .tourNext, .tourMenu, .tourTurn, .menu, .playPause, .next]
+        s.menuBarLabel = true
+        s.overlayUntil = 160
+        send(&s, .hintsTrial(true), now: 150)
+        #expect(s.tour == .tourMenuBar && s.tourShowAt == 157.6)
+        s.overlayUntil = 0
+        #expect(s.tourShowAt == 150.6)
+        s.menuBarLabel = false
+        s.overlayUntil = 160
+        #expect(s.tourShowAt == 160)  // CE.1, glow only: as Next and MENU
+    }
+
     /// CE.1: after 3 hides the turn hint is done. It does not show on About.
     @Test func theTurnHintHidesThreeTimesAndWaitsOffAbout() {
         var s = atMenuWithTrial(menuBar: false)

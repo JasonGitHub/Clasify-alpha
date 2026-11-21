@@ -873,9 +873,13 @@ public struct AppState: Equatable, Sendable {
     }
     /// When the waiting tour hint shows. Play glows first and its words come `tourTipAfter`
     /// later, so they show after `tourRest` like the words of Next and MENU. Next and MENU
-    /// also wait for the volume bar to hide.
+    /// also wait for the volume bar to hide. The menu bar hint's device label (card CE option A)
+    /// waits for a Shuffle or Repeat slider to hide (Codex on #377).
     public var tourShowAt: Double {
-        glowsFirst(tour) ? tourRestAt + Self.tourRest - Self.tourTipAfter : max(tourRestAt + Self.tourRest, overlayUntil)
+        if tour == .tourMenuBar && menuBarLabel {
+            return max(tourRestAt + Self.tourRest, overlayUntil) - Self.tourTipAfter
+        }
+        return glowsFirst(tour) ? tourRestAt + Self.tourRest - Self.tourTipAfter : max(tourRestAt + Self.tourRest, overlayUntil)
     }
     public static let tourTipAfter = 2.4, tourRest = 3.0, tourHideMax = 3
     public var offline = false
