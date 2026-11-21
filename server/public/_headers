@@ -3,3 +3,18 @@
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   Cache-Control: no-cache
+
+# CLA-172: the beta page and its privacy page (frozen files, served as they are). Their inline
+# scripts, styles and style attributes are allowed by hash only; test/beta-page.test.ts checks
+# that every hash here matches the files. Not routed on getmypod.app until the go-live PR.
+/
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com 'sha256-WXwuPuTIfgCuCa+N0fsMU1+QKPlrKcnoN+ljZJKp/r0=' 'sha256-KC+/YKH3XnVLzIaDz7pKnJ/AaOhxsLnXVTmnqg/l59g=' 'sha256-QvN/fm9MWLI5MgvYoibwHPtNkgv/gsCwN7UJMaDIfW0=' 'sha256-MKNaQbcWAD+RhYDtPRLkiLdSbo5dqc3Oa8was5wchQc=' 'sha256-B05ol+RWQrzE4GTizQs/O/0rchZP+y7StMExXViwrnA='; frame-src https://challenges.cloudflare.com; connect-src https://api.getmypod.app; style-src 'self' 'unsafe-hashes' 'sha256-gC/YvPupc0R8q5tKMUKpvLVkd5Azbwa4P+O6liniNdU=' 'sha256-ITcwrzB8+MBx7ucerJL/EgrLWC8l3XPvkQlgs0cxvK8=' 'sha256-88xxLoczGUqHRN3NBecuQURo+wvIE0hFbz+G+G3MtN8=' 'sha256-8SmS4f+tjct9mbsqjKfeCeVqmBUPb+6bHc3H4rYArS0=' 'sha256-W/8Igpf8J9mjZPghhq9QvZXrMNj+0jKI51S1mEcNIQg=' 'sha256-t6oewASd7J1vBg5mQtX4hl8bg8FeegYFM3scKLIhYUc='; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Cache-Control: no-cache
+
+/privacy/*
+  Content-Security-Policy: default-src 'none'; style-src 'sha256-CXCdGJb3laUOjKfRyXTmps4zkBRfJBQ/Gsv7Yungmqg='; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Cache-Control: no-cache
