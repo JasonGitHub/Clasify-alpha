@@ -1,3 +1,4 @@
+import { beta } from "./beta";
 import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
 
@@ -12,6 +13,8 @@ export interface Deps {
   human: (token: string) => Promise<boolean>;
   /** CLA-166: sends problem reports. None: every report is "busy". */
   reports?: ReportMailer;
+  /** CLA-172: reads the beta feed. Default: fetch. */
+  fetcher?: typeof fetch;
 }
 
 const codeLife = 15 * 60_000;
@@ -106,6 +109,11 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   }
 
   switch (route) {
+    case "GET /v1/beta": {  // the beta page (CLA-172): the count and the newest beta, cached 30 s
+      const answer = reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch, now), 200, cors, "max-age=30");
+      answer.headers.set("Vary", "Origin");  // cacheable, so also without CORS
+      return answer;
+    }
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
       const answer = await feedback(db, device, body, now, deps.reports ?? noReports);
       return reply(answer.body, answer.status);
@@ -234,11 +242,11 @@ async function sha256(text: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function reply(body: unknown, status = 200, cors: string | null = null): Response {
-  const headers: Record<string, string> = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+function reply(body: unknown, status = 200, cors: string | null = null, cache = "no-store"): Response {
+  const headers: Record<string, string> = { "Content-Type": "application/json", "Cache-Control": cache };
   if (cors) {
     headers["Access-Control-Allow-Origin"] = cors;
-    headers["Access-Control-Allow-Methods"] = "POST";
+    headers["Access-Control-Allow-Methods"] = "GET, POST";
     headers["Access-Control-Allow-Headers"] = "Content-Type";
     headers["Vary"] = "Origin";
   }

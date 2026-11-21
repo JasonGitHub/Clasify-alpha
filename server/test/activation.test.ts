@@ -97,13 +97,13 @@ describe("activation", () => {
     expect(await status(mac(1))).toEqual({ state: "waiting", email: "sam@example.com", mail: 1 });
   });
 
-  it("holds the cap of 100 accounts and puts the rest on the waitlist", async () => {
-    await env.DB.batch(Array.from({ length: 99 }, (_, i) =>
+  it("holds the cap of 25 accounts and puts the rest on the waitlist", async () => {
+    await env.DB.batch(Array.from({ length: 24 }, (_, i) =>
       env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'active', 0)").bind(`a${i}`, `p${i}@example.com`)));
     await join(mac(1), "sam@example.com");
     await join(mac(2), "kim@example.com");
     const samLink = mail.sent[0].link, kimLink = mail.sent[1].link;
-    expect(await confirm(new URL(samLink).searchParams.get("c")!)).toBe("ok");  // number 100
+    expect(await confirm(new URL(samLink).searchParams.get("c")!)).toBe("ok");  // number 25
     expect(await confirm(new URL(kimLink).searchParams.get("c")!)).toBe("full");
     expect(await status(mac(2))).toEqual({ state: "full" });
     expect(await join(mac(3), "lee@example.com")).toEqual({ state: "full" });
