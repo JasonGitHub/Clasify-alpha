@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// CLA-163, card CE.1 (from BZ D), a trial behind `hints.trial`: a hint of the tour, under
+/// CLA-163, card CE.1 (from BZ D), behind `hints.trial` (on when not set): a hint of the tour, under
 /// the device, a ⌘ key and the words "Hold ⌘ and drag to turn". The app puts this view in its
 /// own clear window, its top at the device's bottom edge, while the tour shows the hint
 /// (`Hint.tourTurn`). No timer ends it. The timeline, in seconds from when it shows: all fades
