@@ -1,6 +1,6 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
+import { apiBase, formLine, formPath, formState, loadingView, parseBeta, siteKey, view, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
@@ -18,6 +18,7 @@ const el = (/** @type {string} */ tag, /** @type {string} */ text = "") => { con
 
 /** Draws one view (logic.js). */
 function draw(/** @type {import("./logic.js").View} */ v) {
+  document.body.classList.toggle("loading", v.loading);
   document.body.classList.toggle("full", v.full);
   document.body.classList.toggle("soon", v.soon);
   const s = v.spots;
@@ -33,7 +34,7 @@ function draw(/** @type {import("./logic.js").View} */ v) {
     bar.append(fill);
     spots.append(bar);
   }
-  download.style.display = v.download ? "" : "none";
+  download.style.display = v.download || (v.loading && v.form === "none") ? "" : "none";
   if (v.download) download.href = v.download;
   else download.removeAttribute("href");
   version.style.display = v.version ? "" : "none";
@@ -119,9 +120,9 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-// Until the answer comes: no count, no button, no version (never a dead link), and no
-// "on its way" line yet: that line is for no answer or no public build.
-draw({ ...view(null, phone), soon: false });
+// Until the answer comes: the rows at their final size but invisible (body.loading), and the
+// button with no link, so nothing moves and there is never a dead link.
+draw(loadingView(phone));
 load().then((beta) => draw(view(beta, phone)));
 
 // Votes (CLA-172): one per item per browser. The vote shows at once; "ok" or "busy" keeps it.

@@ -9,7 +9,7 @@
 # that every hash here matches the files. connect-src 'self': the API on a test address. Not routed
 # on getmypod.app until the go-live PR.
 /
-  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com 'sha256-KC+/YKH3XnVLzIaDz7pKnJ/AaOhxsLnXVTmnqg/l59g=' 'sha256-B05ol+RWQrzE4GTizQs/O/0rchZP+y7StMExXViwrnA='; frame-src https://challenges.cloudflare.com; connect-src 'self' https://api.getmypod.app; style-src 'self' 'unsafe-hashes' 'sha256-R0xyCCOyqOokSyHVeDTfGflRl0B6y1u525lS+UqNmSM=' 'sha256-ITcwrzB8+MBx7ucerJL/EgrLWC8l3XPvkQlgs0cxvK8=' 'sha256-P2qtAYmgVumztDy9OsnRMIEwmb1VoJ5KD1PQC1lYRHE=' 'sha256-8SmS4f+tjct9mbsqjKfeCeVqmBUPb+6bHc3H4rYArS0=' 'sha256-W/8Igpf8J9mjZPghhq9QvZXrMNj+0jKI51S1mEcNIQg='; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com 'sha256-KC+/YKH3XnVLzIaDz7pKnJ/AaOhxsLnXVTmnqg/l59g=' 'sha256-B05ol+RWQrzE4GTizQs/O/0rchZP+y7StMExXViwrnA='; frame-src https://challenges.cloudflare.com; connect-src 'self' https://api.getmypod.app; style-src 'self' 'unsafe-hashes' 'sha256-V2t91uFSAHZDMHseHpTjZhQxnQdHUgkqPdXv5QTQBQ8=' 'sha256-ITcwrzB8+MBx7ucerJL/EgrLWC8l3XPvkQlgs0cxvK8=' 'sha256-hxyyhfJIZLKRWyL+vtWb7upgR6d6ErGKo4/NPrPvT+8=' 'sha256-8SmS4f+tjct9mbsqjKfeCeVqmBUPb+6bHc3H4rYArS0=' 'sha256-W/8Igpf8J9mjZPghhq9QvZXrMNj+0jKI51S1mEcNIQg='; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   Cache-Control: no-cache
