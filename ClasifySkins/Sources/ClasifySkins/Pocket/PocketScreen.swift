@@ -259,7 +259,7 @@ struct PocketScreen: View {
             if !state.toast.isEmpty {
                 Self.toast(state.toast, bottom: top.screen == .now ? 44 : 16)
             } else if state.hintTip, let hint = state.hint, state.hintOnDevice {
-                HintTip(hint: hint, from: state.hintTipAt)
+                HintTip(hint: hint, from: state.hintTipAt, onNow: top.screen == .now)
             }
         }
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
@@ -420,6 +420,8 @@ struct PocketScreen: View {
 struct HintTip: View {
     let hint: Hint
     let from: Double
+    /// On Now Playing, so the tip takes the time bar's place.
+    var onNow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
 
@@ -427,7 +429,7 @@ struct HintTip: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
             let words = Labels.hintTip(hint)
-            PocketScreen.toastBox(bottom: hint == .menu || hint == .tourPlay ? 16 : 15) {
+            PocketScreen.toastBox(bottom: Self.bottom(hint, onNow: onNow)) {
                 HStack(spacing: 4) {
                     Text(words.lead)
                     if let mark = words.mark {
@@ -442,6 +444,13 @@ struct HintTip: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Labels.hintTip(hint).spoken)
+    }
+
+    /// The tip's bottom edge above the screen's bottom: 16 pt as a toast, 15 pt in the time
+    /// bar's place. Card CE option A's menu bar label is a toast on a menu or list (Jason
+    /// 15:49 JST 11-21, "match exactly"), and like Next on Now Playing.
+    static func bottom(_ hint: Hint, onNow: Bool) -> CGFloat {
+        hint == .menu || hint == .tourPlay || (hint == .tourMenuBar && !onNow) ? 16 : 15
     }
 
     /// The tip's opacity `t` seconds after it starts.
