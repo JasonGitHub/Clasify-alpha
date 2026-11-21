@@ -1,6 +1,6 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
+import { apiBase, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
@@ -124,7 +124,7 @@ form.addEventListener("submit", async (e) => {
 draw({ ...view(null, phone), soon: false });
 load().then((beta) => draw(view(beta, phone)));
 
-// Votes (CLA-172): one per item per browser. The vote shows at once; only an "ok" answer keeps it.
+// Votes (CLA-172): one per item per browser. The vote shows at once; "ok" or "busy" keeps it.
 const store = {
   get() { try { return localStorage.getItem(votesStore); } catch { return null; } },
   set(/** @type {string} */ v) { try { localStorage.setItem(votesStore, v); } catch { /* private mode: the vote still counts once on the server */ } },
@@ -144,7 +144,7 @@ for (const b of document.querySelectorAll(".next button.vb")) {
   b.addEventListener("click", async () => {
     if (b.classList.contains("on")) return;  // one vote per item: no take-back, no second send
     show(true);
-    if (voteState(await post("/v1/vote", { item })) === "ok") store.set(withVote(store.get(), item));
+    if (voteKept(voteState(await post("/v1/vote", { item })))) store.set(withVote(store.get(), item));
     else show(false);
   });
 }

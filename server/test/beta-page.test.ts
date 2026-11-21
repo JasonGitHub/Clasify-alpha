@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
+import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
 function policy(path: string): string {
@@ -154,6 +154,11 @@ describe("beta page forms (CLA-172)", () => {
     expect(voteState({ result: "busy" })).toBe("busy");
     expect(voteState({ result: "bad" })).toBe("bad");
     for (const a of [null, {}, { result: "bot" }, "ok"]) expect(voteState(a)).toBe("offline");
+    // "busy" = this network already voted for this item today: the vote stays on.
+    expect(voteKept("ok")).toBe(true);
+    expect(voteKept("busy")).toBe(true);
+    expect(voteKept("bad")).toBe(false);
+    expect(voteKept("offline")).toBe(false);
   });
 
   it("stops waiting for the bot check after the limit, so the button works again", async () => {
