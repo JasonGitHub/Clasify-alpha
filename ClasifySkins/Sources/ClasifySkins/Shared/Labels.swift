@@ -292,11 +292,13 @@ enum Labels {
         let index = tracks.firstIndex { $0.id == ref.track }
         // A track from outside the list shows its details once `.trackRead` has them.
         let track = index.map { tracks[$0] } ?? state.track(ref)
+        let waiting = track == nil ? state.waitingWords(ref) : nil  // CLA-170
         return NowText(
             // A track that is not in our copy of the list, such as Spotify's autoplay after the
             // list ends, shows as the service name with no artist. Never show a raw track ID.
-            title: track?.title ?? state.words.service,
-            artist: track?.artist ?? "",
+            // While its details are read, the earlier song's words stay (CLA-170).
+            title: track?.title ?? waiting?.title ?? state.words.service,
+            artist: track?.artist ?? waiting?.artist ?? "",
             list: title(.tracks(playlist: ref.playlist), in: state),
             count: index.map { "\($0 + 1) of \(tracks.count)" } ?? "",
             duration: track?.duration ?? 0,

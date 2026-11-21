@@ -362,6 +362,11 @@ func sampleState() -> AppState {
         #expect(Labels.now(in: s)?.title == "Spotify")  // never the raw ID
         #expect(Labels.now(in: s)?.artist == "")
         #expect(Labels.now(in: s)?.count == "")
+        // CLA-170: while its read runs, the earlier song's words stay.
+        s.readsPending = ["spotify:track:unknown"]
+        s.heldWords = NowWords(title: "Song 3", artist: "Band 3")
+        #expect(Labels.now(in: s)?.title == "Song 3" && Labels.now(in: s)?.artist == "Band 3")
+        s.readsPending = []
         // After `.trackRead`, the details show, still with no place in the list.
         s.extraTracks = [Track(id: "spotify:track:unknown", title: "Radio", artist: "Band 9", duration: 200, coverID: "ab")]
         #expect(Labels.now(in: s) == .init(title: "Radio", artist: "Band 9", list: "Road Trip", count: "", duration: 200, coverID: "ab"))
