@@ -8,10 +8,20 @@ export const downloadHost = "dl.getmypod.app";
 
 export interface Beta { taken: number; cap: number; full: boolean; build: number | null; url: string | null }
 
-export async function beta(db: D1Database, cap: number, fetcher: typeof fetch): Promise<Beta> {
+/** How long an isolate keeps the answer, so a burst of visitors costs one read per isolate. */
+export const keepFor = 30_000;
+let kept: { at: number; cap: number; answer: Beta } | null = null;
+
+export async function beta(db: D1Database, cap: number, fetcher: typeof fetch, now: number): Promise<Beta> {
+  if (kept && kept.cap === cap && now >= kept.at && now - kept.at < keepFor) return kept.answer;
   const taken = (await db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE state = 'active'").first<{ n: number }>())?.n ?? 0;
-  return { taken, cap, full: taken >= cap, ...await latest(fetcher) };
+  const answer = { taken, cap, full: taken >= cap, ...await latest(fetcher) };
+  kept = { at: now, cap, answer };
+  return answer;
 }
+
+/** For tests: the next call reads again. */
+export function forgetBeta() { kept = null; }
 
 /** The newest beta's build and link. No file, a slow answer (5 s) or a bad file: both null. */
 async function latest(fetcher: typeof fetch): Promise<{ build: number | null; url: string | null }> {

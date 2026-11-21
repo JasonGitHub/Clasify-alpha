@@ -109,8 +109,11 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   }
 
   switch (route) {
-    case "GET /v1/beta":  // the beta page (CLA-172): the count and the newest beta, cached 30 s
-      return reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch), 200, cors, "max-age=30");
+    case "GET /v1/beta": {  // the beta page (CLA-172): the count and the newest beta, cached 30 s
+      const answer = reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch, now), 200, cors, "max-age=30");
+      answer.headers.set("Vary", "Origin");  // cacheable, so also without CORS
+      return answer;
+    }
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
       const answer = await feedback(db, device, body, now, deps.reports ?? noReports);
       return reply(answer.body, answer.status);

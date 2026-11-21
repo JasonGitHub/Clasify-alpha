@@ -1,12 +1,13 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/activation";
-import { downloadURL, latestURL } from "../src/beta";
+import { downloadURL, forgetBeta, keepFor, latestURL } from "../src/beta";
 import { noMail } from "../src/mailer";
 
 // CLA-172: GET /v1/beta for the beta page.
 
 const page = "https://getmypod.app";
+let clock = 1_000_000;
 let feed: () => Promise<Response>;
 let asked: string[];
 const fetcher = (async (input: RequestInfo | URL) => { asked.push(String(input)); return feed(); }) as typeof fetch;
@@ -16,7 +17,7 @@ const good = { build: 400, date: "2026-11-21T00:00:00Z", file: "myPod-beta-400.d
 async function get(origin?: string, method = "GET") {
   const headers: Record<string, string> = origin ? { Origin: origin } : {};
   const response = await handle(new Request("https://api.example/v1/beta", { method, headers }), env,
-    { now: () => 1_000_000, mailer: noMail, human: async () => false, fetcher });
+    { now: () => clock, mailer: noMail, human: async () => false, fetcher });
   return { status: response.status, json: await response.json().catch(() => null) as Record<string, unknown>, headers: response.headers };
 }
 
@@ -29,6 +30,8 @@ async function accounts(active: number, other = 0) {
 beforeEach(async () => {
   feed = json(good);
   asked = [];
+  clock = 1_000_000;
+  forgetBeta();
   await env.DB.batch(["mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
@@ -40,6 +43,19 @@ describe("GET /v1/beta", () => {
     expect(answer.json).toEqual({ taken: 3, cap: 25, full: false, build: 400, url: good.url });
     expect(asked).toEqual([latestURL]);
     expect(answer.headers.get("Cache-Control")).toBe("max-age=30");
+    expect(answer.headers.get("Vary")).toBe("Origin");
+    expect((await get()).headers.get("Vary")).toBe("Origin");  // also with no CORS
+  });
+
+  it("keeps the answer for 30 s in the isolate", async () => {
+    await get(page);
+    await accounts(2);
+    clock += keepFor - 1;
+    expect((await get(page)).json).toMatchObject({ taken: 0 });  // kept: no new read
+    expect(asked).toHaveLength(1);
+    clock += 1;
+    expect((await get(page)).json).toMatchObject({ taken: 2 });  // read again
+    expect(asked).toHaveLength(2);
   });
 
   it("is full at the cap", async () => {
@@ -71,6 +87,7 @@ describe("GET /v1/beta", () => {
       json(null),
     ]) {
       feed = answer;
+      clock += keepFor;
       expect((await get(page)).json).toMatchObject({ taken: 0, cap: 25, full: false, ...empty });
     }
   });
