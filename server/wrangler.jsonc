@@ -18,10 +18,10 @@
   // The beta cap (accounts; 25, CLA-172), the Mac limit per account, and link mails a day (Resend free: 100).
   // MAIL_HOUR and MAIL_DAY_EACH: link mails per address and per device, an hour and a day.
   // SWAPS and SWAP_DAYS (CLA-133): a 3rd Mac replaces the least used one, at most SWAPS times in SWAP_DAYS days.
-  // WAIT_DAY (CLA-172): waitlist tries a day from the beta page, for all addresses together.
+  // WAIT_DAY and LINK_DAY (CLA-172): waitlist tries and link mails a day from the beta page, all addresses together.
   // PAGE_ORIGIN: where the page is (path /activate/). It sets the mail link, CORS and the bot check.
   // Secrets that Jason adds with `wrangler secret put`: RESEND_KEY, ALERT_TO, TURNSTILE_SECRET.
-  "vars": { "CAP": "25", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "WAIT_DAY": "300", "PAGE_ORIGIN": "https://getmypod.app" },
+  "vars": { "CAP": "25", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "WAIT_DAY": "300", "LINK_DAY": "20", "PAGE_ORIGIN": "https://getmypod.app" },
   "observability": { "enabled": false },
   // CLA-172: the test server, for the beta page before go-live (Jason OK 23:45 JST 11-21).
   // `wrangler deploy --env test` makes a second Worker with its own empty D1, on workers.dev only:
@@ -38,7 +38,7 @@
       "d1_databases": [
         { "binding": "DB", "database_name": "mypod-activation-test", "database_id": "6398b99e-5891-451b-9132-b125747d6af0" }
       ],
-      "vars": { "CAP": "25", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "WAIT_DAY": "300",
+      "vars": { "CAP": "25", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "WAIT_DAY": "300", "LINK_DAY": "20",
         "TEST_SERVER": "1" },
       "observability": { "enabled": false }
     }

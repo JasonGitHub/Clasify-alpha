@@ -1,7 +1,8 @@
 import { beta } from "./beta";
 import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
-import { waitlist } from "./waitlist";
+import { noPageMail, type PageMailer } from "./pagemail";
+import { link, waitlist } from "./waitlist";
 
 // Activation (CLA-128): the app opens the page with a one-time code, the person types an
 // email, clicks the link in the mail, and presses Confirm. This file writes nothing to the
@@ -14,6 +15,8 @@ export interface Deps {
   human: (token: string) => Promise<boolean>;
   /** CLA-166: sends problem reports. None: every report is "busy". */
   reports?: ReportMailer;
+  /** CLA-172: the beta page's mails. None: every mail is "busy". */
+  pageMail?: PageMailer;
   /** CLA-172: reads the beta feed. Default: fetch. */
   fetcher?: typeof fetch;
 }
@@ -119,6 +122,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     }
     case "POST /v1/waitlist":  // the beta page's waitlist form (CLA-172)
       return reply({ result: await waitlist(db, body, now, Number(env.WAIT_DAY), deps.human, sha256, token) }, 200, cors);
+    case "POST /v1/link":  // the beta page's "Email me the link" (CLA-172)
+      return reply({ result: await link(db, body, now, Number(env.LINK_DAY), deps.human, sha256, deps.pageMail ?? noPageMail) }, 200, cors);
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
       const answer = await feedback(db, device, body, now, deps.reports ?? noReports);
       return reply(answer.body, answer.status);
