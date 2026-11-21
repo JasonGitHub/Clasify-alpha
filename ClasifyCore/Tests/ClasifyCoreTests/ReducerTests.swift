@@ -897,6 +897,35 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.track(s.current!) == nil)
     }
 
+    /// CLA-170: an adopted Spotify play (no list of ours). After Next, Now Playing keeps the
+    /// earlier song's words while the new song is read, not the service name.
+    @Test func theEarlierSongsWordsWaitForTheRead() {
+        var s = mainMenu()
+        let a = Track(id: "spotify:track:a", title: "Song A", artist: "Band A", duration: 200)
+        let b = Track(id: "spotify:track:b", title: "Song B", artist: "Band B", duration: 200)
+        let c = "spotify:track:c", d = "spotify:track:d"
+        send(&s, .adopted(track: a.id, playlist: nil, playing: true, position: 3, generation: 0))
+        #expect(s.waitingWords(s.current!) == NowWords(title: "", artist: ""))  // pending, no earlier song
+        send(&s, .trackRead(a.id, a))
+        #expect(s.waitingWords(s.current!) == nil && s.track(s.current!) == a)  // arrived
+        send(&s, .trackChanged(b.id, playing: true, generation: 0))
+        #expect(s.waitingWords(s.current!) == NowWords(title: "Song A", artist: "Band A"))  // pending
+        send(&s, .trackChanged(c, playing: true, generation: 0))  // a fast second Next
+        #expect(s.waitingWords(s.current!) == NowWords(title: "Song A", artist: "Band A"))
+        send(&s, .trackRead(b.id, b))  // the first read answers late
+        #expect(s.waitingWords(s.current!) == NowWords(title: "Song A", artist: "Band A"))
+        send(&s, .trackRead(c, nil))  // failed: the service name shows, as before
+        #expect(s.waitingWords(s.current!) == nil && s.track(s.current!) == nil)
+        send(&s, .trackChanged(b.id, playing: true, generation: 0), .trackChanged(d, playing: true, generation: 0))
+        #expect(s.waitingWords(s.current!) == NowWords(title: "Song B", artist: "Band B"))
+        send(&s, .tick, now: 102.9)
+        #expect(s.waitingWords(s.current!) != nil && !s.readOverdue(at: 102.9) && s.readOverdue(at: 103))
+        send(&s, .tick, now: 103)  // no answer in `readWait`: the service name, as before
+        #expect(s.waitingWords(s.current!) == nil)
+        send(&s, .expire)  // signs out
+        #expect(s.readsPending.isEmpty && s.heldWords == nil)
+    }
+
     @Test func trackReadKeepsTheTrackForTheSession() {
         var s = playing()
         let radio = Track(id: "spotify:track:radio", title: "Radio", artist: "Band", duration: 200, coverID: "ab")

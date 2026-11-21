@@ -350,6 +350,12 @@ public struct TrackRef: Equatable, Sendable {
 }
 
 /// The playing track and its play state before a load.
+/// CLA-170: a song's title and artist, as Now Playing shows them.
+public struct NowWords: Equatable, Sendable {
+    public var title: String, artist: String
+    public init(title: String, artist: String) { self.title = title; self.artist = artist }
+}
+
 public struct BeforeLoad: Equatable, Sendable {
     public var current: TrackRef, t: Double, isPlaying: Bool
 }
@@ -711,6 +717,12 @@ public struct AppState: Equatable, Sendable {
     public var extraTracks: [Track] = []
     /// Track IDs whose read runs or failed in this session, so each is read only once.
     public var trackReads: Set<String> = []
+    /// CLA-170: the reads in `trackReads` that have not answered yet, with when each was asked.
+    /// A read silent for `readWait` seconds is dropped here by `.tick` (a late answer still applies).
+    public var readsPending: [String: Double] = [:]
+    /// CLA-170: the words of the last current song we knew, kept when Spotify moves on to a song
+    /// we do not know yet. Nil when there was none (an adopted song).
+    public var heldWords: NowWords?
     /// When each list was last read, by `readKey`. Opening a list older than `staleAfter`
     /// reads it again in the background.
     public var readAt: [String: Double] = [:]
@@ -1127,6 +1139,17 @@ public struct AppState: Equatable, Sendable {
     /// The track in its playlist, else in `extraTracks`.
     public func track(_ ref: TrackRef) -> Track? {
         tracks(in: ref.playlist).first { $0.id == ref.track } ?? extraTracks.first { $0.id == ref.track }
+    }
+
+    /// CLA-170: while the details of the current song are being read, Now Playing keeps the
+    /// earlier song's words (empty with none), as the cover keeps the earlier cover. Nil when
+    /// the song is known, or its read failed or never ran: then the service name shows.
+    /// CLA-170: a read has been silent for `readWait` seconds, so `.tick` must drop it.
+    public func readOverdue(at now: Double) -> Bool { readsPending.values.contains { now - $0 >= readWait } }
+
+    public func waitingWords(_ ref: TrackRef) -> NowWords? {
+        guard track(ref) == nil, readsPending[ref.track] != nil else { return nil }
+        return heldWords ?? NowWords(title: "", artist: "")
     }
 
     public func rows(for frame: Frame) -> [Row] {

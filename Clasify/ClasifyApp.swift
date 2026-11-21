@@ -570,7 +570,10 @@ final class AppModel {
                 let betaDue = state.betaDue > 0 && now >= state.betaDue
                 // Card BW, CLA-146: the Activate screen's timer checks, their 3-minute end, and the 1.5 s beat.
                 let activateDue = state.activateDue(at: now)
-                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue {
+                // CLA-170: a song's read with no answer in 3 s; Now Playing shows the service name.
+                let readDue = state.readOverdue(at: now)
+                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue
+                    || readDue {
                     store?.send(.tick)
                 }
                 // When the browser login works (change 170) or the Spotify app is found (174),

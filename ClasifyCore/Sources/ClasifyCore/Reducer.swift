@@ -265,6 +265,9 @@ public let fastSpinTime = 0.4
 /// Seconds after the last wheel step before Cover Flow hides the big letter.
 public let letterTime = 1.0
 
+/// CLA-170: how long Now Playing keeps the earlier song's words for a read with no answer.
+let readWait = 3.0
+
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { max(lo, min(hi, v)) }
 
 /// Card AN.1 (CLA-43, 348): screens that show myPod when it is hidden by the menu bar icon.
@@ -408,7 +411,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// details once. A read in flight or a failed read is not started again.
     func readIfUnknown(_ id: String) {
         guard let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) else { return }
-        s.trackReads.insert(id)
+        s.trackReads.insert(id); s.readsPending[id] = now
         fx.append(.readTrack(id))
     }
     /// The Now Playing row comes onto the main menu (`by` 1) or leaves it (-1). Each main menu
@@ -604,7 +607,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false; s.sessionEnded = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []; s.artists = []; s.artistsLoaded = false
-        s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
+        s.extraTracks = []; s.trackReads = []; s.readsPending = [:]; s.heldWords = nil; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
         s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
@@ -998,6 +1001,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
+            if s.readOverdue(at: now) {  // CLA-170: a silent read
+                s.readsPending = s.readsPending.filter { now - $0.value < readWait }
+            }
             // Card BA, change 195: the tip after 3 pulses, then the end after 10 s.
             if s.hint != nil && s.hintDue > 0 && now >= s.hintDue { if s.hintTip { endHint(done: true) } else { s.hintTip = true } }
             if s.namesHold > 0 && now >= s.namesHold { endHeldRead() }  // change 191: every name has shown
@@ -1041,12 +1047,17 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // Same playlist. A track that is not in our copy of it still shows as current, by ID.
             guard s.current != nil, gen == s.playGen else { return }
             s.isPlaying = playing; s.beforeLoad = nil; s.loadPending = false  // the load plays
-            if s.current?.track != id { s.current?.track = id; s.t = 0 }
+            if s.current?.track != id {
+                // CLA-170: an unknown song keeps the last known words (fast Next: still the first one's).
+                if let known = s.current.flatMap({ s.track($0) }) { s.heldWords = NowWords(title: known.title, artist: known.artist) }
+                s.current?.track = id; s.t = 0
+            }
             readIfUnknown(id)
 
         case .trackRead(let id, let track):
             // Not asked for in this session, for example a read from before a sign-out.
             guard s.trackReads.contains(id) else { return }
+            s.readsPending[id] = nil  // CLA-170: answered, so the words wait no more
             guard let track else { return }  // failed: the ID stays, so it is not read again
             s.trackReads.remove(id)
             keepExtra(track)
@@ -1055,6 +1066,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             guard s.current == nil, gen == s.playGen else { return }  // a load or a newer one came first
             if s.activateGated && s.stack.first?.screen == .activate { return }  // CLA-140: nothing plays behind Activate
             s.current = TrackRef(playlist: pl ?? "", track: id)  // "" is no playlist of ours
+            s.heldWords = nil  // CLA-170: no earlier song
             s.isPlaying = playing; s.t = t
             shiftMainSelection(by: 1)  // the new Now Playing row goes on top: keep the pick
             readIfUnknown(id)
