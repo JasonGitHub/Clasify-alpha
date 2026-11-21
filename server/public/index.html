@@ -403,10 +403,6 @@ var pre=new Image();pre.src='hv/flat2d-s-A.webp';
 w.querySelectorAll('button').forEach(function(b){b.insertAdjacentHTML('beforeend','<svg class="rg" viewBox="0 0 40 40" fill="none" stroke="#a9d0ff" stroke-width="2.1" stroke-linecap="round" aria-hidden="true"><path pathLength="1" d="M28 7C18.5 1.5 5.5 7.5 4.6 19.5 3.8 31 13 37.3 22.8 35.6 32.2 34 37.2 26 35.6 17 34 8.6 24.5 3.2 13.5 8.6"/></svg>');
 b.addEventListener('click',function(){if(b.classList.contains('on'))return;w.classList.add('pk');w.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b);});var c=b.dataset.c,n=c==='s'?'Silver':'Black';w.querySelector('span').textContent=n.toLowerCase();im.src='hv/flat2d-'+c+'-A.webp';im.alt='myPod in '+n+', playing music';});});})();
 </script>
-<script>/* vote buttons: drawing only, nothing is sent or stored */
-document.querySelectorAll('.next .vgrid button.vb').forEach(function(b){ /* local only: no clicks stored yet */ b.addEventListener('click',function(){ var on=b.classList.toggle('on'); b.querySelector('span').textContent=on?'Thanks, noted':'I\u2019d love this'; }); });
-</script>
-<script>/* Coming soon: local only, nothing stored yet (storage waits Jason OK) */document.querySelectorAll('.next .sc .sb').forEach(function(b){ b.addEventListener('click',function(){ var on=b.classList.toggle('on'); b.querySelector('span').textContent=on?'Thanks, noted':'I\u2019d love this'; }); });</script>
 <script>(function(){var n=document.querySelector('.nextband');function f(){if(n)document.body.style.setProperty('--hh',n.offsetTop+'px');}f();addEventListener('resize',f);addEventListener('load',f);})();</script>
 </body>
 </html>

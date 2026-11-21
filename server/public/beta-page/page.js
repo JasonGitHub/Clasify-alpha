@@ -1,6 +1,6 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, formLine, formPath, formState, parseBeta, siteKey, view } from "./logic.js";
+import { apiBase, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
@@ -58,22 +58,30 @@ async function load() {
   }
 }
 
-/** The bot check runs without a box, unless Cloudflare asks. A new token for each send. */
-function human() {
-  return new Promise((resolve) => {
-    const w = /** @type {any} */ (window).turnstile;
-    if (!w) return resolve(null);
-    // Under the row, not in the form: an empty item in the form's flex row would add a gap.
-    let box = document.querySelector(".row + .ts");
-    if (box) w.remove?.(box), box.remove();
-    box = document.createElement("div");
-    box.className = "ts";
-    form.parentElement?.after(box);
-    w.render(box, {
-      sitekey: turnstileSiteKey, appearance: "interaction-only",
-      callback: resolve, "error-callback": () => resolve(null), "expired-callback": () => resolve(null),
-    });
+/** The bot check runs without a box, unless Cloudflare asks. A new token for each send; null after
+ * an error, an expired token, or no answer in `humanWait` (a challenge the person ignores). */
+async function human() {
+  const w = /** @type {any} */ (window).turnstile;
+  if (!w) return null;
+  // Under the row, not in the form: an empty item in the form's flex row would add a gap.
+  const box = document.createElement("div");
+  box.className = "ts";
+  form.parentElement?.after(box);
+  /** @type {Promise<string | null>} */
+  const token = new Promise((resolve) => {
+    try {
+      w.render(box, {
+        sitekey: turnstileSiteKey, appearance: "interaction-only",
+        callback: resolve, "error-callback": () => resolve(null), "expired-callback": () => resolve(null),
+      });
+    } catch {
+      resolve(null);
+    }
   });
+  const result = await withLimit(token, humanWait, null);
+  try { w.remove?.(box); } catch { /* already gone */ }
+  box.remove();
+  return result;
 }
 
 /** POST, or null with no answer in 10 s. */
@@ -115,3 +123,28 @@ form.addEventListener("submit", async (e) => {
 // "on its way" line yet: that line is for no answer or no public build.
 draw({ ...view(null, phone), soon: false });
 load().then((beta) => draw(view(beta, phone)));
+
+// Votes (CLA-172): one per item per browser. The vote shows at once; only an "ok" answer keeps it.
+const store = {
+  get() { try { return localStorage.getItem(votesStore); } catch { return null; } },
+  set(/** @type {string} */ v) { try { localStorage.setItem(votesStore, v); } catch { /* private mode: the vote still counts once on the server */ } },
+};
+const voted = votedFrom(store.get());
+for (const b of document.querySelectorAll(".next button.vb")) {
+  const title = b.parentElement?.querySelector("h3")?.textContent ?? "";
+  const item = /** @type {Record<string, import("./logic.js").VoteItem>} */ (voteItems)[title];
+  const label = b.querySelector("span");
+  if (!item || !label) continue;
+  const show = (/** @type {boolean} */ on) => {
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", String(on));
+    label.textContent = on ? voteWords.voted : voteWords.idle;
+  };
+  show(voted.has(item));
+  b.addEventListener("click", async () => {
+    if (b.classList.contains("on")) return;  // one vote per item: no take-back, no second send
+    show(true);
+    if (voteState(await post("/v1/vote", { item })) === "ok") store.set(withVote(store.get(), item));
+    else show(false);
+  });
+}

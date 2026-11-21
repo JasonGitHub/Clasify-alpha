@@ -1,8 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/index.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view } from "../public/beta-page/logic.js";
+import { apiBase, dmgURL, formLine, formPath, formState, parseBeta, siteKey, view, votedFrom, voteItems, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
 function policy(path: string): string {
@@ -137,5 +137,40 @@ describe("beta page forms (CLA-172)", () => {
       expect(apiBase(host)).toBe("");  // the page's own origin
       expect(siteKey(host)).toBe("1x00000000000000000000AA");  // Cloudflare's always-pass test key
     }
+  });
+
+  it("keeps one vote per item per browser, for the five items only", () => {
+    expect(Object.values(voteItems)).toEqual(["local-music", "nano", "radio", "like-from-wheel", "more-colors"]);
+    for (const title of Object.keys(voteItems)) expect(page).toContain(`<h3>${title}</h3>`);
+    expect([...page.matchAll(/<button class="vb[^"]*" type="button">/g)]).toHaveLength(5);
+    expect(page).toContain('<a class="vb" href="mailto:feedback@getmypod.app?subject=myPod%20idea">Send an idea</a>');
+    expect([...votedFrom(null)]).toEqual([]);
+    expect([...votedFrom("not json")]).toEqual([]);
+    expect([...votedFrom('{"nano":1}')]).toEqual([]);
+    expect([...votedFrom('["nano","x","radio",3]')]).toEqual(["nano", "radio"]);
+    expect(withVote(null, "nano")).toBe('["nano"]');
+    expect(withVote('["radio","nano"]', "nano")).toBe('["nano","radio"]');
+    expect(voteState({ result: "ok" })).toBe("ok");
+    expect(voteState({ result: "busy" })).toBe("busy");
+    expect(voteState({ result: "bad" })).toBe("bad");
+    for (const a of [null, {}, { result: "bot" }, "ok"]) expect(voteState(a)).toBe("offline");
+  });
+
+  it("stops waiting for the bot check after the limit, so the button works again", async () => {
+    vi.useFakeTimers();
+    try {
+      const never = withLimit(new Promise<string>(() => {}), 60_000, null);
+      vi.advanceTimersByTime(59_999);
+      let done = false;
+      void never.then(() => { done = true; });
+      await Promise.resolve();
+      expect(done).toBe(false);
+      vi.advanceTimersByTime(1);
+      expect(await never).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(await withLimit(Promise.resolve("tok"), 60_000, null)).toBe("tok");
+    expect(await withLimit(Promise.reject(new Error("x")), 60_000, null)).toBeNull();
   });
 });
