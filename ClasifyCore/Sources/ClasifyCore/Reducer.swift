@@ -1003,7 +1003,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
-            if s.readsPending.values.contains(where: { now - $0 >= readWait }) {  // CLA-170: a silent read
+            if s.readOverdue(at: now) {  // CLA-170: a silent read
                 s.readsPending = s.readsPending.filter { now - $0.value < readWait }
             }
             // Card BA, change 195: the tip after 3 pulses, then the end after 10 s.

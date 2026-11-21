@@ -1147,6 +1147,9 @@ public struct AppState: Equatable, Sendable {
     /// CLA-170: while the details of the current song are being read, Now Playing keeps the
     /// earlier song's words (empty with none), as the cover keeps the earlier cover. Nil when
     /// the song is known, or its read failed or never ran: then the service name shows.
+    /// CLA-170: a read has been silent for `readWait` seconds, so `.tick` must drop it.
+    public func readOverdue(at now: Double) -> Bool { readsPending.values.contains { now - $0 >= readWait } }
+
     public func waitingWords(_ ref: TrackRef) -> NowWords? {
         guard track(ref) == nil, readsPending[ref.track] != nil else { return nil }
         return heldWords ?? NowWords(title: "", artist: "")

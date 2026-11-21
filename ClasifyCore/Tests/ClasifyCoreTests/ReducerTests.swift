@@ -919,7 +919,7 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .trackChanged(b.id, playing: true, generation: 0), .trackChanged(d, playing: true, generation: 0))
         #expect(s.waitingWords(s.current!) == NowWords(title: "Song B", artist: "Band B"))
         send(&s, .tick, now: 102.9)
-        #expect(s.waitingWords(s.current!) != nil)
+        #expect(s.waitingWords(s.current!) != nil && !s.readOverdue(at: 102.9) && s.readOverdue(at: 103))
         send(&s, .tick, now: 103)  // no answer in `readWait`: the service name, as before
         #expect(s.waitingWords(s.current!) == nil)
         send(&s, .expire)  // signs out
