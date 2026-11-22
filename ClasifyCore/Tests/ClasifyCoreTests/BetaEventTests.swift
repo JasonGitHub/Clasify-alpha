@@ -50,7 +50,7 @@ import Testing
     /// Jason 14:23 JST 11-22: the step that the press on Color sends says the color picked.
     @Test func thePressOnColorSendsTheColorPicked() {
         var s = onColor()
-        #expect(events(&s, .wheel(-1), now: 111).isEmpty)  // a turn tries Silver on; nothing goes out
+        #expect(events(&s, .wheel(1), now: 111).isEmpty)  // a turn tries Silver on; nothing goes out
         let sent = events(&s, .select, now: 112)
         #expect(sent == [.setupStep(.pickMusic, seconds: 12, service: .spotify, color: .silver)])
         #expect(sent.first?.properties["color"] == .text("silver"))

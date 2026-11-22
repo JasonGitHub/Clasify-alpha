@@ -1529,6 +1529,7 @@ import Testing
     @Test func theColorPickShowsTheSmallDeviceAndTriesTheColorOn() throws {
         var s = AppState.silver
         s.stack = [Frame(screen: .color)]
+        s.top.sel = 1  // Silver, the second row (Black is on top)
         func hint(_ shot: Snapshot) -> Bool {  // dark text under the two rows, in the left pane
             for y in 106...117 {
                 for x in 45...120 {
@@ -1541,13 +1542,13 @@ import Testing
         let preview = (x: 209, y: 224)  // the small device's body, near its bottom
         let body = (x: 20, y: 590)  // the big device's body, near its bottom
         let silver = try render(s, "color-pick", time: 10)
-        #expect(silver.isBlue(100, Self.rowCenter(0)))  // Silver is selected
+        #expect(silver.isBlue(100, Self.rowCenter(1)))  // Silver is selected
         #expect(hint(silver))
         #expect(!silver.isBlue(183, 392))  // no center glow before the turn
-        s.top.sel = 1
+        s.top.sel = 0
         s.colorTurnAt = 5
         let black = try render(s, "color-pick-black", time: 7.8)
-        #expect(black.isBlue(100, Self.rowCenter(1)))
+        #expect(black.isBlue(100, Self.rowCenter(0)))
         #expect(black.isDark(preview.x, preview.y) && black.isDark(body.x, body.y))  // both devices are black
         // Silver was light at the same points. Near the bottom the card BH roll darkens it, so
         // compare it with Black.
@@ -1566,7 +1567,7 @@ import Testing
         for color in [DeviceColor.silver, .black] {
             var s = AppState.silver
             s.stack = [Frame(screen: .color)]
-            s.top.sel = color == .black ? 1 : 0  // the pick shows the selected color
+            s.top.sel = color == .black ? 0 : 1  // the pick shows the selected color
             s.colorAt = 100
             let shot = try render(s, "color-pick-finger-\(color)", time: 100.8)
             #expect(lit(shot, dot.x, dot.y), "\(color): \(shot.rgb(dot.x, dot.y))")
@@ -1614,6 +1615,7 @@ import Testing
     @Test func theColorPickShowsNoRimLightAfterATurn() throws {
         var s = AppState.silver
         s.stack = [Frame(screen: .color)]
+        s.top.sel = 1  // Silver, as drawn before Black went on top
         s.colorAt = 0; s.colorTurnAt = 5
         let shot = try render(s, "color-pick-turned", time: 7.8)
         let center = (x: Double(PocketSkin.size.width) / 2, y: 321 + 112.5)

@@ -110,45 +110,45 @@ import Testing
         #expect(s.stack.map(\.screen) == [.color] && s.navForward)
         // CLA-62: Hello has no title bar, so the whole screen pushes, title bar and all.
         #expect(s.wholeSeq == whole + 1 && s.navMove == .push)
-        #expect(s.rows(for: s.top) == [.color(.silver), .color(.black)] && s.top.sel == 1)  // Black, the default
+        #expect(s.rows(for: s.top) == [.color(.black), .color(.silver)] && s.top.sel == 0)  // Black, the default, on top
         // CLA-62: MENU on the color pick goes back to Hello, which starts again. The whole
         // screen moves back. A color turned to but not pressed is dropped.
         let back = s.wholeSeq
-        send(&s, .wheel(-1), .menu, now: 130)
+        send(&s, .wheel(1), .menu, now: 130)
         #expect(s.stack == [Frame(screen: .hello)] && s.helloAt == 130 && !s.navForward)
         #expect(s.wholeSeq == back + 1 && s.deviceColor == .black && s.shownColor == .black)
         send(&s, .select)  // a press begins setup again, on the saved color
-        #expect(s.top.screen == .color && s.top.sel == 1)
+        #expect(s.top.screen == .color && s.top.sel == 0)
     }
 
     @Test func theColorPickSavesTheColorAndMenuOnTheLoginGoesBack() {
         var s = onColor()
         let whole = s.wholeSeq
-        send(&s, .wheel(-1), .select)
+        send(&s, .wheel(1), .select)
         #expect(s.deviceColor == .silver && s.top.screen == .pickMusic && s.top.sel == 0)  // card BM, change 257
         #expect(s.wholeSeq == whole)  // between two setup screens, only the content slides
         send(&s, .select)  // Spotify
         #expect(s.top.screen == .login && s.rows(for: s.top) == [.logIn])
         send(&s, .menu, .menu)  // back to Pick Your Music, then to the color pick, with Silver selected (card AX, change 172)
-        #expect(s.top.screen == .color && s.top.sel == 0 && !s.navForward)
+        #expect(s.top.screen == .color && s.top.sel == 1 && !s.navForward)
         #expect(s.colorAt == 100 && s.colorTurnAt == 100)  // it keeps its times: the center glows, no fingertip dot (card BQ)
         send(&s, .reset, .launch, .restored(token: 2, ok: false), .select)  // a reset keeps the settings
-        #expect(s.top.screen == .color && s.top.sel == 0)  // the pick starts on the color that is set
+        #expect(s.top.screen == .color && s.top.sel == 1)  // the pick starts on the color that is set
     }
 
     /// Card AW: a turn tries the color on the device at once. A press saves it.
     @Test func theColorPickTriesAColorOnAtTheFirstTurn() {
         var s = onColor()
         #expect(s.colorAt == 100 && s.colorTurnAt == 0 && s.shownColor == .black)  // Black, the default
-        send(&s, .wheel(-1), now: 105)
+        send(&s, .wheel(1), now: 105)
         #expect(s.colorTurnAt == 105 && s.shownColor == .silver && s.deviceColor == .black)
-        send(&s, .wheel(1), now: 107)  // only the first turn counts: the fingertip dot does not come back (card BQ)
+        send(&s, .wheel(-1), now: 107)  // only the first turn counts: the fingertip dot does not come back (card BQ)
         #expect(s.colorTurnAt == 105 && s.shownColor == .black)
-        send(&s, .wheel(1), now: 107.5)  // at the bottom: no color change
+        send(&s, .wheel(-1), now: 107.5)  // at the top: no color change
         #expect(s.shownColor == .black)
         send(&s, .menu, .select, now: 108)  // back to Hello and in again
         #expect(s.top.screen == .color)
-        send(&s, .wheel(-1), .select, now: 108)
+        send(&s, .wheel(1), .select, now: 108)
         #expect(s.top.screen == .pickMusic && s.deviceColor == .silver && s.shownColor == .silver)
         #expect(mainMenu().shownColor == .black)  // off the color pick, the setting shows
     }
