@@ -48,13 +48,33 @@ describe("beta page CSP (CLA-172)", () => {
     }
   });
 
-  it("keeps the privacy page byte for byte as frozen, except the canonical line", async () => {
+  const sha256 = async (s: string) =>
+    [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  it("keeps the privacy page byte for byte as frozen, except the canonical line and root paths", async () => {
     // Jason's rule: the privacy words are frozen; any change needs his approval first.
-    // This is the SHA-256 of design-review/beta-page/simple-frozen/privacy/index.html.
-    const frozen = privacy.replace('<link rel="canonical" href="https://getmypod.app/privacy/">\n', "");
-    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(frozen));
-    expect([...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join(""))
-      .toBe("13b133dbe4647b71e871fc33f8f150e1eef6585251275550616ee6d0ba264b86");
+    // This is the SHA-256 of design-review/beta-page/simple-frozen/privacy/index.html. The frozen
+    // file links the icons with "../"; the site uses root paths (/favicon.ico etc.).
+    const frozen = privacy
+      .replace('<link rel="canonical" href="https://getmypod.app/privacy/">\n', "")
+      .replace(/="\/(favicon\.ico|favicon-32\.png|apple-touch-icon\.png)"/g, '="../$1"');
+    expect(await sha256(frozen)).toBe("ce6d5fff31fcc7ab655194375b2f6528ca5979aaf6d77d16c8735ff7acfc4c9a");
+  });
+
+  it("keeps the privacy page's visible words as Jason approved them", async () => {
+    const words = privacy.replace(/<style[\s\S]*?<\/style>/g, "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+    expect(await sha256(words)).toBe("6be52273feed4b2b7fdb04a2865dbfd5db0d6bd0c4a0e11f4509edece664a916");
+  });
+
+  it("shows only the name top left and links the icons from the root on both pages", () => {
+    for (const html of [page, privacy]) {
+      expect(html).toMatch(/class="brand"[^>]*>myPod <span>BETA<\/span>/);
+      expect(html).not.toContain("mypod-wheel");
+      expect(html).toContain('<link rel="icon" href="/favicon.ico" sizes="any">');
+      expect(html).toContain('<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">');
+      expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png">');
+      expect(html).not.toContain("cappy-head");
+    }
   });
 
   it("allows the privacy page's inline style by its hash, and no script", async () => {
