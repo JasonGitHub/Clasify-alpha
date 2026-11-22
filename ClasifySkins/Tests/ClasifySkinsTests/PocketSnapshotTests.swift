@@ -688,7 +688,9 @@ import Testing
         let frames = HStack(spacing: 8) {
             ForEach([0.0, 0.25, 0.5, 0.75, 1.0], id: \.self) { leap in
                 ZStack(alignment: .topLeading) {
-                    PocketCoverFlow(state: s).opacity(max(0, 1 - leap * PocketCoverFlow.leapTime / 0.25))
+                    // In flight the strip's own middle cover hides at once; the strip fades.
+                    CoverFlowStrip(albums: s.albums, covers: s.albumCovers, pos: 2, hidesMiddleCover: leap > 0)
+                        .opacity(max(0, 1 - leap * PocketCoverFlow.leapTime / 0.25))
                     CoverLeap(leap: leap, image: red)
                 }
                 .frame(width: Pocket.screenWidth, height: 206, alignment: .topLeading)
@@ -710,6 +712,10 @@ import Testing
         let half = 2 * (Int(Pocket.screenWidth) + 8)
         let mid = shot.rgb(half + 49 + 60, 18 + 60)
         #expect(mid.r > 200 && mid.b < 60, "mid \(mid)")
+        // The second frame: the strip's middle cover is gone, so no second red cover stays
+        // behind at its old place, right of the flying one.
+        let behind = shot.rgb(Int(Pocket.screenWidth) + 8 + 208, 26)
+        #expect(behind.g > 150 || behind.b > 150, "left behind \(behind)")
     }
 
     @Test func nowPlayingOverTheSongPanelLooksLikeNowPlaying() throws {

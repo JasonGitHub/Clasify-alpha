@@ -36,7 +36,7 @@ struct PocketCoverFlow: View {
         let inFlight = flying || flyingBack
         ZStack(alignment: .topLeading) {
             CoverFlowTurn(turn: panel == nil ? 0 : 1, panel: panel ?? lastPanel, state: state) {
-                CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0 || leapingBack)
+                CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0 || leapingBack, hidesMiddleCover: leaping)
                     // Fast steps retarget the glide, so the covers stream and then ease to a stop.
                     .animation(reduceMotion ? nil : CoverFlowStrip.glide, value: frame.sel)
             }
@@ -134,6 +134,9 @@ struct CoverFlowStrip: View, Animatable {
     var spread = 0.0
     /// The song panel shows: the middle cover and the names hide (card AF).
     var hidesMiddle = false
+    /// The middle cover itself flies to Now Playing (card CI): only it hides, at once, and the
+    /// names fade with the strip.
+    var hidesMiddleCover = false
     @Environment(\.artwork) private var artwork
     /// The doors move hides the names until they fade in (card AE, change 82).
     @Environment(\.doorsStage) private var doors
@@ -191,7 +194,8 @@ struct CoverFlowStrip: View, Animatable {
                             .opacity(abs(d) > 0.001 ? 1 : 0)
                         cover(albums[k]).modifier(TurnY(angle: p.angle, scale: p.scale))
                     }
-                    .opacity(hidesMiddle && abs(d) < 0.5 ? 0 : p.opacity)
+                    // At once, not with the move's curve: the flying copy takes its place.
+                    .animation(nil) { $0.opacity((hidesMiddle || hidesMiddleCover) && abs(d) < 0.5 ? 0 : p.opacity) }
                         .offset(x: Pocket.screenWidth / 2 + p.x - Self.side / 2, y: Self.top)
                         .zIndex(100 - abs(Double(k) - pos) * 10)
                 }
