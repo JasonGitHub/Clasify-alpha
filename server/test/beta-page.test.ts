@@ -54,11 +54,11 @@ describe("beta page CSP (CLA-172)", () => {
   it("keeps the privacy page byte for byte as frozen, except the canonical line and root paths", async () => {
     // Jason's rule: the privacy words are frozen; any change needs his approval first.
     // This is the SHA-256 of design-review/beta-page/simple-frozen/privacy/index.html. The frozen
-    // file links the mark and icons with "../"; the site uses root paths (/favicon.ico etc.).
+    // file links the icons with "../"; the site uses root paths (/favicon.ico etc.).
     const frozen = privacy
       .replace('<link rel="canonical" href="https://getmypod.app/privacy/">\n', "")
-      .replace(/="\/(favicon\.ico|favicon-32\.png|apple-touch-icon\.png|mypod-wheel\.png)"/g, '="../$1"');
-    expect(await sha256(frozen)).toBe("c3f39aa29a40e3991268bde6f0f9adf63e1dddb8d9b0b6b695ed07c696530e99");
+      .replace(/="\/(favicon\.ico|favicon-32\.png|apple-touch-icon\.png)"/g, '="../$1"');
+    expect(await sha256(frozen)).toBe("ce6d5fff31fcc7ab655194375b2f6528ca5979aaf6d77d16c8735ff7acfc4c9a");
   });
 
   it("keeps the privacy page's visible words as Jason approved them", async () => {
@@ -66,9 +66,10 @@ describe("beta page CSP (CLA-172)", () => {
     expect(await sha256(words)).toBe("6be52273feed4b2b7fdb04a2865dbfd5db0d6bd0c4a0e11f4509edece664a916");
   });
 
-  it("shows the click-wheel mark and links the icons from the root on both pages", () => {
+  it("shows only the name top left and links the icons from the root on both pages", () => {
     for (const html of [page, privacy]) {
-      expect(html).toContain('<img src="/mypod-wheel.png" alt="" width="30" height="30">myPod <span>BETA</span>');
+      expect(html).toMatch(/class="brand"[^>]*>myPod <span>BETA<\/span>/);
+      expect(html).not.toContain("mypod-wheel");
       expect(html).toContain('<link rel="icon" href="/favicon.ico" sizes="any">');
       expect(html).toContain('<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">');
       expect(html).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png">');
