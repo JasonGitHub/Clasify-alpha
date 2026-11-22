@@ -8,7 +8,7 @@ import Testing
 
 /// A signed-in state with two playlists and Liked Songs.
 func sampleState() -> AppState {
-    var s = AppState()
+    var s = AppState.silver
     s.signedIn = true
     s.stack = [Frame(screen: .main)]
     s.library = [
@@ -558,7 +558,7 @@ func sampleState() -> AppState {
 
     /// CLA-141, card BF.2: the Status row (360) and Activation's row (361, 362).
     @Test func theStatusRowAndActivationRow() {
-        var s = AppState()
+        var s = AppState.silver
         #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Not activated", grayValue: true))
         s.activated = true
         #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Activated"))  // no info: no chevron

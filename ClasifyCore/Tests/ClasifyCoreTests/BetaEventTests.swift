@@ -25,7 +25,7 @@ import Testing
         #expect(events(&s, .spotifyAppFound(true), .launch, now: 100) == [.setupStep(.hello, seconds: 0, service: .spotify)])
         #expect(s.firstLaunchAt == 100 && s.settings.firstLaunchAt == 100)
         #expect(events(&s, .restored(token: 1, ok: false), .select, now: 110) == [.setupStep(.color, seconds: 10, service: .spotify)])
-        #expect(events(&s, .select, now: 115) == [.setupStep(.pickMusic, seconds: 15, service: .spotify, color: .silver)])
+        #expect(events(&s, .select, now: 115) == [.setupStep(.pickMusic, seconds: 15, service: .spotify, color: .black)])
         #expect(events(&s, .select, now: 120) == [
             .musicPick(.spotify, top: .spotify, spotifyApp: true), .setupStep(.logIn, seconds: 20, service: .spotify),
         ])
@@ -50,13 +50,13 @@ import Testing
     /// Jason 14:23 JST 11-22: the step that the press on Color sends says the color picked.
     @Test func thePressOnColorSendsTheColorPicked() {
         var s = onColor()
-        #expect(events(&s, .wheel(1), now: 111).isEmpty)  // a turn tries Black on; nothing goes out
+        #expect(events(&s, .wheel(-1), now: 111).isEmpty)  // a turn tries Silver on; nothing goes out
         let sent = events(&s, .select, now: 112)
-        #expect(sent == [.setupStep(.pickMusic, seconds: 12, service: .spotify, color: .black)])
-        #expect(sent.first?.properties["color"] == .text("black"))
-        var silver = onColor()
-        let picked = events(&silver, .select, now: 112)
-        #expect(picked.first?.properties["color"] == .text("silver"))
+        #expect(sent == [.setupStep(.pickMusic, seconds: 12, service: .spotify, color: .silver)])
+        #expect(sent.first?.properties["color"] == .text("silver"))
+        var black = onColor()
+        let picked = events(&black, .select, now: 112)
+        #expect(picked.first?.properties["color"] == .text("black"))
         // MENU on Color is no pick, and other steps have no color.
         var back = onColor()
         #expect(events(&back, .menu, now: 112) == [.setupStep(.hello, seconds: 12, service: .spotify)])

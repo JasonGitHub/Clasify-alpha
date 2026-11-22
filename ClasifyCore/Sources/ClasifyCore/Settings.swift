@@ -16,7 +16,9 @@ public struct Settings: Equatable, Sendable {
     public var shuffle = false
     public var repeatMode = RepeatMode.off
     public var albumArt = AlbumArt.all
-    public var deviceColor = DeviceColor.silver
+    /// Black by default (Jason 15:33 JST 11-22). A Mac that set up with no saved color keeps
+    /// Silver, the default it set up on.
+    public var deviceColor = DeviceColor.black
     public var clicker = true
     public var nowPlayingBar = false
     /// Card AN.1 (CLA-43, change 346): the menu bar icon that shows and hides myPod. On by default.
@@ -82,6 +84,7 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.menuBar).flatMap({ Bool($0) }) { menuBar = v }
         if let v = store.string(forKey: Key.service).flatMap(MusicService.init(rawValue:)) { service = v }
         if let v = store.string(forKey: Key.setupDone).flatMap({ Bool($0) }) { setupDone = v }
+        if setupDone && store.string(forKey: Key.deviceColor).flatMap(DeviceColor.init(rawValue:)) == nil { deviceColor = .silver }
         if let v = store.string(forKey: Key.hintsDone) {  // the raw values, with commas; unknown ones are dropped
             hintsDone = Set(v.split(separator: ",").compactMap { Hint(rawValue: String($0)) })
         }

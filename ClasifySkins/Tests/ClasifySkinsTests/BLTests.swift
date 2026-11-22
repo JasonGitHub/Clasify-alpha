@@ -32,7 +32,7 @@ import Testing
     }
 
     func render(_ color: DeviceColor, _ name: String) throws -> Shot {
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let renderer = ImageRenderer(content: PocketSkin(state: state, interactive: false))
         renderer.scale = 2

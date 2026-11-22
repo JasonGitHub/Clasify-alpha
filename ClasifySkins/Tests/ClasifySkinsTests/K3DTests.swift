@@ -36,7 +36,7 @@ import Testing
     /// A live screen changes only the LCD's color. Every alpha id stays.
     @Test func aLiveScreenKeepsTheIds() throws {
         let plain = try #require(K3DTextures.rgba(.front))
-        let shot = try #require(K3DSpike.snapshot(AppState()))
+        let shot = try #require(K3DSpike.snapshot(AppState.silver))
         let live = try #require(K3DTextures.front(screen: shot))
         #expect(stride(from: 3, to: plain.count, by: 4).allSatisfy { plain[$0] == live[$0] })
         #expect(pixel(live, 100, 1100) == pixel(plain, 100, 1100))  // the aluminium does not change
@@ -59,7 +59,7 @@ import Testing
     /// A turn to the front makes no picture.
     @Test func theTurnStartsAfterTheSnapshot() throws {
         var flip = K3DFlip()
-        let shot = try #require(K3DSpike.snapshot(AppState()))
+        let shot = try #require(K3DSpike.snapshot(AppState.silver))
         var made = Date.distantFuture
         flip.turn {
             Thread.sleep(forTimeInterval: 0.05)

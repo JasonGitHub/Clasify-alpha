@@ -348,7 +348,7 @@ struct K3DPartsTests {
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func apartWithTheAboutScreen() throws {
         let renderer = try #require(K3DRenderer.shared)
         for black in [false, true] {
-            var state = AppState()
+            var state = AppState.silver
             state.deviceColor = black ? .black : .silver
             state.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
             let shot = try #require(K3DSpike.snapshot(state))

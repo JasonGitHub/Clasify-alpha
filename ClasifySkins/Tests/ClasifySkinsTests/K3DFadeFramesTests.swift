@@ -18,7 +18,7 @@ import Testing
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theFramesNearTheFront(_ color: DeviceColor) throws {
         let renderer = try #require(K3DRenderer.shared)
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let black = color == .black
         let shot = try #require(K3DSpike.snapshot(state))
@@ -41,7 +41,7 @@ import Testing
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theFlipFramesOffTheFront(_ color: DeviceColor) throws {
         let renderer = try #require(K3DRenderer.shared)
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let black = color == .black
         let shot = try #require(K3DSpike.snapshot(state))
@@ -94,7 +94,7 @@ import Testing
     /// color, shows the old color's picture (`oldScreen`), not the new one's.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theSpinStartsFromTheOldColorsPicture() throws {
         let renderer = try #require(K3DRenderer.shared)
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = .black
         let newShot = try #require(K3DSpike.snapshot(state))  // the spin to Black
         let oldShot = try #require(K3DSpike.snapshot(state, black: false))  // Silver, as the 2D device to 180°
