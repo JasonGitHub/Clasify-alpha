@@ -1,5 +1,9 @@
+import { beta, testBuild } from "./beta";
 import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
+import { noPageMail, type PageMailer } from "./pagemail";
+import { vote } from "./vote";
+import { link, waitlist } from "./waitlist";
 
 // Activation (CLA-128): the app opens the page with a one-time code, the person types an
 // email, clicks the link in the mail, and presses Confirm. This file writes nothing to the
@@ -12,6 +16,12 @@ export interface Deps {
   human: (token: string) => Promise<boolean>;
   /** CLA-166: sends problem reports. None: every report is "busy". */
   reports?: ReportMailer;
+  /** CLA-172: the beta page's mails. None: every mail is "busy". */
+  pageMail?: PageMailer;
+  /** CLA-172: reads the beta feed. Default: fetch. */
+  fetcher?: typeof fetch;
+  /** CLA-172: work after the answer (the Worker's waitUntil), such as the beta feed's refresh. */
+  later?: (work: Promise<unknown>) => void;
 }
 
 const codeLife = 15 * 60_000;
@@ -32,7 +42,9 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   const now = deps.now();
   const db = env.DB;
   const device = await deviceHash(request);
-  const body = request.method === "POST" ? await request.json().catch(() => ({})) as Record<string, unknown> : {};
+  // Any body that is not a JSON object (bad JSON, null, a number, a list) reads as {}.
+  const json: unknown = request.method === "POST" ? await request.json().catch(() => ({})) : {};
+  const body = (json !== null && typeof json === "object" && !Array.isArray(json) ? json : {}) as Record<string, unknown>;
 
   const mac = (hash: string) => db.prepare("SELECT * FROM macs WHERE device_hash = ?").bind(hash).first<Mac>();
   const account = (id: string) => db.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first<Account>();
@@ -106,6 +118,17 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
   }
 
   switch (route) {
+    case "GET /v1/beta": {  // the beta page (CLA-172): the count and the newest beta, cached 30 s
+      const answer = reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch, now, testBuild(env), deps.later), 200, cors, "max-age=30");
+      answer.headers.set("Vary", "Origin");  // cacheable, so also without CORS
+      return answer;
+    }
+    case "POST /v1/waitlist":  // the beta page's waitlist form (CLA-172)
+      return reply({ result: await waitlist(db, body, now, Number(env.WAIT_DAY), deps.human, sha256, token) }, 200, cors);
+    case "POST /v1/link":  // the beta page's "Email me the link" (CLA-172)
+      return reply({ result: await link(db, body, now, Number(env.LINK_DAY), deps.human, sha256, deps.pageMail ?? noPageMail) }, 200, cors);
+    case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); no bot check, one a day per item per network
+      return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
       const answer = await feedback(db, device, body, now, deps.reports ?? noReports);
       return reply(answer.body, answer.status);
@@ -229,16 +252,16 @@ function token(): string {
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-async function sha256(text: string): Promise<string> {
+export async function sha256(text: string): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function reply(body: unknown, status = 200, cors: string | null = null): Response {
-  const headers: Record<string, string> = { "Content-Type": "application/json", "Cache-Control": "no-store" };
+function reply(body: unknown, status = 200, cors: string | null = null, cache = "no-store"): Response {
+  const headers: Record<string, string> = { "Content-Type": "application/json", "Cache-Control": cache };
   if (cors) {
     headers["Access-Control-Allow-Origin"] = cors;
-    headers["Access-Control-Allow-Methods"] = "POST";
+    headers["Access-Control-Allow-Methods"] = "GET, POST";
     headers["Access-Control-Allow-Headers"] = "Content-Type";
     headers["Vary"] = "Origin";
   }

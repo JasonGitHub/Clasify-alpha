@@ -77,7 +77,7 @@ struct PocketScreen: View {
     /// While the cover flies to Now Playing, the title bar still says "Cover Flow". It changes
     /// when the cover lands, 0.4 s after Center (card AH).
     private var title: String {
-        let flying = state.navMove == .fly && state.navForward && state.nowOverPanel
+        let flying = state.navMove == .fly && state.navForward && (state.nowOverPanel || state.nowOverCovers)
         guard flying, !reduceMotion, landedSeq != state.navSeq else { return Labels.title(top.screen, in: state) }
         return Labels.title(.coverFlow, in: state)
     }
@@ -110,16 +110,19 @@ struct PocketScreen: View {
         switch state.navMove {
         case .doors: return .linear(duration: state.navForward ? DoorsStage.openTime : DoorsStage.closeTime)
         case .flip: return Self.flipAnimation
-        case .fly: return PocketCoverFlow.flyAnimation
+        case .fly: return leap ? PocketCoverFlow.leapAnimation : PocketCoverFlow.flyAnimation
         case .push: return Self.slideAnimation
         }
     }
+
+    /// The middle cover flies between the covers and Now Playing, not the song panel's cover (card CI).
+    private var leap: Bool { state.nowOverCovers || top.screen == .coverFlow }
 
     /// The content's identity: a new one slides in. Cover Flow and its song panel are one
     /// view, so the cover turns over in place, and so is Now Playing when the cover flies there
     /// (card AH). A negative ID never meets a `navSeq`.
     private var contentID: Int {
-        guard state.coverFlowFrame != nil || state.nowOverPanel,
+        guard state.coverFlowFrame != nil || state.nowOverPanel || state.nowOverCovers,
             let i = state.stack.lastIndex(where: { $0.screen == .coverFlow })
         else {
             return state.navSeq
@@ -245,7 +248,7 @@ struct PocketScreen: View {
         .environment(\.navDoors, state.navMove == .doors)
         .task(id: state.navSeq) {
             let seq = state.navSeq
-            try? await Task.sleep(for: .seconds(PocketCoverFlow.flyTime))
+            try? await Task.sleep(for: .seconds(leap ? PocketCoverFlow.leapTime : PocketCoverFlow.flyTime))
             if !Task.isCancelled { landedSeq = seq }
         }
         .task(id: state.wholeSeq) {
@@ -258,8 +261,8 @@ struct PocketScreen: View {
         .overlay(alignment: .bottom) {
             if !state.toast.isEmpty {
                 Self.toast(state.toast, bottom: top.screen == .now ? 44 : 16)
-            } else if state.hintTip, let hint = state.hint {
-                HintTip(hint: hint, from: state.hintTipAt)
+            } else if state.hintTip, let hint = state.hint, state.hintOnDevice {
+                HintTip(hint: hint, from: state.hintTipAt, onNow: top.screen == .now)
             }
         }
         .frame(width: Pocket.screenWidth, height: Pocket.screenHeight)
@@ -361,7 +364,7 @@ struct PocketScreen: View {
     @ViewBuilder private var content: some View {
         if let message {
             MessageView(message: message)
-        } else if state.coverFlowFrame != nil || state.nowOverPanel {
+        } else if state.coverFlowFrame != nil || state.nowOverPanel || state.nowOverCovers {
             // Cover Flow, its song panel over it, and Now Playing when the cover flew there.
             PocketCoverFlow(state: state, input: input, landed: landedSeq == state.navSeq)
         } else if top.screen == .now {
@@ -420,6 +423,8 @@ struct PocketScreen: View {
 struct HintTip: View {
     let hint: Hint
     let from: Double
+    /// On Now Playing, so the tip takes the time bar's place.
+    var onNow = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.animationTime) private var fixedTime
 
@@ -427,7 +432,7 @@ struct HintTip: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || fixedTime != nil)) { context in
             let t = (fixedTime ?? context.date.timeIntervalSinceReferenceDate) - from
             let words = Labels.hintTip(hint)
-            PocketScreen.toastBox(bottom: hint == .menu || hint == .tourPlay ? 16 : 15) {
+            PocketScreen.toastBox(bottom: Self.bottom(hint, onNow: onNow)) {
                 HStack(spacing: 4) {
                     Text(words.lead)
                     if let mark = words.mark {
@@ -442,6 +447,13 @@ struct HintTip: View {
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Labels.hintTip(hint).spoken)
+    }
+
+    /// The tip's bottom edge above the screen's bottom: 16 pt as a toast, 15 pt in the time
+    /// bar's place. Card CE look A's menu bar label is a toast on a menu or list (Jason
+    /// 15:49 JST 11-21, "match exactly"), and like Next on Now Playing.
+    static func bottom(_ hint: Hint, onNow: Bool) -> CGFloat {
+        hint == .menu || hint == .tourPlay || (hint == .tourMenuBar && !onNow) ? 16 : 15
     }
 
     /// The tip's opacity `t` seconds after it starts.

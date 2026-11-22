@@ -1,6 +1,7 @@
 import ClasifyCore
 import Foundation
 import Security
+import Synchronization
 
 /// Card BI v2 (CLA-96): a beta is a Developer ID build. The app reads its own signature: a
 /// Team ID and a secure timestamp make it a beta that ends 30 days after that time. An ad-hoc
@@ -28,14 +29,27 @@ enum BetaSignature {
     }
 }
 
+/// CLA-171: the newest DMG's URL from the beta feed, for "Get New Beta". In memory only.
+final class BetaDownloadLink: Sendable {
+    private let value = Mutex<URL?>(nil)
+
+    var url: URL? { value.withLock { $0 } }
+    func set(_ url: URL?) { value.withLock { $0 = url } }
+
+    /// The newest DMG when the feed named a good one, else the beta page as before.
+    var target: URL { url ?? BetaSignature.downloadPage }
+}
+
 /// Card BV (CLA-125, change 314): reads the newest beta's build number from one small file on
-/// dl.getmypod.app (Cloudflare R2, written by app-dmg.yml), `{"build": 290, ...}`, once a launch. Only `build` is read. Offline, no answer in
-/// 5 s, an error status or a bad file give nil, with no error shown. The session is ephemeral:
-/// no cache and no cookies on disk.
+/// dl.getmypod.app (Cloudflare R2, written by app-dmg.yml), `{"build": 290, ..., "url": ...}`,
+/// once a launch. Offline, no answer in 5 s, an error status or a bad file give nil, with no
+/// error shown. The session is ephemeral: no cache and no cookies on disk. CLA-171: it also
+/// keeps the DMG's `url` in `link`, only when `BetaDownload.url` allows it.
 struct BetaFeedLive: BetaFeed {
     static let latest = URL(string: "https://dl.getmypod.app/beta/latest.json")!
+    let link: BetaDownloadLink
 
-    private struct Latest: Decodable { let build: Int }
+    private struct Latest: Decodable { let build: Int; let url: String? }
 
     func latestBuild() async -> Int? {
         let config = URLSessionConfiguration.ephemeral
@@ -48,6 +62,7 @@ struct BetaFeedLive: BetaFeed {
               (response as? HTTPURLResponse)?.statusCode == 200,
               let latest = try? JSONDecoder().decode(Latest.self, from: data), latest.build > 0
         else { return nil }
+        link.set(BetaDownload.url(latest.url))
         return latest.build
     }
 }

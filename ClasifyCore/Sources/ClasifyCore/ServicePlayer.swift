@@ -6,13 +6,19 @@ public final class ServicePlayer: Player {
     private let appleMusic: any Player
     /// The active service. A change stops the player of the service that was active.
     public var service: MusicService {
-        didSet { if service != oldValue { player(for: oldValue).stop() } }
+        didSet {
+            guard service != oldValue else { return }
+            player(for: oldValue).stop()
+            player(for: oldValue).setActive(false)
+            active.setActive(true)
+        }
     }
 
     public init(spotify: any Player, appleMusic: any Player, service: MusicService) {
         self.spotify = spotify
         self.appleMusic = appleMusic
         self.service = service
+        active.setActive(true)  // CLA-168
     }
 
     private func player(for service: MusicService) -> any Player {

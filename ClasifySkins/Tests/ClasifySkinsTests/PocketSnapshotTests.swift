@@ -387,7 +387,7 @@ import Testing
     @Test func onlyTheSelectedRowShowsAChevron() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 8  // About; Log out under it also opens a screen
+        s.top.sel = 7  // About; Log out under it also opens a screen
         let shot = try render(s, "settings-chevron")
         // The chevron is 8 points wide, 10 points in from the right edge of the list.
         let xs = Self.screenLeft + Self.screenWidth - 20...Self.screenLeft + Self.screenWidth - 8
@@ -395,11 +395,11 @@ import Testing
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
         }
-        #expect(box(8).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+        #expect(box(7).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
         // Card AN.1: Menu Bar shows "On" where a chevron goes, so About is checked unselected.
-        s.top.sel = 7
+        s.top.sel = 6
         let off = try render(s, "settings-chevron-off")
-        #expect(box(8).allSatisfy { off.isLight($0.0, $0.1) })  // no chevron on About
+        #expect(box(7).allSatisfy { off.isLight($0.0, $0.1) })  // no chevron on About
     }
 
     @Test func songListShowsArtistsAndTheScrollBar() throws {
@@ -660,6 +660,64 @@ import Testing
         #expect(near(at(1, CGPoint(x: 244, y: 197)), CGPoint(x: corner.x - 19, y: corner.y + 5.6)))
     }
 
+    /// Card CI 397 A (CLA-173): Play on the covers flies the middle cover itself, with no turn,
+    /// from its place in the strip to Now Playing's tilted cover. Saves mid-flight frames for MATCH.
+    @Test func theMiddleCoverFliesFromTheCoversToNowPlayingsCover() throws {
+        let size = CGSize(width: CoverFlowStrip.side, height: CoverFlowStrip.side)
+        func at(_ leap: Double, _ p: CGPoint) -> CGPoint { p.applying(LeapEffect(leap: leap).effectValue(size: size)) }
+        func near(_ a: CGPoint, _ b: CGPoint) -> Bool { abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01 }
+        // At the start it is the strip's 120 point middle cover, 22 points under the header.
+        #expect(near(at(0, .zero), CGPoint(x: 90, y: 22)))
+        #expect(near(at(0, CGPoint(x: 120, y: 120)), CGPoint(x: 210, y: 142)))
+        // At the end it is Now Playing's 126.6 point cover, with the photo's tilt, at (9, 14.6).
+        #expect(near(at(1, .zero), CGPoint(x: 9, y: 14.6)))
+        let corner = CGPoint(x: 126.6, y: 126.6).applying(Tilt().effectValue(size: size))
+        #expect(near(at(1, CGPoint(x: 120, y: 120)), CGPoint(x: corner.x + 9, y: corner.y + 14.6)))
+
+        // Five frames of the flight, side by side: the strip fades out in the first 0.25 s.
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        var s = sampleState()
+        s.library[0].tracks = ["Aja", "Blue", "Clouds", "Dark Side", "Eno"].enumerated().map { i, name in
+            Track(id: "t\(i)", title: "t\(i)", artist: "a", duration: 100, coverID: "c\(i)",
+                  album: Album(id: "spotify:album:\(i)", name: name, artist: "Artist \(i)"))
+        }
+        s.stack.append(Frame(screen: .coverFlow))
+        s.top.sel = 2
+        let art = Artwork { $0 == "c2" ? red : blue }
+        let frames = HStack(spacing: 8) {
+            ForEach([0.0, 0.25, 0.5, 0.75, 1.0], id: \.self) { leap in
+                ZStack(alignment: .topLeading) {
+                    // In flight the strip's own middle cover hides at once; the strip fades.
+                    CoverFlowStrip(albums: s.albums, covers: s.albumCovers, pos: 2, hidesMiddleCover: leap > 0)
+                        .opacity(max(0, 1 - leap * PocketCoverFlow.leapTime / 0.25))
+                    CoverLeap(leap: leap, image: red)
+                }
+                .frame(width: Pocket.screenWidth, height: 206, alignment: .topLeading)
+                .background(Color.white)
+                .clipped()
+            }
+        }
+        .environment(\.artwork, art)
+        let renderer = ImageRenderer(content: frames)
+        renderer.scale = CGFloat(Snapshot.scale)
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-cover-leap-frames.png"))
+        }
+        // The middle frame: the red cover half way, its top left near (49.5, 18.3).
+        let shot = Snapshot(bitmap: bitmap)
+        let half = 2 * (Int(Pocket.screenWidth) + 8)
+        let mid = shot.rgb(half + 49 + 60, 18 + 60)
+        #expect(mid.r > 200 && mid.b < 60, "mid \(mid)")
+        // The second frame: the strip's middle cover is gone, so no second red cover stays
+        // behind at its old place, right of the flying one.
+        let behind = shot.rgb(Int(Pocket.screenWidth) + 8 + 208, 26)
+        #expect(behind.g > 150 || behind.b > 150, "left behind \(behind)")
+    }
+
     @Test func nowPlayingOverTheSongPanelLooksLikeNowPlaying() throws {
         var s = sampleState()
         let album = Album(id: "spotify:album:h", name: "Hey", artist: "OutKast")
@@ -729,32 +787,33 @@ import Testing
         #expect(rows(2) { shot.isLight($0, $1) })  // the selected row's value
     }
 
-    /// Card AN.1 (CLA-43, 346): the 10th row, "Menu Bar: On", after Now Playing Bar.
+    /// Card AN.1 (CLA-43, 346): the 7th row, "Menu Bar: On", after Clicker (CLA-174: no Now Playing Bar row).
     @Test func settingsMenuBarRow() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 7
-        s.scrollUntil = 1  // 10 rows: the list scrolls, so a wheel step shows the scroll bar
+        s.top.sel = 6
+        s.scrollUntil = 1  // right after a wheel step
         let shot = try render(s, "settings-menu-bar")
-        #expect(shot.isBlue(100, Self.rowCenter(7)))
-        #expect(!shot.isBlue(100, Self.rowCenter(6)))
+        // Left of the label: at x 100 the bold "Menu Bar" itself can be under the point.
+        let x = Self.screenLeft + 4
+        #expect(shot.isBlue(x, Self.rowCenter(6)))
+        #expect(!shot.isBlue(x, Self.rowCenter(5)))
         let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, want = try reference(0x5d6772)
-        #expect(near(shot.rgb(thumbX, Self.listTop + 8), want))  // the thumb starts at the top
+        #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))  // 9 rows fit: no scroll bar
     }
 
-    /// Card AN.1: at Log out, the list has moved down one row and the thumb touches the bottom.
-    @Test func settingsScrollsToLogOut() throws {
+    /// CLA-174: Settings' 9 rows fit on one screen. At Log out the list does not move and shows no scroll bar.
+    @Test func settingsFitsOneScreenAtLogOut() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 9
-        s.top.off = 1
+        s.top.sel = 8
         s.scrollUntil = 1
         let shot = try render(s, "settings-log-out")
-        #expect(shot.isBlue(100, Self.rowCenter(8)))  // Log out, the last row on screen
+        #expect(shot.isBlue(100, Self.rowCenter(8)))  // Log out, the last row
         #expect(!shot.isBlue(100, Self.rowCenter(7)))  // About
         let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, want = try reference(0x5d6772)
-        #expect(near(shot.rgb(thumbX, Self.listTop + 200), want))  // the thumb's bottom
-        #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))  // the thumb left the top
+        #expect(!near(shot.rgb(thumbX, Self.listTop + 200), want))
+        #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))
     }
 
     @Test func nowPlayingShowsTheCover() throws {
@@ -975,6 +1034,38 @@ import Testing
         #expect(light(glow, Self.screenLeft + 150, bottom - 6) == light(plain, Self.screenLeft + 150, bottom - 6))  // no tip yet
         let box = light(tip, Self.screenLeft + 150, bottom - 6), side = light(tip, Self.screenLeft + 20, bottom - 6)
         #expect(box + 60 < side, "box \(box), side \(side)")  // the tip, by its middle; it does not fill the width
+    }
+
+    /// CLA-163, card CE look A (the default, Jason 16:23 JST 11-21): the menu bar hint also
+    /// shows the dark device label "The menu bar icon shows or hides myPod", 16 points above the
+    /// screen's bottom like a toast (15 on Now Playing). No wheel label lights.
+    @Test func theMenuBarHintShowsItsLabelOnTheDevice() throws {
+        var s = sampleState()
+        s.stack = [Frame(screen: .main)]
+        s.albumArt = .off  // glass under the label, as in the toast test
+        let plain = try render(s, "hint-menubar-none")
+        s.hint = .tourMenuBar
+        s.hintAt = -7
+        let glow = try render(s, "hint-menubar-glow")  // the icon glows first: nothing on the device yet
+        s.hintTip = true
+        let label = try render(s, "menu-bar-label-a")
+        func light(_ shot: Snapshot, _ x: Int, _ y: Int) -> Int { let c = shot.rgb(x, y); return max(c.r, c.g, c.b) }
+        let y = Self.screenBottom - 16 - 6
+        #expect(light(glow, Self.screenLeft + 150, y) == light(plain, Self.screenLeft + 150, y))
+        let box = light(label, Self.screenLeft + 150, y), side = light(label, Self.screenLeft + 4, y)
+        #expect(box + 60 < side, "box \(box), side \(side)")  // the label, by its middle; it does not fill the width
+        // The screen's last glass row is `screenBottom`, so this row is 1 pt under a 16 pt label,
+        // and inside a 15 pt one.
+        let under = light(label, Self.screenLeft + 150, Self.screenBottom - 15)
+        #expect(box + 40 < under, "box \(box), under \(under)")  // 16 points up, as the toast
+        #expect(HintTip.bottom(.tourMenuBar, onNow: false) == 16 && HintTip.bottom(.tourMenuBar, onNow: true) == 15)
+        #expect(HintTip.bottom(.tourNext, onNow: true) == 15 && HintTip.bottom(.menu, onNow: false) == 16)
+        // No wheel label lights: the MENU label stays as it was.
+        func lit(_ shot: Snapshot) -> Bool {
+            (325..<354).contains { y in (153..<213).contains { x in shot.isBlue(x, y) } }
+        }
+        #expect(!lit(label))
+        #expect(Labels.hintTip(.tourMenuBar).spoken == "The menu bar icon shows or hides myPod")
     }
 
     /// Changes 176 and 195: on Now Playing the play/pause label lights, and its tip takes the

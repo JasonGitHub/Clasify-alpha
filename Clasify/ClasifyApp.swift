@@ -57,7 +57,10 @@ enum ReportProblemWindow {
             NSApp.activate()
             return
         }
-        let window = ReportProblemPanel.make { text, writeBack in ProblemReporter.shared.send(text, writeBack: writeBack) }
+        // CG.3 (396): the screen follows the activation now; an open window keeps its screen.
+        let window = ReportProblemPanel.make(activated: ProblemReporter.shared.activated()) { text, writeBack in
+            ProblemReporter.shared.send(text, writeBack: writeBack)
+        }
         place(window)
         self.window = window
         window.makeKeyAndOrderFront(nil)
@@ -441,12 +444,14 @@ final class AppModel {
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
         let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
         let activator = ServerActivator()
-        let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(), activator: activator)
+        let betaLink = BetaDownloadLink()  // CLA-171: the newest DMG, from the beta feed
+        let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(link: betaLink), activator: activator)
         // CLA-97: the beta events go to the sender, before the first action. The person is the
         // account ID from the activation answer, in memory only.
         let sender = BetaSender(person: { [weak store] in store?.state.activation.account })
         store.onBetaEvent = { [weak sender] event in sender?.take(event) }
         store.send(.analyticsOn(sender.on))
+        store.send(.hintsTrial(HintsTrial.on))  // CLA-163, card CE.1: the menu bar step of the tour
         sender.start()
         // CLA-140: every launch asks the server, also with no device ID yet, so a Mac that was
         // turned off locks again. CLA-156: always, in every build (no switch).
@@ -490,7 +495,8 @@ final class AppModel {
             }
         }
         // Card BI v2: "Get New Beta" opens the download page; "Quit" on the ended beta quits.
-        store.onGetNewBeta = { NSWorkspace.shared.open(BetaSignature.downloadPage) }
+        // CLA-171: it downloads the newest DMG directly when the beta feed named a good one.
+        store.onGetNewBeta = { NSWorkspace.shared.open(betaLink.target) }
         store.onQuit = { NSApplication.shared.terminate(nil) }
         // Card AN.1 (CLA-43): the menu bar icon, and the window's fade in and out.
         store.onShowWindow = { DeviceWindow.show() }
@@ -504,6 +510,7 @@ final class AppModel {
         battery = BatteryWatcher(store: store)
         windowWatcher = WindowWatcher(store: store)  // CLA-162
         ProblemReporter.shared.service = { [weak store] in store?.state.service.rawValue ?? "" }  // CLA-166
+        ProblemReporter.shared.activated = { [weak store] in store?.state.activated ?? false }  // CG.3
         // A change made in the Spotify app shows when the user comes back to Clasify.
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main
@@ -565,7 +572,10 @@ final class AppModel {
                 let betaDue = state.betaDue > 0 && now >= state.betaDue
                 // Card BW, CLA-146: the Activate screen's timer checks, their 3-minute end, and the 1.5 s beat.
                 let activateDue = state.activateDue(at: now)
-                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue {
+                // CLA-170: a song's read with no answer in 3 s; Now Playing shows the service name.
+                let readDue = state.readOverdue(at: now)
+                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue
+                    || readDue {
                     store?.send(.tick)
                 }
                 // When the browser login works (change 170) or the Spotify app is found (174),

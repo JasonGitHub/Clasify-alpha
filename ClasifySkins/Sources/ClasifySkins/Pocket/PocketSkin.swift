@@ -82,12 +82,13 @@ public struct PocketSkin: View {
 
     /// The wheel label of the first-time hint that shows (card BA, change 151).
     private var labelGlow: ClickWheel.LabelGlow? {
-        guard !preview, let hint = state.hint else { return nil }
+        guard !preview, let hint = state.hint, hint.onDevice else { return nil }
         let zones: [ClickWheel.Zone] = switch hint {
         case .menu, .tourMenu: [.menu]
         case .playPause, .tourPlay: [.play]
         case .next: [.next]
         case .tourNext: [.prev, .next]
+        case .tourMenuBar, .tourTurn: []  // not on the device (`onDevice`)
         }
         return ClickWheel.LabelGlow(zones: zones, from: state.hintAt)
     }

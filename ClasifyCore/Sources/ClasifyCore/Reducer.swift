@@ -62,6 +62,9 @@ public enum Action: Equatable, Sendable {
     /// The engine moved on to another track in the same context (its own next, prev or auto-advance).
     /// `playing` is the engine's play state after the change.
     case trackChanged(String, playing: Bool, generation: Int)
+    /// CLA-168: the engine reports its own volume, in percent: on Apple Music, the Mac's output
+    /// volume, also when the volume keys change it. Applied only on Apple Music.
+    case volumeReported(Int)
     /// The details of one track that `.readTrack` asked for. nil when the read failed.
     case trackRead(String, Track?)
     /// The engine found a track that Spotify already plays on this Mac, with no load from
@@ -120,6 +123,8 @@ public enum Action: Equatable, Sendable {
     /// CLA-97: the sender takes events: a PostHog key is in the build and `analytics.on` is on.
     /// The app sends it at start and when the switch changes.
     case analyticsOn(Bool)
+    /// CLA-163: the hints trial switch (`hints.trial`). The app sends it at start.
+    case hintsTrial(Bool)
     /// CLA-97 (A4): MetricKit reported crashes or hangs of earlier runs. Only the first
     /// `AppProblem.maxPerLaunch` of a run become events. With `analytics.on` off, the sender drops them.
     case appProblems([AppProblem])
@@ -260,6 +265,9 @@ public let fastSpinTime = 0.4
 /// Seconds after the last wheel step before Cover Flow hides the big letter.
 public let letterTime = 1.0
 
+/// CLA-170: how long Now Playing keeps the earlier song's words for a read with no answer.
+let readWait = 3.0
+
 func clamp<T: Comparable>(_ v: T, _ lo: T, _ hi: T) -> T { max(lo, min(hi, v)) }
 
 /// Card AN.1 (CLA-43, 348): screens that show myPod when it is hidden by the menu bar icon.
@@ -325,6 +333,12 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if s.shuffleToken == token && !s.top.error {
             s.shuffleToken = nil
             shuffle(s.shuffleList)
+        }
+        if s.startToken == token && !s.top.error {  // CLA-173: a list start waited for this read
+            s.startToken = nil
+            // Now Playing takes the loading frame's place, so MENU goes back to the row. An
+            // empty list stays on screen: there is nothing to play.
+            if !s.tracks(in: s.startList).isEmpty { s.stack.removeLast(); startList(s.startList) }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
@@ -403,7 +417,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// details once. A read in flight or a failed read is not started again.
     func readIfUnknown(_ id: String) {
         guard let ref = s.current, s.track(ref) == nil, id.hasPrefix("spotify:track:"), !s.trackReads.contains(id) else { return }
-        s.trackReads.insert(id)
+        s.trackReads.insert(id); s.readsPending[id] = now
         fx.append(.readTrack(id))
     }
     /// The Now Playing row comes onto the main menu (`by` 1) or leaves it (-1). Each main menu
@@ -564,6 +578,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if s.top.loading {
             s.tok += 1
             if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }
+            if s.startToken == s.top.token { s.startToken = s.tok }
             s.top.token = s.tok
             fetch(s.top.screen)
         }
@@ -599,12 +614,21 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         stop()
         s.stack = [Frame(screen: .login)]; s.signedIn = false; s.sessionEnded = false  // the library belongs to that account
         s.library = []; s.playlistsLoaded = false; s.loadedTracks = []; s.artists = []; s.artistsLoaded = false
-        s.extraTracks = []; s.trackReads = []; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
+        s.extraTracks = []; s.trackReads = []; s.readsPending = [:]; s.heldWords = nil; s.readAt = [:]; s.refreshing = []; s.artReads = [:]
         s.coverFlowAlbum = nil; s.letterUntil = 0; s.coverFlowSteps = []
         s.toast = ""; s.toastUntil = 0  // an older toast must not cover the login words
         s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
         s.tourRestAt = now  // the tour queue stays for the next login (card BA.2)
         s.pendingService = nil
+        s.startToken = nil; s.startOnCovers = false  // a late read must not fill the next account's library
+    }
+    /// Makes `service` the active one. CLA-168: `volume` is the active service's volume; on
+    /// Apple Music it is the Mac's output volume. Spotify's waits in `spotifyVolume` and comes
+    /// back on the switch back. The Spotify player kept it too: only the active one gets volume.
+    func use(_ service: MusicService) {
+        if s.service == .spotify && service != .spotify { s.spotifyVolume = s.volume }
+        if s.service != .spotify && service == .spotify { s.volume = s.spotifyVolume }
+        s.service = service
     }
     /// Card BM, change 260: leaving Settings with another service. The old one stops, its
     /// library leaves, and the new one logs in with its stored login: its main menu opens at
@@ -612,7 +636,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     func switchService(to service: MusicService) {
         signOut()
         s.controlLostAt = nil  // CLA-97: the old service's loss ends with no control_back; the new one counts its own
-        s.service = service
+        use(service)
         fx.append(.setService(service))
         s.authAttempt += 1; s.restoring = true
         fx.append(.restoreSession(token: s.authAttempt))
@@ -633,14 +657,34 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if s.top.loading {
             // The shuffle list that loads starts when it is read. A start already pending stays as it is.
             guard s.top.screen == .tracks(playlist: s.shuffleList), s.shuffleToken != s.top.token else { return }
-            s.shuffleToken = s.top.token
+            s.shuffleToken = s.top.token; s.startToken = nil
             return
         }
         if s.loadedTracks.contains(s.shuffleList) {
             shuffle(s.shuffleList)
         } else {  // not read yet: load, then shuffle
-            open(.tracks(playlist: s.shuffleList)); s.shuffleToken = s.tok
+            open(.tracks(playlist: s.shuffleList)); s.shuffleToken = s.tok; s.startToken = nil
         }
+    }
+    /// CLA-173: Play on a playlist or album row starts it on Now Playing, like the iPod. Now
+    /// Playing opens over the row's own screen, so MENU goes back to the same row. A list not
+    /// read yet shows its loading look while it reads, as Shuffle Songs does, and Now Playing
+    /// then takes its place. An empty list opens. Cover Flow's covers: see `.play`.
+    func playList(_ id: String, on screen: Screen) {
+        if s.offline { return toast(offlineStart) }
+        if s.isLoaded(screen) && !s.tracks(in: id).isEmpty {
+            refreshIfStale(screen)  // as opening it would: an old copy reads again behind Now Playing
+            return startList(id)
+        }
+        open(screen)
+        if s.top.loading { s.startToken = s.top.token; s.startList = id; s.shuffleToken = nil }
+    }
+    /// Starts a read list as a song pick does: from its first song, or with Shuffle on from a
+    /// random song, so the queue is the same as a pick in that list. An empty list plays nothing.
+    func startList(_ id: String) {
+        let songs = s.tracks(in: id)
+        guard !songs.isEmpty else { return }
+        play(id, songs[s.shuffle ? env.random(songs.count) : 0].id)
     }
     /// Cover Flow opens on the playing album, else on the album it showed last, else on the
     /// middle album (card AE).
@@ -711,6 +755,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         }
         switch action {  // change 312: a key or a wheel turn; a later beta answer shows nothing
         case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: s.touched = true
+        default: break
+        }
+        switch action {  // CLA-173: another input ends a start that waits on the covers
+        case .wheel, .select, .menu, .next, .prev, .toggleShuffle, .cycleRepeat:
+            if s.startOnCovers { s.startOnCovers = false; s.startToken = nil }
         default: break
         }
         switch action {
@@ -796,6 +845,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.top.error {  // retry
                 s.tok += 1
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }  // a pending shuffle follows the retry
+                if s.startToken == s.top.token { s.startToken = s.tok }
                 s.top.loading = true; s.top.error = false; s.top.token = s.tok
                 fetch(s.top.screen)
                 return
@@ -875,13 +925,12 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .albumArt: s.albumArt = s.albumArt.next
             case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
-            case .nowPlayingBar: s.nowPlayingBar.toggle()
             case .menuBar: s.menuBar.toggle()  // card AN.1, 346: the app adds or takes away the icon
             case .color(let color):  // card AW: a press saves the color, then the music pick (card BM, 257)
                 s.deviceColor = color
                 if s.signedIn { setupNext() } else { s.stack.append(pickMusic()) }
             case .pickService(let service):
-                if service != s.service { s.service = service; fx.append(.setService(service)) }
+                if service != s.service { use(service); fx.append(.setService(service)) }
                 if service == .spotify {
                     // Today's Log In. After a log out on Apple Music, a Spotify login that is
                     // still stored goes on with no browser: "Signing in…" first. In the first
@@ -960,6 +1009,26 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // The tour's Play starts Shuffle Songs on Now Playing, also when Spotify already had a
             // song when Clasify started (change 199, CLA-161).
             if s.tour == .tourPlay && s.top.screen == .main { return shuffleSongs() }
+            // CLA-173: a playlist or album row, or Cover Flow's covers, start that list. A list
+            // start that waits for its read stays as it is. Every other screen and row: as before.
+            if (s.top.loading && s.startToken == s.top.token) || s.startOnCovers { return }
+            if s.top.screen == .coverFlow, !s.top.loading, s.albums.indices.contains(s.top.sel) {
+                let id = s.albums[s.top.sel].id
+                s.letterUntil = 0; s.coverFlowSteps = []  // as Select: MENU comes back with no letter
+                // Now Playing opens over the covers. An empty album plays nothing and the covers stay.
+                if s.offline { return toast(offlineStart) }
+                if s.isLoaded(.albumPanel(album: id)) { refreshIfStale(.albumPanel(album: id)); return startList(id) }
+                // Not read yet: the covers stay, with the album in the middle, while it reads.
+                s.tok += 1
+                s.startToken = s.tok; s.startList = id; s.startOnCovers = true; s.shuffleToken = nil
+                return fetch(.albumPanel(album: id))
+            }
+            if s.top.screen.isList, !s.top.loading, case let rows = s.rows(for: s.top), rows.indices.contains(s.top.sel) {
+                switch rows[s.top.sel] {
+                case .playlist(let id), .album(let id): return playList(id, on: .tracks(playlist: id))
+                default: break
+                }
+            }
             guard s.current != nil else {
                 // CLA-61, CLA-161: nothing to resume, so Play does what Shuffle Songs does. Only on
                 // the main screens: never during setup, at login, or on the Spotify App screen.
@@ -985,6 +1054,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
+            if s.readOverdue(at: now) {  // CLA-170: a silent read
+                s.readsPending = s.readsPending.filter { now - $0.value < readWait }
+            }
             // Card BA, change 195: the tip after 3 pulses, then the end after 10 s.
             if s.hint != nil && s.hintDue > 0 && now >= s.hintDue { if s.hintTip { endHint(done: true) } else { s.hintTip = true } }
             if s.namesHold > 0 && now >= s.namesHold { endHeldRead() }  // change 191: every name has shown
@@ -1016,6 +1088,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 && abs(t - s.seekTarget) > seekSlack + since { return }
             if s.current != nil && gen == s.playGen { s.t = t; s.beforeLoad = nil; s.loadPending = false }  // the load plays
 
+        case .volumeReported(let percent):  // Spotify's volume stays in `volume` / `spotifyVolume`
+            guard s.service == .appleMusic else { return }
+            s.volume = clamp(percent, 0, 100)
+
         case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end
             guard s.isPlaying, s.current != nil, gen == s.playGen else { return }
             s.isPlaying = false; s.t = 0
@@ -1024,12 +1100,17 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // Same playlist. A track that is not in our copy of it still shows as current, by ID.
             guard s.current != nil, gen == s.playGen else { return }
             s.isPlaying = playing; s.beforeLoad = nil; s.loadPending = false  // the load plays
-            if s.current?.track != id { s.current?.track = id; s.t = 0 }
+            if s.current?.track != id {
+                // CLA-170: an unknown song keeps the last known words (fast Next: still the first one's).
+                if let known = s.current.flatMap({ s.track($0) }) { s.heldWords = NowWords(title: known.title, artist: known.artist) }
+                s.current?.track = id; s.t = 0
+            }
             readIfUnknown(id)
 
         case .trackRead(let id, let track):
             // Not asked for in this session, for example a read from before a sign-out.
             guard s.trackReads.contains(id) else { return }
+            s.readsPending[id] = nil  // CLA-170: answered, so the words wait no more
             guard let track else { return }  // failed: the ID stays, so it is not read again
             s.trackReads.remove(id)
             keepExtra(track)
@@ -1038,6 +1119,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             guard s.current == nil, gen == s.playGen else { return }  // a load or a newer one came first
             if s.activateGated && s.stack.first?.screen == .activate { return }  // CLA-140: nothing plays behind Activate
             s.current = TrackRef(playlist: pl ?? "", track: id)  // "" is no playlist of ours
+            s.heldWords = nil  // CLA-170: no earlier song
             s.isPlaying = playing; s.t = t
             shiftMainSelection(by: 1)  // the new Now Playing row goes on top: keep the pick
             readIfUnknown(id)
@@ -1152,7 +1234,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.readAt[id] = now
 
         case .tracksLoaded(let token, let id, let tracks):
-            guard s.top.loading, s.top.token == token else { return }  // stale load
+            // CLA-173: read behind the covers, while they still show.
+            let onCovers = s.startOnCovers && s.startToken == token && s.top.screen == .coverFlow
+            guard onCovers || (s.top.loading && s.top.token == token) else { return }  // stale load
             if let tracks {
                 if let i = s.library.firstIndex(where: { $0.id == id }) {
                     s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
@@ -1163,6 +1247,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 }
                 s.loadedTracks.insert(id)
                 s.readAt[id] = now
+            }
+            if onCovers {
+                s.startOnCovers = false; s.startToken = nil
+                if tracks == nil || s.offline { return toast("Can’t reach \(s.words.service)") }
+                return startList(id)  // an empty album plays nothing: the covers stay
             }
             if s.top.screen == .yourMusic, let tracks, !s.offline {
                 // Card AY, change 191: "Getting your music" stays until every name has shown.
@@ -1232,6 +1321,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if onMain && s.top.loading {  // a list opened meanwhile: its read starts now
                 s.tok += 1
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }
+                if s.startToken == s.top.token { s.startToken = s.tok }
                 s.top.token = s.tok
                 fetch(s.top.screen)
             }
@@ -1369,6 +1459,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .used, .willQuit, .view3D, .window: break  // only for `day_active` (dayEvents)
         case .analyticsOn(let on): s.analyticsOn = on
+        case .hintsTrial(let on): s.hintsTrial = on
         case .appProblems(let problems):
             // The budget is for the whole run: MetricKit can hand over reports more than once.
             for problem in problems.prefix(max(0, AppProblem.maxPerLaunch - s.problemsSent)) {
@@ -1410,7 +1501,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         default: break
         }
     }
-    let wasOverPanel = s.nowOverPanel
+    let wasOverPanel = s.nowOverPanel || s.nowOverCovers
     let wasSignedIn = s.signedIn
     let rowBefore = s.halfRow
     let wasOffline = s.offline
@@ -1432,8 +1523,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         // Hello has no title bar, so the whole screen moves to and from it too (CLA-62).
         let whole = s.isHalf(before.1) != s.isHalf(s.top.screen) || before.1 == .hello || s.top.screen == .hello
         if whole { s.wholeSeq += 1 }
-        // The cover flies only to and from a Now Playing that shows the panel's album.
-        let fly = before.1 == .now ? wasOverPanel : s.nowOverPanel
+        // The cover flies only to and from a Now Playing that shows the panel's album, or the
+        // middle album of the covers (card CI).
+        let fly = before.1 == .now ? wasOverPanel : s.nowOverPanel || s.nowOverCovers
         s.navMove = AppState.move(between: before.1, and: s.top.screen, whole: whole, fly: fly)
     }
     // A list shows its scroll bar for a moment when it appears: on a new screen, or when its
@@ -1491,16 +1583,25 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if !s.tourOn && before.1 == .yourMusic && s.top.screen == .main && s.setupDone && s.hintsDone.isDisjoint(with: steps) {
             s.tourOn = true; s.tourRestAt = now  // saved: once ever
         }
+        // CLA-163, card CE.1: a tour that ended before the trial's step came goes on with it.
+        if !s.tourOn && s.setupDone && s.hintsDone.isSuperset(of: steps)
+            && s.tourSteps.contains(where: { !s.hintsDone.contains($0) }) {
+            s.tourOn = true; s.tourRestAt = now
+        }
         guard s.tourOn else { return }
         switch action {
         case .play: s.hintsDone.insert(.tourPlay)
         case .next, .prev: s.hintsDone.insert(.tourNext)
         case .menu where s.stack.count < before.0: s.hintsDone.insert(.tourMenu)  // MENU that went back
+        case .menuBarClick where s.tourSteps.contains(.tourMenuBar): s.hintsDone.insert(.tourMenuBar)  // 388: any click
+        case .deviceTurned(true) where s.tourSteps.contains(.tourTurn): s.hintsDone.insert(.tourTurn)  // the first ⌘ turn
         default: break
         }
         if s.isPlaying { s.hintsDone.insert(.tourPlay) }  // the music started another way
         switch action {
-        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat:
+        // CE.1: a click on the menu bar icon and a ⌘ turn are input too (mock), so the next
+        // hint waits 3 s after them: the menu bar hint does not glow the moment a turn ends it.
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat, .menuBarClick, .deviceTurned:
             if let hint = tourShown, !s.hintsDone.contains(hint) {
                 let n = s.tourHides[hint, default: 0] + 1
                 s.tourHides[hint] = n
@@ -1522,7 +1623,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         guard shown != s.hint else { return }
         if shown == nil { return endHint(done: false) }
         if s.hint == nil && !s.toast.isEmpty { return }  // a status toast goes first
-        s.hint = shown; s.hintAt = now; s.hintTip = shown != .tourPlay
+        s.hint = shown; s.hintAt = now; s.hintTip = !s.glowsFirst(shown)
     }
     if case .reset = action {} else { tour() }
     if case .reset = action {} else {
@@ -1540,7 +1641,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // takes its place, and the volume bar, a scrub or a setting needs that row.
             case .playPause: return playing()
             case .next: return playing() && s.hintsDone.contains(.playPause) && s.navSeq != s.hintPlaySeq
-            case .tourPlay, .tourNext, .tourMenu: return false  // see `tour()`
+            case .tourPlay, .tourNext, .tourMenu, .tourMenuBar, .tourTurn: return false  // see `tour()`
             }
         }
         if s.tour != nil {  // the tour shows its own hints

@@ -15,11 +15,37 @@
     { "pattern": "api.getmypod.app", "custom_domain": true },
     { "pattern": "getmypod.app/activate*", "zone_name": "getmypod.app" }
   ],
-  // The beta cap (accounts), the Mac limit per account, and link mails a day (Resend free: 100).
+  // The beta cap (accounts; 25, CLA-172), the Mac limit per account, and link mails a day (Resend free: 100).
   // MAIL_HOUR and MAIL_DAY_EACH: link mails per address and per device, an hour and a day.
   // SWAPS and SWAP_DAYS (CLA-133): a 3rd Mac replaces the least used one, at most SWAPS times in SWAP_DAYS days.
+  // WAIT_DAY and LINK_DAY (CLA-172): waitlist tries and link mails a day from the beta page, all addresses together.
   // PAGE_ORIGIN: where the page is (path /activate/). It sets the mail link, CORS and the bot check.
   // Secrets that Jason adds with `wrangler secret put`: RESEND_KEY, ALERT_TO, TURNSTILE_SECRET.
-  "vars": { "CAP": "100", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "PAGE_ORIGIN": "https://getmypod.app" },
-  "observability": { "enabled": false }
+  "vars": { "CAP": "25", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "WAIT_DAY": "300", "LINK_DAY": "20", "PAGE_ORIGIN": "https://getmypod.app" },
+  "observability": { "enabled": false },
+  // CLA-172: the open-spot mails, once an hour.
+  "triggers": { "crons": ["0 * * * *"] },
+  // CLA-172: the test server, for the beta page before go-live (Jason OK 23:45 JST 11-21).
+  // `wrangler deploy --env test` makes a second Worker with its own empty D1, on workers.dev only:
+  // no route, so it never touches getmypod.app or api.getmypod.app. No RESEND_KEY: activation mails
+  // are "busy", and page mails go nowhere but count as sent. TEST_BUILD: a stand-in beta build while
+  // there is no beta feed (a link to a file that does not exist). Every answer, the static pages
+  // too (run_worker_first), carries X-Robots-Tag: noindex.
+  // PAGE_ORIGIN and the test Turnstile secret are Worker secrets on the test Worker only (vars are
+  // not inherited by an env, so no PAGE_ORIGIN var hides them). The test host is never in the repo.
+  "env": {
+    "test": {
+      "name": "mypod-activation-test",
+      "workers_dev": true,
+      "routes": [],
+      "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": true },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "mypod-activation-test", "database_id": "6398b99e-5891-451b-9132-b125747d6af0" }
+      ],
+      "vars": { "CAP": "25", "MACS": "2", "SWAPS": "3", "SWAP_DAYS": "30", "MAIL_DAY": "95", "MAIL_HOUR": "3", "MAIL_DAY_EACH": "5", "WAIT_DAY": "300", "LINK_DAY": "20",
+        "TEST_SERVER": "1", "TEST_BUILD": "999" },
+      "triggers": { "crons": ["0 * * * *"] },
+      "observability": { "enabled": false }
+    }
+  }
 }

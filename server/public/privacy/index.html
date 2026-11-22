@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy · myPod</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="canonical" href="https://getmypod.app/privacy/">
+<meta name="description" content="What myPod keeps, why, and who helps us.">
+<style>
+*{box-sizing:border-box}
+html{background:#f6f8fa}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',Helvetica,Inter,Arial,sans-serif;color:#11161c;-webkit-font-smoothing:antialiased;background:#f6f8fa}
+a{color:#1f6fd6;text-decoration:none}a:hover{text-decoration:underline}
+.top{background:radial-gradient(700px 420px at 78% 40%,rgba(90,163,240,.26),rgba(90,163,240,0) 66%),linear-gradient(#0a0f16,#101a27 55%,#16263a);color:#fff;padding:0 0 46px}
+.nav{display:flex;justify-content:space-between;align-items:center;max-width:1180px;margin:0 auto;padding:18px 32px 0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:20px;letter-spacing:-.2px;color:#fff}
+.brand:hover{text-decoration:none}
+.brand span{font-size:11px;font-weight:700;letter-spacing:.8px;padding:3px 7px;border-radius:5px;background:rgba(255,255,255,.16);color:#d9e6f3}
+.nav .back{color:#a9d0ff;font-size:14px;font-weight:600}
+.hd{max-width:720px;margin:0 auto;padding:54px 24px 0}
+h1{margin:0 0 14px;font-size:52px;line-height:1.02;letter-spacing:-1.6px;font-weight:800}
+.lead{margin:0;font-size:18px;line-height:1.5;color:#c9d3df;max-width:34em}
+.upd{margin:14px 0 0;font-size:13px;color:#93a4b8}
+main{max-width:720px;margin:0 auto;padding:36px 24px 20px}
+.card{background:#fff;border:1px solid #e3e8ee;border-radius:16px;padding:22px 26px;margin:0 0 16px;box-shadow:0 10px 30px rgba(20,30,40,.05)}
+h2{margin:0 0 10px;font-size:19px;letter-spacing:-.3px}
+ul{margin:0;padding:0;list-style:none}
+li{position:relative;padding-left:16px;margin:0 0 8px;font-size:15px;line-height:1.5;color:#3d454e}
+li:last-child{margin-bottom:0}
+li::before{content:"";position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:#5aa3f0}
+li b{color:#11161c}
+code{display:block;width:fit-content;max-width:100%;margin-top:6px;font:12.5px/1.5 ui-monospace,Menlo,monospace;background:#eef3f8;border:1px solid #dde5ee;border-radius:6px;padding:2px 6px;word-break:break-all}
+footer{text-align:center;font-size:10.5px;line-height:1.5;color:#aab3bd;padding:14px 24px 28px}
+@media (max-width:600px){h1{font-size:40px}.hd{padding-top:38px}.nav{padding:16px 20px 0}.card{padding:20px}}
+</style>
+</head>
+<body>
+<div class="top">
+  <nav class="nav"><a class="brand" href="../index.html">myPod <span>BETA</span></a><a class="back" href="../index.html">Back to myPod</a></nav>
+  <div class="hd">
+    <h1>Privacy</h1>
+    <p class="lead">myPod is a music player by CappyAI Ltd. We keep only what we need to run the beta.</p>
+    <p class="upd">Updated 21 November 2026</p>
+  </div>
+</div>
+<main>
+  <section class="card"><h2>Your music</h2><ul>
+    <li>myPod plays your music through Spotify or Apple Music. Your login stays on your Mac, and we never see it.</li>
+    <li>myPod never changes your playlists or liked songs. It saves no music and no covers.</li>
+  </ul></section>
+
+  <section class="card"><h2>Your account</h2><ul>
+    <li>To turn on myPod, you give your email. Our server keeps your email, an account number, a code for each Mac, and the dates you joined and last used myPod.</li>
+    <li>If you wait for a beta spot, we write to you only about your spot and the myPod launch.</li>
+  </ul></section>
+
+  <section class="card"><h2>Usage stats</h2><ul>
+    <li>myPod sends usage stats: setup steps, songs and minutes played, features used, and crashes. They help us fix myPod and choose what to build next.</li>
+    <li>They carry your account number, never song, artist or playlist names. Our stats service keeps them with your country and city.</li>
+    <li>To turn them off, paste this in Terminal:<code>defaults write com.cappyai.mypod analytics.on -bool false</code></li>
+  </ul></section>
+
+  <section class="card"><h2>Report a Problem</h2><ul>
+    <li>A report carries your note, your account number, and basic facts about your Mac and myPod. It carries your email only if you ask us to write back.</li>
+  </ul></section>
+
+  <section class="card"><h2>Who helps us</h2><ul>
+    <li>Trusted services help us run our server and website, send mail and keep usage stats. Some of them are in the US. Write to us for the list.</li>
+  </ul></section>
+
+  <section class="card"><h2>Your data</h2><ul>
+    <li>We use it to run the beta and make myPod better. We keep it only while we need it for that. We do not sell it.</li>
+    <li>To see, fix or delete your data, write to <a href="mailto:feedback@getmypod.app">feedback@getmypod.app</a>. We answer within a month. You can also complain to your data protection authority.</li>
+  </ul></section>
+</main>
+<footer>© 2026 CappyAI Ltd. myPod is not affiliated with Apple or Spotify.</footer>
+</body>
+</html>

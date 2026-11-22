@@ -12,7 +12,9 @@ import Foundation
 /// while it has a queue, and reports `.position`, `.trackChanged` and `.trackEnded`.
 final class AppleMusicPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
-    var send: (Action) -> Void = { _ in }
+    var send: (Action) -> Void = { _ in } {
+        didSet { if active, let percent = macVolume.read() { send(.volumeReported(percent)) } }  // CLA-168
+    }
 
     private var player: ApplicationMusicPlayer { ApplicationMusicPlayer.shared }
     /// The generation of the newest load, seek, next or prev. Every report carries it.
@@ -46,6 +48,12 @@ final class AppleMusicPlayer: Player {
     /// entries can carry other IDs than the library songs that we queued (build 177: a catalog
     /// ID, not checked on a Mac), so a poll finds the song by any of its keys.
     private var queued = QueueMatch()
+    /// CLA-168: the Mac's output volume, and whether Apple Music is the active service.
+    private let macVolume = MacVolume()
+    private var active = false
+    private static let settle = 0.5
+    private var quietUntil = Date.distantPast
+    private var settling: Task<Void, Never>?
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
@@ -173,9 +181,38 @@ final class AppleMusicPlayer: Player {
         player.playbackTime = seconds
     }
 
-    /// MusicKit has no volume control on the Mac (`MPVolumeView` does not work with
-    /// `ApplicationMusicPlayer`). The Mac's own volume applies.
-    func setVolume(_ percent: Int) {}
+    /// CLA-168: MusicKit has no volume control on the Mac (`MPVolumeView` does not work with
+    /// `ApplicationMusicPlayer`), so the wheel sets the Mac's own output volume. The reports of
+    /// our own writes wait until the wheel rests for `settle` seconds, then the real volume is
+    /// reported once: a late echo of an older step must not move the bar back.
+    func setVolume(_ percent: Int) {
+        macVolume.write(percent)
+        quietUntil = Date.now.addingTimeInterval(Self.settle)
+        settling?.cancel()
+        settling = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.settle))
+            guard !Task.isCancelled, let self, self.active, let percent = self.macVolume.read() else { return }
+            self.send(.volumeReported(percent))
+        }
+    }
+
+    /// CLA-168: Apple Music is the active service (or not). Active, the bar follows the Mac's
+    /// volume: now, and on each change by the volume keys, the menu bar or a new output device.
+    func setActive(_ on: Bool) {
+        active = on
+        settling?.cancel()
+        if on {
+            macVolume.onChange = { [weak self] percent in self?.heard(percent) }
+            macVolume.start()
+        } else {
+            macVolume.stop()
+        }
+    }
+
+    private func heard(_ percent: Int) {
+        guard active, Date.now >= quietUntil else { return }
+        send(.volumeReported(percent))
+    }
 
     private func applyModes() {
         guard hasQueue else { return }

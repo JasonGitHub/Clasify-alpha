@@ -15,6 +15,9 @@ enum Labels {
         case .tourPlay: ("Press Play to start your music", nil, "", "Press Play to start your music")
         case .tourNext: ("Press Next for the next song", nil, "", "Press Next for the next song")
         case .tourMenu: ("Press MENU to go back", nil, "", "Press MENU to go back")
+        case .tourTurn: ("", nil, "", "")  // CLA-163, card CE.1: the app draws it, not the device
+        // CLA-163, card CE look A: the menu bar hint's words on the device.
+        case .tourMenuBar: ("The menu bar icon shows or hides myPod", nil, "", "The menu bar icon shows or hides myPod")
         }
     }
 
@@ -101,7 +104,6 @@ enum Labels {
         case .albumArt: return RowText(label: "Album Art", value: state.albumArt.rawValue)
         case .deviceColor: return RowText(label: "Color", value: state.deviceColor.rawValue)  // change 169
         case .clicker: return RowText(label: "Clicker", value: onOff(state.clicker))
-        case .nowPlayingBar: return RowText(label: "Now Playing Bar", value: onOff(state.nowPlayingBar))
         case .menuBar: return RowText(label: "Menu Bar", value: onOff(state.menuBar))
         case .about: return RowText(label: "About", opens: true)
         case .logOut: return RowText(label: "Log out", opens: true)
@@ -289,11 +291,13 @@ enum Labels {
         let index = tracks.firstIndex { $0.id == ref.track }
         // A track from outside the list shows its details once `.trackRead` has them.
         let track = index.map { tracks[$0] } ?? state.track(ref)
+        let waiting = track == nil ? state.waitingWords(ref) : nil  // CLA-170
         return NowText(
             // A track that is not in our copy of the list, such as Spotify's autoplay after the
             // list ends, shows as the service name with no artist. Never show a raw track ID.
-            title: track?.title ?? state.words.service,
-            artist: track?.artist ?? "",
+            // While its details are read, the earlier song's words stay (CLA-170).
+            title: track?.title ?? waiting?.title ?? state.words.service,
+            artist: track?.artist ?? waiting?.artist ?? "",
             list: title(.tracks(playlist: ref.playlist), in: state),
             count: index.map { "\($0 + 1) of \(tracks.count)" } ?? "",
             duration: track?.duration ?? 0,

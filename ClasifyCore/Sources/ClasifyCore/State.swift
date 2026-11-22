@@ -201,7 +201,7 @@ public enum Row: Equatable, Sendable {
     case playlist(String), album(String), track(String)
     /// Card BN (Apple Music): the main menu's Artists and Songs, and one artist by its ID.
     case artists, songs, artist(String)
-    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, menuBar, about, logOut
+    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, menuBar, about, logOut
     /// Card BM, change 256: the active music service, first in Settings.
     case service
     case cancel, confirmLogOut
@@ -350,6 +350,12 @@ public struct TrackRef: Equatable, Sendable {
 }
 
 /// The playing track and its play state before a load.
+/// CLA-170: a song's title and artist, as Now Playing shows them.
+public struct NowWords: Equatable, Sendable {
+    public var title: String, artist: String
+    public init(title: String, artist: String) { self.title = title; self.artist = artist }
+}
+
 public struct BeforeLoad: Equatable, Sendable {
     public var current: TrackRef, t: Double, isPlaying: Bool
 }
@@ -419,6 +425,15 @@ public struct AppState: Equatable, Sendable {
     public var authAttempt = 0
     /// Token of a shuffle list load (`shuffleList`) that starts Shuffle Songs when it finishes.
     public var shuffleToken: Int?
+    /// CLA-173: Play on a playlist or album that was not read yet opens its list with its
+    /// loading look. When the read with this token ends on top, Now Playing takes that frame's
+    /// place and `startList` starts. Only one start waits: Shuffle Songs and a list start each
+    /// clear the other, so the newer one wins.
+    public var startToken: Int?
+    public var startList = ""
+    /// The start waits on Cover Flow's covers, with no frame: the album reads behind them. Any
+    /// other input cancels it. A failed read shows a toast and stays on the covers.
+    public var startOnCovers = false
     public var signedIn = false
     /// The first launch setup ended once. Saved with the settings, so later launches skip
     /// Hello, the color pick and the first library read.
@@ -464,6 +479,10 @@ public struct AppState: Equatable, Sendable {
     /// CLA-97: the sender takes events (`Action.analyticsOn`). Not saved. While it is off,
     /// `first_song` is not made, so the next real play makes it again (CTO 22:40 JST).
     public var analyticsOn = false
+    /// CLA-163, card CE.1: the hints trial (`hints.trial`) is on, so the tour has the menu bar
+    /// step (`Action.hintsTrial`). Not saved: the app sends it at start. The switch is on when
+    /// it is not set, so this is on for everyone unless the switch is set off.
+    public var hintsTrial = false
     /// CLA-97 (A4): `app_problem` events made in this run, at most `AppProblem.maxPerLaunch`. Not saved.
     public var problemsSent = 0
     /// CLA-97: the newest beta build that started, for `app_updated`. Saved with the settings.
@@ -707,6 +726,12 @@ public struct AppState: Equatable, Sendable {
     public var extraTracks: [Track] = []
     /// Track IDs whose read runs or failed in this session, so each is read only once.
     public var trackReads: Set<String> = []
+    /// CLA-170: the reads in `trackReads` that have not answered yet, with when each was asked.
+    /// A read silent for `readWait` seconds is dropped here by `.tick` (a late answer still applies).
+    public var readsPending: [String: Double] = [:]
+    /// CLA-170: the words of the last current song we knew, kept when Spotify moves on to a song
+    /// we do not know yet. Nil when there was none (an adopted song).
+    public var heldWords: NowWords?
     /// When each list was last read, by `readKey`. Opening a list older than `staleAfter`
     /// reads it again in the background.
     public var readAt: [String: Double] = [:]
@@ -720,6 +745,8 @@ public struct AppState: Equatable, Sendable {
     public var t: Double = 0
     public var isPlaying = false
     public var volume = 60
+    /// CLA-168: Spotify's volume while Apple Music is active (then `volume` is the Mac's).
+    public var spotifyVolume = 60
     public var shuffle = false
     public var repeatMode = RepeatMode.off
     public var skin = Skin.pocket
@@ -822,7 +849,19 @@ public struct AppState: Equatable, Sendable {
     /// When the tip of the hint that shows starts to fade in.
     public var hintTipAt: Double {
         guard let hint, hint.isTour else { return hintAt + Self.hintTipAfter }
-        return hint == .tourPlay ? hintAt + Self.tourTipAfter : hintAt
+        return glowsFirst(hint) ? hintAt + Self.tourTipAfter : hintAt
+    }
+    /// The tour hint glows first and its words come `tourTipAfter` later: Play, and the menu
+    /// bar hint with its device label (card CE look A, the default since Jason's OK at 16:23
+    /// JST 11-21).
+    public func glowsFirst(_ hint: Hint?) -> Bool {
+        hint == .tourPlay || hint == .tourMenuBar
+    }
+    /// The hint that shows has a look on the device: a wheel label glow or words. The menu bar
+    /// hint glows in the menu bar, and its words show on the device (card CE look A).
+    public var hintOnDevice: Bool {
+        guard let hint else { return false }
+        return hint.onDevice || hint == .tourMenuBar
     }
     /// The first-run hints (card BA.2, change 238): a queue of Play, Next and MENU. It starts
     /// at "You’re all set" after the first setup and runs until all three are done. Saved.
@@ -835,19 +874,33 @@ public struct AppState: Equatable, Sendable {
     /// The tour step that runs, also while it waits to show: the first one not done. `hint` is
     /// that step while it shows. nil when no tour runs.
     public var tour: Hint? {
-        tourOn ? [Hint.tourPlay, .tourNext, .tourMenu].first(where: { !hintsDone.contains($0) }) : nil
+        tourOn ? tourSteps.first(where: { !hintsDone.contains($0) }) : nil
+    }
+    /// The tour's steps in order. CLA-163, card CE.1: with the hints trial on, the turn hint
+    /// comes after MENU, and the menu bar hint comes last, only while the Menu Bar setting is
+    /// on (389). Jason 00:32 JST 11-21: the turn hint first, then the menu bar hint.
+    public var tourSteps: [Hint] {
+        guard hintsTrial else { return [.tourPlay, .tourNext, .tourMenu] }
+        return [.tourPlay, .tourNext, .tourMenu, .tourTurn] + (menuBar ? [.tourMenuBar] : [])
     }
     /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
     /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
     public var tourPlace: Bool {
-        guard let tour, setupDone, signedIn, stack.first?.screen == .main else { return false }
+        // Not while a ⌘ turn holds the device (Codex on #375): the next hint waits for the landing.
+        guard let tour, setupDone, signedIn, stack.first?.screen == .main, !deviceTurned else { return false }
+        if tour == .tourMenuBar { return true }  // the icon glows over any screen
+        if tour == .tourTurn { return top.screen != .about }  // under the device; About turns it its own way
         return tour == .tourPlay ? top.screen == .main : top.screen == .now && current != nil && nowMode == .volume
     }
     /// When the waiting tour hint shows. Play glows first and its words come `tourTipAfter`
     /// later, so they show after `tourRest` like the words of Next and MENU. Next and MENU
-    /// also wait for the volume bar to hide.
+    /// also wait for the volume bar to hide. The menu bar hint's device label (card CE look A)
+    /// waits for a Shuffle or Repeat slider to hide (Codex on #377).
     public var tourShowAt: Double {
-        tour == .tourPlay ? tourRestAt + Self.tourRest - Self.tourTipAfter : max(tourRestAt + Self.tourRest, overlayUntil)
+        if tour == .tourMenuBar {
+            return max(tourRestAt + Self.tourRest, overlayUntil) - Self.tourTipAfter
+        }
+        return glowsFirst(tour) ? tourRestAt + Self.tourRest - Self.tourTipAfter : max(tourRestAt + Self.tourRest, overlayUntil)
     }
     public static let tourTipAfter = 2.4, tourRest = 3.0, tourHideMax = 3
     public var offline = false
@@ -913,6 +966,14 @@ public struct AppState: Equatable, Sendable {
     /// The song panel's cover can fly to Now Playing and back (card AH): only when Now Playing
     /// shows the cover and Clasify is online.
     public var canFly: Bool { albumArt != .off && !offline }
+
+    /// Now Playing over Cover Flow's covers, playing the middle album: Play there flew its cover
+    /// to Now Playing (CLA-173, card CI 397 A). Not with Album Art Off or offline: a plain slide.
+    public var nowOverCovers: Bool {
+        guard canFly, top.screen == .now, stack.count >= 2, stack[stack.count - 2].screen == .coverFlow else { return false }
+        let sel = stack[stack.count - 2].sel
+        return albums.indices.contains(sel) && current?.playlist == albums[sel].id
+    }
 
     /// Now Playing over Cover Flow's song panel, reached by the cover's flight (card AH). Only
     /// while the panel's album plays: after a failed load brings back another track, Now
@@ -1017,7 +1078,7 @@ public struct AppState: Equatable, Sendable {
         func either(_ x: (Screen) -> Bool, _ y: (Screen) -> Bool) -> Bool { (x(a) && y(b)) || (y(a) && x(b)) }
         if whole && either({ $0 == .main }, { $0 == .coverFlow }) { return .doors }
         if either({ $0 == .coverFlow }, isPanel) { return .flip }
-        if fly && either(isPanel, { $0 == .now }) { return .fly }
+        if fly && either({ isPanel($0) || $0 == .coverFlow }, { $0 == .now }) { return .fly }
         return .push
     }
 
@@ -1097,6 +1158,17 @@ public struct AppState: Equatable, Sendable {
         tracks(in: ref.playlist).first { $0.id == ref.track } ?? extraTracks.first { $0.id == ref.track }
     }
 
+    /// CLA-170: while the details of the current song are being read, Now Playing keeps the
+    /// earlier song's words (empty with none), as the cover keeps the earlier cover. Nil when
+    /// the song is known, or its read failed or never ran: then the service name shows.
+    /// CLA-170: a read has been silent for `readWait` seconds, so `.tick` must drop it.
+    public func readOverdue(at now: Double) -> Bool { readsPending.values.contains { now - $0 >= readWait } }
+
+    public func waitingWords(_ ref: TrackRef) -> NowWords? {
+        guard track(ref) == nil, readsPending[ref.track] != nil else { return nil }
+        return heldWords ?? NowWords(title: "", artist: "")
+    }
+
     public func rows(for frame: Frame) -> [Row] {
         switch frame.screen {
         case .login: restoring ? [] : [.logIn]
@@ -1112,7 +1184,8 @@ public struct AppState: Equatable, Sendable {
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
-        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .menuBar, .about, .logOut]
+        // CLA-174: no Now Playing Bar row; the saved setting still shows the bar.
+        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .menuBar, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]
@@ -1190,8 +1263,17 @@ public enum Hint: String, CaseIterable, Sendable {
     /// main menu, then Previous or Next on Now Playing, then MENU. In `hintsDone`: that step is
     /// done. Other input only hides the hint (see `AppState.tour`).
     case tourPlay = "tour.play", tourNext = "tour.next", tourMenu = "tour.menu"
+    /// CLA-163, card CE.1, only with the hints trial on, last: the menu bar icon glows until
+    /// its first click. It has no look on the device: the app draws it in the icon.
+    case tourMenuBar = "tour.menuBar"
+    /// CLA-163, card CE.1, only with the hints trial on, after MENU: the ⌘ key and "Hold ⌘ and
+    /// drag to turn" under the device, until the first ⌘ turn (`Action.deviceTurned`). The app
+    /// draws it in its own window.
+    case tourTurn = "tour.turn"
 
-    public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu }
+    public var isTour: Bool { self == .tourPlay || self == .tourNext || self == .tourMenu || self == .tourMenuBar || self == .tourTurn }
+    /// The hint shows on the device: a wheel label and words. Not the menu bar and turn hints.
+    public var onDevice: Bool { self != .tourMenuBar && self != .tourTurn }
 }
 
 extension Track {

@@ -22,6 +22,13 @@ public protocol Player: AnyObject {
     /// Report later `.position` and `.trackEnded` with this `generation`.
     func seek(to seconds: Double, generation: Int)
     func setVolume(_ percent: Int)
+    /// CLA-168: this engine's service is the active one (true) or not. `ServicePlayer` calls it
+    /// at start and on each switch. An engine may then report `.volumeReported`.
+    func setActive(_ on: Bool)
+}
+
+extension Player {
+    public func setActive(_ on: Bool) {}
 }
 
 /// Card BV (CLA-125): where the newest beta's build number comes from. The app reads one small

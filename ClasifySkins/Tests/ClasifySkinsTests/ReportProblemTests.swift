@@ -54,9 +54,25 @@ import Testing
 
     @Test func theThanksScreenShowsTheWave() throws {
         let bitmap = try render(ReportProblem(text: "x", sent: true, fixedTime: 0.8), "report-problem-thanks.png")
-        #expect(bitmap.pixelsWide == 380 * 2 && bitmap.pixelsHigh == 246 * 2)
+        #expect(bitmap.pixelsWide == 380 * 2 && bitmap.pixelsHigh == 262 * 2)
         // The wide Done button: the selected-row blue, at the middle, near the bottom.
-        #expect((180...235).contains { y in blue(bitmap, 190, y) })
+        #expect((200...255).contains { y in blue(bitmap, 190, y) })
+    }
+
+    /// CG.3 (396): before activation, Write to Us shows in place of the form: no text box,
+    /// the blue address, and Done, in the same 380 x 262.
+    @Test func beforeActivationWriteToUsShows() throws {
+        let bitmap = try render(ReportProblem(text: "", sent: false, fixedTime: 0, activated: false), "report-problem-write-to-us.png")
+        #expect(bitmap.pixelsWide == 380 * 2 && bitmap.pixelsHigh == 262 * 2)
+        #expect(!(10...14).contains { blue(bitmap, $0, 27 + 29 + 52) })  // no box border
+        #expect((200...255).contains { y in blue(bitmap, 190, y) })  // Done
+        // The address: #1f6fd1 text on one line above Done.
+        #expect((170...215).contains { y in (120...260).contains { x in link(bitmap, x, y) } })
+    }
+
+    private func link(_ bitmap: NSBitmapImageRep, _ x: Int, _ y: Int) -> Bool {
+        guard let c = bitmap.colorAt(x: x * 2, y: y * 2)?.usingColorSpace(.sRGB) else { return false }
+        return c.blueComponent > 0.7 && c.redComponent < 0.35 && c.greenComponent < 0.6
     }
 }
 
@@ -82,8 +98,8 @@ import Testing
         try check(ReportProblem(text: "", sent: false, fixedTime: 0), height: ReportProblem.formHeight, "report-problem-window.png")
     }
 
-    /// CTO 21:38 JST: from the form to Thanks, the top edge stays still and the bottom moves up.
-    @Test func theTopStaysWhenTheFormTurnsIntoThanks() async throws {
+    /// CG.2 (395): from the form to Thanks, the window keeps its place and its size.
+    @Test func theWindowStaysStillWhenTheFormTurnsIntoThanks() async throws {
         let window = TopFixedWindow(contentRect: .zero, styleMask: [.titled, .closable, .miniaturizable, .fullSizeContentView], backing: .buffered, defer: false)
         ReportProblemPanel.configure(window, ReportProblem(text: "x", sent: false, fixedTime: 0))
         window.layoutIfNeeded()
@@ -97,12 +113,35 @@ import Testing
             try await Task.sleep(for: .milliseconds(20))
             host.layoutSubtreeIfNeeded()
         }
-        #expect(window.frame.height == ReportProblem.thanksHeight, "\(window.frame)")
+        #expect(window.frame.height == ReportProblem.thanksHeight && ReportProblem.thanksHeight == ReportProblem.formHeight, "\(window.frame)")
         #expect(window.frame.maxY == top && window.frame.minX == 200, "\(window.frame)")
         window.close()
     }
 
-    @Test func theThanksWindowIs380By246() throws {
+    /// CG.3 (396): the window that opens follows the activation: the form when activated,
+    /// Write to Us before. Its snapshot is the real window, title bar included.
+    @Test func theOpeningScreenFollowsTheActivation() throws {
+        for activated in [true, false] {
+            let window = ReportProblemPanel.make(activated: activated) { _, _ in }
+            window.layoutIfNeeded()
+            #expect(window.frame.size == CGSize(width: ReportProblem.width, height: ReportProblem.formHeight))
+            let frame = try #require(window.contentView?.superview)
+            let rep = try #require(frame.bitmapImageRepForCachingDisplay(in: frame.bounds))
+            frame.cacheDisplay(in: frame.bounds, to: rep)
+            if !activated, let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
+               let png = rep.representation(using: .png, properties: [:]) {
+                try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("report-problem-window-write-to-us.png"))
+            }
+            // The form's white box, inside it at the middle: only when activated.
+            let scale = Double(rep.pixelsWide) / ReportProblem.width
+            let inside = try #require(rep.colorAt(x: Int(190 * scale), y: Int(Double(27 + 29 + 70) * scale))?.usingColorSpace(.sRGB))
+            let white = inside.redComponent > 0.97 && inside.greenComponent > 0.97 && inside.blueComponent > 0.97
+            #expect(white == activated, "activated \(activated): \(inside)")
+            window.close()
+        }
+    }
+
+    @Test func theThanksWindowIs380By262() throws {
         try check(ReportProblem(text: "x", sent: true, fixedTime: 0.8), height: ReportProblem.thanksHeight, "report-problem-window-thanks.png")
     }
 }

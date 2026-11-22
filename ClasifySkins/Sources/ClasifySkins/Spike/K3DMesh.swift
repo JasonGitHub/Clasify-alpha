@@ -344,10 +344,13 @@ public struct K3DFlip {
     /// Card BT row 2 (CLA-118): the About showroom. `held` is a drag in progress, `go` a turn
     /// of `go` seconds (`soft`: the turn-over landing, 306), `nudge` the first-time nudge (297),
     /// `swap` the Reduce Motion side change (302).
-    enum Script: Equatable { case flip, arrive, arriveShort, spin(Double), held, go(Double, soft: Bool), nudge, swap, apart }
+    enum Script: Equatable { case flip, arrive, arriveShort, spin(Double), held, go(Double, soft: Bool), nudge(Double), swap, apart }
     /// Card BT row 2: a turn-over, the return of a short drag, the nudge, the Reduce Motion swap.
     public static let turnOver = 0.8, dragReturn = 0.4, nudgeTime = 0.9, swapTime = 0.2
-    static let overshoot = 3.0, nudgeAngle = 16.0
+    /// CLA-163, card CE.1 (393): the turn hint's nudge, on each press of its ⌘ key, is slower.
+    public static let hintNudgeTime = 1.6
+    /// 386: the nudge turns the way a right-to-left drag does, for About (297) and the turn hint.
+    static let overshoot = 3.0, nudgeAngle = -16.0
     /// CLA-105 Take apart (change 308; the showroom trial Jason approved, bt/show/index.html
     /// `open` and `close`): opening, the device turns to 305° and tilts to 20° in 0.7 s on a
     /// quad in-out, then the parts move apart in 1.6 s on a cubic in-out (mock K.3D.8
@@ -484,13 +487,13 @@ public struct K3DFlip {
         return flip
     }
 
-    /// Change 297: the first-time nudge, 16° and back on a quad in-out in 0.9 s, from the side the
-    /// device rests on.
-    public func nudge(at now: Date) -> K3DFlip {
+    /// Change 297: the first-time nudge, `nudgeAngle` and back on a quad in-out in `time`
+    /// seconds (0.9 s for About, 1.6 s for the turn hint), from the side the device rests on.
+    public func nudge(at now: Date, time: Double = nudgeTime) -> K3DFlip {
         var flip = self
         let side = flip.toBack ? 180.0 : 0
         flip.fromRest = restsOnFront(at: now)
-        flip.script = .nudge
+        flip.script = .nudge(time)
         (flip.from, flip.to, flip.start, flip.tilt0, flip.hurriedAt) = (side, side, now, 0, nil)
         flip.oldScreen = nil
         return flip
@@ -633,7 +636,7 @@ public struct K3DFlip {
         case .spin(let turn): turn + 2 * Self.spinFade
         case .held: 0
         case .go(let time, _): time
-        case .nudge: Self.nudgeTime
+        case .nudge(let time): time
         case .swap: Self.swapTime
         case .apart: Self.apartTime + (opens ? Self.apartTurn : Self.closeTurn)
         }
@@ -773,10 +776,10 @@ public struct K3DFlip {
             let over = Self.overshoot * (to < from ? -1 : 1)
             if u < 0.75 { return (from + (to + over - from) * Self.easeOut(u / 0.75), 0) }
             return (to + over * (1 - Self.quad((u - 0.75) / 0.25)), 0)
-        case .nudge:
+        case .nudge(let time):
             // At rest exactly on the side, so a later flip starts from the resting front.
-            guard t < Self.nudgeTime else { return (to, 0) }
-            return (to + Self.nudgeAngle * sin(.pi * Self.quad(max(0, t / Self.nudgeTime))), 0)
+            guard t < time else { return (to, 0) }
+            return (to + Self.nudgeAngle * sin(.pi * Self.quad(max(0, t / time))), 0)
         case .swap: return (t < Self.swapTime / 2 ? from : to, 0)
         case .apart: return (from + (to - from) * apartTurn(at: now), 0)
         default: break

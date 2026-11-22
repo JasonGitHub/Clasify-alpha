@@ -9,6 +9,8 @@ import SwiftUI
 struct PocketNowPlaying: View {
     let state: AppState
     let input: @MainActor (Action) -> Void
+    /// The cover is not drawn while Cover Flow's middle cover still flies to its place (card CI).
+    var hidesCover = false
     @Environment(\.artwork) private var artwork
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The last cover that showed, by cover ID. It stays while the next track's cover loads,
@@ -23,7 +25,7 @@ struct PocketNowPlaying: View {
         if let now = Labels.now(in: state) {
             let art = state.showsNowPlayingArt
             ZStack(alignment: .topLeading) {
-                if art { cover(now).offset(x: 9, y: 14.6) }
+                if art { cover(now).offset(x: 9, y: 14.6).opacity(hidesCover ? 0 : 1) }
                 // With no cover, the text is centered across the screen.
                 let left: CGFloat = art ? 150.6 : 8
                 Group {
@@ -129,7 +131,9 @@ struct PocketNowPlaying: View {
 
     private var tipShows: Bool {
         // The tour's steps 2 and 3 too (card BA.1): no bar and no times under the tip.
-        state.hintTip && [.playPause, .next, .tourNext, .tourMenu].contains(state.hint) && state.toast.isEmpty
+        // CLA-163, card CE look A: the menu bar hint's device label too.
+        state.hintTip && state.toast.isEmpty
+            && ([.playPause, .next, .tourNext, .tourMenu, .tourMenuBar].contains(state.hint))
     }
 
     /// The bottom row: a 33.6 point slot, the 191.4 point bar and a 38.4 point slot, 21 points
