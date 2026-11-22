@@ -736,8 +736,10 @@ import Testing
         s.top.sel = 6
         s.scrollUntil = 1  // right after a wheel step
         let shot = try render(s, "settings-menu-bar")
-        #expect(shot.isBlue(100, Self.rowCenter(6)))
-        #expect(!shot.isBlue(100, Self.rowCenter(5)))
+        // Left of the label: at x 100 the bold "Menu Bar" itself can be under the point.
+        let x = Self.screenLeft + 4
+        #expect(shot.isBlue(x, Self.rowCenter(6)))
+        #expect(!shot.isBlue(x, Self.rowCenter(5)))
         let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, want = try reference(0x5d6772)
         #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))  // 9 rows fit: no scroll bar
     }
