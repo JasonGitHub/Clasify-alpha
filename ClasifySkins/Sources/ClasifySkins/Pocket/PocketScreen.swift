@@ -77,7 +77,7 @@ struct PocketScreen: View {
     /// While the cover flies to Now Playing, the title bar still says "Cover Flow". It changes
     /// when the cover lands, 0.4 s after Center (card AH).
     private var title: String {
-        let flying = state.navMove == .fly && state.navForward && state.nowOverPanel
+        let flying = state.navMove == .fly && state.navForward && (state.nowOverPanel || state.nowOverCovers)
         guard flying, !reduceMotion, landedSeq != state.navSeq else { return Labels.title(top.screen, in: state) }
         return Labels.title(.coverFlow, in: state)
     }
@@ -110,16 +110,19 @@ struct PocketScreen: View {
         switch state.navMove {
         case .doors: return .linear(duration: state.navForward ? DoorsStage.openTime : DoorsStage.closeTime)
         case .flip: return Self.flipAnimation
-        case .fly: return PocketCoverFlow.flyAnimation
+        case .fly: return leap ? PocketCoverFlow.leapAnimation : PocketCoverFlow.flyAnimation
         case .push: return Self.slideAnimation
         }
     }
+
+    /// The middle cover flies between the covers and Now Playing, not the song panel's cover (card CI).
+    private var leap: Bool { state.nowOverCovers || top.screen == .coverFlow }
 
     /// The content's identity: a new one slides in. Cover Flow and its song panel are one
     /// view, so the cover turns over in place, and so is Now Playing when the cover flies there
     /// (card AH). A negative ID never meets a `navSeq`.
     private var contentID: Int {
-        guard state.coverFlowFrame != nil || state.nowOverPanel,
+        guard state.coverFlowFrame != nil || state.nowOverPanel || state.nowOverCovers,
             let i = state.stack.lastIndex(where: { $0.screen == .coverFlow })
         else {
             return state.navSeq
@@ -245,7 +248,7 @@ struct PocketScreen: View {
         .environment(\.navDoors, state.navMove == .doors)
         .task(id: state.navSeq) {
             let seq = state.navSeq
-            try? await Task.sleep(for: .seconds(PocketCoverFlow.flyTime))
+            try? await Task.sleep(for: .seconds(leap ? PocketCoverFlow.leapTime : PocketCoverFlow.flyTime))
             if !Task.isCancelled { landedSeq = seq }
         }
         .task(id: state.wholeSeq) {
@@ -361,7 +364,7 @@ struct PocketScreen: View {
     @ViewBuilder private var content: some View {
         if let message {
             MessageView(message: message)
-        } else if state.coverFlowFrame != nil || state.nowOverPanel {
+        } else if state.coverFlowFrame != nil || state.nowOverPanel || state.nowOverCovers {
             // Cover Flow, its song panel over it, and Now Playing when the cover flew there.
             PocketCoverFlow(state: state, input: input, landed: landedSeq == state.navSeq)
         } else if top.screen == .now {

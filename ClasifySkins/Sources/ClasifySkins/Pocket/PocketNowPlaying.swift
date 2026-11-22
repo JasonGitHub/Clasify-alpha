@@ -9,6 +9,8 @@ import SwiftUI
 struct PocketNowPlaying: View {
     let state: AppState
     let input: @MainActor (Action) -> Void
+    /// The cover is not drawn while Cover Flow's middle cover still flies to its place (card CI).
+    var hidesCover = false
     @Environment(\.artwork) private var artwork
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// The last cover that showed, by cover ID. It stays while the next track's cover loads,
@@ -23,7 +25,7 @@ struct PocketNowPlaying: View {
         if let now = Labels.now(in: state) {
             let art = state.showsNowPlayingArt
             ZStack(alignment: .topLeading) {
-                if art { cover(now).offset(x: 9, y: 14.6) }
+                if art { cover(now).offset(x: 9, y: 14.6).opacity(hidesCover ? 0 : 1) }
                 // With no cover, the text is centered across the screen.
                 let left: CGFloat = art ? 150.6 : 8
                 Group {

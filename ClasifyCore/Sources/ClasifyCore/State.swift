@@ -967,6 +967,14 @@ public struct AppState: Equatable, Sendable {
     /// shows the cover and Clasify is online.
     public var canFly: Bool { albumArt != .off && !offline }
 
+    /// Now Playing over Cover Flow's covers, playing the middle album: Play there flew its cover
+    /// to Now Playing (CLA-173, card CI 397 A). Not with Album Art Off or offline: a plain slide.
+    public var nowOverCovers: Bool {
+        guard canFly, top.screen == .now, stack.count >= 2, stack[stack.count - 2].screen == .coverFlow else { return false }
+        let sel = stack[stack.count - 2].sel
+        return albums.indices.contains(sel) && current?.playlist == albums[sel].id
+    }
+
     /// Now Playing over Cover Flow's song panel, reached by the cover's flight (card AH). Only
     /// while the panel's album plays: after a failed load brings back another track, Now
     /// Playing shows that track's cover, so no panel cover may fly back.
@@ -1070,7 +1078,7 @@ public struct AppState: Equatable, Sendable {
         func either(_ x: (Screen) -> Bool, _ y: (Screen) -> Bool) -> Bool { (x(a) && y(b)) || (y(a) && x(b)) }
         if whole && either({ $0 == .main }, { $0 == .coverFlow }) { return .doors }
         if either({ $0 == .coverFlow }, isPanel) { return .flip }
-        if fly && either(isPanel, { $0 == .now }) { return .fly }
+        if fly && either({ isPanel($0) || $0 == .coverFlow }, { $0 == .now }) { return .fly }
         return .push
     }
 

@@ -150,19 +150,38 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         send(&s, .tracksLoaded(token: token, playlist: album, tracks: coverSongs(s, album)))
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "m1"))
         #expect(s.startToken == nil && !s.startOnCovers)
-        // A plain slide over the covers, no cover flight: there is no song panel under Now Playing.
-        #expect(s.stack.suffix(2).map(\.screen) == [.coverFlow, .now] && s.navMove == .push && !s.nowOverPanel)
+        // Card CI 397 A: the middle cover flies from the covers to Now Playing. No song panel.
+        #expect(s.stack.suffix(2).map(\.screen) == [.coverFlow, .now] && s.navMove == .fly && s.nowOverCovers && !s.nowOverPanel)
         // MENU goes back to the covers, with the same album in the middle.
         send(&s, .menu)
-        #expect(s.top.screen == .coverFlow && s.top.sel == middle && s.navMove == .push)
+        #expect(s.top.screen == .coverFlow && s.top.sel == middle && s.navMove == .fly && !s.navForward)
 
         // Read before: it starts at once over the covers.
         s.current = nil; s.isPlaying = false
         send(&s, .play)
-        #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "m1") && s.navMove == .push)
+        #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "m1") && s.navMove == .fly)
         #expect(s.stack.suffix(2).map(\.screen) == [.coverFlow, .now])
         send(&s, .menu)
         #expect(s.top.screen == .coverFlow && s.top.sel == middle)
+    }
+
+    @Test func withAlbumArtOffOrOfflineItIsAPlainSlide() {
+        var s = withCoverFlow(tenAlbums)
+        send(&s, .select)
+        let album = s.albums[s.top.sel].id
+        send(&s, .play)  // not read yet: it waits on the covers
+        send(&s, .tracksLoaded(token: s.startToken ?? -1, playlist: album, tracks: coverSongs(s, album)), .menu)
+        #expect(s.top.screen == .coverFlow && s.loadedTracks.contains(album))
+        s.current = nil; s.isPlaying = false
+        s.albumArt = .off
+        send(&s, .play)
+        #expect(s.top.screen == .now && s.navMove == .push && !s.nowOverCovers)
+        send(&s, .menu)
+        #expect(s.top.screen == .coverFlow && s.navMove == .push)
+        // Offline at MENU: no cover may fly back either.
+        s.albumArt = .all
+        send(&s, .play, .offline(true), .menu)
+        #expect(s.top.screen == .coverFlow && s.navMove == .push)
     }
 
     @Test func aWaitOnTheCoversEndsOnInputAFailedReadOrAnEmptyAlbum() {
