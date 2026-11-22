@@ -102,7 +102,7 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(s.top.screen == .albums && s.rows(for: s.top)[s.top.sel] == .album(album))
         #expect(send(&s, .play) == [.fetchTracks(token: s.top.token, playlist: album)])
         #expect(s.top.screen == .tracks(playlist: album) && s.top.loading && s.startToken == s.top.token)
-        let songs = (1...3).map { Track(id: "s\($0)", title: "s\($0)", artist: "a", duration: 200, album: s.album(album), disc: nil, number: $0) }
+        let songs = (1...3).map { (n: Int) in Track(id: "s\(n)", title: "s\(n)", artist: "a", duration: 200, album: s.album(album), disc: nil, number: n) }
         send(&s, .tracksLoaded(token: s.top.token, playlist: album, tracks: songs))
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "s1"))
     }
