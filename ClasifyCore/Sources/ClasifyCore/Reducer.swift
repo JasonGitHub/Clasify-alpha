@@ -620,6 +620,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
         s.tourRestAt = now  // the tour queue stays for the next login (card BA.2)
         s.pendingService = nil
+        s.startToken = nil; s.startOnCovers = false  // a late read must not fill the next account's library
     }
     /// Makes `service` the active one. CLA-168: `volume` is the active service's volume; on
     /// Apple Music it is the Mac's output volume. Spotify's waits in `spotifyVolume` and comes
@@ -1233,7 +1234,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.readAt[id] = now
 
         case .tracksLoaded(let token, let id, let tracks):
-            let onCovers = s.startOnCovers && s.startToken == token  // CLA-173: read behind the covers
+            // CLA-173: read behind the covers, while they still show.
+            let onCovers = s.startOnCovers && s.startToken == token && s.top.screen == .coverFlow
             guard onCovers || (s.top.loading && s.top.token == token) else { return }  // stale load
             if let tracks {
                 if let i = s.library.firstIndex(where: { $0.id == id }) {
@@ -1248,7 +1250,6 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             }
             if onCovers {
                 s.startOnCovers = false; s.startToken = nil
-                guard s.top.screen == .coverFlow else { return }
                 if tracks == nil || s.offline { return toast("Can’t reach \(s.words.service)") }
                 return startList(id)  // an empty album plays nothing: the covers stay
             }

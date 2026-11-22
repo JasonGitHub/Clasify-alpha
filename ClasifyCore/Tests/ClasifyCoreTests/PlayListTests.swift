@@ -199,6 +199,19 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(send(&s, .play) == [] && s.top.screen == .coverFlow && s.current == nil)
     }
 
+    @Test func aWaitOnTheCoversEndsWithTheSession() {
+        // The session ends while the album reads: its late answer changes nothing.
+        var s = withCoverFlow(tenAlbums)
+        send(&s, .select)
+        let album = s.albums[s.top.sel].id
+        send(&s, .play)
+        let token = s.startToken ?? -1
+        send(&s, .expire)
+        #expect(s.startToken == nil && !s.startOnCovers)
+        send(&s, .tracksLoaded(token: token, playlist: album, tracks: coverSongs(s, album)))
+        #expect(!s.loadedTracks.contains(album) && s.current == nil && s.top.screen != .now)
+    }
+
     @Test func onAnOpenSongListPlayStaysAsBefore() {
         // Cover Flow's song panel is open: Play is today's Play, not a start of the album.
         var s = withCoverFlow(tenAlbums)
