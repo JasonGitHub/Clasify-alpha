@@ -60,7 +60,7 @@ import Testing
         var late = playing()
         _ = events(&late, .position(1, generation: late.playGen), now: at(23, 59) + 50)
         let sent = events(&late, .position(21, generation: late.playGen), now: at(0, day: 20) + 10)
-        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let old, _, _)? = sent.first else { Issue.record("no day_active"); return }
         #expect(old.bands == [0, 0, 0, 10] && old.day == 20261119)
         #expect(late.today?.bands == [10, 0, 0, 0] && late.today?.day == 20261120 && late.today?.songs == 1)
     }
@@ -72,7 +72,7 @@ import Testing
         #expect(events(&s, .wheel(1), now: at(0, day: 20) + 0.1).isEmpty && s.today?.day == 20261119)
         let sent = events(&s, .position(2, generation: s.playGen), now: at(0, day: 20) + 1)
         #expect(sent.count == 1 && s.today?.day == 20261120 && s.today?.bands[0] == 1)
-        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let old, _, _)? = sent.first else { Issue.record("no day_active"); return }
         #expect(old.bands[3] == 1 && old.songs == 1)
         #expect(events(&s, .tick, now: at(0, day: 20) + 2).isEmpty)  // no second day_active
     }
@@ -84,14 +84,14 @@ import Testing
         #expect(events(&s, .used(.takeApart), now: at(0, day: 20)).isEmpty)
         #expect(s.today?.day == 20261119 && s.today?.features.isEmpty == true && s.pendingFeatures == [.takeApart])
         let sent = events(&s, .position(2, generation: s.playGen), now: at(0, day: 20) + 1)
-        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let old, _, _)? = sent.first else { Issue.record("no day_active"); return }
         #expect(old.features.isEmpty && s.today?.day == 20261120 && s.today?.features == [.takeApart] && s.pendingFeatures.isEmpty)
         // At a quit, the waiting day ends and the feature goes to the new day.
         var quit = playing()
         _ = events(&quit, .position(1, generation: quit.playGen), now: at(23, 59) + 59)
         _ = events(&quit, .used(.aboutFlip), now: at(0, day: 20))
         let atQuit = events(&quit, .willQuit, now: at(0, day: 20) + 1)
-        guard case .dayActive(let day, _)? = atQuit.first else { Issue.record("no day_active at quit"); return }
+        guard case .dayActive(let day, _, _)? = atQuit.first else { Issue.record("no day_active at quit"); return }
         #expect(day.day == 20261119 && day.features.isEmpty)
         #expect(quit.today?.day == 20261120 && quit.today?.features == [.aboutFlip] && quit.settings.today == quit.today)
     }
@@ -151,7 +151,7 @@ import Testing
         _ = events(&s, .position(1, generation: s.playGen), .play, now: at(10))  // a switch stops the music
         s.service = .appleMusic
         let sent = events(&s, .tick, now: at(10, day: 20))
-        guard case .dayActive(_, let service)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(_, let service, _)? = sent.first else { Issue.record("no day_active"); return }
         #expect(service == .spotify)
     }
 
@@ -161,11 +161,23 @@ import Testing
         _ = events(&s, .used(.takeApart), .play, now: at(23, 59.5))  // the music stops before midnight
         let day = s.today!
         let sent = events(&s, .tick, now: at(0, 1, day: 20))
-        #expect(sent == [.dayActive(day, service: .spotify)] && s.today == nil)
+        #expect(sent == [.dayActive(day, service: .spotify, color: .silver)] && s.today == nil)
         #expect(events(&s, .tick, now: at(9, day: 21)).isEmpty)  // a day with nothing sends nothing
-        var p = BetaEvent.dayActive(day, service: .spotify).properties
+        var p = BetaEvent.dayActive(day, service: .spotify, color: .silver).properties
         #expect(p.removeValue(forKey: "used_takeApart") == .flag(true) && p["used_coverFlow"] == .flag(false))
         #expect(p["day"] == .number(20261119) && p["songs"] == .number(1) && p["minutes"] == .decimal(0))
+        #expect(p["color"] == .text("silver"))
+    }
+
+    /// Jason 14:23 JST 11-22: `day_active` says the Color setting when the day is reported.
+    @Test func theDaySaysTheColorWhenItIsReported() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), .position(2, generation: s.playGen), now: at(23, 59))
+        _ = events(&s, .play, now: at(23, 59.5))
+        s.deviceColor = .black  // changed after the music, before the report
+        let sent = events(&s, .tick, now: at(0, 1, day: 20))
+        guard case .dayActive(_, _, let color)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(color == .black && sent.first?.properties["color"] == .text("black"))
     }
 
     @Test func coverFlowSettingsAndSkinFeaturesSetTheirFlagOnce() {
@@ -177,7 +189,7 @@ import Testing
         #expect(s.today?.features == [.coverFlow, .aboutFlip] && s.today?.seconds == 0)
         // CTO 00:08 JST: a day with features and no music goes out too, with minutes 0.
         let sent = events(&s, .tick, now: at(12, day: 20))
-        guard case .dayActive(let day, _)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let day, _, _)? = sent.first else { Issue.record("no day_active"); return }
         #expect(day.features == [.coverFlow, .aboutFlip] && day.songs == 0 && day.hadUse)
         #expect(!DayUse(day: 20261119, weekday: 5).hadUse)
         var set = mainMenu()
@@ -227,7 +239,7 @@ import Testing
         #expect(s.today?.features.isSuperset(of: [.takeApart, .aboutFlip]) == true)
         _ = events(&s, .willQuit, now: at(12) + 15)  // a quit closes the open About flip
         #expect(s.today?.views == [3.5, 1800, 10] && s.viewOpen.isEmpty)
-        let p = BetaEvent.dayActive(s.today!, service: .spotify).properties
+        let p = BetaEvent.dayActive(s.today!, service: .spotify, color: .silver).properties
         #expect(p["seconds_3d"] == .decimal(3.5) && p["seconds_apart"] == .decimal(1800) && p["seconds_about_flip"] == .decimal(10))
         #expect(p["used_turn3D"] == .flag(true))
     }
@@ -248,10 +260,10 @@ import Testing
         #expect(s.today?.areas == [0, 0, 120, 0, 120, 0, 0, 0, 0] && s.windowSpot == nil && s.windowAt == nil)
         #expect(s.today?.screens == ["1x1512x982x1": 120, "0x2560x1440x2": 120] && s.today?.screenCount == 2)
         s.today?.areas[2] += 1; s.today?.screens["0x2560x1440x2"]? += 1
-        let p = BetaEvent.dayActive(s.today!, service: .spotify).properties
+        let p = BetaEvent.dayActive(s.today!, service: .spotify, color: .silver).properties
         #expect(p["spot"] == .text("top_right") && p["minutes_visible"] == .decimal(241.0 / 60) && p["screens"] == .number(2))
         #expect(p["main_screen"] == .flag(false) && p["screen_width"] == .number(2560) && p["screen_height"] == .number(1440))
-        let none = BetaEvent.dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify).properties
+        let none = BetaEvent.dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify, color: .silver).properties
         #expect(none["spot"] == nil && none["screens"] == nil && none["minutes_visible"] == .decimal(0))
         // Codex on #360: two screens of one size count apart.
         let a = WindowSpot(area: 0, mainScreen: false, screens: 3, width: 1920, height: 1080, display: 3)
@@ -267,7 +279,7 @@ import Testing
         _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))  // music, then a pause
         _ = events(&s, .view3D(.apart, open: true), now: at(23, 59) + 50)
         let sent = events(&s, .view3D(.apart, open: false), now: at(0, day: 20) + 20)
-        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let old, _, _)? = sent.first else { Issue.record("no day_active"); return }
         #expect(old.day == 20261119 && old.views == [0, 10, 0])
         #expect(s.today?.day == 20261120 && s.today?.views == [0, 20, 0])
     }
@@ -279,7 +291,7 @@ import Testing
         _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))
         _ = events(&s, .view3D(.apart, open: true), now: at(23, 59) + 50)
         let sent = events(&s, .tick, now: at(0, day: 20) + 1)
-        guard case .dayActive(let old, _)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let old, _, _)? = sent.first else { Issue.record("no day_active"); return }
         #expect(sent.count == 1 && old.views == [0, 10, 0])
         #expect(events(&s, .view3D(.apart, open: false), now: at(0, day: 20) + 20).isEmpty)
         #expect(s.today?.day == 20261120 && s.today?.views == [0, 20, 0])
@@ -287,7 +299,7 @@ import Testing
         _ = events(&music, .position(1, generation: music.playGen), now: at(23, 59) + 50)
         _ = events(&music, .view3D(.apart, open: true), now: at(23, 59) + 50)
         let atReport = events(&music, .position(12, generation: music.playGen), now: at(0, day: 20) + 1)
-        guard case .dayActive(let day, _)? = atReport.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let day, _, _)? = atReport.first else { Issue.record("no day_active"); return }
         #expect(atReport.count == 1 && day.views == [0, 10, 0])
         _ = events(&music, .view3D(.apart, open: false), now: at(0, day: 20) + 20)
         #expect(music.today?.views == [0, 20, 0])
@@ -299,7 +311,7 @@ import Testing
         _ = events(&s, .position(1, generation: s.playGen), .play, now: at(23, 59))
         _ = events(&s, .view3D(.turn, open: true), .view3D(.apart, open: true), now: at(23, 59) + 50)
         let sent = events(&s, .tick, now: at(9, day: 21))
-        let days = sent.compactMap { e -> DayUse? in if case .dayActive(let d, _) = e { d } else { nil } }
+        let days = sent.compactMap { e -> DayUse? in if case .dayActive(let d, _, _) = e { d } else { nil } }
         #expect(days.map(\.day) == [20261119, 20261120])
         #expect(days.first?.views == [10, 10, 0] && days.last?.views == [1790, 1790, 0])
     }

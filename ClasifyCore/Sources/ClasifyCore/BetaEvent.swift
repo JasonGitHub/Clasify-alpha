@@ -7,7 +7,8 @@ import Foundation
 public enum BetaEvent: Equatable, Sendable {
     /// Each setup screen a person reaches, once in a row (`log_in` covers the login and the browser).
     /// `seconds` is nil on a Mac with no first launch time (set up before CLA-97).
-    case setupStep(SetupStep, seconds: Int?, service: MusicService)
+    /// `color` is on the step that the press on Color sends: the color picked (CLA-97, Jason 14:23 JST 11-22).
+    case setupStep(SetupStep, seconds: Int?, service: MusicService, color: DeviceColor? = nil)
     /// Setup stops on an error.
     case setupError(SetupError, service: MusicService)
     /// The pick on Pick Your Music: the service, the top row, and whether the Spotify app was found.
@@ -30,7 +31,8 @@ public enum BetaEvent: Equatable, Sendable {
     /// The service changed after setup (the Settings Service row).
     case serviceSwitch(from: MusicService, to: MusicService)
     /// One day with music, a feature or a 3D view, sent on the first action of a later day.
-    case dayActive(DayUse, service: MusicService)
+    /// `color` is the Color setting when the day is reported (Jason 14:23 JST 11-22).
+    case dayActive(DayUse, service: MusicService, color: DeviceColor)
     /// A crash or a hang of an earlier run (A4, MetricKit).
     case appProblem(AppProblem, service: MusicService)
 
@@ -56,9 +58,10 @@ public enum BetaEvent: Equatable, Sendable {
     /// The event's own data. The sender adds the rest.
     public var properties: [String: BetaValue] {
         switch self {
-        case .setupStep(let step, let seconds, let service):
+        case .setupStep(let step, let seconds, let service, let color):
             var p: [String: BetaValue] = ["step": .text(step.rawValue), "service": .text(service.eventName)]
             if let seconds { p["seconds"] = .number(seconds) }
+            if let color { p["color"] = .text(color.eventName) }
             return p
         case .setupError(let kind, let service):
             return ["kind": .text(kind.rawValue), "service": .text(service.eventName)]
@@ -86,8 +89,9 @@ public enum BetaEvent: Equatable, Sendable {
             return ["from": .text(from.eventName), "to": .text(to.eventName)]
         case .appProblem(let problem, let service):
             return problem.properties.merging(["service": .text(service.eventName)]) { old, _ in old }
-        case .dayActive(let d, let service):
+        case .dayActive(let d, let service, let color):
             var p: [String: BetaValue] = [
+                "color": .text(color.eventName),
                 "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
                 "minutes_night": .decimal(d.bands[0] / 60), "minutes_morning": .decimal(d.bands[1] / 60),
                 "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
@@ -175,6 +179,11 @@ extension Settings {
     }
 }
 
+extension DeviceColor {
+    /// `silver` or `black`, as the events name it.
+    public var eventName: String { rawValue.lowercased() }
+}
+
 extension MusicService {
     /// `spotify` or `apple_music`, as the events name it.
     public var eventName: String { self == .spotify ? "spotify" : "apple_music" }
@@ -202,6 +211,8 @@ struct BeforeEvents {
     var loading: Bool, refreshes: Int, coverReads: Int
     /// The settings before, for the Settings flag of `day_active`, and a skin feature (`.used`).
     var choices: [String], used: Feature?
+    /// The action is the press on a color on the Color screen in setup.
+    var colorPress = false
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
@@ -219,6 +230,10 @@ struct BeforeEvents {
         switch action {
         case .playlistsLoaded, .tracksLoaded, .playlistsRefreshed, .tracksRefreshed, .artTracksRead, .artistsLoaded: libraryRead = true
         default: break
+        }
+        if action == .select && !s.setupDone && screen == .color {
+            let rows = s.rows(for: s.top)
+            if rows.indices.contains(s.top.sel), case .color = rows[s.top.sel] { colorPress = true }
         }
         guard action == .select && !s.setupDone && screen == .pickMusic else { return }
         let rows = s.rows(for: s.top)
@@ -241,7 +256,7 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         if !b.setupDone && s.setupDone { step = .allSet }
         if let step, step != s.lastSetupStep {
             s.lastSetupStep = step
-            events.append(.setupStep(step, seconds: seconds, service: s.service))
+            events.append(.setupStep(step, seconds: seconds, service: s.service, color: b.colorPress ? s.deviceColor : nil))
         }
         if let error = setupError(s, changed: screen != b.screen || s.activateStep != b.activateStep) {
             events.append(.setupError(error, service: s.service))
@@ -296,7 +311,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         let at = DayUse.at(t, in: timeZone)
         let open = s.isPlaying && s.dayPlayAt != nil
         if let old = s.today, old.day < at.day, force || !open {
-            if old.hadUse { fx.append(.track(.dayActive(old, service: old.service ?? s.service))) }
+            if old.hadUse { fx.append(.track(.dayActive(old, service: old.service ?? s.service, color: s.deviceColor))) }
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }
         return at

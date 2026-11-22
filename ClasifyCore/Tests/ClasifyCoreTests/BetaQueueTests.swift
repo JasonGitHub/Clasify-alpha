@@ -18,7 +18,7 @@ import Testing
 
     @Test func theSavedStringReadsBack() {
         var q = BetaQueue()
-        q.add(QueuedEvent(.dayActive(DayUse(day: 20261119, weekday: 5), service: .appleMusic), at: 1.5, id: "a"))
+        q.add(QueuedEvent(.dayActive(DayUse(day: 20261119, weekday: 5), service: .appleMusic, color: .silver), at: 1.5, id: "a"))
         q.add(QueuedEvent(.useError(.listNotLoaded, offline: true, service: .spotify), at: 2, id: "b"))
         let back = BetaQueue(saved: q.saved)
         #expect(back.events.map(\.id) == ["a", "b"] && back.events[1] == q.events[1])
@@ -26,7 +26,7 @@ import Testing
         #expect(BetaQueue(saved: "not json").events.isEmpty && BetaQueue(saved: nil).events.isEmpty)
         var use = DayUse(day: 20261119, weekday: 5)
         use.bands = [90, 0, 60, 0]  // 1.5 and 1 minutes: one with a fraction, one whole
-        var d = BetaQueue(); d.add(QueuedEvent(.dayActive(use, service: .spotify), at: 0, id: "c"))
+        var d = BetaQueue(); d.add(QueuedEvent(.dayActive(use, service: .spotify, color: .silver), at: 0, id: "c"))
         let p = BetaQueue(saved: d.saved).events[0].properties
         #expect(p["minutes_night"] == .decimal(1.5) && p["minutes"] == .decimal(2.5))
         #expect(p["minutes_work"] == .number(1))  // a whole decimal reads back as a number: the same in PostHog
@@ -78,7 +78,7 @@ import Testing
             .appUpdated(from: 1, to: 2, days: 3), .useError(.loginFailed, offline: false, service: .spotify),
             .appSpeed(startMs: 1, libraryMs: 2, loaded: true), .musicPick(.spotify, top: .appleMusic, spotifyApp: true),
             .betaRenewal(.warning, pressed: true, daysLeft: 3), .serviceSwitch(from: .spotify, to: .appleMusic),
-            .dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify),
+            .dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify, color: .silver),
         ]
         let body = String(decoding: BetaQueue.body(all.map { QueuedEvent($0, at: 0) }, key: "k", person: "p"), as: UTF8.self).lowercased()
         for word in ["device", "hardware", "token", "email", "mail\"", "@"] {
