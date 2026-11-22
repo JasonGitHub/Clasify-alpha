@@ -201,7 +201,7 @@ public enum Row: Equatable, Sendable {
     case playlist(String), album(String), track(String)
     /// Card BN (Apple Music): the main menu's Artists and Songs, and one artist by its ID.
     case artists, songs, artist(String)
-    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, nowPlayingBar, menuBar, about, logOut
+    case shuffle, repeatMode, skin, albumArt, deviceColor, clicker, menuBar, about, logOut
     /// Card BM, change 256: the active music service, first in Settings.
     case service
     case cancel, confirmLogOut
@@ -1173,7 +1173,8 @@ public struct AppState: Equatable, Sendable {
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
-        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .menuBar, .about, .logOut]
+        // CLA-174: no Now Playing Bar row; the saved setting still shows the bar.
+        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .menuBar, .about, .logOut]
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]

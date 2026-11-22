@@ -387,7 +387,7 @@ import Testing
     @Test func onlyTheSelectedRowShowsAChevron() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 8  // About; Log out under it also opens a screen
+        s.top.sel = 7  // About; Log out under it also opens a screen
         let shot = try render(s, "settings-chevron")
         // The chevron is 8 points wide, 10 points in from the right edge of the list.
         let xs = Self.screenLeft + Self.screenWidth - 20...Self.screenLeft + Self.screenWidth - 8
@@ -395,11 +395,11 @@ import Testing
             let c = Self.rowCenter(row)
             return xs.flatMap { x in (c - 5...c + 5).map { (x, $0) } }
         }
-        #expect(box(8).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
+        #expect(box(7).contains { shot.isLight($0.0, $0.1) })  // a white chevron on the blue row
         // Card AN.1: Menu Bar shows "On" where a chevron goes, so About is checked unselected.
-        s.top.sel = 7
+        s.top.sel = 6
         let off = try render(s, "settings-chevron-off")
-        #expect(box(8).allSatisfy { off.isLight($0.0, $0.1) })  // no chevron on About
+        #expect(box(7).allSatisfy { off.isLight($0.0, $0.1) })  // no chevron on About
     }
 
     @Test func songListShowsArtistsAndTheScrollBar() throws {
@@ -729,32 +729,33 @@ import Testing
         #expect(rows(2) { shot.isLight($0, $1) })  // the selected row's value
     }
 
-    /// Card AN.1 (CLA-43, 346): the 10th row, "Menu Bar: On", after Now Playing Bar.
+    /// Card AN.1 (CLA-43, 346): the 7th row, "Menu Bar: On", after Clicker (CLA-174: no Now Playing Bar row).
     @Test func settingsMenuBarRow() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 7
-        s.scrollUntil = 1  // 10 rows: the list scrolls, so a wheel step shows the scroll bar
+        s.top.sel = 6
+        s.scrollUntil = 1  // right after a wheel step
         let shot = try render(s, "settings-menu-bar")
-        #expect(shot.isBlue(100, Self.rowCenter(7)))
-        #expect(!shot.isBlue(100, Self.rowCenter(6)))
+        // Left of the label: at x 100 the bold "Menu Bar" itself can be under the point.
+        let x = Self.screenLeft + 4
+        #expect(shot.isBlue(x, Self.rowCenter(6)))
+        #expect(!shot.isBlue(x, Self.rowCenter(5)))
         let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, want = try reference(0x5d6772)
-        #expect(near(shot.rgb(thumbX, Self.listTop + 8), want))  // the thumb starts at the top
+        #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))  // 9 rows fit: no scroll bar
     }
 
-    /// Card AN.1: at Log out, the list has moved down one row and the thumb touches the bottom.
-    @Test func settingsScrollsToLogOut() throws {
+    /// CLA-174: Settings' 9 rows fit on one screen. At Log out the list does not move and shows no scroll bar.
+    @Test func settingsFitsOneScreenAtLogOut() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))
-        s.top.sel = 9
-        s.top.off = 1
+        s.top.sel = 8
         s.scrollUntil = 1
         let shot = try render(s, "settings-log-out")
-        #expect(shot.isBlue(100, Self.rowCenter(8)))  // Log out, the last row on screen
+        #expect(shot.isBlue(100, Self.rowCenter(8)))  // Log out, the last row
         #expect(!shot.isBlue(100, Self.rowCenter(7)))  // About
         let thumbX: Int = Self.screenLeft + Self.screenWidth - 4, want = try reference(0x5d6772)
-        #expect(near(shot.rgb(thumbX, Self.listTop + 200), want))  // the thumb's bottom
-        #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))  // the thumb left the top
+        #expect(!near(shot.rgb(thumbX, Self.listTop + 200), want))
+        #expect(!near(shot.rgb(thumbX, Self.listTop + 8), want))
     }
 
     @Test func nowPlayingShowsTheCover() throws {

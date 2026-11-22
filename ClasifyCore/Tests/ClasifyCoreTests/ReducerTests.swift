@@ -114,13 +114,13 @@ func playing(_ i: Int = 0) -> AppState {
         send(&s, .select)
         #expect(s.albumArt == .all && s.isHalf(.main) && s.isHalf(.playlists) && s.showsNowPlayingArt)
         #expect(!s.rows(for: s.top).contains(.skin))  // only the Pocket skin in 1.0
-        #expect(s.rows(for: s.top).count == 10)  // no Playback engine, EQ or Skin row in 1.0
+        #expect(s.rows(for: s.top).count == 9)  // no Playback engine, EQ, Skin or Now Playing Bar row (CLA-174)
     }
 
     @Test func deviceColorGoesSilverBlackSilver() {
         var s = mainMenu()
         send(&s, .wheel(5), .select)
-        #expect(s.rows(for: s.top) == [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .nowPlayingBar, .menuBar, .about, .logOut])
+        #expect(s.rows(for: s.top) == [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .menuBar, .about, .logOut])  // CLA-174: no Now Playing Bar row
         #expect(s.deviceColor == .silver)  // the default
         send(&s, .wheel(4), .select)
         #expect(s.deviceColor == .black && s.top.screen == .settings)
@@ -136,7 +136,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// after each step.
     @Test func aboutScrollsThreeStepsOneATurn() {
         var s = mainMenu()
-        send(&s, .wheel(5), .select, .wheel(8))  // Settings, on the About row
+        send(&s, .wheel(5), .select, .wheel(7))  // Settings, on the About row
         #expect(s.rows(for: s.top)[s.top.sel] == .about)
         send(&s, .select, now: 1000)
         #expect(s.top.screen == .about && s.top.off == 0 && s.aboutAt == 1000 && abs(s.scrollUntil - 1001.8) < 1e-9)
@@ -160,7 +160,7 @@ func playing(_ i: Int = 0) -> AppState {
     /// About at time 1000, on the top of the page.
     func openAbout(at now: Double = 1000) -> AppState {
         var s = mainMenu()
-        send(&s, .wheel(5), .select, .wheel(8))
+        send(&s, .wheel(5), .select, .wheel(7))  // Settings, on the About row
         send(&s, .select, now: now)
         return s
     }
@@ -512,12 +512,12 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(!s.showsBar && s.shownRows == 9 && !s.showsPanelBar)  // the main menu
     }
 
-    /// Card AN.1 (CLA-43, 346): the Menu Bar row comes after Now Playing Bar, is On by default,
+    /// Card AN.1 (CLA-43, 346): the Menu Bar row comes after Clicker (CLA-174), is On by default,
     /// and a press flips it. It changes nothing else.
     @Test func menuBarRowTurnsTheIconOnAndOff() {
         var s = mainMenu()
         #expect(s.menuBar)
-        send(&s, .wheel(5), .select, .wheel(7))  // Settings, on the Menu Bar row
+        send(&s, .wheel(5), .select, .wheel(6))  // Settings, on the Menu Bar row
         #expect(s.rows(for: s.top)[s.top.sel] == .menuBar)
         let fx = send(&s, .select)
         #expect(!s.menuBar && s.top.screen == .settings && fx.isEmpty)
@@ -545,16 +545,13 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(showsWindow == [.betaSoon, .betaEnded, .betaNew, .activate])
     }
 
-    /// Card AK, changes 109-111: Settings' Now Playing Bar row turns the bar on. Then it shows on
-    /// every list while a song is loaded, and one-line lists show 8 rows.
+    /// Card AK, changes 109-111: with the saved Now Playing Bar setting on, the bar shows on every
+    /// list while a song is loaded, and one-line lists show 8 rows. CLA-174: Settings has no row
+    /// for it any more; only the saved value (settings.nowPlayingBar) turns it on.
     @Test func nowPlayingBarShowsTheBarOnEveryList() {
         var s = mainMenu()
-        send(&s, .wheel(5), .select, .wheel(6))  // Settings, on the Now Playing Bar row
-        #expect(s.rows(for: s.top)[s.top.sel] == .nowPlayingBar)
-        send(&s, .select)
-        #expect(s.nowPlayingBar && s.top.screen == .settings && !s.showsBar)  // nothing loaded: no bar
-        send(&s, .select)
-        #expect(!s.nowPlayingBar)  // a second press turns it off
+        s.nowPlayingBar = true
+        #expect(!s.showsBar)  // nothing loaded: no bar
         s = playing()
         s.nowPlayingBar = true
         #expect(!s.showsBar && s.shownRows == 9)  // never on Now Playing
