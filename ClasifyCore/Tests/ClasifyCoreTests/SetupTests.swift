@@ -107,7 +107,7 @@ import Testing
         #expect(s.stack == [Frame(screen: .hello)])  // a turn and MENU do nothing on Hello
         let whole = s.wholeSeq
         send(&s, .select)  // a press begins setup
-        #expect(s.stack == [Frame(screen: .color)] && s.navForward)
+        #expect(s.stack.map(\.screen) == [.color] && s.navForward)
         // CLA-62: Hello has no title bar, so the whole screen pushes, title bar and all.
         #expect(s.wholeSeq == whole + 1 && s.navMove == .push)
         #expect(s.rows(for: s.top) == [.color(.silver), .color(.black)] && s.top.sel == 1)  // Black, the default
