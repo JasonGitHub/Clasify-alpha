@@ -84,13 +84,16 @@ export function testBuild(env: Env): number | null {
 /** For tests: the next call reads again. */
 export function forgetBeta() { kept = null; }
 
-/** The feed's build and link. No file or a bad file: both null. No answer (an error, 5xx, 5 s): "unknown". */
+/** The feed's build and link. No file or a bad file: both null. No answer (an error, 5xx, a broken body, 5 s): "unknown". */
 async function latest(fetcher: typeof fetch): Promise<Newest | "unknown"> {
   const none = { build: null, url: null };
   const response = await fetcher(latestURL, { signal: AbortSignal.timeout(5_000) }).catch(() => null);
   if (!response || response.status >= 500) return "unknown";
   if (!response.ok) return none;
-  const feed = await response.json().catch(() => null) as { build?: unknown; url?: unknown } | null;
+  const text = await response.text().catch(() => null);
+  if (text === null) return "unknown";  // the body broke off: no answer, not a bad file
+  let feed: { build?: unknown; url?: unknown } | null;
+  try { feed = JSON.parse(text); } catch { feed = null; }
   return checked({ build: feed?.build, url: feed?.url });
 }
 

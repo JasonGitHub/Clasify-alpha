@@ -81,7 +81,8 @@ describe("GET /v1/beta", () => {
 
   it("keeps the last build when the feed does not answer, and drops it when the feed is gone", async () => {
     await get(page);  // build 400 kept
-    for (const answer of [async () => { throw new Error("timeout"); }, async () => new Response("down", { status: 503 })]) {
+    const brokenBody = async () => new Response(new ReadableStream({ pull(c) { c.error(new Error("cut")); } }));
+    for (const answer of [async () => { throw new Error("timeout"); }, async () => new Response("down", { status: 503 }), brokenBody]) {
       feed = answer;
       await refreshFeed(env.DB, fetcher, clock += feedFresh);
       forgetBeta();
