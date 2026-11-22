@@ -336,7 +336,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         }
         if s.startToken == token && !s.top.error {  // CLA-173: a list start waited for this read
             s.startToken = nil
-            startList(s.startList)
+            // Now Playing takes the loading frame's place, so MENU goes back to the row. An
+            // empty list stays on screen: there is nothing to play.
+            if !s.tracks(in: s.startList).isEmpty { s.stack.removeLast(); startList(s.startList) }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
@@ -618,6 +620,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         s.hint = nil; s.hintAt = 0; s.hintTip = false; s.heldToast = ""  // nor a toast that waited for a hint
         s.tourRestAt = now  // the tour queue stays for the next login (card BA.2)
         s.pendingService = nil
+        s.startToken = nil; s.startOnCovers = false  // a late read must not fill the next account's library
     }
     /// Makes `service` the active one. CLA-168: `volume` is the active service's volume; on
     /// Apple Music it is the Mac's output volume. Spotify's waits in `spotifyVolume` and comes
@@ -663,18 +666,18 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             open(.tracks(playlist: s.shuffleList)); s.shuffleToken = s.tok; s.startToken = nil
         }
     }
-    /// CLA-173: Play on a playlist or album row, or on Cover Flow's middle album, opens its list
-    /// as Select does and starts it on Now Playing, like the iPod. From Cover Flow the song panel
-    /// opens, so the cover flies to Now Playing as from a song pick (card AH). A list not read
-    /// yet starts when its read ends on top.
+    /// CLA-173: Play on a playlist or album row starts it on Now Playing, like the iPod. Now
+    /// Playing opens over the row's own screen, so MENU goes back to the same row. A list not
+    /// read yet shows its loading look while it reads, as Shuffle Songs does, and Now Playing
+    /// then takes its place. An empty list opens. Cover Flow's covers: see `.play`.
     func playList(_ id: String, on screen: Screen) {
         if s.offline { return toast(offlineStart) }
-        open(screen)
-        if s.top.loading {
-            s.startToken = s.top.token; s.startList = id; s.shuffleToken = nil
-        } else {
-            startList(id)
+        if s.isLoaded(screen) && !s.tracks(in: id).isEmpty {
+            refreshIfStale(screen)  // as opening it would: an old copy reads again behind Now Playing
+            return startList(id)
         }
+        open(screen)
+        if s.top.loading { s.startToken = s.top.token; s.startList = id; s.shuffleToken = nil }
     }
     /// Starts a read list as a song pick does: from its first song, or with Shuffle on from a
     /// random song, so the queue is the same as a pick in that list. An empty list plays nothing.
@@ -752,6 +755,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         }
         switch action {  // change 312: a key or a wheel turn; a later beta answer shows nothing
         case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: s.touched = true
+        default: break
+        }
+        switch action {  // CLA-173: another input ends a start that waits on the covers
+        case .wheel, .select, .menu, .next, .prev, .toggleShuffle, .cycleRepeat:
+            if s.startOnCovers { s.startOnCovers = false; s.startToken = nil }
         default: break
         }
         switch action {
@@ -1003,11 +1011,17 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.tour == .tourPlay && s.top.screen == .main { return shuffleSongs() }
             // CLA-173: a playlist or album row, or Cover Flow's covers, start that list. A list
             // start that waits for its read stays as it is. Every other screen and row: as before.
-            if s.top.loading && s.startToken == s.top.token { return }
+            if (s.top.loading && s.startToken == s.top.token) || s.startOnCovers { return }
             if s.top.screen == .coverFlow, !s.top.loading, s.albums.indices.contains(s.top.sel) {
                 let id = s.albums[s.top.sel].id
                 s.letterUntil = 0; s.coverFlowSteps = []  // as Select: MENU comes back with no letter
-                return playList(id, on: .albumPanel(album: id))
+                // Now Playing opens over the covers. An empty album plays nothing and the covers stay.
+                if s.offline { return toast(offlineStart) }
+                if s.isLoaded(.albumPanel(album: id)) { refreshIfStale(.albumPanel(album: id)); return startList(id) }
+                // Not read yet: the covers stay, with the album in the middle, while it reads.
+                s.tok += 1
+                s.startToken = s.tok; s.startList = id; s.startOnCovers = true; s.shuffleToken = nil
+                return fetch(.albumPanel(album: id))
             }
             if s.top.screen.isList, !s.top.loading, case let rows = s.rows(for: s.top), rows.indices.contains(s.top.sel) {
                 switch rows[s.top.sel] {
@@ -1220,7 +1234,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.readAt[id] = now
 
         case .tracksLoaded(let token, let id, let tracks):
-            guard s.top.loading, s.top.token == token else { return }  // stale load
+            // CLA-173: read behind the covers, while they still show.
+            let onCovers = s.startOnCovers && s.startToken == token && s.top.screen == .coverFlow
+            guard onCovers || (s.top.loading && s.top.token == token) else { return }  // stale load
             if let tracks {
                 if let i = s.library.firstIndex(where: { $0.id == id }) {
                     s.library[i].tracks = tracks; s.library[i].trackCount = tracks.count
@@ -1231,6 +1247,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 }
                 s.loadedTracks.insert(id)
                 s.readAt[id] = now
+            }
+            if onCovers {
+                s.startOnCovers = false; s.startToken = nil
+                if tracks == nil || s.offline { return toast("Can’t reach \(s.words.service)") }
+                return startList(id)  // an empty album plays nothing: the covers stay
             }
             if s.top.screen == .yourMusic, let tracks, !s.offline {
                 // Card AY, change 191: "Getting your music" stays until every name has shown.

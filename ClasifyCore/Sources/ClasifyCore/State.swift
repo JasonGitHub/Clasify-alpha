@@ -425,11 +425,15 @@ public struct AppState: Equatable, Sendable {
     public var authAttempt = 0
     /// Token of a shuffle list load (`shuffleList`) that starts Shuffle Songs when it finishes.
     public var shuffleToken: Int?
-    /// CLA-173: Play on a playlist or album that was not read yet opens its list. When the read
-    /// with this token ends on top, `startList` starts. Only one start waits: Shuffle Songs and
-    /// a list start each clear the other, so the newer one wins.
+    /// CLA-173: Play on a playlist or album that was not read yet opens its list with its
+    /// loading look. When the read with this token ends on top, Now Playing takes that frame's
+    /// place and `startList` starts. Only one start waits: Shuffle Songs and a list start each
+    /// clear the other, so the newer one wins.
     public var startToken: Int?
     public var startList = ""
+    /// The start waits on Cover Flow's covers, with no frame: the album reads behind them. Any
+    /// other input cancels it. A failed read shows a toast and stays on the covers.
+    public var startOnCovers = false
     public var signedIn = false
     /// The first launch setup ended once. Saved with the settings, so later launches skip
     /// Hello, the color pick and the first library read.
@@ -1066,8 +1070,7 @@ public struct AppState: Equatable, Sendable {
         func either(_ x: (Screen) -> Bool, _ y: (Screen) -> Bool) -> Bool { (x(a) && y(b)) || (y(a) && x(b)) }
         if whole && either({ $0 == .main }, { $0 == .coverFlow }) { return .doors }
         if either({ $0 == .coverFlow }, isPanel) { return .flip }
-        // CLA-173: Play on Cover Flow opens the song panel and Now Playing at once: the same flight.
-        if fly && either({ isPanel($0) || $0 == .coverFlow }, { $0 == .now }) { return .fly }
+        if fly && either(isPanel, { $0 == .now }) { return .fly }
         return .push
     }
 
