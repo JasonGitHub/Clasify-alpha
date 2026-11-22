@@ -660,6 +660,58 @@ import Testing
         #expect(near(at(1, CGPoint(x: 244, y: 197)), CGPoint(x: corner.x - 19, y: corner.y + 5.6)))
     }
 
+    /// Card CI 397 A (CLA-173): Play on the covers flies the middle cover itself, with no turn,
+    /// from its place in the strip to Now Playing's tilted cover. Saves mid-flight frames for MATCH.
+    @Test func theMiddleCoverFliesFromTheCoversToNowPlayingsCover() throws {
+        let size = CGSize(width: CoverFlowStrip.side, height: CoverFlowStrip.side)
+        func at(_ leap: Double, _ p: CGPoint) -> CGPoint { p.applying(LeapEffect(leap: leap).effectValue(size: size)) }
+        func near(_ a: CGPoint, _ b: CGPoint) -> Bool { abs(a.x - b.x) < 0.01 && abs(a.y - b.y) < 0.01 }
+        // At the start it is the strip's 120 point middle cover, 22 points under the header.
+        #expect(near(at(0, .zero), CGPoint(x: 90, y: 22)))
+        #expect(near(at(0, CGPoint(x: 120, y: 120)), CGPoint(x: 210, y: 142)))
+        // At the end it is Now Playing's 126.6 point cover, with the photo's tilt, at (9, 14.6).
+        #expect(near(at(1, .zero), CGPoint(x: 9, y: 14.6)))
+        let corner = CGPoint(x: 126.6, y: 126.6).applying(Tilt().effectValue(size: size))
+        #expect(near(at(1, CGPoint(x: 120, y: 120)), CGPoint(x: corner.x + 9, y: corner.y + 14.6)))
+
+        // Five frames of the flight, side by side: the strip fades out in the first 0.25 s.
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let blue = try #require(Self.solidImage(red: 0, green: 0, blue: 1))
+        var s = sampleState()
+        s.library[0].tracks = ["Aja", "Blue", "Clouds", "Dark Side", "Eno"].enumerated().map { i, name in
+            Track(id: "t\(i)", title: "t\(i)", artist: "a", duration: 100, coverID: "c\(i)",
+                  album: Album(id: "spotify:album:\(i)", name: name, artist: "Artist \(i)"))
+        }
+        s.stack.append(Frame(screen: .coverFlow))
+        s.top.sel = 2
+        let art = Artwork { $0 == "c2" ? red : blue }
+        let frames = HStack(spacing: 8) {
+            ForEach([0.0, 0.25, 0.5, 0.75, 1.0], id: \.self) { leap in
+                ZStack(alignment: .topLeading) {
+                    PocketCoverFlow(state: s).opacity(max(0, 1 - leap * PocketCoverFlow.leapTime / 0.25))
+                    CoverLeap(leap: leap, image: red)
+                }
+                .frame(width: Pocket.screenWidth, height: 206, alignment: .topLeading)
+                .background(Color.white)
+                .clipped()
+            }
+        }
+        .environment(\.artwork, art)
+        let renderer = ImageRenderer(content: frames)
+        renderer.scale = CGFloat(Snapshot.scale)
+        let image = try #require(renderer.cgImage)
+        let bitmap = NSBitmapImageRep(cgImage: image)
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"],
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-cover-leap-frames.png"))
+        }
+        // The middle frame: the red cover half way, its top left near (49.5, 18.3).
+        let shot = Snapshot(bitmap: bitmap)
+        let half = 2 * (Int(Pocket.screenWidth) + 8)
+        let mid = shot.rgb(half + 49 + 60, 18 + 60)
+        #expect(mid.r > 200 && mid.b < 60, "mid \(mid)")
+    }
+
     @Test func nowPlayingOverTheSongPanelLooksLikeNowPlaying() throws {
         var s = sampleState()
         let album = Album(id: "spotify:album:h", name: "Hey", artist: "OutKast")

@@ -1501,7 +1501,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         default: break
         }
     }
-    let wasOverPanel = s.nowOverPanel
+    let wasOverPanel = s.nowOverPanel || s.nowOverCovers
     let wasSignedIn = s.signedIn
     let rowBefore = s.halfRow
     let wasOffline = s.offline
@@ -1523,8 +1523,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         // Hello has no title bar, so the whole screen moves to and from it too (CLA-62).
         let whole = s.isHalf(before.1) != s.isHalf(s.top.screen) || before.1 == .hello || s.top.screen == .hello
         if whole { s.wholeSeq += 1 }
-        // The cover flies only to and from a Now Playing that shows the panel's album.
-        let fly = before.1 == .now ? wasOverPanel : s.nowOverPanel
+        // The cover flies only to and from a Now Playing that shows the panel's album, or the
+        // middle album of the covers (card CI).
+        let fly = before.1 == .now ? wasOverPanel : s.nowOverPanel || s.nowOverCovers
         s.navMove = AppState.move(between: before.1, and: s.top.screen, whole: whole, fly: fly)
     }
     // A list shows its scroll bar for a moment when it appears: on a new screen, or when its

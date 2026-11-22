@@ -13,6 +13,7 @@ struct PocketCoverFlow: View {
     /// False from a screen move until the cover flight's 0.4 s end (`PocketScreen.landedSeq`).
     var landed = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.artwork) private var artwork
     /// The song panel that showed last, so it can turn back into the cover after MENU.
     @State private var lastPanel: AlbumPanel.Shown?
 
@@ -26,29 +27,45 @@ struct PocketCoverFlow: View {
         // On MENU the cover flies back, and the covers and the panel show when it lands. A timer
         // ends the flight, not a delayed animation: a zero-length animation can skip its delay
         // and show them at once (CLA-64). The flight keeps the move's own curve.
-        let flyingBack = state.navMove == .fly && !state.navForward && !landed && !reduceMotion
+        let back = state.navMove == .fly && !state.navForward && !landed && !reduceMotion
+        // Card CI 397 A (CLA-173): Play on the covers flies the middle cover itself to Now
+        // Playing, with no turn, and MENU flies it back to the middle of the strip.
+        let leaping = state.nowOverCovers
+        let leapingBack = back && state.top.screen == .coverFlow
+        let flyingBack = back && !leapingBack
         let inFlight = flying || flyingBack
         ZStack(alignment: .topLeading) {
             CoverFlowTurn(turn: panel == nil ? 0 : 1, panel: panel ?? lastPanel, state: state) {
-                CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0)
+                CoverFlowStrip(albums: albums, covers: state.albumCovers, pos: Double(frame.sel), spread: $0, hidesMiddle: $0 > 0 || leapingBack)
                     // Fast steps retarget the glide, so the covers stream and then ease to a stop.
                     .animation(reduceMotion ? nil : CoverFlowStrip.glide, value: frame.sel)
             }
             .animation(nil) { $0.opacity(inFlight ? 0 : 1) }
-            .accessibilityHidden(flying)
+            // The strip fades out in the flight's first 0.25 s, and back in during its last 0.25 s.
+            .animation(reduceMotion ? nil : .linear(duration: 0.25).delay(leaping ? 0 : Self.leapTime - 0.25)) {
+                $0.opacity(leaping ? 0 : 1)
+            }
+            .accessibilityHidden(flying || leaping)
+            if albums.indices.contains(frame.sel) {
+                let album = albums[frame.sel].id
+                CoverLeap(leap: leaping ? 1 : 0, image: state.albumCovers[album].flatMap { artwork.lookup($0) })
+                    .animation(nil) { $0.opacity(leaping || leapingBack ? 1 : 0) }
+                    .accessibilityHidden(true)
+            }
             if let shown = panel ?? lastPanel {
                 CoverFly(fly: flying ? 1 : 0, panel: shown, state: state)
                     // Only while it flies: before, the panel shows; after, Now Playing's own cover.
                     .animation(nil) { $0.opacity(inFlight ? 1 : 0) }
                     .accessibilityHidden(true)
             }
-            if flying {
+            if flying || leaping {
                 // Now Playing's text and time bar fade in over 0.1 s when the cover lands, and go
-                // at once on MENU, leaving the cover.
+                // at once on MENU, leaving the cover. From the covers they fade in during the
+                // flight's last 0.3 s (card CI).
+                let fade: Animation = flying ? .linear(duration: 0.1).delay(Self.flyTime) : .linear(duration: 0.3).delay(Self.leapTime - 0.3)
                 PocketNowPlaying(state: state, input: input)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)  // placed as on its own screen
-                    .transition(reduceMotion ? .identity : .asymmetric(
-                        insertion: .opacity.animation(.linear(duration: 0.1).delay(Self.flyTime)), removal: .identity))
+                    .transition(reduceMotion ? .identity : .asymmetric(insertion: .opacity.animation(fade), removal: .identity))
             }
         }
         .overlay(alignment: .topLeading) { LetterBox(letter: state.coverFlowLetter) }
@@ -59,6 +76,51 @@ struct PocketCoverFlow: View {
     /// The cover's flight between the song panel and Now Playing: 0.4 s, ease-in-out (card AH).
     static let flyTime = 0.4
     static let flyAnimation = Animation.easeInOut(duration: flyTime)
+    /// The middle cover's flight from the covers to Now Playing and back: 0.45 s, easing out (card CI).
+    static let leapTime = 0.45
+    static let leapAnimation = Animation.timingCurve(0.3, 0, 0.2, 1, duration: leapTime)
+}
+
+/// Card CI 397 A: the middle cover on its flight from the covers to Now Playing's cover. At 0 it
+/// is the strip's 120 point middle cover at (90, 22); at 1 it is Now Playing's 126.6 point
+/// tilted cover at (9, 14.6). It does not turn over.
+struct CoverLeap: View, Animatable {
+    var leap: Double
+    let image: CGImage?
+
+    // `Animatable` is nonisolated while `View` is on the main actor. `leap` is a plain Double
+    // in a value type, so reading and writing it from any isolation is safe.
+    nonisolated var animatableData: Double {
+        get { leap }
+        set { leap = newValue }
+    }
+
+    var body: some View {
+        CoverArt(image: image, notesSize: 51)
+            .frame(width: CoverFlowStrip.side, height: CoverFlowStrip.side).clipped()
+            .modifier(LeapEffect(leap: leap))
+    }
+}
+
+/// The mockup's `translate(x, y) matrix3d(tilt) scale(s)` about the cover's top left, each part
+/// going straight from the strip's middle cover to Now Playing's cover (`Tilt`).
+struct LeapEffect: GeometryEffect {
+    let leap: Double
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let f = CGFloat(min(max(leap, 0), 1))
+        func lerp(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * f }
+        // This runs off the main actor, so it cannot read the views' constants: the 126.6 point
+        // cover (`PocketNowPlaying.coverSide`) over the 120 point middle cover (`CoverFlowStrip.side`).
+        let scale = lerp(1, 126.6 / 120)
+        var tilt = ProjectionTransform()  // `Tilt`, from none to all of it
+        tilt.m11 = lerp(1, 1.164835)
+        tilt.m12 = lerp(0, 0.082418)
+        tilt.m13 = lerp(0, 0.001259)
+        return ProjectionTransform(CGAffineTransform(scaleX: scale, y: scale))
+            .concatenating(tilt)
+            .concatenating(ProjectionTransform(CGAffineTransform(translationX: lerp(90, 9), y: lerp(22, 14.6))))
+    }
 }
 
 /// The covers at `pos`, which moves smoothly between two albums while they glide.
