@@ -30,6 +30,14 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(s.top.screen == .playlists && s.rows(for: s.top)[s.top.sel] == .playlist("focus"))
     }
 
+    @Test func anOldCopyReadsAgainBehindNowPlaying() {
+        var s = onPlaylists()
+        send(&s, .select, .tracksLoaded(token: 2, playlist: "focus", tracks: focus.tracks), .menu)
+        let later = Dependencies(now: { 100 + staleAfter }, random: { _ in 0 })
+        #expect(reduce(&s, .play, later).filter(\.isNotTrack) == [.refreshTracks(playlist: "focus")] + firstLoad)
+        #expect(s.top.screen == .now && s.refreshing.contains("focus"))
+    }
+
     @Test func aPlaylistNotReadYetLoadsWithItsListLookThenStarts() {
         var s = onPlaylists()
         #expect(send(&s, .play) == [.fetchTracks(token: 2, playlist: "focus")])

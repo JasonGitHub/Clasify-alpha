@@ -671,7 +671,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// reads, as Shuffle Songs does, and Now Playing then takes its place. An empty list opens.
     func playList(_ id: String, on screen: Screen) {
         if s.offline { return toast(offlineStart) }
-        if s.isLoaded(screen) && !s.tracks(in: id).isEmpty { return startList(id) }
+        if s.isLoaded(screen) && !s.tracks(in: id).isEmpty {
+            refreshIfStale(screen)  // as opening it would: an old copy reads again behind Now Playing
+            return startList(id)
+        }
         open(screen)
         if s.top.loading { s.startToken = s.top.token; s.startList = id; s.shuffleToken = nil }
     }
