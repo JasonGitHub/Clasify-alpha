@@ -27,7 +27,7 @@ struct PlainWindowApp: App {
             return WindowPlacement(x: origin.x, y: origin.y, width: size.width, height: size.height)
         }
         .windowBackgroundDragBehavior(.enabled)
-        .commands { DebugCommands(model: model); HelpCommands() }
+        .commands { CloseCommands(model: model); DebugCommands(model: model); HelpCommands() }
         HowToUseWindow()
     }
 }
@@ -227,6 +227,17 @@ enum DeviceWindow {
         WindowCover.Box(x: Double(r.minX), y: Double(r.minY), width: Double(r.width), height: Double(r.height))
     }
 
+    /// ⌘W (`CloseCommands`): another key window closes as usual. The device window, or no key
+    /// window while the device shows, goes to the reducer, which answers `.hideWindow` after the
+    /// first setup.
+    static func close(store: Store?) {
+        if let key = NSApp.keyWindow, key !== deviceWindow {
+            key.performClose(nil)
+            return
+        }
+        store?.send(.closeWindow)
+    }
+
     /// Card AN.1, 344-345: fades the device window out, then hides the app as Cmd+H does. The
     /// system keeps every window and gives the front to the app under myPod. The music goes on.
     static func hide() {
@@ -392,6 +403,21 @@ struct AppContent: View {
                 .background(Color(nsColor: .windowBackgroundColor))
         } else if let store = model.store {
             K3DSpikeSkin(store: store, artwork: model.artwork.artwork)
+        }
+    }
+}
+
+/// File › Close, ⌘W (Jason OK 15:49 JST 11-22). On the device window it hides myPod as a menu
+/// bar icon click on a shown myPod does (`.closeWindow`, then `DeviceWindow.hide()`); the menu
+/// bar icon and the Dock icon bring it back. ⌘W acts on the key window, so How to Use and
+/// Report a Problem close as usual.
+struct CloseCommands: Commands {
+    let model: AppModel
+
+    var body: some Commands {
+        CommandGroup(replacing: .saveItem) {
+            Button("Close") { DeviceWindow.close(store: model.store) }
+                .keyboardShortcut("w")
         }
     }
 }
