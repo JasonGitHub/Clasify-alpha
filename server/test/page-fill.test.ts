@@ -52,7 +52,7 @@ function served(html: string): Record<string, string | null> {
 beforeEach(async () => {
   asked = [];
   forgetBeta();
-  await env.DB.batch(["mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["mails", "swaps", "macs", "accounts", "beta_feed"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
 describe("the server-filled beta page", () => {

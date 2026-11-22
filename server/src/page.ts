@@ -4,8 +4,12 @@
 import { edits, fill, parseBeta, withState, type Fill } from "../public/beta-page/logic.js";
 import { beta, testBuild } from "./beta";
 
-/** How long the page waits for the count. Slower, and the page comes as it is (body.loading) and asks itself. */
-export const fillWait = 300;
+/**
+ * How long the page waits for the count (one D1 batch, src/beta.ts). Slower, and the page comes as
+ * it is (body.loading) and asks itself. A whole page a little later is better than a late button,
+ * so this covers a cold start far from the database; the fallback is for errors.
+ */
+export const fillWait = 1500;
 
 /** How long the rewrite of the whole page may take before the plain page goes out instead. */
 export const rewriteWait = 2000;
@@ -19,7 +23,8 @@ export function isBetaPage(request: Request): boolean {
  * The beta page, filled. Without an answer in `fillWait` (or with an error) the page goes out as
  * it is, and page.js loads the count as before. Never a 500 for the page.
  */
-export async function betaPage(request: Request, env: Env, assets: Fetcher, fetcher: typeof fetch = fetch): Promise<Response> {
+export async function betaPage(request: Request, env: Env, assets: Fetcher, fetcher: typeof fetch = fetch,
+  later?: (work: Promise<unknown>) => void): Promise<Response> {
   // No conditional request: a 304 would bring back an older copy of the page.
   const plain = new Headers(request.headers);
   plain.delete("If-None-Match");
@@ -29,7 +34,7 @@ export async function betaPage(request: Request, env: Env, assets: Fetcher, fetc
   if (!page.ok || !(page.headers.get("Content-Type") ?? "").startsWith("text/html")) return page;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const late = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), fillWait); });
-  const answer = await Promise.race([beta(env.DB, Number(env.CAP), fetcher, Date.now(), testBuild(env)), late]).catch(() => null);
+  const answer = await Promise.race([beta(env.DB, Number(env.CAP), fetcher, Date.now(), testBuild(env), later), late]).catch(() => null);
   clearTimeout(timer);
   if (!answer) return page;
   // The rewrite reads the whole page. If it fails or stalls, the first body is used up: send the
