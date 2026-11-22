@@ -36,7 +36,9 @@ struct PocketCoverFlow: View {
             }
             .animation(nil) { $0.opacity(inFlight ? 0 : 1) }
             .accessibilityHidden(flying)
-            if let shown = panel ?? lastPanel {
+            // Before any panel opened, the middle album stands in, so the flight view is already
+            // there at 0 when Play starts that album from the covers, and flies to 1 (CLA-173).
+            if let shown = panel ?? lastPanel ?? AlbumPanel.Shown(middleOf: state, sel: frame.sel) {
                 CoverFly(fly: flying ? 1 : 0, panel: shown, state: state)
                     // Only while it flies: before, the panel shows; after, Now Playing's own cover.
                     .animation(nil) { $0.opacity(inFlight ? 1 : 0) }

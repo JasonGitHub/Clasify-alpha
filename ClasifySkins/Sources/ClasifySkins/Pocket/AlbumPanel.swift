@@ -254,6 +254,17 @@ struct AlbumPanel: View {
             bar = state.showsPanelBar
         }
 
+        /// The middle album of Cover Flow, before any song panel opened there. The cover's
+        /// flight needs a view at its start, so Play on the covers can fly it too (CLA-173).
+        init?(middleOf state: AppState, sel: Int) {
+            guard state.albums.indices.contains(sel) else { return nil }
+            album = state.albums[sel].id
+            self.sel = 0
+            off = 0
+            message = nil
+            bar = false
+        }
+
         /// The panel's text. While a message shows, it has no songs, so the panel is its
         /// smallest size.
         func text(in state: AppState) -> Labels.PanelText {
