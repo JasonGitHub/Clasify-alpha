@@ -334,6 +334,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.shuffleToken = nil
             shuffle(s.shuffleList)
         }
+        if s.startToken == token && !s.top.error {  // CLA-173: a list start waited for this read
+            s.startToken = nil
+            startList(s.startList)
+        }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
         s.playGen += 1
@@ -572,6 +576,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if s.top.loading {
             s.tok += 1
             if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }
+            if s.startToken == s.top.token { s.startToken = s.tok }
             s.top.token = s.tok
             fetch(s.top.screen)
         }
@@ -649,14 +654,34 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if s.top.loading {
             // The shuffle list that loads starts when it is read. A start already pending stays as it is.
             guard s.top.screen == .tracks(playlist: s.shuffleList), s.shuffleToken != s.top.token else { return }
-            s.shuffleToken = s.top.token
+            s.shuffleToken = s.top.token; s.startToken = nil
             return
         }
         if s.loadedTracks.contains(s.shuffleList) {
             shuffle(s.shuffleList)
         } else {  // not read yet: load, then shuffle
-            open(.tracks(playlist: s.shuffleList)); s.shuffleToken = s.tok
+            open(.tracks(playlist: s.shuffleList)); s.shuffleToken = s.tok; s.startToken = nil
         }
+    }
+    /// CLA-173: Play on a playlist or album row, or on Cover Flow's middle album, opens its list
+    /// as Select does and starts it on Now Playing, like the iPod. From Cover Flow the song panel
+    /// opens, so the cover flies to Now Playing as from a song pick (card AH). A list not read
+    /// yet starts when its read ends on top.
+    func playList(_ id: String, on screen: Screen) {
+        if s.offline { return toast(offlineStart) }
+        open(screen)
+        if s.top.loading {
+            s.startToken = s.top.token; s.startList = id; s.shuffleToken = nil
+        } else {
+            startList(id)
+        }
+    }
+    /// Starts a read list as a song pick does: from its first song, or with Shuffle on from a
+    /// random song, so the queue is the same as a pick in that list. An empty list plays nothing.
+    func startList(_ id: String) {
+        let songs = s.tracks(in: id)
+        guard !songs.isEmpty else { return }
+        play(id, songs[s.shuffle ? env.random(songs.count) : 0].id)
     }
     /// Cover Flow opens on the playing album, else on the album it showed last, else on the
     /// middle album (card AE).
@@ -812,6 +837,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.top.error {  // retry
                 s.tok += 1
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }  // a pending shuffle follows the retry
+                if s.startToken == s.top.token { s.startToken = s.tok }
                 s.top.loading = true; s.top.error = false; s.top.token = s.tok
                 fetch(s.top.screen)
                 return
@@ -976,6 +1002,20 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // The tour's Play starts Shuffle Songs on Now Playing, also when Spotify already had a
             // song when Clasify started (change 199, CLA-161).
             if s.tour == .tourPlay && s.top.screen == .main { return shuffleSongs() }
+            // CLA-173: a playlist or album row, or Cover Flow's covers, start that list. A list
+            // start that waits for its read stays as it is. Every other screen and row: as before.
+            if s.top.loading && s.startToken == s.top.token { return }
+            if s.top.screen == .coverFlow, !s.top.loading, s.albums.indices.contains(s.top.sel) {
+                let id = s.albums[s.top.sel].id
+                s.letterUntil = 0; s.coverFlowSteps = []  // as Select: MENU comes back with no letter
+                return playList(id, on: .albumPanel(album: id))
+            }
+            if s.top.screen.isList, !s.top.loading, case let rows = s.rows(for: s.top), rows.indices.contains(s.top.sel) {
+                switch rows[s.top.sel] {
+                case .playlist(let id), .album(let id): return playList(id, on: .tracks(playlist: id))
+                default: break
+                }
+            }
             guard s.current != nil else {
                 // CLA-61, CLA-161: nothing to resume, so Play does what Shuffle Songs does. Only on
                 // the main screens: never during setup, at login, or on the Spotify App screen.
@@ -1261,6 +1301,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if onMain && s.top.loading {  // a list opened meanwhile: its read starts now
                 s.tok += 1
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }
+                if s.startToken == s.top.token { s.startToken = s.tok }
                 s.top.token = s.tok
                 fetch(s.top.screen)
             }
