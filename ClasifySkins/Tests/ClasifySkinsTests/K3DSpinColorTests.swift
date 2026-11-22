@@ -10,7 +10,7 @@ import Testing
 /// `K3DSpikeSkin`; this checks the frame that update draws.)
 @Suite @MainActor struct K3DSpinColorTests {
     func picture(_ color: DeviceColor, spinOld: Bool?) throws -> [UInt8] {
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let image = try #require(K3DSpike.snapshot(state, wheel: WheelLook(), black: spinOld))
         return try #require(K3DTextures.picture(image))

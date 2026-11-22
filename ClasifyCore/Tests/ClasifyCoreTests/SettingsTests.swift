@@ -17,6 +17,20 @@ final class FakeSettings: SettingsStore {
     #expect(Settings() == AppState().settings)
 }
 
+/// Jason 15:33 JST 11-22: Black is the default color. A Mac that set up before, with no saved
+/// color, set up on Silver and stays Silver.
+@Test func blackIsTheDefaultColorAndAnOldSetUpMacStaysSilver() {
+    #expect(AppState().deviceColor == .black && Settings().deviceColor == .black)
+    #expect(Settings(from: FakeSettings()).deviceColor == .black)  // a fresh Mac
+    let old = FakeSettings()
+    old.values = ["setup.done": "true"]
+    #expect(Settings(from: old).deviceColor == .silver)
+    old.values["settings.deviceColor"] = "Black"
+    #expect(Settings(from: old).deviceColor == .black)  // a saved color stays
+    old.values = ["setup.done": "false"]
+    #expect(Settings(from: old).deviceColor == .black)  // setup not done: the new default
+}
+
 @Test func settingsLoadTheSavedValuesAndSkipUnknownOnes() {
     let store = FakeSettings()
     var saved = Settings()

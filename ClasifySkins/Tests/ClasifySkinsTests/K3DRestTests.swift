@@ -105,7 +105,7 @@ import Testing
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theRestFrameMatchesBL(_ color: DeviceColor) throws {
         let renderer = try #require(K3DRenderer.shared)
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let name = color == .black ? "black" : "silver"
         let flat = try flat(state, "bl-\(name)-2d")
@@ -123,7 +123,7 @@ import Testing
     /// The 3D texture's MENU label is where the app draws it: its top within 1 pt.
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func menuIsWhereTheAppDrawsIt() throws {
         let renderer = try #require(K3DRenderer.shared)
-        let state = AppState()
+        let state = AppState.silver
         let flat = try flat(state, "bl-silver-2d")
         let rest = try rest(renderer, state, "k3d8-rest-silver")
         // The wheel's top is 321 pt down. MENU is 45 pt wide around x 183.
@@ -140,7 +140,7 @@ import Testing
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theHalfwayFadeKeepsTheDevice(_ color: DeviceColor) throws {
         let renderer = try #require(K3DRenderer.shared)
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let name = color == .black ? "black" : "silver"
         let flat = try flat(state, "bl-\(name)-2d")
@@ -168,7 +168,7 @@ import Testing
     /// on a light ground, in the window's margins: below, to the sides, and the corners.
     @Test(arguments: [DeviceColor.silver, .black])
     func theShadowHandsOverWithNoStep(_ color: DeviceColor) throws {
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let name = color == .black ? "black" : "silver"
         let ground = Color(.sRGB, red: 0.9, green: 0.9, blue: 0.9)
@@ -256,7 +256,7 @@ import Testing
     @Test func theDeviceStaysOpaqueUntilThe3DFrameIsReady() throws {
         #expect(K3DHandover<EmptyView, EmptyView>.shown(flat: 0.5, ready: false) == 1)
         #expect(K3DHandover<EmptyView, EmptyView>.shown(flat: 0.5, ready: true) == 0.5)
-        let state = AppState()
+        let state = AppState.silver
         let flat = try flat(state, "bl-silver-2d")
         let device = PocketSkin(state: state, interactive: false)
         let waiting = try pixels(K3DHandover(flat: 0.2, ready: false, content: device) { _ in Color.red }, "k3d8-fade-waiting")

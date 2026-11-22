@@ -161,7 +161,7 @@ import Testing
         _ = events(&s, .used(.takeApart), .play, now: at(23, 59.5))  // the music stops before midnight
         let day = s.today!
         let sent = events(&s, .tick, now: at(0, 1, day: 20))
-        #expect(sent == [.dayActive(day, service: .spotify, color: .silver)] && s.today == nil)
+        #expect(sent == [.dayActive(day, service: .spotify, color: .black)] && s.today == nil)
         #expect(events(&s, .tick, now: at(9, day: 21)).isEmpty)  // a day with nothing sends nothing
         var p = BetaEvent.dayActive(day, service: .spotify, color: .silver).properties
         #expect(p.removeValue(forKey: "used_takeApart") == .flag(true) && p["used_coverFlow"] == .flag(false))
@@ -174,10 +174,10 @@ import Testing
         var s = playing()
         _ = events(&s, .position(1, generation: s.playGen), .position(2, generation: s.playGen), now: at(23, 59))
         _ = events(&s, .play, now: at(23, 59.5))
-        s.deviceColor = .black  // changed after the music, before the report
+        s.deviceColor = .silver  // changed after the music, before the report
         let sent = events(&s, .tick, now: at(0, 1, day: 20))
         guard case .dayActive(_, _, let color)? = sent.first else { Issue.record("no day_active"); return }
-        #expect(color == .black && sent.first?.properties["color"] == .text("black"))
+        #expect(color == .silver && sent.first?.properties["color"] == .text("silver"))
     }
 
     @Test func coverFlowSettingsAndSkinFeaturesSetTheirFlagOnce() {

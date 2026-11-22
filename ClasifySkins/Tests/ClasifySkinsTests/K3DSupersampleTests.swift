@@ -96,7 +96,7 @@ import simd
         let renderer = try #require(K3DRenderer.shared)
         let canvas = CGSize(width: 520, height: 720)
         for black in [false, true] {
-            var state = AppState()
+            var state = AppState.silver
             state.deviceColor = black ? .black : .silver
             let shot = try #require(K3DSpike.snapshot(state))
             for angle in [180.0, 150, 205, 110, 35, 55, 0, 1, 2, 3] {

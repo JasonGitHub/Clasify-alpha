@@ -70,7 +70,7 @@ import Testing
     }
 
     @Test func login() throws {
-        var s = AppState()
+        var s = AppState.silver
         s.restoring = false
         let shot = try render(s, "login")
         #expect(shot.isBlue(175, Self.rowCenter(0) + 77))  // "Log in with Spotify" is selected, under the words (card AX)
@@ -1098,15 +1098,15 @@ import Testing
         let wheelTop: Int = 321  // device border 1, padding 24.8, bezel 239.4, gap 55.8
         let middle: Int = wheelTop + 112, nearTop: Int = middle - 30, nearBottom: Int = middle + 30
         let x = Int(PocketSkin.size.width) / 2  // the wheel's center
-        let up = try render(AppState(), "wheel")
-        let down = try render(AppState(), "wheel-pressed", pressed: .center)
+        let up = try render(AppState.silver, "wheel")
+        let down = try render(AppState.silver, "wheel-pressed", pressed: .center)
         let ring = up.rgb(x, wheelTop + 60), white = try reference(0xf9fbfc)
         #expect(near(ring, white), "ring \(ring)")  // the light wheel (card BL)
         // Dark at the top, as if pressed in. Pressed, the whole button gets darker.
         #expect(up.rgb(x, nearTop).b < up.rgb(x, nearBottom).b)
         for y in [nearTop, middle, nearBottom] { #expect(down.rgb(x, y).b < up.rgb(x, y).b, "silver y \(y)") }
         // Black too: pressed, the whole button gets darker.
-        var s = AppState()
+        var s = AppState.silver
         s.deviceColor = .black
         let blackUp = try render(s, "wheel-black"), blackDown = try render(s, "wheel-black-pressed", pressed: .center)
         for y in [nearTop, middle, nearBottom] { #expect(blackDown.rgb(x, y).b < blackUp.rgb(x, y).b, "black y \(y)") }
@@ -1115,7 +1115,7 @@ import Testing
     /// Card BL v3: the black device has a charcoal body, the #2a2c2e bezel and a near black
     /// wheel with a dark center. The screen does not change.
     @Test func blackDeviceColorsTheBodyBezelAndWheel() throws {
-        var s = AppState()
+        var s = AppState.silver
         s.deviceColor = .black
         let shot = try render(s, "black")
         let wheelTop: Int = 321, x = Int(PocketSkin.size.width) / 2
@@ -1133,7 +1133,7 @@ import Testing
     /// shows under the device.
     @Test func theShadowDoesNotReachTheTopMargin() throws {
         for color in [DeviceColor.silver, .black] {
-            var s = AppState()
+            var s = AppState.silver
             s.deviceColor = color
             let framed = PocketSkin(state: s, interactive: false)
                 .padding(EdgeInsets(top: 5, leading: 60, bottom: 90, trailing: 60))
@@ -1170,14 +1170,14 @@ import Testing
         // and near the bottom.
         let body = [(8, 300), (358, 300), (183, 290), (183, 600), (40, 580)]
         for fade in [0, 0.25, 0.5, 0.75, 1] {
-            let shot = try framed(PocketSkin(state: AppState(), interactive: false, fade: fade))
+            let shot = try framed(PocketSkin(state: AppState.silver, interactive: false, fade: fade))
             for (x, y) in body {
                 #expect(alpha(shot, x, y) >= 254.5 / 255, "fade \(fade) at (\(x), \(y)): alpha \(alpha(shot, x, y))")
             }
         }
         // At each end, one shadow, as strong as the shadow of the old single body.
         for (color, shadow) in [(DeviceColor.silver, Color(hex: 0x1e1e1e, opacity: 0.3)), (.black, .black.opacity(0.45))] {
-            var s = AppState()
+            var s = AppState.silver
             s.deviceColor = color
             let shot = try framed(PocketSkin(state: s, interactive: false))
             let old = try framed(
@@ -1502,7 +1502,7 @@ import Testing
     /// Hello (card AT): the word writes itself in four looks; the center glows from 13 s, and
     /// the begin text shows at 14.9 s. `time` is seconds since Hello opened.
     @Test func helloWritesItsLooksThenGlowsThenShowsTheText() throws {
-        var s = AppState()
+        var s = AppState.silver
         s.stack = [Frame(screen: .hello)]
         let ink = (x: 113, y: 142)  // on the h's first stroke
         let ring = (x: 183, y: 392)  // just above the wheel's center button
@@ -1527,7 +1527,7 @@ import Testing
     /// The color pick (card AW): the rows on the left, the small device on the right, the
     /// fingertip dot and the turn hint before the first turn; after it, the new color and the glow.
     @Test func theColorPickShowsTheSmallDeviceAndTriesTheColorOn() throws {
-        var s = AppState()
+        var s = AppState.silver
         s.stack = [Frame(screen: .color)]
         func hint(_ shot: Snapshot) -> Bool {  // dark text under the two rows, in the left pane
             for y in 106...117 {
@@ -1564,7 +1564,7 @@ import Testing
         // The wheel alone is gray there.
         func lit(_ shot: Snapshot, _ x: Int, _ y: Int) -> Bool { let c = shot.rgb(x, y); return c.b > c.r + 60 }
         for color in [DeviceColor.silver, .black] {
-            var s = AppState()
+            var s = AppState.silver
             s.stack = [Frame(screen: .color)]
             s.top.sel = color == .black ? 1 : 0  // the pick shows the selected color
             s.colorAt = 100
@@ -1585,7 +1585,7 @@ import Testing
     /// tile has its green marks; Apple Music's tile is dark with a white note and no green.
     @Test func pickYourMusicShowsTheLogoOfTheSelectedService() throws {
         #expect(ServiceLogo.logos.count == 2)  // both logos are bundled
-        var s = AppState()
+        var s = AppState.silver
         s.stack = [Frame(screen: .pickMusic)]
         // The green points on the right side, where the tile and its reflection are.
         func green(_ shot: Snapshot) -> Int {
@@ -1612,7 +1612,7 @@ import Testing
     /// Card AW.1, change 236: after a turn, Pick Your Color shows no light on the wheel's rim.
     /// Only the center glows.
     @Test func theColorPickShowsNoRimLightAfterATurn() throws {
-        var s = AppState()
+        var s = AppState.silver
         s.stack = [Frame(screen: .color)]
         s.colorAt = 0; s.colorTurnAt = 5
         let shot = try render(s, "color-pick-turned", time: 7.8)
@@ -1628,7 +1628,7 @@ import Testing
     /// Card AX: the login screens are split like the color pick. A headline and a line sit over
     /// the rows, which start 77 points under the title bar. "You’re in" shows the green check.
     @Test func theLoginScreensShowTheWordsTheRowsAndTheSmallDevice() throws {
-        var s = AppState()
+        var s = AppState.silver
         s.setupDone = true
         func any(_ shot: Snapshot, x: ClosedRange<Int>, y: ClosedRange<Int>, _ test: (Int, Int, Int) -> Bool) -> Bool {
             for py in y {
@@ -1717,7 +1717,7 @@ import Testing
     /// Card BW, 319 to 327: the same split screen as AX and BB. The rows start at the same
     /// place (the first one selected), 323 has none, and its mark is the green check.
     @Test func theActivateScreens() throws {
-        var s = AppState()
+        var s = AppState.silver
         s.stack = [Frame(screen: .activate)]
         func any(_ shot: Snapshot, x: ClosedRange<Int>, y: ClosedRange<Int>, _ test: (Int, Int, Int) -> Bool) -> Bool {
             for py in y { for px in x { let c = shot.rgb(px, py); if test(c.r, c.g, c.b) { return true } } }

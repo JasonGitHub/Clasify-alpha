@@ -17,7 +17,7 @@ import Testing
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theFrontAt0IsThe2DDevice(_ color: DeviceColor) throws {
         let renderer = try #require(K3DRenderer.shared)
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let name = color == .black ? "black" : "silver"
         let shot = try #require(K3DSpike.snapshot(state))
@@ -58,7 +58,7 @@ import Testing
     /// 3D body is the old color, and the front is 3D only there (as before CLA-119).
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theLayerNeedsThePicturesColor() throws {
         let renderer = try #require(K3DRenderer.shared)
-        let shot = try #require(K3DSpike.snapshot(AppState()))  // Silver
+        let shot = try #require(K3DSpike.snapshot(AppState.silver))  // Silver
         let size = PocketSkin.size
         let plain = try #require(renderer.image(K3DPose(black: true), screen: nil, size: size, scale: 2))
         let other = try #require(renderer.image(K3DPose(black: true), screen: shot, size: size, scale: 2))
@@ -73,9 +73,9 @@ import Testing
     /// The picture is the face as it is at the swap: the wheel key under the pointer is drawn so.
     @Test func thePictureShowsTheWheelKeyUnderThePointer() throws {
         let look = WheelLook()
-        let plain = try #require(K3DSpike.snapshot(AppState(), wheel: look).flatMap(K3DTextures.picture))
+        let plain = try #require(K3DSpike.snapshot(AppState.silver, wheel: look).flatMap(K3DTextures.picture))
         look.hovered = .menu
-        let hovered = try #require(K3DSpike.snapshot(AppState(), wheel: look).flatMap(K3DTextures.picture))
+        let hovered = try #require(K3DSpike.snapshot(AppState.silver, wheel: look).flatMap(K3DTextures.picture))
         // MENU: the wheel's top key, about 40 pt below the wheel's top (y 321 pt), centered.
         var changed = 0
         for y in 660..<700 {

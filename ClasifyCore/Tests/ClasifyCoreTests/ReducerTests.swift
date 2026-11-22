@@ -117,18 +117,18 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(s.rows(for: s.top).count == 9)  // no Playback engine, EQ, Skin or Now Playing Bar row (CLA-174)
     }
 
-    @Test func deviceColorGoesSilverBlackSilver() {
+    @Test func deviceColorGoesBlackSilverBlack() {
         var s = mainMenu()
         send(&s, .wheel(5), .select)
         #expect(s.rows(for: s.top) == [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .menuBar, .about, .logOut])  // CLA-174: no Now Playing Bar row
-        #expect(s.deviceColor == .silver)  // the default
+        #expect(s.deviceColor == .black)  // the default (Jason 15:33 JST 11-22)
         send(&s, .wheel(4), .select)
-        #expect(s.deviceColor == .black && s.top.screen == .settings)
+        #expect(s.deviceColor == .silver && s.top.screen == .settings)
         send(&s, .select)
-        #expect(s.deviceColor == .silver)
-        s.deviceColor = .black
+        #expect(s.deviceColor == .black)
+        s.deviceColor = .silver
         send(&s, .reset)
-        #expect(s.deviceColor == .black)  // a saved setting: a reset keeps it
+        #expect(s.deviceColor == .silver)  // a saved setting: a reset keeps it
     }
 
     /// Card BF, change 207, and card BS, change 294: About is one page of 3 wheel steps (card CC), one step

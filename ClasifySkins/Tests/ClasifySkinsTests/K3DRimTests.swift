@@ -42,7 +42,7 @@ import Testing
     @Test(.enabled(if: Self.hasMetal, "no Metal device"), arguments: [DeviceColor.silver, .black])
     func theRimHasNoBlackLine(_ color: DeviceColor) throws {
         let renderer = try #require(K3DRenderer.shared)
-        var state = AppState()
+        var state = AppState.silver
         state.deviceColor = color
         let black = color == .black
         let shot = try #require(K3DSpike.snapshot(state))

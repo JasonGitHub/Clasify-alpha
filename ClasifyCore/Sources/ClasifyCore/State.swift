@@ -753,7 +753,8 @@ public struct AppState: Equatable, Sendable {
     public var albumArt = AlbumArt.all
     /// Now Playing shows the playing track's cover.
     public var showsNowPlayingArt: Bool { albumArt != .off }
-    public var deviceColor = DeviceColor.silver
+    /// Black by default (Jason 15:33 JST 11-22). `Settings` keeps Silver for a Mac set up before.
+    public var deviceColor = DeviceColor.black
     /// The color the device shows: on the color pick (card AW), the selected row's color, so a
     /// turn tries it on at once; else the setting.
     public var shownColor: DeviceColor {
