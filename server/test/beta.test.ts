@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/activation";
-import { downloadURL, forgetBeta, keepFor, latestURL } from "../src/beta";
+import { downloadURL, feedFresh, forgetBeta, keepFor, latestURL, refreshFeed } from "../src/beta";
 import { noMail } from "../src/mailer";
 
 // CLA-172: GET /v1/beta for the beta page.
@@ -32,7 +32,7 @@ beforeEach(async () => {
   asked = [];
   clock = 1_000_000;
   forgetBeta();
-  await env.DB.batch(["mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["mails", "swaps", "macs", "accounts", "beta_feed"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
 describe("GET /v1/beta", () => {
@@ -54,8 +54,49 @@ describe("GET /v1/beta", () => {
     expect((await get(page)).json).toMatchObject({ taken: 0 });  // kept: no new read
     expect(asked).toHaveLength(1);
     clock += 1;
-    expect((await get(page)).json).toMatchObject({ taken: 2 });  // read again
+    expect((await get(page)).json).toMatchObject({ taken: 2 });  // the count read again
+    expect(asked).toHaveLength(1);  // the feed is kept in D1, not read again
+  });
+
+  it("keeps the feed in D1 and refreshes it after the answer once it is 2 minutes old", async () => {
+    const later: Promise<unknown>[] = [];
+    const ask = () => handle(new Request("https://api.example/v1/beta", { headers: { Origin: page } }), env,
+      { now: () => clock, mailer: noMail, human: async () => false, fetcher, later: (w) => later.push(w) });
+    expect(await (await ask()).json()).toMatchObject({ build: 400 });
+    expect(asked).toHaveLength(1);  // the very first time: nothing kept, so it waits for the feed
+    // A new build is uploaded.
+    const next = { ...good, build: 401, url: "https://dl.getmypod.app/beta/myPod-beta-401.dmg" };
+    feed = json(next);
+    clock += feedFresh - 1;
+    expect(await (await ask()).json()).toMatchObject({ build: 400 });  // still fresh: no feed read
+    expect([asked.length, later.length]).toEqual([1, 0]);
+    clock += keepFor + 1;
+    expect(await (await ask()).json()).toMatchObject({ build: 400 });  // old: answers at once with the kept build...
+    expect(later).toHaveLength(1);
+    await Promise.all(later);  // ...and reads the feed after the answer
     expect(asked).toHaveLength(2);
+    clock += keepFor;
+    expect(await (await ask()).json()).toMatchObject({ build: 401, url: next.url });
+  });
+
+  it("keeps the last build when the feed does not answer, and drops it when the feed is gone", async () => {
+    await get(page);  // build 400 kept
+    for (const answer of [async () => { throw new Error("timeout"); }, async () => new Response("down", { status: 503 })]) {
+      feed = answer;
+      await refreshFeed(env.DB, fetcher, clock += feedFresh);
+      forgetBeta();
+      expect((await get(page)).json).toMatchObject({ build: 400, url: good.url });
+    }
+    feed = async () => new Response("no", { status: 404 });
+    await refreshFeed(env.DB, fetcher, clock += feedFresh);
+    forgetBeta();
+    expect((await get(page)).json).toMatchObject({ build: null, url: null });
+  });
+
+  it("checks a kept row again, like the feed", async () => {
+    await env.DB.prepare("INSERT INTO beta_feed (id, build, url, checked_at) VALUES (1, 7, 'https://evil.example/x.dmg', ?)").bind(clock).run();
+    expect((await get(page)).json).toMatchObject({ build: null, url: null });
+    expect(asked).toHaveLength(0);
   });
 
   it("is full at the cap", async () => {
@@ -88,6 +129,7 @@ describe("GET /v1/beta", () => {
     ]) {
       feed = answer;
       clock += keepFor;
+      await env.DB.prepare("DELETE FROM beta_feed").run();  // read the feed again
       expect((await get(page)).json).toMatchObject({ taken: 0, cap: 25, full: false, ...empty });
     }
   });
@@ -110,6 +152,7 @@ describe("downloadURL", () => {
 describe("TEST_BUILD (test server only)", () => {
   const withEnv = async (vars: Partial<Env>) => {
     forgetBeta();
+    await env.DB.prepare("DELETE FROM beta_feed").run();
     const response = await handle(new Request("https://api.example/v1/beta", { headers: { Origin: page } }), { ...env, ...vars } as Env,
       { now: () => clock, mailer: noMail, human: async () => false, fetcher });
     return (await response.json()) as Record<string, unknown>;

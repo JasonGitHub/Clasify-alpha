@@ -20,6 +20,8 @@ export interface Deps {
   pageMail?: PageMailer;
   /** CLA-172: reads the beta feed. Default: fetch. */
   fetcher?: typeof fetch;
+  /** CLA-172: work after the answer (the Worker's waitUntil), such as the beta feed's refresh. */
+  later?: (work: Promise<unknown>) => void;
 }
 
 const codeLife = 15 * 60_000;
@@ -117,7 +119,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
 
   switch (route) {
     case "GET /v1/beta": {  // the beta page (CLA-172): the count and the newest beta, cached 30 s
-      const answer = reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch, now, testBuild(env)), 200, cors, "max-age=30");
+      const answer = reply(await beta(db, Number(env.CAP), deps.fetcher ?? fetch, now, testBuild(env), deps.later), 200, cors, "max-age=30");
       answer.headers.set("Vary", "Origin");  // cacheable, so also without CORS
       return answer;
     }
