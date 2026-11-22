@@ -378,7 +378,9 @@ public enum AlbumArt: String, CaseIterable, Sendable {
     case off = "Off"
 }
 /// The Pocket skin's body color (round 8, card Z). The Settings row goes Silver, Black, then Silver again.
-public enum DeviceColor: String, CaseIterable, Sendable { case silver = "Silver", black = "Black" }
+/// Black first: the top row on the Color step, and first in the Settings Color loop (Jason 16:54 JST
+/// 11-22). Saved by raw value, so the order changes nothing saved.
+public enum DeviceColor: String, CaseIterable, Sendable { case black = "Black", silver = "Silver" }
 
 /// The Mac's battery, shown in the title bar (round 7, card Y).
 public struct Battery: Equatable, Sendable {
