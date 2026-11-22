@@ -431,6 +431,9 @@ public struct AppState: Equatable, Sendable {
     /// clear the other, so the newer one wins.
     public var startToken: Int?
     public var startList = ""
+    /// The start waits on Cover Flow's covers, with no frame: the album reads behind them. Any
+    /// other input cancels it. A failed read shows a toast and stays on the covers.
+    public var startOnCovers = false
     public var signedIn = false
     /// The first launch setup ended once. Saved with the settings, so later launches skip
     /// Hello, the color pick and the first library read.

@@ -13,6 +13,10 @@ private func onPlaylists() -> AppState {
 }
 private let chill = Playlist(id: "chill", name: "Chill", tracks: tracks("c", 3, 30))
 private let chillInfo = Playlist(id: "chill", name: "Chill", tracks: [], trackCount: 3)
+/// One song on the album, as its read gives it.
+private func coverSongs(_ s: AppState, _ album: String) -> [Track] {
+    [Track(id: "m1", title: "m1", artist: "a", duration: 100, album: s.album(album), disc: nil, number: 1)]
+}
 private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(trackID: "f0", context: "focus", autoplay: true, generation: 1)]
 
 @Suite struct PlayListTests {
@@ -136,13 +140,17 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         send(&s, .select)
         let middle = s.top.sel
         let album = s.albums[middle].id
-        // Not read yet: the song panel opens with its loading look, then Now Playing takes its place.
-        #expect(send(&s, .play) == [.fetchTracks(token: s.top.token, playlist: album)])
-        #expect(s.top.screen == .albumPanel(album: album) && s.top.loading && s.startToken == s.top.token)
-        let songs = [Track(id: "m1", title: "m1", artist: "a", duration: 100, album: s.album(album), disc: nil, number: 1)]
-        send(&s, .tracksLoaded(token: s.top.token, playlist: album, tracks: songs))
+        let depth = s.stack.count
+        // Not read yet: the covers stay, with the album in the middle, while it reads. No panel opens.
+        let token = s.tok + 1
+        #expect(send(&s, .play) == [.fetchTracks(token: token, playlist: album)])
+        #expect(s.top.screen == .coverFlow && s.top.sel == middle && s.stack.count == depth)
+        #expect(s.startOnCovers && s.startToken == token && s.current == nil)
+        #expect(send(&s, .play) == [] && s.startToken == token)  // a second Play: it still waits
+        send(&s, .tracksLoaded(token: token, playlist: album, tracks: coverSongs(s, album)))
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "m1"))
-        // A plain slide, no cover flight: there is no song panel under Now Playing.
+        #expect(s.startToken == nil && !s.startOnCovers)
+        // A plain slide over the covers, no cover flight: there is no song panel under Now Playing.
         #expect(s.stack.suffix(2).map(\.screen) == [.coverFlow, .now] && s.navMove == .push && !s.nowOverPanel)
         // MENU goes back to the covers, with the same album in the middle.
         send(&s, .menu)
@@ -155,6 +163,40 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(s.stack.suffix(2).map(\.screen) == [.coverFlow, .now])
         send(&s, .menu)
         #expect(s.top.screen == .coverFlow && s.top.sel == middle)
+    }
+
+    @Test func aWaitOnTheCoversEndsOnInputAFailedReadOrAnEmptyAlbum() {
+        // Another input cancels the start: its late answer starts nothing.
+        var s = withCoverFlow(tenAlbums)
+        send(&s, .select)
+        var album = s.albums[s.top.sel].id
+        send(&s, .play)
+        var token = s.startToken ?? -1
+        send(&s, .wheel(1))
+        #expect(s.startToken == nil && !s.startOnCovers)
+        send(&s, .tracksLoaded(token: token, playlist: album, tracks: coverSongs(s, album)))
+        #expect(s.top.screen == .coverFlow && s.current == nil)
+
+        // A failed read: a toast, and the covers stay with the album in the middle.
+        s = withCoverFlow(tenAlbums)
+        send(&s, .select)
+        let middle = s.top.sel
+        album = s.albums[middle].id
+        send(&s, .play)
+        token = s.startToken ?? -1
+        send(&s, .tracksLoaded(token: token, playlist: album, tracks: nil))
+        let message = "Can’t reach \(s.words.service)"
+        #expect(s.toast == message || s.heldToast == message)
+        #expect(s.top.screen == .coverFlow && s.top.sel == middle && s.current == nil && s.startToken == nil && !s.startOnCovers)
+
+        // An empty album: nothing starts, and the covers stay. Read before: the same.
+        s = withCoverFlow(tenAlbums)
+        send(&s, .select)
+        album = s.albums[s.top.sel].id
+        send(&s, .play)
+        send(&s, .tracksLoaded(token: s.startToken ?? -1, playlist: album, tracks: []))
+        #expect(s.top.screen == .coverFlow && s.current == nil)
+        #expect(send(&s, .play) == [] && s.top.screen == .coverFlow && s.current == nil)
     }
 
     @Test func onAnOpenSongListPlayStaysAsBefore() {
