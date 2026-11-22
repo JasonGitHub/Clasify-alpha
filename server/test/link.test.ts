@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/activation";
-import { noMail, type SendMail } from "../src/mailer";
+import { linkMail, noMail, type SendMail } from "../src/mailer";
 import { pageLink, pageMailer, pageMails, pageReserve, type PageMailer } from "../src/pagemail";
 
 // CLA-172: POST /v1/link ("Email me the link") from the beta page.
@@ -95,5 +95,38 @@ describe("test server mails (CLA-172)", () => {
     expect(await dayCount()).toBe(1);  // the same limits as a real send
     await env.DB.prepare("UPDATE mail_days SET sent = ? WHERE day = ?").bind(Number(env.MAIL_DAY) - pageReserve, today()).run();
     expect(await pageMailFor(test, () => clock).send("sam@example.com", "link")).toBe("limit");
+  });
+});
+
+describe("page mails (card CJ)", () => {
+  // The same look as the activation link mail: only the words differ.
+  const shell = (html: string) => html.replace(/<div class="tx"[^>]*>.*?<\/div>/, "").replace(/<a class="bl"[^>]*>.*?<\/a>/, "")
+    .replace(/<div class="ft"[^>]*>.*?<br>/, "");
+
+  it("sends the download link mail with its own words and the link mail's look", () => {
+    const m = pageMails.link;
+    expect(m.subject).toBe("Your myPod download link");
+    expect(m.html).toContain(">Here is the myPod link you asked for.<br>Open it on your Mac to download myPod.</div>");
+    expect(m.html).toContain('<a class="bl" href="https://getmypod.app/" style="display:inline-block;line-height:44px;color:#ffffff;font-weight:bold;font-size:17px;text-decoration:none">Get myPod</a>');
+    expect(m.html).toContain(">Did not ask for this? You can ignore this mail.<br>myPod by Cappy · © 2026 CappyAI Ltd</div>");
+    expect(m.text).toBe("Hi there,\n\nHere is the myPod link you asked for. Open it on your Mac to download myPod.\n\n" +
+      "https://getmypod.app/\n\nDid not ask for this? You can ignore this mail.\nmyPod by Cappy · © 2026 CappyAI Ltd");
+    expect(shell(m.html)).toBe(shell(linkMail(pageLink).html));
+  });
+
+  it("sends the spot mail with its own words and the link mail's look", () => {
+    const m = pageMails.spot;
+    expect(m.subject).toBe("A myPod beta spot is open");
+    expect(m.html).toContain(">Good news: a spot in the myPod beta is open.<br>Spots go fast, so get myPod soon.</div>");
+    expect(m.html).toContain('href="https://getmypod.app/"');
+    expect(m.html).toContain(">Get myPod</a>");
+    expect(m.html).toContain(">You joined the myPod waitlist on getmypod.app.<br>myPod by Cappy · © 2026 CappyAI Ltd</div>");
+    expect(m.text).toBe("Hi there,\n\nGood news: a spot in the myPod beta is open. Spots go fast, so get myPod soon.\n\n" +
+      "https://getmypod.app/\n\nYou joined the myPod waitlist on getmypod.app.\nmyPod by Cappy · © 2026 CappyAI Ltd");
+    expect(shell(m.html)).toBe(shell(linkMail(pageLink).html));
+  });
+
+  it("never links the DMG itself", () => {
+    for (const m of Object.values(pageMails)) for (const part of [m.text, m.html]) expect(part).not.toContain("dl.getmypod.app");
   });
 });

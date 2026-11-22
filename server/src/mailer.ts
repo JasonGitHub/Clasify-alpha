@@ -23,12 +23,28 @@ export function resend(key: string, fetcher: typeof fetch = fetch): SendMail {
 
 /** The link mail of card BX (334). */
 export function linkMail(link: string) {
+  return {
+    subject: "Your myPod link",
+    ...cardMail({
+      lines: ["Click the button to start the myPod beta.", "The link works for 1 hour."],
+      button: "Confirm my email",
+      link,
+      foot: "Did not ask for this? You can ignore this mail.",
+    }),
+  };
+}
+
+/**
+ * The one look of our mails (card BX, dark mode card CD): "Hi there,", two lines, one button,
+ * a foot line and the Cappy line. The activation link mail and the beta page mails (card CJ)
+ * use it, so only their words differ.
+ */
+export function cardMail(mail: { lines: [string, string]; button: string; link: string; foot: string }) {
+  const { lines, button, link, foot } = mail;
   const a = escape(link);
   const font = "-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif";
   return {
-    subject: "Your myPod link",
-    text: `Hi there,\n\nClick the button to start the myPod beta. The link works for 1 hour.\n\n${link}\n\n` +
-      "Did not ask for this? You can ignore this mail.\nmyPod by Cappy · © 2026 CappyAI Ltd",
+    text: `Hi there,\n\n${lines.join(" ")}\n\n${link}\n\n${foot}\n${cappy}`,
     // Card CD (CLA-160, change 371): solid colors only, no background-image, so Gmail's dark
     // mode darkens the whole mail in one step. Apps that read prefers-color-scheme (Apple Mail)
     // get our own dark colors: the classes let the media rule win over the inline colors.
@@ -40,14 +56,16 @@ export function linkMail(link: string) {
       `style="background:#e8eef4"><tr>` +
       `<td align="center" style="padding:56px 40px 30px;text-align:center;font-family:${font}">` +
       `<div class="tt" style="font-weight:bold;font-size:34px;letter-spacing:-0.4px;color:#1b1f24;margin:0 0 10px">Hi there,</div>` +
-      `<div class="tx" style="font-size:17px;line-height:1.45;color:#5d6772;margin:0 0 26px">Click the button to start the myPod beta.<br>The link works for 1 hour.</div>` +
+      `<div class="tx" style="font-size:17px;line-height:1.45;color:#5d6772;margin:0 0 26px">${lines.map(escape).join("<br>")}</div>` +
       `<table role="presentation" align="center" cellspacing="0" cellpadding="0" style="margin:0 auto"><tr>` +
       `<td class="bt" bgcolor="#1f6fd1" style="height:44px;padding:0 26px;border-radius:22px;background:#1f6fd1">` +
-      `<a class="bl" href="${a}" style="display:inline-block;line-height:44px;color:#ffffff;font-weight:bold;font-size:17px;text-decoration:none">Confirm my email</a></td></tr></table>` +
-      `<div class="ft" style="font-size:12px;line-height:1.6;color:#8a949e;margin:56px 0 0">Did not ask for this? You can ignore this mail.<br>myPod by Cappy · © 2026 CappyAI Ltd</div>` +
+      `<a class="bl" href="${a}" style="display:inline-block;line-height:44px;color:#ffffff;font-weight:bold;font-size:17px;text-decoration:none">${escape(button)}</a></td></tr></table>` +
+      `<div class="ft" style="font-size:12px;line-height:1.6;color:#8a949e;margin:56px 0 0">${escape(foot)}<br>${cappy}</div>` +
       `</td></tr></table></body></html>`,
   };
 }
+
+const cappy = "myPod by Cappy · © 2026 CappyAI Ltd";
 
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
 
