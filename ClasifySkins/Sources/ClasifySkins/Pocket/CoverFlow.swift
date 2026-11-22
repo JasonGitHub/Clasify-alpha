@@ -63,7 +63,8 @@ struct PocketCoverFlow: View {
                 // at once on MENU, leaving the cover. From the covers they fade in during the
                 // flight's last 0.3 s (card CI).
                 let fade: Animation = flying ? .linear(duration: 0.1).delay(Self.flyTime) : .linear(duration: 0.3).delay(Self.leapTime - 0.3)
-                PocketNowPlaying(state: state, input: input)
+                // Its own cover shows when the flying cover lands on it, not as the text fades in.
+                PocketNowPlaying(state: state, input: input, hidesCover: leaping && !landed && !reduceMotion)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)  // placed as on its own screen
                     .transition(reduceMotion ? .identity : .asymmetric(insertion: .opacity.animation(fade), removal: .identity))
             }
