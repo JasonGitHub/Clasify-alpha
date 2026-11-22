@@ -537,6 +537,16 @@ func playing(_ i: Int = 0) -> AppState {
         #expect(send(&s, .menuBarClick(shown: false)) == [.showWindow])
     }
 
+    /// ⌘W (Jason OK 15:49 JST 11-22): it hides myPod as an icon click on a shown myPod does, and
+    /// the screens and the music stay. During the first setup it does nothing.
+    @Test func closeWindowHidesTheWindowAfterSetup() {
+        var s = mainMenu()
+        #expect(send(&s, .closeWindow) == [.hideWindow])
+        #expect(s.stack == mainMenu().stack && s.isPlaying == mainMenu().isPlaying)
+        s.setupDone = false
+        #expect(!send(&s, .closeWindow).contains(.hideWindow))
+    }
+
     /// Card AN.1 (348): opening Settings or a list does not show a hidden myPod. The notices
     /// and Activate do: see `BetaTests`, `NewBetaTests` and `ActivationTests`.
     @Test func otherScreensDoNotShowTheWindow() {

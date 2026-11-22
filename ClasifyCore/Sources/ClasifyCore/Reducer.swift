@@ -100,6 +100,10 @@ public enum Action: Equatable, Sendable {
     /// Card AN.1 (CLA-43, 344): a click or right-click on the menu bar icon. `shown`: the device
     /// window shows now. The answer is `.showWindow` or `.hideWindow`.
     case menuBarClick(shown: Bool)
+    /// ⌘W, File › Close, on the device window (Jason OK 15:49 JST 11-22). It hides myPod as a
+    /// click on the menu bar icon over a shown myPod does: the answer is `.hideWindow`, and the
+    /// music goes on. During the first setup it does nothing: setup always shows in the window.
+    case closeWindow
     /// CLA-130 (card BT row 4): Cmd + a two-finger swipe turned the 3D device off its front
     /// (true), or it is back on its front (false). While it is turned, the wheel, the buttons
     /// and the keys do nothing. The angle itself stays in the skin (`K3DTurn`).
@@ -749,7 +753,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         // Change 234: the ended beta takes only the wheel and its rows.
         if s.top.screen == .betaEnded {
             switch action {
-            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived, .menuBarClick, .deviceTurned: break
+            case .wheel, .select, .tick, .batteryChanged, .betaBuild, .latestBeta, .arrived, .menuBarClick, .closeWindow, .deviceTurned: break
             default: return
             }
         }
@@ -1449,6 +1453,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .menuBarClick(let shown):
             // 348: the first setup always shows in the window, so the icon does not hide it.
             fx.append(shown && s.setupDone ? .hideWindow : .showWindow)
+        case .closeWindow:
+            if s.setupDone { fx.append(.hideWindow) }
         case .deviceTurned(let turned):
             s.deviceTurned = turned
 
