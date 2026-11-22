@@ -169,7 +169,9 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         var s = withCoverFlow(tenAlbums)
         send(&s, .select)
         let album = s.albums[s.top.sel].id
-        send(&s, .play, .tracksLoaded(token: s.startToken ?? -1, playlist: album, tracks: coverSongs(s, album)), .menu)
+        send(&s, .play)  // not read yet: it waits on the covers
+        send(&s, .tracksLoaded(token: s.startToken ?? -1, playlist: album, tracks: coverSongs(s, album)), .menu)
+        #expect(s.top.screen == .coverFlow && s.loadedTracks.contains(album))
         s.current = nil; s.isPlaying = false
         s.albumArt = .off
         send(&s, .play)
