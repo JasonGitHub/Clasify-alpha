@@ -2,7 +2,8 @@ import Testing
 @testable import ClasifyCore
 
 // CLA-173: Play on a playlist or album row, or on Cover Flow's covers, starts that list on Now
-// Playing, like the iPod. Every other row and screen keeps its Play.
+// Playing, like the iPod. Now Playing opens over the row's own screen, so MENU goes back to the
+// same row or middle album. Every other row and screen keeps its Play.
 
 /// On Playlists with Focus highlighted. Focus is not read yet. Token 1 read the playlist list.
 private func onPlaylists() -> AppState {
@@ -21,9 +22,12 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(s.top.screen == .playlists && s.rows(for: s.top)[s.top.sel] == .playlist("focus"))
         #expect(send(&s, .play) == firstLoad)
         #expect(s.top.screen == .now && s.isPlaying && s.current == TrackRef(playlist: "focus", track: "f0"))
-        // Its list opened under Now Playing, as when a song is picked there.
-        #expect(s.stack.map(\.screen) == [.main, .playlists, .tracks(playlist: "focus"), .now])
+        // Now Playing opens over Playlists: no song list under it.
+        #expect(s.stack.map(\.screen) == [.main, .playlists, .now])
         #expect(s.stack[0].sel == 2)  // the main menu row moved down under the new Now Playing row
+        // MENU goes back to Playlists, on the same row.
+        send(&s, .menu)
+        #expect(s.top.screen == .playlists && s.rows(for: s.top)[s.top.sel] == .playlist("focus"))
     }
 
     @Test func aPlaylistNotReadYetLoadsWithItsListLookThenStarts() {
@@ -34,6 +38,10 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(send(&s, .play) == [] && s.startToken == 2 && s.stack.count == 3)
         #expect(send(&s, .tracksLoaded(token: 2, playlist: "focus", tracks: focus.tracks)) == firstLoad)
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: "focus", track: "f0") && s.startToken == nil)
+        // Now Playing took the loading list's place: MENU goes back to the Focus row.
+        #expect(s.stack.map(\.screen) == [.main, .playlists, .now])
+        send(&s, .menu)
+        #expect(s.top.screen == .playlists && s.rows(for: s.top)[s.top.sel] == .playlist("focus"))
 
         // A failed read starts nothing. Its retry keeps the start.
         s = onPlaylists()
@@ -41,7 +49,7 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(s.top.error && s.current == nil && s.startToken == 2)
         #expect(send(&s, .select) == [.fetchTracks(token: 3, playlist: "focus")] && s.startToken == 3)
         send(&s, .tracksLoaded(token: 3, playlist: "focus", tracks: focus.tracks))
-        #expect(s.top.screen == .now && s.current?.track == "f0")
+        #expect(s.top.screen == .now && s.current?.track == "f0" && s.stack.map(\.screen) == [.main, .playlists, .now])
     }
 
     @Test func aLateAnswerNeverStartsAnotherList() {
@@ -57,6 +65,8 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         #expect(s.current == nil && s.top.loading)
         send(&s, .tracksLoaded(token: 3, playlist: "chill", tracks: chill.tracks))
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: "chill", track: "c0"))
+        send(&s, .menu)
+        #expect(s.top.screen == .playlists && s.rows(for: s.top)[s.top.sel] == .playlist("chill"))
     }
 
     @Test func shuffleSongsAndAListStartDoNotMixTheNewerWins() {
@@ -105,27 +115,38 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
         let songs = (1...3).map { (n: Int) in Track(id: "s\(n)", title: "s\(n)", artist: "a", duration: 200, album: s.album(album), disc: nil, number: n) }
         send(&s, .tracksLoaded(token: s.top.token, playlist: album, tracks: songs))
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "s1"))
+        send(&s, .menu)
+        #expect(s.top.screen == .albums && s.rows(for: s.top)[s.top.sel] == .album(album))
+        // Read before: it starts at once over Albums.
+        s.current = nil; s.isPlaying = false
+        send(&s, .play)
+        #expect(s.top.screen == .now && s.stack.suffix(2).map(\.screen) == [.albums, .now])
     }
 
-    @Test func coverFlowStartsTheMiddleAlbumWithTheCoverFlight() {
+    @Test func coverFlowStartsTheMiddleAlbumAndMenuComesBackToIt() {
         var s = withCoverFlow(tenAlbums)
         send(&s, .select)
-        let album = s.albums[s.top.sel].id
-        // Not read yet: the song panel opens with its loading look, then the album starts.
+        let middle = s.top.sel
+        let album = s.albums[middle].id
+        // Not read yet: the song panel opens with its loading look, then Now Playing takes its place.
         #expect(send(&s, .play) == [.fetchTracks(token: s.top.token, playlist: album)])
         #expect(s.top.screen == .albumPanel(album: album) && s.top.loading && s.startToken == s.top.token)
         let songs = [Track(id: "m1", title: "m1", artist: "a", duration: 100, album: s.album(album), disc: nil, number: 1)]
         send(&s, .tracksLoaded(token: s.top.token, playlist: album, tracks: songs))
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "m1"))
-        #expect(s.stack.suffix(3).map(\.screen) == [.coverFlow, .albumPanel(album: album), .now] && s.navMove == .fly)
+        // A plain slide, no cover flight: there is no song panel under Now Playing.
+        #expect(s.stack.suffix(2).map(\.screen) == [.coverFlow, .now] && s.navMove == .push && !s.nowOverPanel)
+        // MENU goes back to the covers, with the same album in the middle.
+        send(&s, .menu)
+        #expect(s.top.screen == .coverFlow && s.top.sel == middle && s.navMove == .push)
 
-        // Read before: it starts at once, and the cover flies from Cover Flow to Now Playing.
-        send(&s, .menu, .menu)
-        #expect(s.top.screen == .coverFlow)
+        // Read before: it starts at once over the covers.
         s.current = nil; s.isPlaying = false
         send(&s, .play)
-        #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "m1") && s.navMove == .fly)
-        #expect(s.stack.suffix(3).map(\.screen) == [.coverFlow, .albumPanel(album: album), .now])
+        #expect(s.top.screen == .now && s.current == TrackRef(playlist: album, track: "m1") && s.navMove == .push)
+        #expect(s.stack.suffix(2).map(\.screen) == [.coverFlow, .now])
+        send(&s, .menu)
+        #expect(s.top.screen == .coverFlow && s.top.sel == middle)
     }
 
     @Test func onAnOpenSongListPlayStaysAsBefore() {

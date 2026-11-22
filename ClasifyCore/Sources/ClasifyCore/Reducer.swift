@@ -336,7 +336,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         }
         if s.startToken == token && !s.top.error {  // CLA-173: a list start waited for this read
             s.startToken = nil
-            startList(s.startList)
+            // Now Playing takes the loading frame's place, so MENU goes back to the row. An
+            // empty list stays on screen: there is nothing to play.
+            if !s.tracks(in: s.startList).isEmpty { s.stack.removeLast(); startList(s.startList) }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
@@ -663,18 +665,15 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             open(.tracks(playlist: s.shuffleList)); s.shuffleToken = s.tok; s.startToken = nil
         }
     }
-    /// CLA-173: Play on a playlist or album row, or on Cover Flow's middle album, opens its list
-    /// as Select does and starts it on Now Playing, like the iPod. From Cover Flow the song panel
-    /// opens, so the cover flies to Now Playing as from a song pick (card AH). A list not read
-    /// yet starts when its read ends on top.
+    /// CLA-173: Play on a playlist or album row, or on Cover Flow's middle album, starts it on
+    /// Now Playing, like the iPod. Now Playing opens over the row's own screen, so MENU goes back
+    /// to the same row or middle album. A list not read yet shows its loading look while it
+    /// reads, as Shuffle Songs does, and Now Playing then takes its place. An empty list opens.
     func playList(_ id: String, on screen: Screen) {
         if s.offline { return toast(offlineStart) }
+        if s.isLoaded(screen) && !s.tracks(in: id).isEmpty { return startList(id) }
         open(screen)
-        if s.top.loading {
-            s.startToken = s.top.token; s.startList = id; s.shuffleToken = nil
-        } else {
-            startList(id)
-        }
+        if s.top.loading { s.startToken = s.top.token; s.startList = id; s.shuffleToken = nil }
     }
     /// Starts a read list as a song pick does: from its first song, or with Shuffle on from a
     /// random song, so the queue is the same as a pick in that list. An empty list plays nothing.
