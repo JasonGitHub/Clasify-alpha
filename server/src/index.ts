@@ -13,14 +13,16 @@ export default {
     // CLA-172: the test server (wrangler env "test") sends every page and answer with noindex.
     if (env.TEST_SERVER === "1") {
       const path = new URL(request.url).pathname;
-      // The beta page comes filled (src/page.ts). Only where the Worker has the page's files
-      // (ASSETS): the live Worker has none today, so it is unchanged.
+      // The beta page comes filled (src/page.ts).
       const answer = env.ASSETS && isBetaPage(request) ? await betaPage(request, env, env.ASSETS, fetch, later)
         : path.startsWith("/v1/") || !env.ASSETS ? await serve(request, env, later) : await env.ASSETS.fetch(request);
       const marked = new Response(answer.body, answer);
       marked.headers.set("X-Robots-Tag", "noindex, nofollow");
       return marked;
     }
+    // Live: run_worker_first sends only "/" here; every other file is served before the Worker,
+    // and a path with no file comes here as today. The beta page comes filled (src/page.ts).
+    if (env.ASSETS && new URL(request.url).pathname === "/") return isBetaPage(request) ? betaPage(request, env, env.ASSETS, fetch, later) : env.ASSETS.fetch(request);
     return serve(request, env, later);
   },
   // CLA-172: once an hour, open beta spots go to the oldest waitlist people by mail, and the kept
