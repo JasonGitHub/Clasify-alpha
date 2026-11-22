@@ -891,7 +891,6 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .albumArt: s.albumArt = s.albumArt.next
             case .deviceColor: s.deviceColor = s.deviceColor.next
             case .clicker: s.clicker.toggle()
-            case .nowPlayingBar: s.nowPlayingBar.toggle()
             case .menuBar: s.menuBar.toggle()  // card AN.1, 346: the app adds or takes away the icon
             case .color(let color):  // card AW: a press saves the color, then the music pick (card BM, 257)
                 s.deviceColor = color
