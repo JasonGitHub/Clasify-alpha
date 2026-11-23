@@ -49,7 +49,9 @@ struct PocketCoverFlow: View {
             if albums.indices.contains(frame.sel) {
                 let album = albums[frame.sel].id
                 CoverLeap(leap: leaping ? 1 : 0, image: state.albumCovers[album].flatMap { artwork.lookup($0) })
-                    .animation(nil) { $0.opacity(leaping || leapingBack ? 1 : 0) }
+                    // Until it lands: then Now Playing's own cover and reflection take its place,
+                    // and two reflections over each other would be darker.
+                    .animation(nil) { $0.opacity((leaping && !landed && !reduceMotion) || leapingBack ? 1 : 0) }
                     .accessibilityHidden(true)
             }
             if let shown = panel ?? lastPanel {
@@ -96,10 +98,29 @@ struct CoverLeap: View, Animatable {
         set { leap = newValue }
     }
 
+    /// The reflection's height before `LeapEffect` scales it: the strip's `side / 4` at 0, Now
+    /// Playing's 22 points at 1 (scaled from its 126.6 point cover). Its strength goes from the
+    /// strip's 0.35 to Now Playing's 0.4, and the strip's thin border fades out.
+    static func reflection(_ leap: Double) -> (height: CGFloat, strength: Double, border: Double) {
+        let f = min(max(leap, 0), 1)
+        let side = CoverFlowStrip.side
+        let end = 22 * side / PocketNowPlaying.coverSide
+        return (side / 4 + (end - side / 4) * f, 0.35 + 0.05 * f, 0.12 * (1 - f))
+    }
+
     var body: some View {
-        CoverArt(image: image, notesSize: 51)
-            .frame(width: CoverFlowStrip.side, height: CoverFlowStrip.side).clipped()
-            .modifier(LeapEffect(leap: leap))
+        // Card CI fix (Jason 21:45 JST 11-23): the cover carries its reflection the whole way, so
+        // the reflection does not go at the start and come back at the end.
+        let art = CoverArt(image: image, notesSize: 51)
+        let side = CoverFlowStrip.side
+        let r = Self.reflection(leap)
+        VStack(spacing: 0) {
+            art.frame(width: side, height: side).clipped()
+                .overlay { Rectangle().strokeBorder(.black.opacity(r.border), lineWidth: 0.5) }
+            art.reflection(side: side, height: r.height, strength: r.strength)
+        }
+        .frame(width: side, height: side + r.height, alignment: .top)
+        .modifier(LeapEffect(leap: leap))
     }
 }
 
