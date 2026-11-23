@@ -22,6 +22,12 @@ declare namespace Cloudflare {
     /** Worker secrets that Jason adds. Never in the repo. */
     TURNSTILE_SECRET?: string;
     RESEND_KEY?: string;
+    /** CLA-175: Stripe's restricted key (Checkout sessions: write and read). A Worker secret. */
+    STRIPE_KEY?: string;
+    /** CLA-175: the Stripe price ID of myPod. A plain setting. None: Buy answers "sales". */
+    STRIPE_PRICE?: string;
+    /** CLA-175: "thank you" page checks an hour per network. */
+    BOUGHT_HOUR: string;
     ALERT_TO?: string;
     /** CLA-172: "1" only on the test server (wrangler env "test"): noindex on every answer. */
     TEST_SERVER?: string;
