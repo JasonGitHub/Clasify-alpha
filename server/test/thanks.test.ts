@@ -152,9 +152,9 @@ describe("the page rules", () => {
     expect(wireJs).toContain("loadTurnstile()");
   });
 
-  it("sales are off on live and on on the test server", () => {
+  it("sales are on on live (Jason's live test) and on the test server; the price is a secret on live", () => {
     const config = JSON.parse(wrangler.replace(/^\s*\/\/.*$/gm, "")) as { vars: Record<string, string>; env: { test: { vars: Record<string, string> } } };
-    expect([config.vars.SALES, config.env.test.vars.SALES]).toEqual(["0", "1"]);
+    expect([config.vars.SALES, config.env.test.vars.SALES]).toEqual(["1", "1"]);
     expect([config.vars.BUY_HOUR, config.env.test.vars.BUY_HOUR]).toEqual(["10", "10"]);
     expect(config.vars.STRIPE_PRICE).toBeUndefined();
   });
