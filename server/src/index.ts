@@ -1,5 +1,6 @@
 import { handle, sha256, token } from "./activation";
 import { countOpen, dropOldInviteMails, inviteOf } from "./invitelinks";
+import { launchRoute, workerFirst } from "./launch";
 import { linkMailer, noMail, noReports, reportMailer, resend } from "./mailer";
 import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
 import { refreshFeed } from "./beta";
@@ -13,31 +14,15 @@ export default {
   async fetch(request: Request, env: Env, ctx?: ExecutionContext) {
     // Work after the answer, such as the beta feed's refresh (src/beta.ts).
     const later = ctx ? (work: Promise<unknown>) => ctx.waitUntil(work.catch(() => null)) : undefined;
-    // CLA-172: the test server (wrangler env "test") sends every page and answer with noindex.
+    // CLA-172: the test server (wrangler env "test") runs the Worker first for every path, and sends
+    // every page and answer with noindex.
     if (env.TEST_SERVER === "1") {
-      const path = new URL(request.url).pathname;
-      // "/" goes to /beta, and the beta page comes filled (src/page.ts).
-      const moved = env.ASSETS ? betaRedirect(request) : null;
-      if (env.ASSETS && isBetaPage(request)) countInvite(request, env, later);
-      const page = moved ?? (env.ASSETS && isBetaPage(request) ? await betaPage(request, env, env.ASSETS, fetch, later)
-        : path.startsWith("/v1/") || !env.ASSETS ? await serve(request, env, later) : await env.ASSETS.fetch(request));
-      const marked = new Response(page.body, page);
+      const answer = await site(request, env, later, true);
+      const marked = new Response(answer.body, answer);
       marked.headers.set("X-Robots-Tag", "noindex, nofollow");
       return marked;
     }
-    // Live: run_worker_first sends "/", "/beta" and "/beta/" here; every other file is served before
-    // the Worker, and a path with no file comes here as today. "/" goes to /beta, and the beta page
-    // comes filled (src/page.ts).
-    if (env.ASSETS) {
-      const moved = betaRedirect(request);
-      if (moved) return moved;
-      if (new URL(request.url).pathname === betaPath) {
-        if (!isBetaPage(request)) return env.ASSETS.fetch(request);
-        countInvite(request, env, later);
-        return betaPage(request, env, env.ASSETS, fetch, later);
-      }
-    }
-    return serve(request, env, later);
+    return site(request, env, later, false);
   },
   // CLA-172: once an hour, open beta spots go to the oldest waitlist people by mail, the kept beta
   // feed is read again (a page visit also does that when it is older than 2 minutes), and invite ids
@@ -49,6 +34,29 @@ export default {
     await refreshFeed(env.DB, fetch, Date.now()).catch(() => null);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * The site and the API. Live: the static files are served before the Worker, except the paths in
+ * run_worker_first (`workerFirst`); a path with no file comes here. The test server sends every path
+ * here (`everyPath`), so the files come first in the same way. Then the launch page (CLA-175, only
+ * with LAUNCH_PAGE "1"), "/" to /beta, the filled beta page (src/page.ts), and the API.
+ */
+async function site(request: Request, env: Env, later: ((work: Promise<unknown>) => void) | undefined, everyPath: boolean): Promise<Response> {
+  if (!env.ASSETS) return serve(request, env, later);
+  const path = new URL(request.url).pathname;
+  const file = everyPath && !path.startsWith("/v1/") && !workerFirst(path) ? await env.ASSETS.fetch(request) : null;
+  if (file && file.status !== 404) return file;
+  const launch = await launchRoute(request, env, env.ASSETS);
+  if (launch) return launch;
+  const moved = betaRedirect(request);
+  if (moved) return moved;
+  if (path === betaPath) {
+    if (!isBetaPage(request)) return env.ASSETS.fetch(request);
+    countInvite(request, env, later);
+    return betaPage(request, env, env.ASSETS, fetch, later);
+  }
+  return file ?? serve(request, env, later);
+}
 
 /**
  * CLA-172: a page open with ?invite=<id> counts once for that id (src/invitelinks.ts). It runs after
