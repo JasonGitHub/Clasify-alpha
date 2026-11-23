@@ -105,12 +105,14 @@ form.addEventListener("submit", async (e) => {
 if (document.body.classList.contains("loading")) load().then((beta) => { draw(fill(beta)); welcome(); });
 else welcome();
 
-/** The invite welcome card, once, after the page has its state. Everything else is inert while it
- * shows, so focus stays on its one button. Esc or the button closes it; "Join the waitlist" then
- * puts focus in the email field, else focus goes back where it was. */
+/** The invite welcome card, once, after the page has its state. A filled page comes with the card
+ * already shown (src/page.ts), so it is there in the first picture; this then only wires it. The
+ * loading page shows it here. Everything else is inert while it shows, so focus stays on its one
+ * button. Esc or the button closes it; "Join the waitlist" then puts focus in the email field,
+ * else focus goes back where it was. */
 function welcome() {
   const card = document.getElementById("inv");
-  const kind = inviteCard(invite, document.body.className);
+  const kind = card && !card.hidden ? (card.classList.contains("full") ? "full" : "open") : inviteCard(invite, document.body.className);
   const button = /** @type {HTMLButtonElement | null} */ (card?.querySelector(kind === "full" ? "button.if" : "button.io") ?? null);
   if (!card || !kind || !button) return;
   const back = document.activeElement;
