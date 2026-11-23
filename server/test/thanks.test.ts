@@ -62,11 +62,34 @@ describe("/thanks", () => {
     expect(html).toContain("<span data-macs>3</span>");
   });
 
-  it("is only there with the launch page on; the unfilled file is never public", async () => {
-    for (const vars of [{}, { TEST_SERVER: "1" }]) expect((await ask("https://getmypod.app/thanks", vars)).status).toBe(404);
-    for (const path of ["/thanks.html", "/thanks/", "/thanks/x", "/launch/thanks", "/launch/thanks.html"]) {
-      expect((await ask(`https://getmypod.app${path}`, on)).status, path).toBe(404);
+  it("is there with the launch page off too (live); the unfilled file is never public", async () => {
+    for (const vars of [{ LAUNCH_PAGE: undefined }, { LAUNCH_PAGE: "0" }, { TEST_SERVER: "1", LAUNCH_PAGE: undefined }]) {
+      const page = await ask(`https://getmypod.app/thanks?session=${sid}`, vars);
+      expect(page.status).toBe(200);
+      expect(page.headers.get("Content-Security-Policy")).toBe(thanksCSP);
+      expect(page.headers.get("Cache-Control")).toBe("no-store");
+      expect(page.headers.get("X-Robots-Tag")).toMatch(/^noindex/);
+      expect(await page.text()).toContain('<meta name="robots" content="noindex">');
     }
+    for (const vars of [on, { LAUNCH_PAGE: undefined }]) {
+      for (const path of ["/thanks.html", "/thanks/", "/thanks/x", "/launch/thanks", "/launch/thanks.html"]) {
+        expect((await ask(`https://getmypod.app${path}`, vars)).status, path).toBe(404);
+      }
+      expect((await ask("https://getmypod.app/thanks", vars, "POST")).status).toBe(404);
+    }
+  });
+
+  it("with the launch page off (live), only /thanks is new: \"/\" is still the 302 to /beta, launch files are 404", async () => {
+    const off = { LAUNCH_PAGE: undefined };
+    const home = await ask("https://getmypod.app/", off);
+    expect(home.status).toBe(302);
+    expect(home.headers.get("Location")).toContain("/beta");
+    for (const path of ["/launch", "/launch/", "/launch/index.html", "/launch/wire.css", "/og.png"]) {
+      expect((await ask(`https://getmypod.app${path}`, off)).status, path).toBe(404);
+    }
+    const asked: string[] = [];
+    await ask("https://getmypod.app/thanks", off, "GET", asked);
+    expect(asked).toEqual(["GET /launch/thanks"]);  // the page file only; no launch file is read
   });
 
   it("has a strict CSP: its own files only, no inline script or style, no other host than our API", () => {

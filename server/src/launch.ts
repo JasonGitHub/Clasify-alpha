@@ -2,6 +2,8 @@
 // /launch/. Only where LAUNCH_PAGE is "1" (the test server, until Jason says go live) does "/" serve
 // it, and do its own files answer at the root paths the page asks for (covers/, paw/, og.png...).
 // Without the switch, everything stays as before: "/" goes to /beta, and those paths are 404.
+// The "thank you" page (/thanks, Stripe's success_url) is not behind the switch: a buyer must land
+// on it whenever payment pages can be made (Jason's live test with a 100% code, 11-24).
 import { parseBeta } from "../public/beta-page/logic.js";
 import { downloadHref, downloadSelector } from "../public/launch-page/logic.js";
 import { beta, testBuild } from "./beta";
@@ -14,7 +16,7 @@ export function launchOn(env: Env): boolean {
 }
 
 /** The paths that run the Worker before the static files on live: run_worker_first in wrangler.jsonc. */
-export const workerFirstPaths = ["/", "/beta", "/beta/", "/launch", "/launch/*"];
+export const workerFirstPaths = ["/", "/beta", "/beta/", "/launch", "/launch/*", "/thanks"];
 
 export function workerFirst(path: string): boolean {
   return workerFirstPaths.some((p) => p.endsWith("/*") ? path.startsWith(p.slice(0, -1)) : path === p);
@@ -119,7 +121,9 @@ async function thanksPage(request: Request, env: Env, assets: Fetcher, url: URL,
   const macs = /^[1-9]$/.test(env.PAID_MACS) ? env.PAID_MACS : "3";
   let rewriter = new HTMLRewriter().on("[data-macs]", { element(el) { el.setInnerContent(macs); } });
   if (dmg) rewriter = rewriter.on("a[data-dl]", { element(el) { el.setAttribute("href", dmg); } });
-  return servePage(request, file, rewriter, thanksCSP, "no-store");
+  const page = await servePage(request, file, rewriter, thanksCSP, "no-store");
+  if (page.ok) page.headers.set("X-Robots-Tag", "noindex");
+  return page;
 }
 
 const notFound = () => new Response("not found", { status: 404 });
@@ -134,10 +138,12 @@ export async function launchRoute(request: Request, env: Env, assets: Fetcher, f
   const path = url.pathname;
   // Never public under its own folder, with or without the switch.
   if (path === launchDir || path.startsWith(launchDir + "/")) return notFound();
-  if (!launchOn(env) || (request.method !== "GET" && request.method !== "HEAD")) return null;
-  if (path === "/") return launchPage(request, env, assets, url, fetcher, later);
+  if (request.method !== "GET" && request.method !== "HEAD") return null;
+  // The "thank you" page, with or without the switch.
   if (path === thanksPath) return thanksPage(request, env, assets, url, fetcher, later);
   if (path.startsWith(thanksPath)) return notFound();  // /thanks.html, /thanks/: never the unfilled file
+  if (!launchOn(env)) return null;
+  if (path === "/") return launchPage(request, env, assets, url, fetcher, later);
   if (path === "/index.html") return new Response(null, { status: 302, headers: { Location: "/" + url.search, "Cache-Control": "no-store" } });
   if (path.startsWith("/v1/")) return null;
   // A file of the launch page, at the root path the page uses. No file there: not ours.
