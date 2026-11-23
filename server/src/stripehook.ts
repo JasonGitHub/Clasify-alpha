@@ -43,8 +43,12 @@ export async function signed(raw: Uint8Array, header: string | null, secret: str
   return given.some((v) => { let diff = 0; for (let i = 0; i < 64; i++) diff |= want.charCodeAt(i) ^ v.charCodeAt(i); return diff === 0; });
 }
 
-/** Sets one payment's state and the account's paid fact from it. An account with no seat that is no longer paid loses its Macs. */
-async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | "refunded" | "disputed", now: number, created: number) {
+/**
+ * Sets one payment's state and the account's paid fact from it. An account with no seat that is no
+ * longer paid loses its Macs. A seat account that is no longer paid keeps its `macs` (MACS) most
+ * used active Macs; the others are signed out, as a swap would (least used first).
+ */
+async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | "refunded" | "disputed", now: number, created: number, macs: number) {
   if (typeof paymentIntent !== "string" || !paymentIntent) return;
   // Not stored yet: maybe ours, before its paid message, maybe another project's. Keep the state
   // for markPaid. Only myPod's stored payments change an account.
@@ -55,6 +59,10 @@ async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | 
   ).bind(paymentIntent, state, created, now).run();
   const account = "(SELECT account_id FROM payments WHERE payment_intent = ?1)";
   const gone = `(SELECT seat = 0 AND paid_at IS NULL FROM accounts WHERE id = ${account})`;
+  const keep = `(SELECT device_hash FROM macs WHERE account_id = ${account} AND state = 'active'
+    ORDER BY COALESCE(last_seen_at, created_at) DESC, device_hash DESC LIMIT ?3)`;
+  const over = `(SELECT device_hash FROM macs WHERE account_id = ${account} AND state = 'active'
+    AND (SELECT seat = 1 AND paid_at IS NULL FROM accounts WHERE id = ${account}) AND device_hash NOT IN ${keep})`;
   await db.batch([
     db.prepare("UPDATE payments SET state = ?2, state_at = ?3 WHERE payment_intent = ?1 AND state_at <= ?3").bind(paymentIntent, state, created),
     db.prepare(
@@ -66,6 +74,11 @@ async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | 
     db.prepare(`UPDATE macs SET state = 'waiting', account_id = NULL, mail_state = 'none', activated_at = NULL WHERE account_id = ${account} AND ${gone}`)
       .bind(paymentIntent),
     db.prepare(`UPDATE accounts SET state = 'pending' WHERE id = ${account} AND state = 'active' AND ${gone}`).bind(paymentIntent),
+    // A seat account back to the beta limit: its Macs over MACS (their unused links first).
+    db.prepare(`UPDATE mails SET used_at = ?2 WHERE used_at IS NULL AND account_id = ${account} AND device_hash IN ${over}`)
+      .bind(paymentIntent, now, macs),
+    db.prepare(`UPDATE macs SET state = 'waiting', account_id = NULL, mail_state = 'none', activated_at = NULL WHERE device_hash IN ${over}`)
+      .bind(paymentIntent, now, macs),
   ]);
 }
 
@@ -105,6 +118,7 @@ export async function stripeHook(request: Request, env: Env, deps: HookDeps): Pr
   const answer = (status: number) => new Response(null, { status });
   const raw = new Uint8Array(await request.arrayBuffer());
   const now = deps.now();
+  const macs = Number(env.MACS);
   if (!(await signed(raw, request.headers.get("Stripe-Signature"), env.STRIPE_WEBHOOK_SECRET ?? "", now))) return answer(400);
   let event: Record<string, unknown>;
   try { event = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>; } catch { return answer(400); }
@@ -123,14 +137,14 @@ export async function stripeHook(request: Request, env: Env, deps: HookDeps): Pr
       break;
     }
     case "charge.refunded":  // `refunded` is true only for a full refund
-      if (object?.refunded === true) await setState(env.DB, object.payment_intent, "refunded", now, created);
+      if (object?.refunded === true) await setState(env.DB, object.payment_intent, "refunded", now, created, macs);
       break;
     case "charge.dispute.created":
-      await setState(env.DB, object?.payment_intent, "disputed", now, created);
+      await setState(env.DB, object?.payment_intent, "disputed", now, created, macs);
       break;
     case "charge.dispute.closed": {
       if (object?.status !== "won") break;
-      await setState(env.DB, object.payment_intent, "paid", now, created);
+      await setState(env.DB, object.payment_intent, "paid", now, created, macs);
       // A mail that could not go out before the dispute goes now (or Stripe sends this message again).
       const owed = typeof object.payment_intent === "string" ? await env.DB.prepare(
         "SELECT session_id FROM payments WHERE payment_intent = ? AND state = 'paid' AND mailed_at IS NULL",

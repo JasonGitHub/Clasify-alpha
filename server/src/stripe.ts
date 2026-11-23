@@ -7,6 +7,9 @@ const sessionPattern = /^cs_(test|live)_[A-Za-z0-9]{10,200}$/;
 
 export type StripeEnv = Pick<Env, "STRIPE_KEY" | "STRIPE_PRICE" | "PAGE_ORIGIN" | "TEST_SERVER">;
 
+/** The stop-sales switch: only SALES "1" makes new payment pages. Bought and Stripe's messages work either way. */
+export const salesOn = (env: Pick<Env, "SALES">) => env.SALES === "1";
+
 /** The live Worker takes only real money. Only the test server (TEST_SERVER "1") takes test mode. Fixed in code. */
 export const wantLive = (env: Pick<Env, "TEST_SERVER">) => env.TEST_SERVER !== "1";
 
@@ -68,8 +71,11 @@ export async function findSession(env: StripeEnv, fetcher: typeof fetch, id: unk
   return readSession(env, await stripe(env, fetcher, "GET", `/checkout/sessions/${id}`), id);
 }
 
-/** BOUGHT_HOUR checks an hour per network. The row is written in one statement with the count. */
-export async function boughtRoom(db: D1Database, netHash: string, now: number, perHour: number): Promise<boolean> {
+/**
+ * `perHour` tries an hour per key: Bought ("bought:" network, BOUGHT_HOUR) and Buy ("buy:" network,
+ * BUY_HOUR) each have their own key. The row is written in one statement with the count.
+ */
+export async function hourRoom(db: D1Database, netHash: string, now: number, perHour: number): Promise<boolean> {
   const hour = 60 * 60_000;
   await db.prepare("DELETE FROM bought_tries WHERE at < ?").bind(now - 24 * hour).run();
   const room = await db.prepare(

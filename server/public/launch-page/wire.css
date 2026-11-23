@@ -1,0 +1,3 @@
+/* CLA-175: the launch page's live parts (wire.js). A file, so the page's CSP stays hash-only. */
+/* The line under "Buy myPod" when checkout cannot open (Designer 2, Jason OK 03:25 JST 11-24). */
+.bfail{margin:10px 0 0;font-size:13px;line-height:1.4;color:#6b7580;text-align:center}

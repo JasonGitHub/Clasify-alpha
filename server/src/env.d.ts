@@ -30,6 +30,10 @@ declare namespace Cloudflare {
     STRIPE_WEBHOOK_SECRET?: string;
     /** CLA-175: "thank you" page checks an hour per network. */
     BOUGHT_HOUR: string;
+    /** CLA-175: Buy presses (new payment pages) an hour per network. */
+    BUY_HOUR: string;
+    /** CLA-175: the stop-sales switch. Only "1" makes new payment pages; anything else: Buy answers "sales". */
+    SALES?: string;
     ALERT_TO?: string;
     /** CLA-172: "1" only on the test server (wrangler env "test"): noindex on every answer. */
     TEST_SERVER?: string;

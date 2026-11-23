@@ -15,7 +15,7 @@ const fakeStripe = (async (input: RequestInfo | URL, init?: RequestInit) => {
   return answer(request.url);
 }) as typeof fetch;
 
-const stripeEnv = { ...env, STRIPE_KEY: "rk_test_fake", STRIPE_PRICE: "price_fake" };
+const stripeEnv = { ...env, STRIPE_KEY: "rk_test_fake", STRIPE_PRICE: "price_fake", SALES: "1" };
 const clock = 5_000_000;
 let ids = 0;
 async function call(path: string, body: unknown, opts: { env?: Env; device?: string; ip?: string } = {}) {
@@ -65,6 +65,32 @@ describe("Buy", () => {
     expect(await call("/v1/buy", {})).toEqual({ status: 503, json: { error: "sales" } });
     answer = () => json({ url: "https://evil.example/pay" });
     expect((await call("/v1/buy", {})).status).toBe(503);
+  });
+
+  it("the stop-sales switch: only SALES \"1\" asks Stripe; Bought still works with sales off", async () => {
+    answer = () => json({ id: "cs_live_x", url: "https://checkout.stripe.com/c/pay/cs_live_x" });
+    for (const SALES of [undefined, "0", "", "true", "1 "]) {
+      expect(await call("/v1/buy", {}, { env: { ...stripeEnv, SALES } })).toEqual({ status: 503, json: { error: "sales" } });
+    }
+    expect(seen).toHaveLength(0);
+    expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM bought_tries").first()).toEqual({ n: 0 });  // a stopped Buy uses no try
+    answer = () => json(session());
+    expect((await call("/v1/bought", { session: sid }, { env: { ...stripeEnv, SALES: "0" } })).json).toEqual({ result: "paid" });
+  });
+
+  it("allows BUY_HOUR payment pages an hour per network, without asking Stripe after that; Bought has its own count", async () => {
+    answer = () => json({ id: "cs_live_x", url: "https://checkout.stripe.com/c/pay/cs_live_x" });
+    const few = { ...stripeEnv, BUY_HOUR: "2", BOUGHT_HOUR: "5" };
+    expect((await call("/v1/buy", {}, { env: few })).status).toBe(200);
+    expect((await call("/v1/buy", {}, { env: few, ip: "2001:db8:1:2::5" })).status).toBe(200);
+    expect((await call("/v1/buy", {}, { env: few })).status).toBe(200);
+    expect(await call("/v1/buy", {}, { env: few })).toEqual({ status: 429, json: { error: "busy" } });
+    expect((await call("/v1/buy", {}, { env: few, ip: "2001:db8:1:2::9" })).status).toBe(200);  // its own /64 count
+    expect((await call("/v1/buy", {}, { env: few, ip: "2001:db8:1:2::a" })).status).toBe(429);
+    expect(seen).toHaveLength(4);
+    answer = () => json(session());
+    expect((await call("/v1/bought", { session: sid }, { env: few })).status).toBe(200);  // Buy's count is not Bought's
+    expect(env.BUY_HOUR).toBe("10");
   });
 });
 

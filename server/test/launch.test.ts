@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import headers from "../public/_headers?raw";
 import launchHtml from "../public/launch/index.html?raw";
 import wrangler from "../wrangler.jsonc?raw";
@@ -28,6 +28,11 @@ async function ask(url: string, vars: Partial<Env>, method = "GET", asked: strin
   const worker = (await import("../src/index")).default;
   return worker.fetch(new Request(url, { method, redirect: "manual" }), { ...env, ASSETS: assets(asked), ...vars } as Env);
 }
+
+// A fresh, empty feed: the page's fill makes no outside fetch in tests.
+beforeEach(async () => {
+  await env.DB.prepare("INSERT INTO beta_feed (id, build, url, checked_at) VALUES (1, NULL, NULL, ?) ON CONFLICT(id) DO UPDATE SET build = NULL, url = NULL, checked_at = excluded.checked_at").bind(Date.now()).run();
+});
 
 const modes = [["live", {}], ["test server", { TEST_SERVER: "1" }]] as const;
 
