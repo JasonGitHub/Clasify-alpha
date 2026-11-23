@@ -26,6 +26,19 @@ export const pageMails = {
       foot: "You joined the myPod waitlist on getmypod.app.",
     }),
   },
+  /**
+   * CLA-175: "myPod is yours", after a payment. PLACEHOLDER WORDS: the mail design (card CN) waits
+   * for Jason. The CTO puts the approved words here before this merges.
+   */
+  paid: {
+    subject: "myPod is yours",
+    ...cardMail({
+      lines: ["Thank you for buying myPod.", "Download it, then sign in with this email."],
+      button: "Get myPod",
+      link: pageLink,
+      foot: "You bought myPod on getmypod.app.",
+    }),
+  },
 } as const;
 
 /** Sends one page mail. "limit": the day's mail count for page mails is used up. */

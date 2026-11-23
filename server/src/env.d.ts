@@ -26,6 +26,8 @@ declare namespace Cloudflare {
     STRIPE_KEY?: string;
     /** CLA-175: the Stripe price ID of myPod. A plain setting. None: Buy answers "sales". */
     STRIPE_PRICE?: string;
+    /** CLA-175: the signing secret of Stripe's webhook (whsec_...). A Worker secret. */
+    STRIPE_WEBHOOK_SECRET?: string;
     /** CLA-175: "thank you" page checks an hour per network. */
     BOUGHT_HOUR: string;
     ALERT_TO?: string;

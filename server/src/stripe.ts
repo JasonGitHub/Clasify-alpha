@@ -43,23 +43,29 @@ export type Paid = { session: string; paymentIntent: string | null; email: strin
 export type Found = { result: "paid"; paid: Paid } | { result: "pending" } | { result: "not found" };
 
 /**
- * Bought: asks Stripe about one session. "paid" only when Stripe says it is paid, it is myPod's,
- * and its mode is the one this server takes. "pending" when the buyer finished Checkout and the
- * money is still on its way. Any error or unknown ID is "not found".
+ * Reads one Checkout session, from Stripe's answer or from a webhook message. "paid" only when
+ * Stripe says it is paid, it is myPod's, it is a one-time payment of more than 0, and its mode is
+ * the one this server takes. "pending" when the buyer finished Checkout and the money is still on
+ * its way. Anything else is "not found".
  */
-export async function findSession(env: StripeEnv, fetcher: typeof fetch, id: unknown): Promise<Found> {
+export function readSession(env: Pick<Env, "TEST_SERVER">, s: Record<string, unknown> | null, id?: string): Found {
   const none = { result: "not found" } as const;
-  if (typeof id !== "string" || !sessionPattern.test(id)) return none;
-  const s = await stripe(env, fetcher, "GET", `/checkout/sessions/${id}`);
-  if (!s || s.id !== id || s.livemode !== wantLive(env)) return none;
+  if (!s || typeof s.id !== "string" || !sessionPattern.test(s.id) || (id !== undefined && s.id !== id)) return none;
+  if (s.livemode !== wantLive(env) || s.mode !== "payment") return none;
   if ((s.metadata as Record<string, unknown> | null)?.app !== "mypod") return none;
   if (s.status === "complete" && s.payment_status === "unpaid") return { result: "pending" };
   if (s.payment_status !== "paid") return none;
   const email = (s.customer_details as Record<string, unknown> | null)?.email;
   if (typeof email !== "string" || !email.includes("@") || email.length > 254) return none;
-  if (typeof s.amount_total !== "number" || typeof s.currency !== "string") return none;
-  return { result: "paid", paid: { session: id, paymentIntent: typeof s.payment_intent === "string" ? s.payment_intent : null,
+  if (typeof s.amount_total !== "number" || !(s.amount_total > 0) || typeof s.currency !== "string") return none;
+  return { result: "paid", paid: { session: s.id, paymentIntent: typeof s.payment_intent === "string" ? s.payment_intent : null,
     email: email.trim().toLowerCase(), amount: s.amount_total, currency: s.currency } };
+}
+
+/** Bought: asks Stripe about one session. Any error or unknown ID is "not found". */
+export async function findSession(env: StripeEnv, fetcher: typeof fetch, id: unknown): Promise<Found> {
+  if (typeof id !== "string" || !sessionPattern.test(id)) return { result: "not found" };
+  return readSession(env, await stripe(env, fetcher, "GET", `/checkout/sessions/${id}`), id);
 }
 
 /** BOUGHT_HOUR checks an hour per network. The row is written in one statement with the count. */

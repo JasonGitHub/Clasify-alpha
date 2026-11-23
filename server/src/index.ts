@@ -5,6 +5,7 @@ import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
 import { refreshFeed } from "./beta";
 import { betaPage, betaPath, betaRedirect, isBetaPage } from "./page";
 import { openSpots } from "./spots";
+import { dropOldEvents, noPaidMail, stripeHook, type PaidMailer } from "./stripehook";
 import { turnstile } from "./turnstile";
 
 export default {
@@ -42,6 +43,7 @@ export default {
   // from "Email me the link" older than 30 days go.
   async scheduled(_controller: ScheduledController, env: Env) {
     await dropOldInviteMails(env.DB, Date.now());  // first: it never throws, and a failure below cannot skip it
+    await dropOldEvents(env.DB, Date.now());  // never throws either
     await openSpots(env.DB, Number(env.CAP), pageMailFor(env, Date.now), Date.now());
     await refreshFeed(env.DB, fetch, Date.now()).catch(() => null);
   },
@@ -58,6 +60,11 @@ function countInvite(request: Request, env: Env, later?: (work: Promise<unknown>
 
 function serve(request: Request, env: Env, later?: (work: Promise<unknown>) => void): Promise<Response> {
   const now = Date.now;
+  // CLA-175: Stripe's messages need the exact bytes, so they go here before any body is read.
+  if (request.method === "POST" && new URL(request.url).pathname === "/v1/stripe") {
+    const send = env.RESEND_KEY ? resend(env.RESEND_KEY) : null;
+    return stripeHook(request, env, { now, newID: token, paidMail: paidMailFor(env, now), alert: send, alertTo: env.ALERT_TO });
+  }
   // Until Jason adds the RESEND_KEY secret, nothing is sent and people see "Mail is busy".
   const mailer = env.RESEND_KEY ? linkMailer(env.DB, resend(env.RESEND_KEY), Number(env.MAIL_DAY), env.ALERT_TO, now) : noMail;
   // CLA-166: problem reports share the link mails' day count.
@@ -74,6 +81,13 @@ function serve(request: Request, env: Env, later?: (work: Promise<unknown>) => v
 export function pageMailFor(env: Env, now: () => number): PageMailer {
   if (env.RESEND_KEY) return pageMailer(env.DB, resend(env.RESEND_KEY), Number(env.MAIL_DAY), now);
   return env.TEST_SERVER === "1" ? pageMailer(env.DB, async () => true, Number(env.MAIL_DAY), now) : noPageMail;
+}
+
+/** CLA-175: the "myPod is yours" mail shares the page mails' day count and limits. */
+function paidMailFor(env: Env, now: () => number): PaidMailer {
+  const mailer = pageMailFor(env, now);
+  if (mailer === noPageMail) return noPaidMail;
+  return { send: async (to) => (await mailer.send(to, "paid")) === "sent" ? "sent" : "busy" };
 }
 
 /**
