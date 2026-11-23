@@ -1,3 +1,0 @@
-# The app opens /beta when it has no direct download link (BetaSignature.downloadPage).
-/beta / 302
-/beta/ / 302

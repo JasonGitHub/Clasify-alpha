@@ -7,11 +7,12 @@
 # CLA-172: the beta page and its privacy page (the frozen look; beta-page/ fills in the live parts). Their inline
 # scripts, styles and style attributes are allowed by hash only; test/beta-page.test.ts checks
 # that every hash here matches the files. connect-src 'self': the API on a test address.
+# The beta page is beta.html, served at /beta (Jason OK 20:25 JST 11-23); "/" sends people there (src/page.ts).
 #
 # Cloudflare Web Analytics (Jason OK 19:05 JST 11-23): on getmypod.app Cloudflare adds its beacon
 # script to every page. All three page rules allow that script's host in script-src, and in
 # connect-src 'self' (the beacon reports to /cdn-cgi/rum on the same host) and cloudflareinsights.com.
-/
+/beta
   Content-Security-Policy: default-src 'none'; script-src 'self' https://challenges.cloudflare.com https://static.cloudflareinsights.com 'sha256-rg4yFkR0h/qHdNe4PfinCLCnPHFmR2rKQZr4HcmOVY8=' 'sha256-jo7bNURPEJH3VL7MkcUCfl3jZRaGAawn+BywT5ShNEQ=' 'sha256-KC+/YKH3XnVLzIaDz7pKnJ/AaOhxsLnXVTmnqg/l59g=' 'sha256-B05ol+RWQrzE4GTizQs/O/0rchZP+y7StMExXViwrnA='; frame-src https://challenges.cloudflare.com; connect-src 'self' https://api.getmypod.app https://cloudflareinsights.com; style-src 'self' 'unsafe-hashes' 'sha256-V2t91uFSAHZDMHseHpTjZhQxnQdHUgkqPdXv5QTQBQ8=' 'sha256-ITcwrzB8+MBx7ucerJL/EgrLWC8l3XPvkQlgs0cxvK8=' 'sha256-BMm5OUe63bIXsk/Y5Khi7LVQ5g4DL2hsuRo6AO/KVjs=' 'sha256-8SmS4f+tjct9mbsqjKfeCeVqmBUPb+6bHc3H4rYArS0=' 'sha256-W/8Igpf8J9mjZPghhq9QvZXrMNj+0jKI51S1mEcNIQg='; img-src 'self' data:; media-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
