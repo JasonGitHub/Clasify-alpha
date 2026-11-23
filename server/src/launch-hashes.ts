@@ -2,8 +2,8 @@
 
 /** The inline <script> elements of the launch page. */
 export const launchScripts = [
-  "'sha256-WN7HRXZrzFkl6XF18pXD1HJA/8IIUJQqkpZETipr4FY='",
-  "'sha256-HeTPTOybhzMYjn/1ocAMa+36pJo80u6vM2eC14bzbFA='",
+  "'sha256-/x6XIf2CsM4nSJEDXl/nSWrQSFnpW/cz7Oqmq8t07Zo='",
+  "'sha256-yWt12cGEaxhIjv738s56FObC8sG9IgQBUanr7URnOiw='",
   "'sha256-QvN/fm9MWLI5MgvYoibwHPtNkgv/gsCwN7UJMaDIfW0='",
   "'sha256-MKNaQbcWAD+RhYDtPRLkiLdSbo5dqc3Oa8was5wchQc='",
   "'sha256-jkfpdrTfi+JNA5O99Nxva+Nabf8bJypjWHGbZ3JYpng='",
@@ -32,21 +32,4 @@ export const launchStyles = [
   "'sha256-uYjDJl6q31NGhTksP8x+qE7N3Azrb0lzi2el4QkbIqA='",
   "'sha256-O9n6SepMa5PND/ihWRzVrQ7FT8ZxZPAkjEF5xR8lfqQ='",
   "'sha256-QrmEP2pcMsr7XfQnUMBxSCh1T6uCVe/+5Xw5RaxoOaY='",
-  "'sha256-LU+ZkMgmLPeYNSqgMbEOnXUwEby1s64VRdi8GeeiUx8='",
-  "'sha256-hndkttKiV1DYdvI5Ix1folVAzQEamX1NroWpZNrkkTM='",
-  "'sha256-zuuVZKlLyqf3MvQY+MehTND5msc1cgXrGTb/SzzyKEo='",
-  "'sha256-hZWzha6pzCzw0CijSQIXqbf6c2zOg5cuzIPXNrTtXm4='",
-  "'sha256-XtBTk7+SKjl7GCowGfmFuDANI31XVwhIi9cg8xGteBI='",
-  "'sha256-/rFjDcqoss8Cl9g0So/lxMkpVWejkPcBYlDj71/speM='",
-  "'sha256-iHKgF/iy3g4jk711BnOxupnb4zxM4tcBt24txsBTCBo='",
-  "'sha256-8yVm5KGgsqTv0XRqjQy5b6V1+5ni5nfB+Eq58ZE8VL8='",
-  "'sha256-/Okr6zqLtGnZTxtxyrmnLTYa7cuIiEu41qxVAlmFeC0='",
-  "'sha256-npBVpmayDqrUBcuMBul4WS/19jV9/KTtWs6zeWMTPko='",
-  "'sha256-z/L2n4Yc7GBWmGgj1PVzpa5NIBcrFHi9FijS6F09OtE='",
-  "'sha256-8lqfANzA/c+WmpWow8NvGZaLK+9PChFfkkkLho7o9F8='",
-  "'sha256-pPAltq0w67V9zsRTw3Jye18u0rxr4kpCRdNqweqlyu8='",
-  "'sha256-zWu1ClSUTQeAk4o9cOy680pzf9gsbXG6V2cypQzHLlE='",
-  "'sha256-LfbQvPiFshim9VJQfyA/2LsqdR7rPDC9d/lKOusQUHw='",
-  "'sha256-t+zyZGpYopZD8RtLQMKW12ePfS5Jd9aZqeoiY+Hs0Tw='",
-  "'sha256-S7k/2pRuv5rTd708MH1ZczraTlEbo0HLT1YCmKSG1vg='",
 ];

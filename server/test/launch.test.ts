@@ -101,6 +101,13 @@ describe("launch page files and CSP", () => {
     expect(csp).not.toContain("itunes.apple.com");  // the page's song lookup stays blocked: no new third party
   });
 
+  it("builds no style attribute from a computed value, and asks no outside host for the song", () => {
+    // A hash cannot cover a value made at run time: built markup carries data-st, set through the CSSOM.
+    expect(launchHtml).not.toMatch(/\sstyle="[^"]*'\s*\+/);
+    expect(launchHtml).toContain("e.style.cssText=e.getAttribute('data-st')");
+    expect(launchHtml).not.toMatch(/itunes\.apple\.com|mzstatic\.com|previewUrl/);  // left out until Jason decides
+  });
+
   it("finds every file the page links, in /launch/ or at the root; no privacy copy", () => {
     const links = [...launchHtml.matchAll(/\s(?:href|src|poster)="([^"#][^"]*)"|url\(([^)"':]+)\)/g)].map((m) => m[1] ?? m[2])
       .filter((l) => !/^[a-z]+:/.test(l) && /[./]/.test(l));
