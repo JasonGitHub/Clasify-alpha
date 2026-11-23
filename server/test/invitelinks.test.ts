@@ -35,10 +35,9 @@ describe("invite ids", () => {
     expect(inviteOf("https://getmypod.app/beta")).toBeNull();
   });
 
-  it("goes only with the waitlist form, never with Email me the link", () => {
-    expect(formBody("waitlist", "a@example.com", "t", "sam")).toEqual({ email: "a@example.com", human: "t", invite: "sam" });
-    expect(formBody("waitlist", "a@example.com", "t", null)).toEqual({ email: "a@example.com", human: "t" });
-    expect(formBody("link", "a@example.com", "t", "sam")).toEqual({ email: "a@example.com", human: "t" });
+  it("goes with both forms when there is one", () => {
+    expect(formBody("a@example.com", "t", "sam")).toEqual({ email: "a@example.com", human: "t", invite: "sam" });
+    expect(formBody("a@example.com", "t", null)).toEqual({ email: "a@example.com", human: "t" });
   });
 });
 

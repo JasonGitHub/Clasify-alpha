@@ -201,14 +201,14 @@ export function inviteID(value) {
 }
 
 /**
- * What a form sends. Only the waitlist brings the invite id; "Email me the link" never does.
- * @param {FormKind} kind
+ * What a form sends: the email, the bot check's token, and the invite id when there is one. Both
+ * forms bring it (the waitlist and "Email me the link"; Jason picked B, 20:50 JST 11-23).
  * @param {string} email
  * @param {string} human
  * @param {string | null} invite
  */
-export function formBody(kind, email, human, invite) {
-  return kind === "waitlist" && invite ? { email, human, invite } : { email, human };
+export function formBody(email, human, invite) {
+  return invite ? { email, human, invite } : { email, human };
 }
 
 /** Vote items by their card title on the page (the website thread's list). "Something else?" is a mail link, not a vote. */

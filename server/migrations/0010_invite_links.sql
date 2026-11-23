@@ -14,3 +14,12 @@ CREATE TABLE invite_tries (
 );
 -- The invite id a waitlist account joined with. Set when the account is made, never changed.
 ALTER TABLE accounts ADD COLUMN invite_id TEXT;
+-- "Email me the link" with an invite id (Jason picked B, 20:50 JST 11-23): a keyed hash of the email
+-- (HMAC-SHA256 with the TURNSTILE_SECRET Worker secret) and the id, for 30 days. When that email's
+-- account activates, the id goes to the account (set once) and the row is deleted. The hourly cron
+-- deletes rows older than 30 days. Nothing else is kept.
+CREATE TABLE invite_mails (
+  email_hash TEXT PRIMARY KEY,
+  id TEXT NOT NULL,
+  at INTEGER NOT NULL
+);

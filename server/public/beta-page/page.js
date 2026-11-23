@@ -4,7 +4,7 @@ import { apiBase, edits, fill, formBody, formLine, formPath, formState, inviteID
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
-/** The invite id in the address (?invite=), or null. Only the waitlist form sends it. */
+/** The invite id in the address (?invite=), or null. Both forms send it. */
 const invite = inviteID(new URLSearchParams(location.search).get("invite"));
 
 const form = /** @type {HTMLFormElement} */ (document.getElementById("wl"));
@@ -92,7 +92,7 @@ form.addEventListener("submit", async (e) => {
   formButton.disabled = true;
   try {
     const token = await human();
-    result(token ? formState(await post(formPath[kind()], formBody(kind(), formInput.value.trim(), token, invite))) : "bot");
+    result(token ? formState(await post(formPath[kind()], formBody(formInput.value.trim(), token, invite))) : "bot");
   } finally {
     sending = false;
     formButton.disabled = false;

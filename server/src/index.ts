@@ -1,5 +1,5 @@
 import { handle, sha256, token } from "./activation";
-import { countOpen, inviteOf } from "./invitelinks";
+import { countOpen, dropOldInviteMails, inviteOf } from "./invitelinks";
 import { linkMailer, noMail, noReports, reportMailer, resend } from "./mailer";
 import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
 import { refreshFeed } from "./beta";
@@ -37,9 +37,11 @@ export default {
     }
     return serve(request, env, later);
   },
-  // CLA-172: once an hour, open beta spots go to the oldest waitlist people by mail, and the kept
-  // beta feed is read again (a page visit also does that when it is older than 2 minutes).
+  // CLA-172: once an hour, open beta spots go to the oldest waitlist people by mail, the kept beta
+  // feed is read again (a page visit also does that when it is older than 2 minutes), and invite ids
+  // from "Email me the link" older than 30 days go.
   async scheduled(_controller: ScheduledController, env: Env) {
+    await dropOldInviteMails(env.DB, Date.now());  // first: it never throws, and a failure below cannot skip it
     await openSpots(env.DB, Number(env.CAP), pageMailFor(env, Date.now), Date.now());
     await refreshFeed(env.DB, fetch, Date.now()).catch(() => null);
   },

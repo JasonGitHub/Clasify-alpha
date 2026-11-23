@@ -3,6 +3,7 @@
 // GET for the counts: Jason reads them from D1 through the CTO.
 import { inviteID } from "../public/beta-page/logic.js";
 import { network } from "./vote";
+import { pageEmail } from "./waitlist";
 
 /** At most this many different ids get a count. Past it, new ids are ignored (no row flood). */
 export const inviteCap = 500;
@@ -42,4 +43,55 @@ export async function countOpen(db: D1Database, id: string, ip: string, now: num
   if (tried.meta.changes) return "ok";
   const known = await db.prepare("SELECT 1 AS k FROM invite_opens WHERE id = ?").bind(id).first();
   return known ? "seen" : "full";
+}
+
+/** How long an invite id from "Email me the link" waits for its email to activate. */
+export const inviteMailLife = 30 * 24 * 60 * 60_000;
+
+/**
+ * The key for an email in invite_mails: HMAC-SHA256 of the email (trimmed, lower case) with a Worker
+ * secret (TURNSTILE_SECRET), so the table alone cannot be checked against a list of addresses.
+ */
+export async function emailKey(email: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(email.trim().toLowerCase()));
+  return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * "Email me the link" with a valid invite id: keeps the email's key and the id for 30 days. The first
+ * id stays (set once). A new id past the 500 cap is ignored. No secret, no row. Never throws.
+ */
+export async function keepInviteMail(db: D1Database, body: Record<string, unknown>, secret: string | undefined, now: number): Promise<void> {
+  const email = pageEmail(body.email);
+  const id = inviteID(body.invite);
+  if (!secret || !email || !id) return;
+  await (async () => {
+    await db.prepare(
+      `INSERT INTO invite_mails (email_hash, id, at) SELECT ?1, ?2, ?3
+       WHERE EXISTS (SELECT 1 FROM invite_opens WHERE id = ?2) OR (SELECT COUNT(*) FROM invite_opens) < ?4
+       ON CONFLICT (email_hash) DO NOTHING`,
+    ).bind(await emailKey(email, secret), id, now, inviteCap).run();
+  })().catch(() => null);
+}
+
+/**
+ * When an account activates: the invite id kept for its email (younger than 30 days) goes to the
+ * account if it has none yet, and the row is deleted. Never throws, so an activation never waits on it.
+ */
+export async function claimInvite(db: D1Database, email: string, account: string, secret: string | undefined, now: number): Promise<void> {
+  if (!secret) return;
+  await (async () => {
+    const key = await emailKey(email, secret);
+    const kept = "SELECT id FROM invite_mails WHERE email_hash = ?1 AND at > ?3";
+    await db.batch([
+      db.prepare(`UPDATE accounts SET invite_id = (${kept}) WHERE id = ?2 AND invite_id IS NULL AND EXISTS (${kept})`).bind(key, account, now - inviteMailLife),
+      db.prepare("DELETE FROM invite_mails WHERE email_hash = ?").bind(key),
+    ]);
+  })().catch(() => null);
+}
+
+/** The hourly cron: rows older than 30 days go. */
+export async function dropOldInviteMails(db: D1Database, now: number): Promise<void> {
+  await db.prepare("DELETE FROM invite_mails WHERE at <= ?").bind(now - inviteMailLife).run().catch(() => null);
 }
