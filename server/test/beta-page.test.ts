@@ -30,7 +30,8 @@ describe("beta page CSP (CLA-172)", () => {
   it("allows each inline script and style of the page by its hash, and nothing else inline", async () => {
     const csp = policy("/");
     expect(csp).toContain("default-src 'none'");
-    expect(sources(csp, "connect-src")).toEqual(["'self'", "https://api.getmypod.app"]);  // 'self': a test address
+    // 'self': a test address, and the Web Analytics beacon's /cdn-cgi/rum on getmypod.app.
+    expect(sources(csp, "connect-src")).toEqual(["'self'", "https://api.getmypod.app", "https://cloudflareinsights.com"]);
     expect(sources(csp, "frame-ancestors")).toEqual(["'none'"]);
     expect(csp).not.toContain("unsafe-inline");
     expect(csp).not.toContain("unsafe-eval");
@@ -78,15 +79,30 @@ describe("beta page CSP (CLA-172)", () => {
     }
   });
 
-  it("allows the privacy page's inline style by its hash, and no script", async () => {
+  it("allows the privacy page's inline style by its hash, and no script but the Web Analytics beacon", async () => {
     const csp = policy("/privacy/*");
-    expect(sources(csp, "script-src")).toEqual([]);
+    expect(sources(csp, "script-src")).toEqual(["https://static.cloudflareinsights.com"]);
     for (const s of inline(privacy, "style")) expect(sources(csp, "style-src")).toContain(await hash(s));
     expect(privacy).not.toContain("<script");
   });
 
-  it("keeps the activation page's policy as it was", () => {
-    expect(policy("/activate/*")).toContain("style-src 'self';");
+  it("keeps the activation page's policy as it was, plus the Web Analytics beacon", () => {
+    const csp = policy("/activate/*");
+    expect(csp).toContain("style-src 'self';");
+    expect(sources(csp, "script-src")).toEqual(["'self'", "https://challenges.cloudflare.com", "https://static.cloudflareinsights.com"]);
+    expect(sources(csp, "connect-src")).toEqual(["'self'", "https://api.getmypod.app", "https://cloudflareinsights.com"]);
+  });
+
+  it("lets Cloudflare Web Analytics run on all three pages, and nothing more (Jason OK 19:05 JST 11-23)", () => {
+    for (const path of ["/", "/privacy/*", "/activate/*"]) {
+      const csp = policy(path);
+      expect(sources(csp, "script-src")).toContain("https://static.cloudflareinsights.com");
+      expect(sources(csp, "connect-src")).toEqual(expect.arrayContaining(["'self'", "https://cloudflareinsights.com"]));
+      expect(csp).not.toContain("unsafe-inline");
+      expect(csp).not.toContain("unsafe-eval");
+    }
+    expect(page).not.toContain("cloudflareinsights");  // Cloudflare adds the beacon; our HTML has no tag or token
+    expect(privacy).not.toContain("cloudflareinsights");
   });
 });
 
