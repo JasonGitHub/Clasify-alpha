@@ -1,4 +1,5 @@
-import { handle } from "./activation";
+import { handle, sha256, token } from "./activation";
+import { countOpen, inviteOf } from "./invitelinks";
 import { linkMailer, noMail, noReports, reportMailer, resend } from "./mailer";
 import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
 import { refreshFeed } from "./beta";
@@ -15,6 +16,7 @@ export default {
       const path = new URL(request.url).pathname;
       // "/" goes to /beta, and the beta page comes filled (src/page.ts).
       const moved = env.ASSETS ? betaRedirect(request) : null;
+      if (env.ASSETS && isBetaPage(request)) countInvite(request, env, later);
       const page = moved ?? (env.ASSETS && isBetaPage(request) ? await betaPage(request, env, env.ASSETS, fetch, later)
         : path.startsWith("/v1/") || !env.ASSETS ? await serve(request, env, later) : await env.ASSETS.fetch(request));
       const marked = new Response(page.body, page);
@@ -27,7 +29,11 @@ export default {
     if (env.ASSETS) {
       const moved = betaRedirect(request);
       if (moved) return moved;
-      if (new URL(request.url).pathname === betaPath) return isBetaPage(request) ? betaPage(request, env, env.ASSETS, fetch, later) : env.ASSETS.fetch(request);
+      if (new URL(request.url).pathname === betaPath) {
+        if (!isBetaPage(request)) return env.ASSETS.fetch(request);
+        countInvite(request, env, later);
+        return betaPage(request, env, env.ASSETS, fetch, later);
+      }
     }
     return serve(request, env, later);
   },
@@ -38,6 +44,15 @@ export default {
     await refreshFeed(env.DB, fetch, Date.now()).catch(() => null);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * CLA-172: a page open with ?invite=<id> counts once for that id (src/invitelinks.ts). It runs after
+ * the answer, so the page never waits for it, and an error is dropped.
+ */
+function countInvite(request: Request, env: Env, later?: (work: Promise<unknown>) => void) {
+  const id = inviteOf(request.url);
+  if (id && later) later(countOpen(env.DB, id, request.headers.get("CF-Connecting-IP") ?? "", Date.now(), sha256, token));
+}
 
 function serve(request: Request, env: Env, later?: (work: Promise<unknown>) => void): Promise<Response> {
   const now = Date.now;

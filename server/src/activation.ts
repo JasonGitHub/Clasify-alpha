@@ -247,7 +247,7 @@ async function deviceHash(request: Request): Promise<string | null> {
 }
 
 /** 32 random bytes, base64url. */
-function token(): string {
+export function token(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

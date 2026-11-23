@@ -1,4 +1,5 @@
 import type { PageMailer } from "./pagemail";
+import { inviteID } from "../public/beta-page/logic.js";
 
 // CLA-172: the beta page's "Join the waitlist" (POST /v1/waitlist) and "Email me the link" (POST /v1/link). The answer never tells a
 // visitor that an address is known: a new address and a known one both get "ok".
@@ -54,7 +55,11 @@ export async function link(db: D1Database, body: Record<string, unknown>, now: n
   return "busy";
 }
 
-/** The bot check first (fail closed), then the address, then the limits. Keeps email and created_at only. */
+/**
+ * The bot check first (fail closed), then the address, then the limits. Keeps email and created_at,
+ * and the invite id the person came with (a valid one, else none). A known address stays as it is:
+ * its invite id is set only when the account is made, and never changed.
+ */
 export async function waitlist(db: D1Database, body: Record<string, unknown>, now: number, perDay: number,
   human: (token: string) => Promise<boolean>, hash: (s: string) => Promise<string>, newID: () => string): Promise<PageResult> {
   if (typeof body.human !== "string" || !(await human(body.human))) return "bot";
@@ -64,7 +69,7 @@ export async function waitlist(db: D1Database, body: Record<string, unknown>, no
   const room = await tryOnce(db, "wait", await hash(email), now, { count: waitPerHour, within: hour }, perDay);
   if (room !== "ok") return room === "key" ? "ok" : "busy";
   // A known address, in any state, stays as it is.
-  await db.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'waitlist', ?) ON CONFLICT (email) DO NOTHING")
-    .bind(newID(), email, now).run();
+  await db.prepare("INSERT INTO accounts (id, email, state, created_at, invite_id) VALUES (?, ?, 'waitlist', ?, ?) ON CONFLICT (email) DO NOTHING")
+    .bind(newID(), email, now, inviteID(body.invite)).run();
   return "ok";
 }
