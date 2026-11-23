@@ -20,6 +20,7 @@ function assets(asked: string[] = []) {
     const r = new Request(input as RequestInfo, init);
     const path = new URL(r.url).pathname;
     asked.push(`${r.method} ${path}`);
+    if (path === "/launch/") return new Response('<body><a href="#download">Try it first</a><a href="#checkout">Buy</a></body>', { headers: { "Content-Type": "text/html" } });
     if (path === "/launch/thanks") return new Response(r.method === "HEAD" ? null : thanksHtml, { headers: { "Content-Type": "text/html", ETag: "\"x\"" } });
     const file = path.endsWith("/") ? path + "index.html" : path;
     return files.has(file) ? new Response(`file ${file}`) : new Response("not found", { status: 404 });
@@ -81,6 +82,19 @@ describe("/thanks", () => {
     for (const state of ["checking", "ok", "wait", "no"]) expect(thanksHtml).toContain(`class="s s-${state}"`);
     expect(thanksHtml).toContain('<body data-state="checking">');
     expect(thanksHtml.toLowerCase()).not.toContain("refund");
+  });
+});
+
+describe("the launch page's Try it first", () => {
+  it("gets the newest build while the beta has room, /beta when it is full, and stays for wire.js when the answer is unknown", async () => {
+    expect(await (await ask("https://getmypod.app/", on)).text()).toMatch(/<a href="https:\/\/dl\.getmypod\.app\/[^"]+\.dmg">Try it first/);
+    forgetBeta();
+    await env.DB.prepare("INSERT INTO accounts (id, email, state, seat, created_at) VALUES ('a', 'sam@example.com', 'active', 1, 0)").run();
+    expect(await (await ask("https://getmypod.app/", on)).text()).toContain('<a href="/beta">Try it first');
+    forgetBeta();
+    const unknown = await ask("https://getmypod.app/", { ...on, CAP: "0" });  // no usable beta answer
+    expect(await unknown.text()).toContain('<a href="#download">Try it first');
+    expect(unknown.headers.get("Cache-Control")).toBe("no-cache");
   });
 });
 

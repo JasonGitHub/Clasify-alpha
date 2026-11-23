@@ -83,7 +83,7 @@ async function servePage(request: Request, file: Response, rewriter: HTMLRewrite
 async function launchPage(request: Request, env: Env, assets: Fetcher, url: URL, fetcher: typeof fetch,
   later?: (work: Promise<unknown>) => void): Promise<Response> {
   const file = await assets.fetch(new Request(new URL(launchDir + "/" + url.search, url), request));
-  const href = file.ok && request.method === "GET" ? downloadHref(await betaNow(env, fetcher, later)) : null;
+  const href = file.ok && request.method === "GET" ? downloadHref((await betaNow(env, fetcher, later)) ?? undefined) : null;
   let rewriter = new HTMLRewriter().on("body", { element(el) { el.append(launchWiring, { html: true }); } });
   if (href) rewriter = rewriter.on(downloadSelector, { element(el) { el.setAttribute("href", href); } });
   return servePage(request, file, rewriter, launchCSP, href ? "max-age=30" : "no-cache");
