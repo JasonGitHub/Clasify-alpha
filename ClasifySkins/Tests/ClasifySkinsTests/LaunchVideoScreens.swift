@@ -27,7 +27,7 @@ import Testing
         for (i, song) in songs.enumerated() {
             var q = URLComponents(string: "https://itunes.apple.com/search")!
             q.queryItems = [.init(name: "term", value: song.term), .init(name: "entity", value: "album"),
-                            .init(name: "limit", value: "5"), .init(name: "country", value: "US")]
+                            .init(name: "limit", value: "25"), .init(name: "country", value: "US")]
             let (json, _) = try await URLSession.shared.data(from: q.url!)
             let obj = try JSONSerialization.jsonObject(with: json) as? [String: Any]
             let results = obj?["results"] as? [[String: Any]] ?? []
@@ -46,6 +46,7 @@ import Testing
         s.signedIn = true
         s.setupDone = true
         s.activated = true
+        s.deviceColor = .silver  // the video shows Silver first; main now starts on Black
         s.stack = [Frame(screen: .main)]
         s.library = [
             Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: Self.songs.enumerated().map { i, x in
