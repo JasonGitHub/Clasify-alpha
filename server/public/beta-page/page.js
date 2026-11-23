@@ -1,9 +1,11 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, edits, fill, formLine, formPath, formState, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
+import { apiBase, edits, fill, formBody, formLine, formPath, formState, inviteID, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
+/** The invite id in the address (?invite=), or null. Both forms send it. */
+const invite = inviteID(new URLSearchParams(location.search).get("invite"));
 
 const form = /** @type {HTMLFormElement} */ (document.getElementById("wl"));
 const formButton = /** @type {HTMLButtonElement} */ (form.querySelector("button"));
@@ -90,7 +92,7 @@ form.addEventListener("submit", async (e) => {
   formButton.disabled = true;
   try {
     const token = await human();
-    result(token ? formState(await post(formPath[kind()], { email: formInput.value.trim(), human: token })) : "bot");
+    result(token ? formState(await post(formPath[kind()], formBody(formInput.value.trim(), token, invite))) : "bot");
   } finally {
     sending = false;
     formButton.disabled = false;

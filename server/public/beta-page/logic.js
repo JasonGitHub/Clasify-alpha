@@ -188,6 +188,29 @@ export function formLine(state, kind) {
 /** The path each form sends to. */
 export const formPath = { waitlist: "/v1/waitlist", link: "/v1/link" };
 
+/**
+ * An invite id (getmypod.app/beta?invite=<id>, Jason OK 20:29 JST 11-23): lower case a-z, 0-9, _ and -,
+ * 1 to 32 characters, after lower-casing. Anything else is null and ignored. The server uses the same rule.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function inviteID(value) {
+  if (typeof value !== "string") return null;
+  const id = value.toLowerCase();
+  return /^[a-z0-9_-]{1,32}$/.test(id) ? id : null;
+}
+
+/**
+ * What a form sends: the email, the bot check's token, and the invite id when there is one. Both
+ * forms bring it (the waitlist and "Email me the link"; Jason picked B, 20:50 JST 11-23).
+ * @param {string} email
+ * @param {string} human
+ * @param {string | null} invite
+ */
+export function formBody(email, human, invite) {
+  return invite ? { email, human, invite } : { email, human };
+}
+
 /** Vote items by their card title on the page (the website thread's list). "Something else?" is a mail link, not a vote. */
 export const voteItems = /** @type {const} */ ({
   "Your own music files": "local-music", "Nano": "nano", "Radio": "radio", "Like from the wheel": "like-from-wheel", "More colors": "more-colors",

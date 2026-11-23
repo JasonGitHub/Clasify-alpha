@@ -4,6 +4,7 @@ import { noReports, type Mailer, type ReportMailer } from "./mailer";
 import { noPageMail, type PageMailer } from "./pagemail";
 import { vote } from "./vote";
 import { link, waitlist } from "./waitlist";
+import { claimInvite, keepInviteMail } from "./invitelinks";
 
 // Activation (CLA-128): the app opens the page with a one-time code, the person types an
 // email, clicks the link in the mail, and presses Confirm. This file writes nothing to the
@@ -125,8 +126,12 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     }
     case "POST /v1/waitlist":  // the beta page's waitlist form (CLA-172)
       return reply({ result: await waitlist(db, body, now, Number(env.WAIT_DAY), deps.human, sha256, token) }, 200, cors);
-    case "POST /v1/link":  // the beta page's "Email me the link" (CLA-172)
-      return reply({ result: await link(db, body, now, Number(env.LINK_DAY), deps.human, sha256, deps.pageMail ?? noPageMail) }, 200, cors);
+    case "POST /v1/link": {  // the beta page's "Email me the link" (CLA-172)
+      const result = await link(db, body, now, Number(env.LINK_DAY), deps.human, sha256, deps.pageMail ?? noPageMail);
+      // After the mail: the invite id waits for this email to activate (src/invitelinks.ts).
+      if (result === "ok") await keepInviteMail(db, body, env.TURNSTILE_SECRET, now);
+      return reply({ result }, 200, cors);
+    }
     case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); no bot check, one a day per item per network
       return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
@@ -227,6 +232,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
         await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ? AND state != 'active'").bind(a.id).run();
         return reply({ result: "full" }, 200, cors);
       }
+      // The invite id from "Email me the link", if this email has one (src/invitelinks.ts).
+      await claimInvite(db, a.email, a.id, env.TURNSTILE_SECRET, now);
       return reply({ result: "ok" }, 200, cors);
     }
   }
@@ -247,7 +254,7 @@ async function deviceHash(request: Request): Promise<string | null> {
 }
 
 /** 32 random bytes, base64url. */
-function token(): string {
+export function token(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }

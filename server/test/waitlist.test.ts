@@ -28,7 +28,7 @@ describe("POST /v1/waitlist", () => {
     const answer = await join({ email: "  Sam@Example.com ", human: "person" });
     expect(answer).toMatchObject({ status: 200, result: "ok" });
     expect(answer.headers.get("Access-Control-Allow-Origin")).toBe(page);
-    expect(await accounts()).toEqual([{ id: expect.any(String), email: "sam@example.com", state: "waitlist", off: 0, created_at: clock, confirmed_at: null, invited_at: null }]);
+    expect(await accounts()).toEqual([{ id: expect.any(String), email: "sam@example.com", state: "waitlist", off: 0, created_at: clock, confirmed_at: null, invited_at: null, invite_id: null }]);
     // The try keeps only a hash of the address.
     const tries = (await env.DB.prepare("SELECT * FROM page_tries").all<{ kind: string; key_hash: string }>()).results;
     expect(tries).toEqual([{ kind: "wait", key_hash: expect.stringMatching(/^[0-9a-f]{64}$/), at: clock }]);
@@ -38,7 +38,7 @@ describe("POST /v1/waitlist", () => {
     await env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES ('a1', 'kim@example.com', 'active', 5)").run();
     expect((await join({ email: "kim@example.com", human: "person" })).result).toBe("ok");
     expect((await join({ email: "KIM@example.com", human: "person" })).result).toBe("ok");
-    expect(await accounts()).toEqual([{ id: "a1", email: "kim@example.com", state: "active", off: 0, created_at: 5, confirmed_at: null, invited_at: null }]);
+    expect(await accounts()).toEqual([{ id: "a1", email: "kim@example.com", state: "active", off: 0, created_at: 5, confirmed_at: null, invited_at: null, invite_id: null }]);
   });
 
   it("checks the bot token first, and fails closed", async () => {
@@ -81,5 +81,33 @@ describe("POST /v1/waitlist", () => {
     clock += 2 * 24 * hour + 1;
     await join({ email: "kim@example.com", human: "person" });
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM page_tries").first<{ n: number }>())?.n).toBe(1);  // older than 2 days: gone
+  });
+});
+
+describe("POST /v1/waitlist with an invite id (Jason OK 20:29 JST 11-23)", () => {
+  const inviteOf = async (email: string) =>
+    (await env.DB.prepare("SELECT invite_id FROM accounts WHERE email = ?").bind(email).first<{ invite_id: string | null }>())?.invite_id;
+
+  it("keeps a valid invite id on the new account, in lower case", async () => {
+    expect((await join({ email: "sam@example.com", human: "person", invite: "Jason_01" })).result).toBe("ok");
+    expect(await inviteOf("sam@example.com")).toBe("jason_01");
+  });
+
+  it("ignores an invite id that is not valid", async () => {
+    for (const [n, invite] of [["a", ""], ["b", "has space"], ["c", "x".repeat(33)], ["d", "é"], ["e", "a/b"], ["f", 5], ["g", null], ["h", ["x"]]] as const) {
+      expect((await join({ email: `${n}@example.com`, human: "person", invite })).result).toBe("ok");
+      expect(await inviteOf(`${n}@example.com`), String(invite)).toBeNull();
+    }
+  });
+
+  it("sets the invite id once and never changes it", async () => {
+    await join({ email: "sam@example.com", human: "person", invite: "first" });
+    clock += 2 * hour;
+    await join({ email: "sam@example.com", human: "person", invite: "second" });
+    expect(await inviteOf("sam@example.com")).toBe("first");
+    // A known account without one does not get one later.
+    await env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES ('a1', 'kim@example.com', 'waitlist', 5)").run();
+    await join({ email: "kim@example.com", human: "person", invite: "late" });
+    expect(await inviteOf("kim@example.com")).toBeNull();
   });
 });
