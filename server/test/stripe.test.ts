@@ -29,7 +29,7 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 
 const sid = "cs_live_a1B2c3D4e5F6g7H8";
 const session = (extra: Record<string, unknown> = {}) => ({
-  id: sid, livemode: true, payment_status: "paid", metadata: { app: "mypod" }, payment_intent: "pi_123",
+  id: sid, livemode: true, mode: "payment", status: "complete", payment_status: "paid", metadata: { app: "mypod" }, payment_intent: "pi_123",
   customer_details: { email: " Pat@Example.com " }, amount_total: 2999, currency: "usd", ...extra,
 });
 const account = () => env.DB.prepare("SELECT state, seat, paid_at FROM accounts WHERE email = 'pat@example.com'").first();
@@ -38,7 +38,7 @@ const payments = async () => (await env.DB.prepare("SELECT session_id, payment_i
 beforeEach(async () => {
   seen = [];
   answer = () => json(session());
-  await env.DB.batch(["bought_tries", "payments", "mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["reversals", "bought_tries", "payments", "mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
 describe("Buy", () => {
@@ -84,8 +84,9 @@ describe("Bought", () => {
   });
 
   it("answers no and changes nothing for a session that is not paid, not myPod's, or of the wrong mode", async () => {
-    for (const extra of [{ payment_status: "unpaid" }, { metadata: { app: "zapper" } }, { metadata: null }, { livemode: false },
-      { customer_details: null }, { amount_total: null }, { id: "cs_live_other0000000" }]) {
+    for (const extra of [{ status: "open", payment_status: "unpaid" }, { payment_status: "no_payment_required" }, { metadata: { app: "zapper" } }, { metadata: null }, { livemode: false },
+      { customer_details: null }, { amount_total: null }, { amount_total: 0 }, { mode: "subscription" }, { mode: "setup" },
+      { id: "cs_live_other0000000" }]) {
       answer = () => json(session(extra));
       expect((await call("/v1/bought", { session: sid })).json).toEqual({ result: "not found" });
     }
@@ -138,7 +139,7 @@ describe("Bought", () => {
       env.DB.prepare("UPDATE payments SET state = 'refunded'"),
       env.DB.prepare("UPDATE accounts SET paid_at = NULL"),
     ]);
-    await call("/v1/bought", { session: sid });
+    expect((await call("/v1/bought", { session: sid })).json).toEqual({ result: "not found" });
     expect(await account()).toMatchObject({ paid_at: null });
   });
 

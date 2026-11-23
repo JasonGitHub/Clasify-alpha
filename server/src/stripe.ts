@@ -43,23 +43,29 @@ export type Paid = { session: string; paymentIntent: string | null; email: strin
 export type Found = { result: "paid"; paid: Paid } | { result: "pending" } | { result: "not found" };
 
 /**
- * Bought: asks Stripe about one session. "paid" only when Stripe says it is paid, it is myPod's,
- * and its mode is the one this server takes. "pending" when the buyer finished Checkout and the
- * money is still on its way. Any error or unknown ID is "not found".
+ * Reads one Checkout session, from Stripe's answer or from a webhook message. "paid" only when
+ * Stripe says it is paid, it is myPod's, it is a one-time payment of more than 0, and its mode is
+ * the one this server takes. "pending" when the buyer finished Checkout and the money is still on
+ * its way. Anything else is "not found".
  */
-export async function findSession(env: StripeEnv, fetcher: typeof fetch, id: unknown): Promise<Found> {
+export function readSession(env: Pick<Env, "TEST_SERVER">, s: Record<string, unknown> | null, id?: string): Found {
   const none = { result: "not found" } as const;
-  if (typeof id !== "string" || !sessionPattern.test(id)) return none;
-  const s = await stripe(env, fetcher, "GET", `/checkout/sessions/${id}`);
-  if (!s || s.id !== id || s.livemode !== wantLive(env)) return none;
+  if (!s || typeof s.id !== "string" || !sessionPattern.test(s.id) || (id !== undefined && s.id !== id)) return none;
+  if (s.livemode !== wantLive(env) || s.mode !== "payment") return none;
   if ((s.metadata as Record<string, unknown> | null)?.app !== "mypod") return none;
   if (s.status === "complete" && s.payment_status === "unpaid") return { result: "pending" };
   if (s.payment_status !== "paid") return none;
   const email = (s.customer_details as Record<string, unknown> | null)?.email;
   if (typeof email !== "string" || !email.includes("@") || email.length > 254) return none;
-  if (typeof s.amount_total !== "number" || typeof s.currency !== "string") return none;
-  return { result: "paid", paid: { session: id, paymentIntent: typeof s.payment_intent === "string" ? s.payment_intent : null,
+  if (typeof s.amount_total !== "number" || !(s.amount_total > 0) || typeof s.currency !== "string") return none;
+  return { result: "paid", paid: { session: s.id, paymentIntent: typeof s.payment_intent === "string" ? s.payment_intent : null,
     email: email.trim().toLowerCase(), amount: s.amount_total, currency: s.currency } };
+}
+
+/** Bought: asks Stripe about one session. Any error or unknown ID is "not found". */
+export async function findSession(env: StripeEnv, fetcher: typeof fetch, id: unknown): Promise<Found> {
+  if (typeof id !== "string" || !sessionPattern.test(id)) return { result: "not found" };
+  return readSession(env, await stripe(env, fetcher, "GET", `/checkout/sessions/${id}`), id);
 }
 
 /** BOUGHT_HOUR checks an hour per network. The row is written in one statement with the count. */
@@ -75,7 +81,7 @@ export async function boughtRoom(db: D1Database, netHash: string, now: number, p
 /**
  * The paid step (design doc step 5), shared by Bought and the webhook (PR 4). Finds or makes the
  * account for the email, stores the payment once, and sets paid_at while that payment is still
- * "paid". A Checkout session stays "paid" at Stripe after a refund, so a refunded payment row
+ * "paid". A refund or dispute that came before (table reversals) is stored with it. A Checkout session stays "paid" at Stripe after a refund, so a refunded payment row
  * keeps a later Bought call from setting paid_at again. Safe to run twice.
  * Answers true only the first time this session is stored, so the "myPod is yours" mail goes once.
  */
@@ -84,8 +90,10 @@ export async function markPaid(db: D1Database, paid: Paid, now: number, newID: (
     db.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'pending', ?) ON CONFLICT (email) DO NOTHING")
       .bind(newID(), paid.email, now),
     db.prepare(
-      `INSERT INTO payments (session_id, payment_intent, account_id, amount, currency, state, at)
-       SELECT ?, ?, id, ?, ?, 'paid', ? FROM accounts WHERE email = ? ON CONFLICT DO NOTHING`,
+      `INSERT INTO payments (session_id, payment_intent, account_id, amount, currency, state, state_at, at)
+       SELECT ?1, ?2, id, ?3, ?4, COALESCE((SELECT state FROM reversals WHERE payment_intent = ?2), 'paid'),
+         COALESCE((SELECT state_at FROM reversals WHERE payment_intent = ?2), 0), ?5
+       FROM accounts WHERE email = ?6 ON CONFLICT DO NOTHING`,
     ).bind(paid.session, paid.paymentIntent, paid.amount, paid.currency, now, paid.email),
     db.prepare(
       `UPDATE accounts SET paid_at = COALESCE(paid_at, ?)
