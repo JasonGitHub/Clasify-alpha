@@ -19,22 +19,46 @@ export const stripeVersion = "2025-09-30.clover";
 /** The live Worker takes only real money. Only the test server (TEST_SERVER "1") takes test mode. Fixed in code. */
 export const wantLive = (env: Pick<Env, "TEST_SERVER">) => env.TEST_SERVER !== "1";
 
-async function stripe(env: StripeEnv, fetcher: typeof fetch, method: "GET" | "POST", path: string, form?: Record<string, string>) {
-  if (!env.STRIPE_KEY) return null;
+/** One Stripe call: its answer as JSON when it is OK, else null, and the HTTP status (0: no answer). */
+async function stripeCall(env: StripeEnv, fetcher: typeof fetch, method: "GET" | "POST", path: string, form?: Record<string, string>) {
+  if (!env.STRIPE_KEY) return { status: 0, body: null };
   const response = await fetcher(`${api}${path}`, {
     method,
     headers: { Authorization: `Bearer ${env.STRIPE_KEY}`, "Stripe-Version": stripeVersion, ...(form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
     body: form ? new URLSearchParams(form).toString() : undefined,
   }).catch(() => null);
-  if (!response?.ok) return null;
-  return (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response?.ok) return { status: response?.status ?? 0, body: null };
+  return { status: response.status, body: (await response.json().catch(() => null)) as Record<string, unknown> | null };
+}
+
+async function stripe(env: StripeEnv, fetcher: typeof fetch, method: "GET" | "POST", path: string, form?: Record<string, string>) {
+  return (await stripeCall(env, fetcher, method, path, form)).body;
+}
+
+/**
+ * How Stripe's payment page looks (Jason OK 03:53 JST 11-24): myPod's name, colors, font and corners.
+ * The icon is the app icon (public/stripe/mypod-icon.png, 512 px), read by Stripe from PAGE_ORIGIN.
+ */
+export const branding = {
+  display_name: "myPod",
+  background_color: "#16263a",
+  button_color: "#1f6fd1",
+  font_family: "inter",
+  border_style: "rounded",
+} as const;
+export const brandIconPath = "/stripe/mypod-icon.png";
+
+function brandingForm(page: string): Record<string, string> {
+  const form: Record<string, string> = { "branding_settings[icon][type]": "url", "branding_settings[icon][url]": page + brandIconPath };
+  for (const [key, value] of Object.entries(branding)) form[`branding_settings[${key}]`] = value;
+  return form;
 }
 
 /** Buy: a new Checkout session for one copy. Answers its payment page address, or null. */
 export async function checkout(env: StripeEnv, fetcher: typeof fetch): Promise<string | null> {
   if (!env.STRIPE_PRICE) return null;
   const page = env.PAGE_ORIGIN || "https://getmypod.app";
-  const session = await stripe(env, fetcher, "POST", "/checkout/sessions", {
+  const form = {
     mode: "payment",
     "line_items[0][price]": env.STRIPE_PRICE,
     "line_items[0][quantity]": "1",
@@ -46,8 +70,12 @@ export async function checkout(env: StripeEnv, fetcher: typeof fetch): Promise<s
     // limits (redemptions, expiry) live in Stripe. The session is made at the full price, so
     // payment_intent_data is valid; with a $0 total Stripe makes no PaymentIntent.
     allow_promotion_codes: "true",
-  });
-  const url = session?.url;
+  };
+  // With the look first. Stripe refuses a bad request (400) and makes no session then; a refused look
+  // must never stop a sale, so the same session is asked once more without it. Other errors: no retry.
+  let answer = await stripeCall(env, fetcher, "POST", "/checkout/sessions", { ...form, ...brandingForm(page) });
+  if (answer.status === 400) answer = await stripeCall(env, fetcher, "POST", "/checkout/sessions", form);
+  const url = answer.body?.url;
   return typeof url === "string" && url.startsWith("https://checkout.stripe.com/") ? url : null;
 }
 

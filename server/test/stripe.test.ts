@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/activation";
 import { noMail } from "../src/mailer";
-import { markPaid } from "../src/stripe";
+import { brandIconPath, markPaid } from "../src/stripe";
 
 // CLA-175 stage 1: Buy and Bought with a fake Stripe. No network.
 
@@ -53,8 +53,38 @@ describe("Buy", () => {
       mode: "payment", "line_items[0][price]": "price_fake", "line_items[0][quantity]": "1",
       success_url: "https://getmypod.app/thanks?session={CHECKOUT_SESSION_ID}", cancel_url: "https://getmypod.app/",
       "metadata[app]": "mypod", "payment_intent_data[metadata][app]": "mypod", allow_promotion_codes: "true",
+      "branding_settings[display_name]": "myPod", "branding_settings[background_color]": "#16263a",
+      "branding_settings[button_color]": "#1f6fd1", "branding_settings[font_family]": "inter", "branding_settings[border_style]": "rounded",
+      "branding_settings[icon][type]": "url", "branding_settings[icon][url]": "https://getmypod.app/stripe/mypod-icon.png",
     });
     expect(seen[0].body).not.toContain("device");  // never a device ID to Stripe
+  });
+
+  it("asks once more without the look when Stripe refuses the request (400); never for other errors", async () => {
+    answer = () => seen.length === 1 ? json({ error: { type: "invalid_request_error" } }, 400) : json({ id: "cs_live_x", url: "https://checkout.stripe.com/c/pay/cs_live_x" });
+    expect(await call("/v1/buy", {})).toEqual({ status: 200, json: { url: "https://checkout.stripe.com/c/pay/cs_live_x" } });
+    expect(seen).toHaveLength(2);
+    expect(seen[0].body).toContain("branding_settings");
+    const plain = Object.fromEntries(new URLSearchParams(seen[1].body));
+    expect(Object.keys(plain).some((k) => k.startsWith("branding_settings"))).toBe(false);
+    expect(plain).toMatchObject({ mode: "payment", "line_items[0][price]": "price_fake", allow_promotion_codes: "true", "metadata[app]": "mypod" });
+
+    for (const status of [401, 402, 429, 500]) {
+      seen = [];
+      answer = () => json({ error: {} }, status);
+      expect((await call("/v1/buy", {}, { ip: `198.51.100.${status % 250}` })).status, String(status)).toBe(503);
+      expect(seen, String(status)).toHaveLength(1);
+    }
+    seen = [];
+    answer = () => json({ error: {} }, 400);  // refused twice: no third try
+    expect((await call("/v1/buy", {}, { ip: "198.51.100.9" })).status).toBe(503);
+    expect(seen).toHaveLength(2);
+  });
+
+  it("has the icon Stripe reads at its public path, and the product image", async () => {
+    const files = Object.keys(import.meta.glob("../public/stripe/*", { eager: false }));
+    expect(brandIconPath).toBe("/stripe/mypod-icon.png");
+    expect(files.sort()).toEqual(["../public/stripe/mypod-icon.png", "../public/stripe/mypod-product.png"]);
   });
 
   it("answers sales (503) with no key, no price, a Stripe error, or an address that is not Stripe's", async () => {
