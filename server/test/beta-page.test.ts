@@ -1,8 +1,8 @@
+/// <reference types="vite/client" />
 import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
-import page from "../public/index.html?raw";
+import page from "../public/beta.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import redirects from "../public/_redirects?raw";
 import { apiBase, dmgURL, edits, fill, formLine, formPath, formState, loadingFill, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
@@ -28,7 +28,7 @@ const inline = (html: string, tag: string) => [...html.matchAll(new RegExp(`<${t
 
 describe("beta page CSP (CLA-172)", () => {
   it("allows each inline script and style of the page by its hash, and nothing else inline", async () => {
-    const csp = policy("/");
+    const csp = policy("/beta");
     expect(csp).toContain("default-src 'none'");
     // 'self': a test address, and the Web Analytics beacon's /cdn-cgi/rum on getmypod.app.
     expect(sources(csp, "connect-src")).toEqual(["'self'", "https://api.getmypod.app", "https://cloudflareinsights.com"]);
@@ -53,13 +53,15 @@ describe("beta page CSP (CLA-172)", () => {
   const sha256 = async (s: string) =>
     [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
-  it("keeps the privacy page byte for byte as frozen, except the canonical line and root paths", async () => {
+  it("keeps the privacy page byte for byte as frozen, except the canonical line and the links", async () => {
     // Jason's rule: the privacy words are frozen; any change needs his approval first.
     // This is the SHA-256 of design-review/beta-page/simple-frozen/privacy/index.html. The frozen
-    // file links the icons with "../"; the site uses root paths (/favicon.ico etc.).
+    // file links the icons with "../"; the site uses root paths (/favicon.ico etc.). Its two links
+    // back to the beta page go to "../beta", where the page is now (Jason OK 20:25 JST 11-23).
     const frozen = privacy
       .replace('<link rel="canonical" href="https://getmypod.app/privacy/">\n', "")
-      .replace(/="\/(favicon\.ico|favicon-32\.png|apple-touch-icon\.png)"/g, '="../$1"');
+      .replace(/="\/(favicon\.ico|favicon-32\.png|apple-touch-icon\.png)"/g, '="../$1"')
+      .replaceAll('href="../beta"', 'href="../index.html"');
     expect(await sha256(frozen)).toBe("ce6d5fff31fcc7ab655194375b2f6528ca5979aaf6d77d16c8735ff7acfc4c9a");
   });
 
@@ -94,7 +96,7 @@ describe("beta page CSP (CLA-172)", () => {
   });
 
   it("lets Cloudflare Web Analytics run on all three pages, and nothing more (Jason OK 19:05 JST 11-23)", () => {
-    for (const path of ["/", "/privacy/*", "/activate/*"]) {
+    for (const path of ["/beta", "/privacy/*", "/activate/*"]) {
       const csp = policy(path);
       expect(sources(csp, "script-src")).toContain("https://static.cloudflareinsights.com");
       expect(sources(csp, "connect-src")).toEqual(expect.arrayContaining(["'self'", "https://cloudflareinsights.com"]));
@@ -113,7 +115,7 @@ describe("beta page live parts (CLA-172)", () => {
     expect(page).not.toContain("tslide");
     expect(page).not.toContain("URLSearchParams");
     expect(page).toContain('<script type="module" src="beta-page/page.js"></script>');
-    expect(page).toContain('<link rel="canonical" href="https://getmypod.app/">');
+    expect(page).toContain('<link rel="canonical" href="https://getmypod.app/beta">');
     expect(privacy).toContain('<link rel="canonical" href="https://getmypod.app/privacy/">');
   });
 
@@ -243,8 +245,23 @@ describe("beta page forms (CLA-172)", () => {
     expect(page).toContain('<button class="cta" type="submit">Email me the link</button><p class="ok">Sent. Open it on your Mac.</p>');
   });
 
-  it("sends the app's fallback download page /beta to the beta page", () => {
-    const rules = redirects.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => l.trim().split(/\s+/));
-    expect(rules).toEqual([["/beta", "/", "302"], ["/beta/", "/", "302"]]);
+  it("links only to files that are there, seen from /beta (Jason OK 20:25 JST 11-23)", () => {
+    // The page's links are relative, so at /beta (no slash) they point at the root files.
+    const files = new Set(Object.keys(import.meta.glob("../public/**", { eager: false })).map((f) => f.slice("../public".length)));
+    const at = (from: string, link: string) => {
+      const u = new URL(link, `https://getmypod.app${from}`);
+      return u.host === "getmypod.app" ? u.pathname : null;
+    };
+    const links = (html: string) => [...html.matchAll(/\s(?:href|src)="([^"#][^"]*)"|\scontent="(https:[^"]*)"/g)].map((m) => m[1] ?? m[2])
+      .filter((l) => !/^(data|mailto):/.test(l) && (/^https:\/\/getmypod\.app\//.test(l) || !/^[a-z]+:/.test(l)) && /[./]/.test(l));
+    const pageLinks = links(page).map((l) => at("/beta", l));
+    expect(pageLinks).toEqual(expect.arrayContaining(["/privacy/index.html", "/beta-page/page.js", "/og-beta.png", "/favicon.ico"]));
+    for (const p of pageLinks) expect(files.has(p!) || p === "/beta", p!).toBe(true);
+    expect(page).not.toMatch(/(href|src)="\.\.\//);  // nothing above the root
+    // The privacy page's links back go to /beta, its own files at the root.
+    expect(links(privacy).filter((l) => l.includes("beta")).map((l) => at("/privacy/", l))).toEqual(["/beta", "/beta"]);
+    expect(files.has("/beta.html")).toBe(true);
+    expect(files.has("/index.html")).toBe(false);  // "/" is the Worker's 302 to /beta
+    expect(files.has("/_redirects")).toBe(false);  // the old /beta -> / redirects are gone
   });
 });

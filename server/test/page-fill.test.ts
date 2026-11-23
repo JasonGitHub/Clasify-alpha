@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import headers from "../public/_headers?raw";
-import page from "../public/index.html?raw";
+import page from "../public/beta.html?raw";
 import { edits, fill, loadingFill, parseBeta } from "../public/beta-page/logic.js";
 import { forgetBeta } from "../src/beta";
 import { betaPage, fillWait, isBetaPage, rewriteWait } from "../src/page";
@@ -26,7 +26,7 @@ async function accounts(n: number) {
   if (n) await env.DB.batch([...Array(n)].map((_, i) =>
     env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'active', 1)").bind(`a${i}`, `a${i}@example.com`)));
 }
-const get = (headers: Record<string, string> = {}) => new Request("https://page.example/", { headers });
+const get = (headers: Record<string, string> = {}) => new Request("https://page.example/beta", { headers });
 
 /** The page as page.js would draw it from the static file: every edit applied by hand. */
 function drawn(f: ReturnType<typeof fill>): Record<string, string | null> {
@@ -56,10 +56,10 @@ beforeEach(async () => {
 });
 
 describe("the server-filled beta page", () => {
-  it("fills only GET /", () => {
+  it("fills only GET /beta", () => {
     expect(isBetaPage(get())).toBe(true);
-    expect(isBetaPage(new Request("https://page.example/", { method: "HEAD" }))).toBe(false);
-    for (const p of ["/privacy/", "/activate/", "/v1/beta", "/beta-page/page.js"]) expect(isBetaPage(new Request(`https://page.example${p}`))).toBe(false);
+    expect(isBetaPage(new Request("https://page.example/beta", { method: "HEAD" }))).toBe(false);
+    for (const p of ["/", "/beta/", "/privacy/", "/activate/", "/v1/beta", "/beta-page/page.js"]) expect(isBetaPage(new Request(`https://page.example${p}`))).toBe(false);
   });
 
   for (const [name, taken, latest] of [["open", 12, good], ["limited", 3, good], ["full", 25, good], ["no build", 12, {}]] as const) {

@@ -110,26 +110,51 @@ describe("test server (CLA-172)", () => {
     const ask = (url: string, vars: Partial<Env>) => worker.fetch(new Request(url), { ...env, ...vars } as Env);
     expect((await ask("https://x.example/v1/nothing", { TEST_SERVER: "1" })).headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
     const assets = { fetch: async () => new Response("page") } as unknown as Fetcher;
-    const page = await ask("https://x.example/", { TEST_SERVER: "1", ASSETS: assets });
+    const page = await ask("https://x.example/privacy/", { TEST_SERVER: "1", ASSETS: assets });
     expect([await page.text(), page.headers.get("X-Robots-Tag")]).toEqual(["page", "noindex, nofollow"]);
     expect((await ask("https://x.example/v1/nothing", {})).headers.get("X-Robots-Tag")).toBeNull();
   });
 
-  it("live: fills only GET /, sends other methods on / to the files, and keeps /v1/ and unknown paths", async () => {
+  it("live: fills only GET /beta, sends other methods on /beta to the files, and keeps /v1/ and unknown paths", async () => {
     const worker = (await import("../src/index")).default;
     const html = '<html><body class="one hm loading"><div id="spots" class="spots"></div></body></html>';
     const asked: string[] = [];
     const assets = { fetch: async (r: Request) => { asked.push(`${r.method} ${new URL(r.url).pathname}`); return new Response(html, { headers: { "Content-Type": "text/html" } }); } } as unknown as Fetcher;
     const ask = (url: string, method = "GET") => worker.fetch(new Request(url, { method }), { ...env, ASSETS: assets } as Env);
-    const page = await ask("https://getmypod.app/");
+    const page = await ask("https://getmypod.app/beta");
     expect(page.status).toBe(200);
     expect(await page.text()).not.toContain("loading");  // filled from the live count
     expect(page.headers.get("X-Robots-Tag")).toBeNull();
-    expect((await ask("https://getmypod.app/", "HEAD")).status).toBe(200);
-    expect(asked).toEqual(["GET /", "HEAD /"]);
+    expect((await ask("https://getmypod.app/beta", "HEAD")).status).toBe(200);
+    expect(asked).toEqual(["GET /beta", "HEAD /beta"]);
     expect((await ask("https://getmypod.app/v1/beta")).headers.get("Content-Type")).toContain("application/json");
     expect((await ask("https://getmypod.app/nothing")).status).toBe(404);  // the Worker's 404, as today
     expect(asked).toHaveLength(2);
   });
+
+  // Jason OK 20:25 JST 11-23: the beta page is at /beta; "/" waits for the launch page.
+  for (const testServer of [false, true]) {
+    it(`${testServer ? "test server" : "live"}: sends "/", "/beta/" and "/index.html" to /beta with a 302, query kept`, async () => {
+      const worker = (await import("../src/index")).default;
+      const asked: string[] = [];
+      const assets = { fetch: async (r: Request) => { asked.push(new URL(r.url).pathname); return new Response("file"); } } as unknown as Fetcher;
+      const vars = { ASSETS: assets, ...(testServer ? { TEST_SERVER: "1" } : {}) };
+      const ask = (url: string, method = "GET") => worker.fetch(new Request(url, { method, redirect: "manual" }), { ...env, ...vars } as Env);
+      for (const [from, to] of [["/", "/beta"], ["/?from=mail", "/beta?from=mail"], ["/beta/", "/beta"], ["/beta/?a=1&b=2", "/beta?a=1&b=2"], ["/index.html", "/beta"]]) {
+        for (const method of ["GET", "HEAD"]) {
+          const answer = await ask(`https://getmypod.app${from}`, method);
+          expect([from, method, answer.status, answer.headers.get("Location")]).toEqual([from, method, 302, to]);  // never a 301
+          expect(answer.headers.get("Cache-Control")).toBe("no-store");
+          expect(answer.headers.get("X-Robots-Tag")).toBe(testServer ? "noindex, nofollow" : null);
+        }
+      }
+      expect(asked).toEqual([]);  // no file is read for a redirect
+      // The other pages and files stay where they are.
+      for (const path of ["/privacy/", "/activate/", "/beta-page/page.js", "/og-beta.png"]) {
+        if (testServer) expect((await ask(`https://getmypod.app${path}`)).status, path).toBe(200);
+      }
+      if (testServer) expect(asked).toEqual(["/privacy/", "/activate/", "/beta-page/page.js", "/og-beta.png"]);
+    });
+  }
 });
 

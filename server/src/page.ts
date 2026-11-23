@@ -14,9 +14,25 @@ export const fillWait = 1500;
 /** How long the rewrite of the whole page may take before the plain page goes out instead. */
 export const rewriteWait = 2000;
 
+/** Where the beta page is (public/beta.html; Jason OK 20:25 JST 11-23). */
+export const betaPath = "/beta";
+
 /** The page paths the Worker fills. Every other asset goes out as it is. */
 export function isBetaPage(request: Request): boolean {
-  return request.method === "GET" && new URL(request.url).pathname === "/";
+  return request.method === "GET" && new URL(request.url).pathname === betaPath;
+}
+
+/**
+ * The paths that send people to the beta page: "/" until the launch page is there, "/beta/" (one
+ * form only), and "/index.html", the page's old file. Always a 302, never a 301: browsers keep a
+ * 301 for good, and "/" gets its own page later. The query string goes along.
+ */
+const toBeta = new Set(["/", "/beta/", "/index.html"]);
+
+export function betaRedirect(request: Request): Response | null {
+  const url = new URL(request.url);
+  if (!toBeta.has(url.pathname)) return null;
+  return new Response(null, { status: 302, headers: { Location: betaPath + url.search, "Cache-Control": "no-store" } });
 }
 
 /**
