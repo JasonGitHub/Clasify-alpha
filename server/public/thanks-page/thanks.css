@@ -22,7 +22,7 @@ main{flex:1;display:flex;flex-direction:column;align-items:center;justify-conten
 /* CLA-175: one page, four states (body data-state): checking, ok (paid), wait (in progress), no (not found). */
 .s,.l img,.cf,.stamp,.foot{display:none}
 [data-state=checking] .s-checking,[data-state=ok] .s-ok,[data-state=wait] .s-wait,[data-state=no] .s-no{display:contents}
-[data-state=checking] .l .c-think,[data-state=ok] .l .c-boba,[data-state=wait] .l .c-tablet,[data-state=no] .l .c-think{display:block}
+[data-state=checking] .l .c-tablet,[data-state=ok] .l .c-boba,[data-state=wait] .l .c-tablet,[data-state=no] .l .c-think{display:block}
 [data-state=ok] .cf,[data-state=wait] .stamp{display:block}
 [data-state=checking] .f-help,[data-state=ok] .f-help,[data-state=wait] .f-help,[data-state=no] .f-back{display:block}
 [data-state=no] .st{background:linear-gradient(#d6cfbf,#c4bba7)}[data-state=no] .st .bc{opacity:.5}

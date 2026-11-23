@@ -41,8 +41,11 @@ export const launchCSP = [
   "frame-ancestors 'none'",
 ].join("; ");
 
-/** The wiring the Worker adds to the design: wire.js. It loads the bot check (as on the beta page) only when the form is sent. */
-export const launchWiring = '<script type="module" src="/launch-page/wire.js"></script>';
+/**
+ * The wiring the Worker adds to the design: wire.js and its few styles (wire.css). wire.js loads the
+ * bot check (as on the beta page) only when the form is sent.
+ */
+export const launchWiring = '<link rel="stylesheet" href="/launch-page/wire.css"><script type="module" src="/launch-page/wire.js"></script>';
 
 /** The beta answer (the newest build and the seats) within `fillWait`, or null. */
 async function betaNow(env: Env, fetcher: typeof fetch, later?: (work: Promise<unknown>) => void) {

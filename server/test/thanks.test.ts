@@ -2,7 +2,6 @@
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import thanksHtml from "../public/launch/thanks.html?raw";
-import thanksCss from "../public/thanks-page/thanks.css?raw";
 import wireJs from "../public/launch-page/wire.js?raw";
 import thanksJs from "../public/thanks-page/thanks.js?raw";
 import wrangler from "../wrangler.jsonc?raw";
@@ -75,7 +74,6 @@ describe("/thanks", () => {
     expect(thanksHtml).not.toMatch(/\sstyle=|<style|<script>|<script(?![^>]*src="\/)/);
     expect(thanksHtml).not.toMatch(/(?:src|href)="https?:/);
     expect(thanksJs).not.toMatch(/https?:\/\/(?!dl\.)/);
-    expect(thanksCss).not.toMatch(/url\(|@import|https?:/);
     for (const m of thanksHtml.matchAll(/\s(?:src|href)="(\/[^"]+)"/g)) expect(files.has(m[1].replace(/\/$/, "/index.html")) || m[1] === "/", m[1]).toBe(true);
   });
 
@@ -104,8 +102,16 @@ describe("the page rules", () => {
     expect(wireJs.match(/function buyFailed/g)).toHaveLength(1);  // one place for the failure line
   });
 
+  it("buy: a failure shows one plain line, set as text with a class, styled from our own file", () => {
+    expect(wireJs).toContain('export const buyFailLine = "Sorry, checkout isn’t open right now. Please try again later.";');
+    expect(wireJs).toContain("line.textContent = buyFailLine;");
+    expect(wireJs).toContain('line.className = "bfail";');
+    expect(wireJs).not.toMatch(/innerHTML|setAttribute\("style"/);
+    expect(files.has("/launch-page/wire.css")).toBe(true);  // its look is checked in the browser (CSS files read as empty in this test pool)
+  });
+
   it("the launch page loads only our script; the bot check loads at the first send", () => {
-    expect(launchWiring).toBe('<script type="module" src="/launch-page/wire.js"></script>');
+    expect(launchWiring).toBe('<link rel="stylesheet" href="/launch-page/wire.css"><script type="module" src="/launch-page/wire.js"></script>');
     expect(wireJs).toContain("loadTurnstile()");
   });
 

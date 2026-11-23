@@ -106,23 +106,41 @@ if (form) {
   }, true);
 }
 
+/** The line under the Buy button when checkout cannot open. The same words for every kind. */
+export const buyFailLine = "Sorry, checkout isn’t open right now. Please try again later.";
+
 /**
- * A Buy press that did not open the payment page. Every failure comes here, with its kind, so a
- * one-line message can be added in one place later. Today: the button only comes back.
+ * A Buy press that did not open the payment page. Every failure comes here, with its kind. The
+ * button comes back, and one plain line shows under it until the next Buy press.
  * @param {HTMLAnchorElement} a
  * @param {"sales" | "busy" | "other"} _kind
  */
 function buyFailed(a, _kind) {
+  buying = false;
   a.removeAttribute("aria-disabled");
   a.style.opacity = "";
+  const line = document.createElement("p");
+  line.className = "bfail";
+  line.setAttribute("role", "status");
+  line.textContent = buyFailLine;
+  a.after(line);
 }
 
+/** The button back to normal with no line: when the next press starts, or back from Stripe (then Buy works again). */
+function buyReset(/** @type {HTMLAnchorElement} */ a) {
+  a.removeAttribute("aria-disabled");
+  a.style.opacity = "";
+  for (const line of document.querySelectorAll(".bfail")) line.remove();
+}
+
+/** True from a Buy press until it fails or the person comes back from Stripe: one payment page per press. */
 let buying = false;
 for (const a of /** @type {NodeListOf<HTMLAnchorElement>} */ (document.querySelectorAll(buySelector))) {
   a.addEventListener("click", async (e) => {
     e.preventDefault();
     if (buying) return;
     buying = true;
+    buyReset(a);
     a.setAttribute("aria-disabled", "true");
     a.style.opacity = ".6";
     let status = null, json = null;
@@ -132,12 +150,11 @@ for (const a of /** @type {NodeListOf<HTMLAnchorElement>} */ (document.querySele
       status = r.status;
       json = await r.json().catch(() => null);
     } catch { /* no answer */ }
-    buying = false;
     const result = buyResult(status, json);
     if ("url" in result) {
       location.assign(result.url);
       // Back from Stripe (the page may come from the back-forward cache): the button works again.
-      addEventListener("pageshow", () => buyFailed(a, "other"), { once: true });
+      addEventListener("pageshow", () => { buying = false; buyReset(a); }, { once: true });
     } else {
       buyFailed(a, result.error);
     }
