@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/beta.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import { apiBase, dmgURL, edits, fill, formLine, formPath, formState, loadingFill, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
+import { apiBase, dmgURL, edits, fill, formLine, formPath, formState, inviteCard, inviteID, loadingFill, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
 function policy(path: string): string {
@@ -263,5 +263,40 @@ describe("beta page forms (CLA-172)", () => {
     expect(files.has("/beta.html")).toBe(true);
     expect(files.has("/index.html")).toBe(false);  // "/" is the Worker's 302 to /beta
     expect(files.has("/_redirects")).toBe(false);  // the old /beta -> / redirects are gone
+  });
+});
+
+describe("invite welcome card (Jason OK 02:19 JST 11-24)", () => {
+  const card = (query: string, body: string) => inviteCard(inviteID(new URLSearchParams(query).get("invite")), body);
+
+  it("shows the open card for a valid id when spots are open, and while the download is coming", () => {
+    expect(card("?invite=friends-01", "one hm open")).toBe("open");
+    expect(card("?invite=Friends_01", "one hm soon")).toBe("open");
+  });
+
+  it("shows the full card for a valid id when the beta is full", () => {
+    expect(card("?invite=friends-01", "one hm full")).toBe("full");
+  });
+
+  it("shows no card for a bad id or no id, and none before the page has its state", () => {
+    for (const q of ["?invite=", "?invite=a%20b", "?invite=<b>", `?invite=${"a".repeat(33)}`, "?x=1", ""]) {
+      expect(card(q, "one hm open")).toBeNull();
+      expect(card(q, "one hm full")).toBeNull();
+    }
+    expect(card("?invite=friends-01", "one hm loading")).toBeNull();
+  });
+
+  it("is in the page hidden, with both texts and buttons, its style and image from our own site", () => {
+    const ov = page.match(/<div class="ov" id="inv"[\s\S]*?<\/button><\/div><\/div><\/div>/)?.[0] ?? "";
+    expect(ov).toMatch(/^<div class="ov" id="inv" hidden role="dialog" aria-modal="true" aria-labelledby="invh">/);
+    expect(ov).toContain('<h2 id="invh">You’re invited.</h2>');
+    expect(ov).toContain('<p class="io">So glad you came. <br>The myPod beta is on us.</p>');
+    expect(ov).toContain('<p class="if">The beta is on us, and it’s full right now. <br>Join the waitlist, and we’ll write to you.</p>');
+    expect(ov).toContain('<button type="button" class="io">Come on in</button><button type="button" class="if">Join the waitlist</button>');
+    expect(ov).toContain('<img src="beta-page/invite-cappy.webp" width="170" height="170" alt="">');
+    expect(ov).not.toContain("style=");
+    expect(page).toContain('<link rel="stylesheet" href="beta-page/invite.css">');
+    expect(sources(policy("/beta"), "style-src")).toContain("'self'");
+    expect(sources(policy("/beta"), "img-src")).toContain("'self'");
   });
 });

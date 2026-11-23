@@ -1,6 +1,6 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, edits, fill, formBody, formLine, formPath, formState, inviteID, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
+import { apiBase, edits, fill, formBody, formLine, formPath, formState, inviteCard, inviteID, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
@@ -102,7 +102,37 @@ form.addEventListener("submit", async (e) => {
 // The server writes the answer into the page when it has it at once (src/page.ts). If not, the
 // page comes as body.loading: the rows at their final size but invisible, the button with no
 // link, so nothing moves and there is never a dead link. Then this asks once.
-if (document.body.classList.contains("loading")) load().then((beta) => draw(fill(beta)));
+if (document.body.classList.contains("loading")) load().then((beta) => { draw(fill(beta)); welcome(); });
+else welcome();
+
+/** The invite welcome card, once, after the page has its state. Everything else is inert while it
+ * shows, so focus stays on its one button. Esc or the button closes it; "Join the waitlist" then
+ * puts focus in the email field, else focus goes back where it was. */
+function welcome() {
+  const card = document.getElementById("inv");
+  const kind = inviteCard(invite, document.body.className);
+  const button = /** @type {HTMLButtonElement | null} */ (card?.querySelector(kind === "full" ? "button.if" : "button.io") ?? null);
+  if (!card || !kind || !button) return;
+  const back = document.activeElement;
+  const others = [...document.body.children].filter((n) => n !== card && n.tagName !== "SCRIPT");
+  const shut = (/** @type {HTMLElement | null} */ next) => {
+    card.hidden = true;
+    document.documentElement.classList.remove("inv");
+    for (const n of others) /** @type {HTMLElement} */ (n).inert = false;
+    document.removeEventListener("keydown", key);
+    if (next && next !== document.body) next.focus();
+    else button.blur();
+  };
+  const key = (/** @type {KeyboardEvent} */ e) => { if (e.key === "Escape") shut(back instanceof HTMLElement ? back : null); };
+  card.classList.add(kind);
+  for (const n of others) /** @type {HTMLElement} */ (n).inert = true;
+  document.documentElement.classList.add("inv");
+  card.hidden = false;
+  document.addEventListener("keydown", key);
+  button.addEventListener("click", () => shut(kind === "full" ? formInput : back instanceof HTMLElement ? back : null), { once: true });
+  // No ring on open (the design); Tab or a key shows it, as for any button.
+  button.focus(/** @type {FocusOptions} */ ({ focusVisible: false }));
+}
 
 // Votes (CLA-172): one per item per browser. The vote shows at once; "ok" or "busy" keeps it.
 const store = {

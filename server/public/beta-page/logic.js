@@ -201,6 +201,20 @@ export function inviteID(value) {
 }
 
 /**
+ * The invite welcome card (Jason OK 02:19 JST 11-24): which one a page with `invite` (inviteID's
+ * result) and the page state shows. None without a valid id or while the page loads; "full" for a
+ * full beta; else "open". The card never shows the id, and an invite does not skip the spots limit.
+ * @param {string | null} invite
+ * @param {string} classes the body's classes
+ * @returns {"open" | "full" | null}
+ */
+export function inviteCard(invite, classes) {
+  const state = classes.split(/\s+/);
+  if (!invite || state.includes("loading")) return null;
+  return state.includes("full") ? "full" : "open";
+}
+
+/**
  * What a form sends: the email, the bot check's token, and the invite id when there is one. Both
  * forms bring it (the waitlist and "Email me the link"; Jason picked B, 20:50 JST 11-23).
  * @param {string} email
