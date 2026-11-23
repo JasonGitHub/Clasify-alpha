@@ -14,7 +14,6 @@ import Testing
     /// This is the only test that touches the network, and it is not for merge.
     static let songs: [(title: String, artist: String, album: String, duration: Double, term: String)] = [
         ("Come Together", "The Beatles", "Abbey Road", 260, "beatles abbey road"),
-        ("Feel Good Inc.", "Gorillaz", "Demon Days", 222, "gorillaz demon days"),
         ("Money", "Pink Floyd", "The Dark Side of the Moon", 382, "pink floyd dark side of the moon"),
         ("Bring Me to Life", "Evanescence", "Fallen", 237, "evanescence fallen"),
         ("Man on Fire", "Edward Sharpe & The Magnetic Zeros", "Here", 272, "edward sharpe magnetic zeros here"),
