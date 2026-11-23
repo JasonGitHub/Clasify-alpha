@@ -91,6 +91,21 @@ describe("a paid account", () => {
     expect(await join(mac(5), "kim@example.com")).toEqual({ state: "full" });  // the beta is still full
   });
 
+  it("is never full when it paid after joining the waitlist", async () => {
+    await seated(25);
+    expect(await join(mac(1), "pat@example.com")).toEqual({ state: "full" });  // the waitlist, before paying
+    await env.DB.prepare("UPDATE accounts SET paid_at = 5 WHERE email = 'pat@example.com'").run();
+    expect(await status(mac(1))).not.toEqual({ state: "full" });
+    clock += later;
+    expect(await join(mac(1), "pat@example.com")).toEqual({ state: "waiting", email: "pat@example.com", mail: 1 });
+    expect(await confirm(mail.token)).toBe("ok");
+    expect(await row("pat@example.com")).toEqual({ state: "active", seat: 0, paid_at: 5 });
+    expect(await seats()).toBe(25);
+    expect(await activate(mac(2), "pat@example.com")).toBe("ok");
+    expect(await activate(mac(3), "pat@example.com")).toBe("ok");
+    expect(await status(mac(3))).toMatchObject({ state: "active", macs: 3, limit: 3 });
+  });
+
   it("does not take a seat when the beta has room", async () => {
     await paid("pat@example.com");
     expect(await activate(mac(1), "pat@example.com")).toBe("ok");

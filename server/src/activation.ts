@@ -67,7 +67,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       const macs = (await db.prepare("SELECT COUNT(*) AS n FROM macs WHERE account_id = ? AND state = 'active'").bind(a.id).first<{ n: number }>())?.n ?? 0;
       return { state: "active", account: a.id, email: masked(a.email), ...(m.activated_at ? { since: m.activated_at } : {}), macs, limit: macLimit(a) };
     }
-    if (a.state === "waitlist") return { state: "full" };
+    if (a.state === "waitlist" && a.paid_at === null) return { state: "full" };  // a paid account is never "full"
     if (m.mail_state === "busy") return { state: "busy" };
     return m.mail_state === "sent" ? { state: "waiting", email: a.email, mail: m.mails } : { state: "locked" };
   }

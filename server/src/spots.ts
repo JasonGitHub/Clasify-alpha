@@ -9,7 +9,8 @@ export const inviteOpen = 7 * 24 * 60 * 60_000;
 export const spotsPerRun = 10;
 
 /**
- * free = CAP - seats - open invites. Mails the `free` oldest waitlist accounts that
+ * free = CAP - seats - open invites (CLA-175: paid accounts hold no seat, and a paid account on
+ * the waitlist gets no open-spot mail). Mails the `free` oldest waitlist accounts that
  * were not invited yet (at most `spotsPerRun`), and sets invited_at. A mail that does not go
  * out clears its invited_at again and ends the run. Answers the number of mails sent.
  */
