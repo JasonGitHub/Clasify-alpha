@@ -14,7 +14,6 @@ import Testing
     /// This is the only test that touches the network, and it is not for merge.
     static let songs: [(title: String, artist: String, album: String, duration: Double, term: String)] = [
         ("Come Together", "The Beatles", "Abbey Road", 260, "beatles abbey road"),
-        ("Money", "Pink Floyd", "The Dark Side of the Moon", 382, "pink floyd dark side of the moon"),
         ("Bring Me to Life", "Evanescence", "Fallen", 237, "evanescence fallen"),
         ("Man on Fire", "Edward Sharpe & The Magnetic Zeros", "Here", 272, "edward sharpe magnetic zeros here"),
         ("Complicated", "Avril Lavigne", "Let Go", 244, "avril lavigne let go"),
@@ -31,7 +30,8 @@ import Testing
             let (json, _) = try await URLSession.shared.data(from: q.url!)
             let obj = try JSONSerialization.jsonObject(with: json) as? [String: Any]
             let results = obj?["results"] as? [[String: Any]] ?? []
-            let pick = results.first { ($0["collectionName"] as? String ?? "").localizedCaseInsensitiveContains(song.album) } ?? results.first
+            let pick = results.first { ($0["collectionName"] as? String ?? "").localizedCaseInsensitiveContains(song.album)
+                && ($0["artistName"] as? String ?? "").localizedCaseInsensitiveContains(song.artist) } ?? results.first
             let small = try #require(pick?["artworkUrl100"] as? String, "no cover for \(song.album)")
             let big = try #require(URL(string: small.replacingOccurrences(of: "100x100bb", with: "1000x1000bb")))
             let (img, _) = try await URLSession.shared.data(from: big)
