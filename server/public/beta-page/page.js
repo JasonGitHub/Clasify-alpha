@@ -113,8 +113,8 @@ else welcome();
 function welcome() {
   const card = document.getElementById("inv");
   const kind = card && !card.hidden ? (card.classList.contains("full") ? "full" : "open") : inviteCard(invite, document.body.className);
-  const button = /** @type {HTMLButtonElement | null} */ (card?.querySelector(kind === "full" ? "button.if" : "button.io") ?? null);
-  if (!card || !kind || !button) return;
+  const button = /** @type {HTMLAnchorElement | null} */ (card?.querySelector(kind === "full" ? "a.if" : "a.io") ?? null);
+  if (!card || !kind || !button || location.hash === "#inv") return;  // #inv: closed by its link before this ran
   const back = document.activeElement;
   const others = [...document.body.children].filter((n) => n !== card && n.tagName !== "SCRIPT");
   const shut = (/** @type {HTMLElement | null} */ next) => {
@@ -131,7 +131,10 @@ function welcome() {
   document.documentElement.classList.add("inv");
   card.hidden = false;
   document.addEventListener("keydown", key);
-  button.addEventListener("click", () => shut(kind === "full" ? formInput : back instanceof HTMLElement ? back : null), { once: true });
+  button.addEventListener("click", (e) => {
+    e.preventDefault();  // the link to #inv is only for a page without page.js
+    shut(kind === "full" ? formInput : back instanceof HTMLElement ? back : null);
+  }, { once: true });
   // No ring on open (the design); Tab or a key shows it, as for any button.
   button.focus(/** @type {FocusOptions} */ ({ focusVisible: false }));
 }

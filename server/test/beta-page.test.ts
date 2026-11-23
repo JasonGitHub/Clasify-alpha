@@ -287,12 +287,12 @@ describe("invite welcome card (Jason OK 02:19 JST 11-24)", () => {
   });
 
   it("is in the page hidden, with both texts and buttons, its style and image from our own site", () => {
-    const ov = page.match(/<div class="ov" id="inv"[\s\S]*?<\/button><\/div><\/div><\/div>/)?.[0] ?? "";
+    const ov = page.match(/<div class="ov" id="inv"[\s\S]*?<\/a><\/div><\/div><\/div>/)?.[0] ?? "";
     expect(ov).toMatch(/^<div class="ov" id="inv" hidden role="dialog" aria-modal="true" aria-labelledby="invh">/);
     expect(ov).toContain('<h2 id="invh">You’re invited.</h2>');
     expect(ov).toContain('<p class="io">So glad you came. <br>The myPod beta is on us.</p>');
     expect(ov).toContain('<p class="if">The beta is on us, and it’s full right now. <br>Join the waitlist, and we’ll write to you.</p>');
-    expect(ov).toContain('<button type="button" class="io">Come on in</button><button type="button" class="if">Join the waitlist</button>');
+    expect(ov).toContain('<a class="io" href="#inv">Come on in</a><a class="if" href="#inv">Join the waitlist</a>');
     expect(ov).toContain('<img src="beta-page/invite-cappy.webp" width="170" height="170" alt="">');
     expect(ov).not.toContain("style=");
     expect(page).toContain('<link rel="stylesheet" href="beta-page/invite.css">');

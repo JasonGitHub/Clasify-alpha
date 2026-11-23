@@ -3,6 +3,9 @@
 #inv{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(5,9,15,.6);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
 #inv[hidden]{display:none}
 html.inv{overflow:hidden}
+/* Without page.js (no script, or it failed to load) the buttons are links to #inv: the card goes
+   and the page scrolls again. page.js stops the link and closes the card itself. */
+#inv:target{display:none}html.inv:has(#inv:target){overflow:visible}
 #inv.open .if,#inv.full .io{display:none}
 #inv .tk{position:relative;display:flex;width:100%;max-width:660px;border-radius:20px;background:linear-gradient(#fbf8f1,#efe9dc);color:#1b1f24;box-shadow:0 30px 80px rgba(0,0,0,.55);transform:rotate(-2deg)}
 #inv .l{flex:0 0 210px;display:flex;align-items:center;justify-content:center;border-right:2px dashed #cfc6b3;position:relative}
@@ -12,7 +15,7 @@ html.inv{overflow:hidden}
 #inv .k{font-size:12px;font-weight:800;letter-spacing:2px;color:#2a76d8;margin:0 0 8px}
 #inv h2{margin:0 0 12px;font-size:44px;line-height:1;letter-spacing:-1.3px;font-weight:800}
 #inv p{text-wrap:pretty;margin:0 0 26px;font-size:18px;line-height:1.42;color:#5d6772}
-#inv button{display:inline-block;height:50px;line-height:50px;padding:0 34px;border:0;border-radius:25px;background:linear-gradient(#4a98ec,#2a76d8);color:#fff;font:inherit;font-weight:700;font-size:17px;cursor:pointer;box-shadow:0 6px 16px rgba(42,118,216,.35)}
-#inv button:focus-visible{outline:3px solid #9fd0ff;outline-offset:3px}
+#inv a{display:inline-block;text-decoration:none;font:inherit;height:50px;line-height:50px;padding:0 34px;border:0;border-radius:25px;background:linear-gradient(#4a98ec,#2a76d8);color:#fff;font-weight:700;font-size:17px;cursor:pointer;box-shadow:0 6px 16px rgba(42,118,216,.35)}
+#inv a:focus-visible{outline:3px solid #9fd0ff;outline-offset:3px}
 @media (max-width:480px){#inv p br{display:none}#inv .tk{flex-direction:column;transform:rotate(-1.5deg)}#inv .l{flex:0 0 auto;padding:22px 0 10px;border-right:0;border-bottom:2px dashed #cfc6b3}
 #inv .l:before,#inv .l:after{right:auto;top:auto;bottom:-13px}#inv .l:before{left:-12px}#inv .l:after{right:-12px;left:auto}#inv img{width:150px;height:150px}#inv .r{text-align:center;padding:24px 22px 28px}#inv h2{font-size:34px}}
