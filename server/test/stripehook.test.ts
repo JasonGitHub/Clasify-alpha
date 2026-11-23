@@ -222,6 +222,24 @@ describe("refund and dispute", () => {
     expect(await env.DB.prepare("SELECT state FROM payments WHERE payment_intent = 'pi_2'").first("state")).toBe("paid");
   });
 
+  it("sends a mail that was busy before a dispute when the dispute is won", async () => {
+    const message = paid();
+    paidBusy = true;
+    expect(await post(message)).toBe(500);
+    await post(event("charge.dispute.created", { id: "dp_1", payment_intent: "pi_1" }));
+    paidBusy = false;
+    expect(await post(message)).toBe(200);  // the retry during the dispute: no mail, message done
+    expect(paidMails).toEqual([]);
+    const won = event("charge.dispute.closed", { id: "dp_1", payment_intent: "pi_1", status: "won" });
+    paidBusy = true;
+    expect(await post(won)).toBe(500);
+    paidBusy = false;
+    expect(await post(won)).toBe(200);
+    expect(paidMails).toEqual(["pat@example.com"]);
+    expect(await post(won)).toBe(200);
+    expect(paidMails).toHaveLength(1);
+  });
+
   it("ignores a refund or dispute of a payment that is not ours", async () => {
     await post(paid());
     expect(await post(event("charge.refunded", { id: "ch_9", payment_intent: "pi_other", refunded: true }))).toBe(200);

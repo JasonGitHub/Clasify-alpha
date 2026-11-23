@@ -128,9 +128,16 @@ export async function stripeHook(request: Request, env: Env, deps: HookDeps): Pr
     case "charge.dispute.created":
       await setState(env.DB, object?.payment_intent, "disputed", now, created);
       break;
-    case "charge.dispute.closed":
-      if (object?.status === "won") await setState(env.DB, object.payment_intent, "paid", now, created);
+    case "charge.dispute.closed": {
+      if (object?.status !== "won") break;
+      await setState(env.DB, object.payment_intent, "paid", now, created);
+      // A mail that could not go out before the dispute goes now (or Stripe sends this message again).
+      const owed = typeof object.payment_intent === "string" ? await env.DB.prepare(
+        "SELECT session_id FROM payments WHERE payment_intent = ? AND state = 'paid' AND mailed_at IS NULL",
+      ).bind(object.payment_intent).first<{ session_id: string }>() : null;
+      if (owed && !(await mailOnce(env.DB, owed.session_id, deps))) return answer(500);
       break;
+    }
   }
   await env.DB.prepare("INSERT INTO stripe_events (id, at) VALUES (?, ?) ON CONFLICT DO NOTHING").bind(event.id, now).run();
   return answer(200);
