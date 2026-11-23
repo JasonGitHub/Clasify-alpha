@@ -6,12 +6,12 @@ import { markPaid } from "../src/stripe";
 
 // CLA-175 stage 1: Buy and Bought with a fake Stripe. No network.
 
-type Seen = { url: string; method: string; auth: string | null; body: string };
+type Seen = { url: string; method: string; auth: string | null; version: string | null; body: string };
 let seen: Seen[];
 let answer: (url: string) => Response;
 const fakeStripe = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const request = new Request(input, init);
-  seen.push({ url: request.url, method: request.method, auth: request.headers.get("Authorization"), body: await request.text() });
+  seen.push({ url: request.url, method: request.method, auth: request.headers.get("Authorization"), version: request.headers.get("Stripe-Version"), body: await request.text() });
   return answer(request.url);
 }) as typeof fetch;
 
@@ -47,7 +47,7 @@ describe("Buy", () => {
     const device = "device-1".padEnd(40, "x");
     expect(await call("/v1/buy", {}, { device })).toEqual({ status: 200, json: { url: "https://checkout.stripe.com/c/pay/cs_live_x" } });
     expect(seen).toHaveLength(1);
-    expect(seen[0]).toMatchObject({ url: "https://api.stripe.com/v1/checkout/sessions", method: "POST", auth: "Bearer rk_test_fake" });
+    expect(seen[0]).toMatchObject({ url: "https://api.stripe.com/v1/checkout/sessions", method: "POST", auth: "Bearer rk_test_fake", version: "2025-09-30.clover" });
     const form = Object.fromEntries(new URLSearchParams(seen[0].body));
     expect(form).toEqual({
       mode: "payment", "line_items[0][price]": "price_fake", "line_items[0][quantity]": "1",
@@ -97,7 +97,7 @@ describe("Buy", () => {
 describe("Bought", () => {
   it("sets paid on a new account once, stores the payment once, and takes no seat", async () => {
     expect(await call("/v1/bought", { session: sid })).toEqual({ status: 200, json: { result: "paid" } });
-    expect(seen[0]).toMatchObject({ url: `https://api.stripe.com/v1/checkout/sessions/${sid}`, method: "GET" });
+    expect(seen[0]).toMatchObject({ url: `https://api.stripe.com/v1/checkout/sessions/${sid}`, method: "GET", version: "2025-09-30.clover" });
     expect(await account()).toEqual({ state: "pending", seat: 0, paid_at: clock });
     expect(await call("/v1/bought", { session: sid })).toEqual({ status: 200, json: { result: "paid" } });
     expect(await payments()).toEqual([{ session_id: sid, payment_intent: "pi_123", amount: 2999, currency: "usd", state: "paid", at: clock }]);
@@ -122,13 +122,12 @@ describe("Bought", () => {
     expect(await payments()).toEqual([]);
   });
 
-  it("takes a completed $0 order (a 100% off code): paid, no PaymentIntent, and a second one for the same email too", async () => {
-    const free = { payment_status: "no_payment_required", amount_total: 0, payment_intent: null };
-    answer = () => json(session(free));
+  it("takes a completed $0 order (a 100% off code) in both shapes: paid, no PaymentIntent, and a second one for the same email too", async () => {
+    answer = () => json(session({ payment_status: "no_payment_required", amount_total: 0, payment_intent: null }));
     expect((await call("/v1/bought", { session: sid })).json).toEqual({ result: "paid" });
     expect(await account()).toEqual({ state: "pending", seat: 0, paid_at: clock });
     const other = "cs_live_z9Y8x7W6v5U4t3S2";
-    answer = () => json(session({ ...free, id: other }));
+    answer = () => json(session({ payment_status: "paid", amount_total: 0, payment_intent: null, id: other }));
     expect((await call("/v1/bought", { session: other })).json).toEqual({ result: "paid" });
     expect((await payments()).map((p) => [p.session_id, p.payment_intent, p.amount, p.state])).toEqual([[sid, null, 0, "paid"], [other, null, 0, "paid"]]);
   });
@@ -136,7 +135,8 @@ describe("Bought", () => {
   it("refuses a $0 order that is not complete, not myPod's, in the wrong mode, or has money or a PaymentIntent", async () => {
     const free = { payment_status: "no_payment_required", amount_total: 0, payment_intent: null };
     for (const extra of [{ status: "open" }, { status: "expired" }, { metadata: { app: "zapper" } }, { livemode: false }, { mode: "setup" },
-      { amount_total: 1 }, { amount_total: null }, { amount_total: -1 }, { payment_intent: "pi_9" }, { customer_details: null }, { payment_status: "paid" }]) {
+      { amount_total: 1 }, { amount_total: 2999 }, { amount_total: null }, { amount_total: -1 }, { payment_intent: "pi_9" }, { customer_details: null },
+      { payment_status: "paid", payment_intent: "pi_9" }, { payment_status: "paid", status: "open" }]) {
       answer = () => json(session({ ...free, ...extra }));
       expect((await call("/v1/bought", { session: sid })).json, JSON.stringify(extra)).toEqual({ result: "not found" });
     }

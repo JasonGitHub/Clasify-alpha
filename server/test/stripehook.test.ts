@@ -196,6 +196,9 @@ describe("refund and dispute", () => {
   });
 
   it("a $0 order (a 100% off code) is paid: one mail, 3 Macs; it has no PaymentIntent, so no refund message can touch it", async () => {
+    // "no_payment_required" with money is never paid; then the $0 shape is.
+    expect(await post(paid({ payment_status: "no_payment_required", payment_intent: null }))).toBe(200);
+    expect(await account()).toBeNull();
     const free = paid({ payment_status: "no_payment_required", amount_total: 0, payment_intent: null });
     expect(await post(free)).toBe(200);
     expect(await post(free)).toBe(200);
@@ -206,6 +209,12 @@ describe("refund and dispute", () => {
     expect(await account()).toMatchObject({ state: "active", paid_at: expect.any(Number) });
     const row = await env.DB.prepare("SELECT payment_intent, amount, state, mailed_at FROM payments").first();
     expect(row).toEqual({ payment_intent: null, amount: 0, state: "paid", mailed_at: expect.any(Number) });
+  });
+
+  it("a $0 order that Stripe marks \"paid\" is paid the same way", async () => {
+    expect(await post(paid({ amount_total: 0, payment_intent: null }))).toBe(200);
+    expect(await account()).toMatchObject({ paid_at: clock });
+    expect(paidMails).toEqual(["pat@example.com"]);
   });
 
   it("a won dispute sets paid again; a lost one does not", async () => {
