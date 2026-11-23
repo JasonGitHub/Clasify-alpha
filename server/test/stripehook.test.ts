@@ -181,6 +181,20 @@ describe("refund and dispute", () => {
     expect(await call("GET", "/v1/status", { device: mac(1) })).toMatchObject({ state: "active", limit: 2 });
   });
 
+  it("a seat account goes back to MACS active Macs after a refund: the least used ones are signed out", async () => {
+    await env.DB.prepare("INSERT INTO accounts (id, email, state, seat, created_at) VALUES ('a', 'pat@example.com', 'active', 1, 0)").run();
+    await post(paid());
+    for (const i of [1, 2, 3]) expect(await signIn(mac(i))).toBe("ok");  // paid: 3 Macs
+    clock += 1000;
+    await call("GET", "/v1/status", { device: mac(1) });  // mac 1 is now the most used, mac 2 the least
+    expect(await post(refund())).toBe(200);
+    expect(await account()).toEqual({ state: "active", seat: 1, paid_at: null });
+    expect(await call("GET", "/v1/status", { device: mac(2) })).toEqual({ state: "locked" });
+    for (const i of [1, 3]) expect(await call("GET", "/v1/status", { device: mac(i) })).toMatchObject({ state: "active", limit: 2 });
+    const active = await env.DB.prepare("SELECT COUNT(*) AS n FROM macs WHERE account_id = 'a' AND state = 'active'").first<{ n: number }>();
+    expect(active?.n).toBe(2);
+  });
+
   it("a won dispute sets paid again; a lost one does not", async () => {
     await post(paid());
     await post(event("charge.dispute.created", { id: "dp_1", payment_intent: "pi_1" }));
