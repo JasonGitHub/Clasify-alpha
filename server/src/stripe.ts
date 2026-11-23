@@ -1,0 +1,96 @@
+// CLA-175 stage 1: Stripe Checkout, hosted, one-time payment. Only fetch, no Stripe package.
+// Stripe never gets a device ID. The Checkout session carries only metadata app=mypod.
+
+const api = "https://api.stripe.com/v1";
+/** A Checkout session ID as Stripe writes it. Anything else never reaches Stripe. */
+const sessionPattern = /^cs_(test|live)_[A-Za-z0-9]{10,200}$/;
+
+export type StripeEnv = Pick<Env, "STRIPE_KEY" | "STRIPE_PRICE" | "PAGE_ORIGIN" | "TEST_SERVER">;
+
+/** The live Worker takes only real money. Only the test server (TEST_SERVER "1") takes test mode. Fixed in code. */
+export const wantLive = (env: Pick<Env, "TEST_SERVER">) => env.TEST_SERVER !== "1";
+
+async function stripe(env: StripeEnv, fetcher: typeof fetch, method: "GET" | "POST", path: string, form?: Record<string, string>) {
+  if (!env.STRIPE_KEY) return null;
+  const response = await fetcher(`${api}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${env.STRIPE_KEY}`, ...(form ? { "Content-Type": "application/x-www-form-urlencoded" } : {}) },
+    body: form ? new URLSearchParams(form).toString() : undefined,
+  }).catch(() => null);
+  if (!response?.ok) return null;
+  return (await response.json().catch(() => null)) as Record<string, unknown> | null;
+}
+
+/** Buy: a new Checkout session for one copy. Answers its payment page address, or null. */
+export async function checkout(env: StripeEnv, fetcher: typeof fetch): Promise<string | null> {
+  if (!env.STRIPE_PRICE) return null;
+  const page = env.PAGE_ORIGIN || "https://getmypod.app";
+  const session = await stripe(env, fetcher, "POST", "/checkout/sessions", {
+    mode: "payment",
+    "line_items[0][price]": env.STRIPE_PRICE,
+    "line_items[0][quantity]": "1",
+    success_url: `${page}/thanks?session={CHECKOUT_SESSION_ID}`,
+    cancel_url: `${page}/`,
+    "metadata[app]": "mypod",
+    "payment_intent_data[metadata][app]": "mypod",
+  });
+  const url = session?.url;
+  return typeof url === "string" && url.startsWith("https://checkout.stripe.com/") ? url : null;
+}
+
+export type Paid = { session: string; paymentIntent: string | null; email: string; amount: number; currency: string };
+/** What the "thank you" page learns: paid, pending (Stripe still waits for the money), or not found. */
+export type Found = { result: "paid"; paid: Paid } | { result: "pending" } | { result: "not found" };
+
+/**
+ * Bought: asks Stripe about one session. "paid" only when Stripe says it is paid, it is myPod's,
+ * and its mode is the one this server takes. "pending" when the buyer finished Checkout and the
+ * money is still on its way. Any error or unknown ID is "not found".
+ */
+export async function findSession(env: StripeEnv, fetcher: typeof fetch, id: unknown): Promise<Found> {
+  const none = { result: "not found" } as const;
+  if (typeof id !== "string" || !sessionPattern.test(id)) return none;
+  const s = await stripe(env, fetcher, "GET", `/checkout/sessions/${id}`);
+  if (!s || s.id !== id || s.livemode !== wantLive(env)) return none;
+  if ((s.metadata as Record<string, unknown> | null)?.app !== "mypod") return none;
+  if (s.status === "complete" && s.payment_status === "unpaid") return { result: "pending" };
+  if (s.payment_status !== "paid") return none;
+  const email = (s.customer_details as Record<string, unknown> | null)?.email;
+  if (typeof email !== "string" || !email.includes("@") || email.length > 254) return none;
+  if (typeof s.amount_total !== "number" || typeof s.currency !== "string") return none;
+  return { result: "paid", paid: { session: id, paymentIntent: typeof s.payment_intent === "string" ? s.payment_intent : null,
+    email: email.trim().toLowerCase(), amount: s.amount_total, currency: s.currency } };
+}
+
+/** BOUGHT_HOUR checks an hour per network. The row is written in one statement with the count. */
+export async function boughtRoom(db: D1Database, netHash: string, now: number, perHour: number): Promise<boolean> {
+  const hour = 60 * 60_000;
+  await db.prepare("DELETE FROM bought_tries WHERE at < ?").bind(now - 24 * hour).run();
+  const room = await db.prepare(
+    "INSERT INTO bought_tries (net_hash, at) SELECT ?1, ?2 WHERE (SELECT COUNT(*) FROM bought_tries WHERE net_hash = ?1 AND at > ?2 - ?3) < ?4",
+  ).bind(netHash, now, hour, perHour).run();
+  return room.meta.changes > 0;
+}
+
+/**
+ * The paid step (design doc step 5), shared by Bought and the webhook (PR 4). Finds or makes the
+ * account for the email, stores the payment once, and sets paid_at while that payment is still
+ * "paid". A Checkout session stays "paid" at Stripe after a refund, so a refunded payment row
+ * keeps a later Bought call from setting paid_at again. Safe to run twice.
+ * Answers true only the first time this session is stored, so the "myPod is yours" mail goes once.
+ */
+export async function markPaid(db: D1Database, paid: Paid, now: number, newID: () => string): Promise<boolean> {
+  const [, stored] = await db.batch([
+    db.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'pending', ?) ON CONFLICT (email) DO NOTHING")
+      .bind(newID(), paid.email, now),
+    db.prepare(
+      `INSERT INTO payments (session_id, payment_intent, account_id, amount, currency, state, at)
+       SELECT ?, ?, id, ?, ?, 'paid', ? FROM accounts WHERE email = ? ON CONFLICT DO NOTHING`,
+    ).bind(paid.session, paid.paymentIntent, paid.amount, paid.currency, now, paid.email),
+    db.prepare(
+      `UPDATE accounts SET paid_at = COALESCE(paid_at, ?)
+       WHERE id = (SELECT account_id FROM payments WHERE session_id = ? AND state = 'paid')`,
+    ).bind(now, paid.session),
+  ]);
+  return stored.meta.changes > 0;
+}
