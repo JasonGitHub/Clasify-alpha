@@ -60,7 +60,8 @@ export async function emailKey(email: string, secret: string): Promise<string> {
 
 /**
  * "Email me the link" with a valid invite id: keeps the email's key and the id for 30 days. The first
- * id stays (set once). A new id past the 500 cap is ignored. No secret, no row. Never throws.
+ * id stays (set once) while it is younger than 30 days; an expired row that the cron has not deleted
+ * yet is replaced. A new id past the 500 cap is ignored. No secret, no row. Never throws.
  */
 export async function keepInviteMail(db: D1Database, body: Record<string, unknown>, secret: string | undefined, now: number): Promise<void> {
   const email = pageEmail(body.email);
@@ -70,8 +71,8 @@ export async function keepInviteMail(db: D1Database, body: Record<string, unknow
     await db.prepare(
       `INSERT INTO invite_mails (email_hash, id, at) SELECT ?1, ?2, ?3
        WHERE EXISTS (SELECT 1 FROM invite_opens WHERE id = ?2) OR (SELECT COUNT(*) FROM invite_opens) < ?4
-       ON CONFLICT (email_hash) DO NOTHING`,
-    ).bind(await emailKey(email, secret), id, now, inviteCap).run();
+       ON CONFLICT (email_hash) DO UPDATE SET id = excluded.id, at = excluded.at WHERE invite_mails.at <= ?3 - ?5`,
+    ).bind(await emailKey(email, secret), id, now, inviteCap, inviteMailLife).run();
   })().catch(() => null);
 }
 

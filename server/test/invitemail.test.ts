@@ -66,6 +66,12 @@ describe("Email me the link with an invite id", () => {
     clock += day + 1;
     await ask("sam@example.com", "second");
     expect((await rows()).map((r) => r.id)).toEqual(["first"]);
+    // After 30 days (before the cron deletes it) a new ask replaces the old row.
+    clock += inviteMailLife;
+    await ask("sam@example.com", "third");
+    expect(await rows()).toMatchObject([{ id: "third", at: clock }]);
+    expect(await activate("sam@example.com")).toBe("ok");
+    expect(await inviteOf("sam@example.com")).toBe("third");
   });
 
   it(`ignores a new id past the ${inviteCap}-id cap`, async () => {
