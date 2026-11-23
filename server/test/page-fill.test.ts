@@ -24,7 +24,7 @@ const testEnv = { ...env, CAP: "25" } as Env;
 
 async function accounts(n: number) {
   if (n) await env.DB.batch([...Array(n)].map((_, i) =>
-    env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'active', 1)").bind(`a${i}`, `a${i}@example.com`)));
+    env.DB.prepare("INSERT INTO accounts (id, email, state, seat, created_at) VALUES (?, ?, 'active', 1, 1)").bind(`a${i}`, `a${i}@example.com`)));
 }
 const get = (headers: Record<string, string> = {}) => new Request("https://page.example/beta", { headers });
 

@@ -30,7 +30,7 @@ const linkLife = 60 * 60_000;
 const hour = 60 * 60_000;
 const day = 24 * hour;
 
-type Account = { id: string; email: string; state: string; off: number };
+type Account = { id: string; email: string; state: string; off: number; seat: number; paid_at: number | null };
 type Mac = { device_hash: string; account_id: string | null; state: string; mails: number; mail_state: string; activated_at: number | null };
 
 export async function handle(request: Request, env: Env, deps: Deps): Promise<Response> {
@@ -49,8 +49,11 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
 
   const mac = (hash: string) => db.prepare("SELECT * FROM macs WHERE device_hash = ?").bind(hash).first<Mac>();
   const account = (id: string) => db.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first<Account>();
-  const activeCount = async () =>
-    (await db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE state = 'active'").first<{ n: number }>())?.n ?? 0;
+  // CLA-175: only beta seats count toward CAP. A paid account signs in with no seat.
+  const seatCount = async () =>
+    (await db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE seat = 1").first<{ n: number }>())?.n ?? 0;
+  // The Mac limit: MACS for a seat, PAID_MACS for a paid account, the larger one when it has both.
+  const macLimit = (a: Account) => a.paid_at === null ? Number(env.MACS) : Math.max(Number(env.MACS), Number(env.PAID_MACS));
 
   /** What the app shows for one Mac. */
   async function status(hash: string): Promise<Record<string, unknown>> {
@@ -62,7 +65,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     // macs/limit: for the proposed change 362 ("1 of 2 Macs"); the app does not show them yet.
     if (m.state === "active") {
       const macs = (await db.prepare("SELECT COUNT(*) AS n FROM macs WHERE account_id = ? AND state = 'active'").bind(a.id).first<{ n: number }>())?.n ?? 0;
-      return { state: "active", account: a.id, email: masked(a.email), ...(m.activated_at ? { since: m.activated_at } : {}), macs, limit: Number(env.MACS) };
+      return { state: "active", account: a.id, email: masked(a.email), ...(m.activated_at ? { since: m.activated_at } : {}), macs, limit: macLimit(a) };
     }
     if (a.state === "waitlist") return { state: "full" };
     if (m.mail_state === "busy") return { state: "busy" };
@@ -80,7 +83,7 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     ).bind(a.id, hash).run();
     if (!moved.meta.changes) return status(hash);
     if (a.off) return { state: "off" };
-    if (a.state !== "active" && (await activeCount()) >= Number(env.CAP)) {
+    if (a.state !== "active" && a.paid_at === null && (await seatCount()) >= Number(env.CAP)) {
       // Never over an account that a Confirm has just made active.
       const waits = await db.prepare("UPDATE accounts SET state = 'waitlist' WHERE id = ? AND state != 'active'").bind(a.id).run();
       if (waits.meta.changes) return { state: "full" };
@@ -198,6 +201,9 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       // the cap does not change). Then the Mac fits, and the activation below passes too.
       const swap = token();
       const activeMacs = "(SELECT COUNT(*) FROM macs WHERE account_id = ? AND state = 'active')";
+      // The account's Mac limit, read in the transaction: MACS, or the larger of MACS and PAID_MACS when paid.
+      const limit = "(SELECT CASE WHEN paid_at IS NULL THEN ? ELSE max(?, ?) END FROM accounts WHERE id = ?)";
+      const limits = [Number(env.MACS), Number(env.MACS), Number(env.PAID_MACS), a.id];
       const isActive = "EXISTS (SELECT 1 FROM macs WHERE device_hash = ? AND account_id = ? AND state = 'active')";
       const oldest = `SELECT device_hash FROM macs WHERE account_id = ? AND state = 'active' AND device_hash != ?
              ORDER BY COALESCE(last_seen_at, created_at), device_hash LIMIT 1`;
@@ -205,9 +211,9 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
         db.prepare(
           `INSERT INTO swaps (id, account_id, at) SELECT ?, ?, ?
            WHERE EXISTS (SELECT 1 FROM macs WHERE device_hash = ? AND account_id = ? AND state != 'active')
-           AND ${activeMacs} >= ? AND (SELECT COUNT(*) FROM swaps WHERE account_id = ? AND at > ?) < ?
+           AND ${activeMacs} >= ${limit} AND (SELECT COUNT(*) FROM swaps WHERE account_id = ? AND at > ?) < ?
            AND (SELECT state FROM accounts WHERE id = ?) = 'active'`,
-        ).bind(swap, a.id, now, m.device_hash, a.id, a.id, Number(env.MACS), a.id, now - Number(env.SWAP_DAYS) * day, Number(env.SWAPS), a.id),
+        ).bind(swap, a.id, now, m.device_hash, a.id, a.id, ...limits, a.id, now - Number(env.SWAP_DAYS) * day, Number(env.SWAPS), a.id),
         // The turned-off Mac's unused links are used up, so they stay dead if it joins again.
         db.prepare(`UPDATE mails SET used_at = ? WHERE used_at IS NULL AND EXISTS (SELECT 1 FROM swaps WHERE id = ?) AND device_hash = (${oldest})`)
           .bind(now, swap, a.id, m.device_hash),
@@ -219,10 +225,13 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
         db.prepare(
           `UPDATE macs SET state = 'active', last_seen_at = ?, activated_at = CASE WHEN state = 'active' AND activated_at IS NOT NULL THEN activated_at ELSE ? END
            WHERE device_hash = ? AND account_id = ?
-           AND (state = 'active' OR ${activeMacs} < ?)
-           AND ((SELECT state FROM accounts WHERE id = ?) = 'active' OR (SELECT COUNT(*) FROM accounts WHERE state = 'active') < ?)`,
-        ).bind(now, now, m.device_hash, a.id, a.id, Number(env.MACS), a.id, Number(env.CAP)),
-        db.prepare(`UPDATE accounts SET state = 'active', confirmed_at = COALESCE(confirmed_at, ?) WHERE id = ? AND ${isActive}`)
+           AND (state = 'active' OR ${activeMacs} < ${limit})
+           AND ((SELECT state FROM accounts WHERE id = ?) = 'active' OR (SELECT paid_at FROM accounts WHERE id = ?) IS NOT NULL
+             OR (SELECT COUNT(*) FROM accounts WHERE seat = 1) < ?)`,
+        ).bind(now, now, m.device_hash, a.id, a.id, ...limits, a.id, a.id, Number(env.CAP)),
+        // A new account takes a seat only when it is not paid. An account that has a seat keeps it.
+        db.prepare(`UPDATE accounts SET state = 'active', seat = CASE WHEN state = 'active' OR paid_at IS NOT NULL THEN seat ELSE 1 END,
+          confirmed_at = COALESCE(confirmed_at, ?) WHERE id = ? AND ${isActive}`)
           .bind(now, a.id, m.device_hash, a.id),
         db.prepare(`UPDATE mails SET used_at = ? WHERE token_hash = ? AND ${isActive}`).bind(now, hash, m.device_hash, a.id),
       ]);

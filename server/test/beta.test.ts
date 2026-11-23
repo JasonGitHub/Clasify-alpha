@@ -24,7 +24,7 @@ async function get(origin?: string, method = "GET") {
 async function accounts(active: number, other = 0) {
   const rows = [...Array(active)].map((_, i) => [`a${i}`, "active"]).concat([...Array(other)].map((_, i) => [`w${i}`, "waitlist"]));
   if (rows.length) await env.DB.batch(rows.map(([id, state]) =>
-    env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, ?, 1)").bind(id, `${id}@example.com`, state)));
+    env.DB.prepare("INSERT INTO accounts (id, email, state, seat, created_at) VALUES (?, ?, ?, ?, 1)").bind(id, `${id}@example.com`, state, state === "active" ? 1 : 0)));
 }
 
 beforeEach(async () => {

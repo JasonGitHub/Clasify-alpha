@@ -21,8 +21,8 @@ const mailer: PageMailer = {
 };
 
 async function add(id: string, state: string, created: number, extra: { invited?: number; off?: number } = {}) {
-  await env.DB.prepare("INSERT INTO accounts (id, email, state, off, created_at, invited_at) VALUES (?, ?, ?, ?, ?, ?)")
-    .bind(id, `${id}@example.com`, state, extra.off ?? 0, created, extra.invited ?? null).run();
+  await env.DB.prepare("INSERT INTO accounts (id, email, state, seat, off, created_at, invited_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .bind(id, `${id}@example.com`, state, state === "active" ? 1 : 0, extra.off ?? 0, created, extra.invited ?? null).run();
 }
 async function actives(n: number) { for (let i = 0; i < n; i++) await add(`active${i}`, "active", i); }
 const invited = async () => (await env.DB.prepare("SELECT id FROM accounts WHERE invited_at IS NOT NULL ORDER BY id").all<{ id: string }>())

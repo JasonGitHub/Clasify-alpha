@@ -28,17 +28,17 @@ describe("POST /v1/waitlist", () => {
     const answer = await join({ email: "  Sam@Example.com ", human: "person" });
     expect(answer).toMatchObject({ status: 200, result: "ok" });
     expect(answer.headers.get("Access-Control-Allow-Origin")).toBe(page);
-    expect(await accounts()).toEqual([{ id: expect.any(String), email: "sam@example.com", state: "waitlist", off: 0, created_at: clock, confirmed_at: null, invited_at: null, invite_id: null }]);
+    expect(await accounts()).toEqual([{ id: expect.any(String), email: "sam@example.com", state: "waitlist", off: 0, created_at: clock, confirmed_at: null, invited_at: null, invite_id: null, seat: 0, paid_at: null }]);
     // The try keeps only a hash of the address.
     const tries = (await env.DB.prepare("SELECT * FROM page_tries").all<{ kind: string; key_hash: string }>()).results;
     expect(tries).toEqual([{ kind: "wait", key_hash: expect.stringMatching(/^[0-9a-f]{64}$/), at: clock }]);
   });
 
   it("answers ok for a known address and changes nothing", async () => {
-    await env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES ('a1', 'kim@example.com', 'active', 5)").run();
+    await env.DB.prepare("INSERT INTO accounts (id, email, state, seat, created_at) VALUES ('a1', 'kim@example.com', 'active', 1, 5)").run();
     expect((await join({ email: "kim@example.com", human: "person" })).result).toBe("ok");
     expect((await join({ email: "KIM@example.com", human: "person" })).result).toBe("ok");
-    expect(await accounts()).toEqual([{ id: "a1", email: "kim@example.com", state: "active", off: 0, created_at: 5, confirmed_at: null, invited_at: null, invite_id: null }]);
+    expect(await accounts()).toEqual([{ id: "a1", email: "kim@example.com", state: "active", off: 0, created_at: 5, confirmed_at: null, invited_at: null, invite_id: null, seat: 1, paid_at: null }]);
   });
 
   it("checks the bot token first, and fails closed", async () => {
