@@ -128,4 +128,14 @@ describe("a paid account", () => {
     expect(await openSpots(env.DB, 25, { send: async (to) => { spots.push(to); return "sent"; } }, clock)).toBe(1);
     expect(spots).toEqual(["w@example.com"]);
   });
+
+  it("does not hold a spot with an open invite it got before it paid", async () => {
+    await seated(24);
+    await paid("pat@example.com", "waitlist");
+    await env.DB.prepare("UPDATE accounts SET invited_at = ? WHERE email = 'pat@example.com'").bind(clock - 1000).run();
+    await env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES ('w', 'w@example.com', 'waitlist', 1)").run();
+    const spots: string[] = [];
+    expect(await openSpots(env.DB, 25, { send: async (to) => { spots.push(to); return "sent"; } }, clock)).toBe(1);
+    expect(spots).toEqual(["w@example.com"]);
+  });
 });
