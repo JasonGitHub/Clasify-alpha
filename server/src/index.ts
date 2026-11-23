@@ -5,6 +5,7 @@ import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
 import { refreshFeed } from "./beta";
 import { betaPage, betaPath, betaRedirect, isBetaPage } from "./page";
 import { openSpots } from "./spots";
+import { paidMailer } from "./paidmail";
 import { dropOldEvents, noPaidMail, stripeHook, type PaidMailer } from "./stripehook";
 import { turnstile } from "./turnstile";
 
@@ -83,11 +84,13 @@ export function pageMailFor(env: Env, now: () => number): PageMailer {
   return env.TEST_SERVER === "1" ? pageMailer(env.DB, async () => true, Number(env.MAIL_DAY), now) : noPageMail;
 }
 
-/** CLA-175: the "myPod is yours" mail shares the page mails' day count and limits. */
+/**
+ * CLA-175: the "myPod is yours" mail shares the page mails' day count. With no RESEND_KEY it is
+ * "busy", except on the test server: there it goes nowhere and answers "sent", as page mails do.
+ */
 function paidMailFor(env: Env, now: () => number): PaidMailer {
-  const mailer = pageMailFor(env, now);
-  if (mailer === noPageMail) return noPaidMail;
-  return { send: async (to) => (await mailer.send(to, "paid")) === "sent" ? "sent" : "busy" };
+  const send = env.RESEND_KEY ? resend(env.RESEND_KEY) : env.TEST_SERVER === "1" ? async () => true : null;
+  return send ? paidMailer(env.DB, send, Number(env.MAIL_DAY), Number(env.PAID_MACS), now) : noPaidMail;
 }
 
 /**
