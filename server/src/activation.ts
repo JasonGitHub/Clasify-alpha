@@ -5,7 +5,7 @@ import { noPageMail, type PageMailer } from "./pagemail";
 import { vote } from "./vote";
 import { link, waitlist } from "./waitlist";
 import { claimInvite, keepInviteMail } from "./invitelinks";
-import { boughtRoom, checkout, findSession, markPaid } from "./stripe";
+import { checkout, findSession, hourRoom, markPaid, salesOn } from "./stripe";
 import { network } from "./vote";
 
 // Activation (CLA-128): the app opens the page with a one-time code, the person types an
@@ -140,12 +140,15 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); no bot check, one a day per item per network
       return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
     case "POST /v1/buy": {  // CLA-175: the launch page's Buy. Answers Stripe's payment page; Stripe gets no device ID.
+      if (!salesOn(env)) return reply({ error: "sales" }, 503, cors);  // the stop-sales switch: Stripe is not asked
+      const buyNet = await sha256(`buy:${network(request.headers.get("CF-Connecting-IP") ?? "")}:${env.TURNSTILE_SECRET ?? ""}`);
+      if (!(await hourRoom(db, buyNet, now, Number(env.BUY_HOUR)))) return reply({ error: "busy" }, 429, cors);
       const url = await checkout(env, deps.fetcher ?? fetch);
       return url ? reply({ url }, 200, cors) : reply({ error: "sales" }, 503, cors);
     }
     case "POST /v1/bought": {  // CLA-175: the "thank you" page. paid, pending or not found; nothing about the buyer.
       const net = await sha256(`bought:${network(request.headers.get("CF-Connecting-IP") ?? "")}:${env.TURNSTILE_SECRET ?? ""}`);
-      if (!(await boughtRoom(db, net, now, Number(env.BOUGHT_HOUR)))) return reply({ result: "busy" }, 429, cors);
+      if (!(await hourRoom(db, net, now, Number(env.BOUGHT_HOUR)))) return reply({ result: "busy" }, 429, cors);
       const found = await findSession(env, deps.fetcher ?? fetch, body.session);
       if (found.result !== "paid") return reply({ result: found.result }, 200, cors);
       await markPaid(db, found.paid, now, token);
