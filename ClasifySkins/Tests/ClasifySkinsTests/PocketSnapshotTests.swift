@@ -718,6 +718,68 @@ import Testing
         #expect(behind.g > 150 || behind.b > 150, "left behind \(behind)")
     }
 
+    /// Card CI fix (Jason 21:45 JST 11-23): the flying cover carries its reflection the whole way.
+    /// At leap 0 it is the strip's middle cover with its reflection, at 1 Now Playing's cover with
+    /// its 22 point reflection, so nothing pops at either end. Saves leap 0, 0.5 and 1.
+    @Test func theFlyingCoverCarriesItsReflection() throws {
+        let start = CoverLeap.reflection(0), end = CoverLeap.reflection(1)
+        #expect(start.height == CoverFlowStrip.side / 4 && start.strength == 0.35 && start.border == 0.12)
+        #expect(abs(end.height * PocketNowPlaying.coverSide / CoverFlowStrip.side - 22) < 0.001)
+        #expect(abs(end.strength - 0.4) < 0.001 && end.border == 0)
+        let red = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let album = Album(id: "spotify:album:r", name: "Red", artist: "Artist")
+        func shot(_ view: some View) throws -> Snapshot {
+            let content = view
+                .frame(width: Pocket.screenWidth, height: 206, alignment: .topLeading)
+                .background(Color.white)
+                .clipped()
+                .environment(\.artwork, Artwork { _ in red })
+            let renderer = ImageRenderer(content: content)
+            renderer.scale = CGFloat(Snapshot.scale)
+            return Snapshot(bitmap: NSBitmapImageRep(cgImage: try #require(renderer.cgImage)))
+        }
+        func same(_ a: Snapshot, _ b: Snapshot, _ points: [(Int, Int)], _ what: String) {
+            for (x, y) in points {
+                let p = a.rgb(x, y), q = b.rgb(x, y)
+                #expect(abs(p.r - q.r) <= 6 && abs(p.g - q.g) <= 6 && abs(p.b - q.b) <= 6, "\(what) at \(x),\(y): \(p) vs \(q)")
+            }
+        }
+        // Leap 0: the strip's middle cover and its reflection, 30 points under the 120 point cover.
+        let covers = ["spotify:album:r": "c"]
+        let strip = try shot(CoverFlowStrip(albums: [album], covers: covers, pos: 0))
+        let leap0 = try shot(ZStack(alignment: .topLeading) {
+            CoverFlowStrip(albums: [album], covers: covers, pos: 0, hidesMiddleCover: true)
+            CoverLeap(leap: 0, image: red)
+        })
+        let under = [(100, 145), (150, 150), (200, 155), (130, 158)]  // above the names
+        #expect(strip.rgb(150, 150).r > strip.rgb(150, 150).g + 40)  // the reflection is there
+        same(strip, leap0, under + [(150, 80)], "leap 0")
+        // Leap 1: Now Playing's own cover and reflection, as it shows once landed.
+        var s = sampleState()
+        s.current = TrackRef(playlist: Playlist.likedSongsID, track: "spotify:track:2")
+        s.isPlaying = true
+        s.t = 61
+        s.stack += [Frame(screen: .now)]
+        let landed = try shot(PocketNowPlaying(state: s, input: { _ in }).frame(maxWidth: .infinity, maxHeight: .infinity))
+        let leap1 = try shot(ZStack(alignment: .topLeading) {
+            PocketNowPlaying(state: s, input: { _ in }, hidesCover: true).frame(maxWidth: .infinity, maxHeight: .infinity)
+            CoverLeap(leap: 1, image: red)
+        })
+        let npUnder = [(20, 144), (40, 150), (60, 156), (30, 160), (80, 152)]
+        #expect(landed.rgb(20, 144).r > landed.rgb(20, 144).g + 40)  // the reflection is there
+        same(landed, leap1, npUnder + [(60, 80)], "leap 1")
+        // Half way the reflection flies with the cover.
+        let half = try shot(CoverLeap(leap: 0.5, image: red))
+        #expect(half.rgb(60, 150).r > half.rgb(60, 150).g + 40, "\(half.rgb(60, 150))")
+        if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"] {
+            for (name, picture) in [("0", leap0), ("0.5", half), ("1", leap1)] {
+                if let png = picture.bitmap.representation(using: .png, properties: [:]) {
+                    try png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-cover-leap-reflection-\(name).png"))
+                }
+            }
+        }
+    }
+
     @Test func nowPlayingOverTheSongPanelLooksLikeNowPlaying() throws {
         var s = sampleState()
         let album = Album(id: "spotify:album:h", name: "Hey", artist: "OutKast")
