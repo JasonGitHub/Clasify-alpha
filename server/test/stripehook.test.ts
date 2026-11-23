@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/activation";
 import type { Mailer } from "../src/mailer";
-import { dropOldEvents, eventLife, signed, stripeHook, type PaidMailer } from "../src/stripehook";
+import { dropOldEvents, eventLife, mailTry, signed, stripeHook, type PaidMailer } from "../src/stripehook";
 
 // CLA-175 stage 1: Stripe's signed messages, with fakes only. No network.
 
@@ -42,7 +42,7 @@ const payment = () => env.DB.prepare("SELECT state, mailed_at FROM payments WHER
 beforeEach(async () => {
   clock = 1_800_000_000_000;
   paidMails = []; paidBusy = false; alerts = [];
-  await env.DB.batch(["stripe_events", "bought_tries", "payments", "mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["reversals", "stripe_events", "bought_tries", "payments", "mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
 describe("the signature", () => {
@@ -109,6 +109,18 @@ describe("paid", () => {
     paidBusy = false;
     expect(await post(message)).toBe(200);
     expect(paidMails).toEqual(["pat@example.com"]);
+  });
+
+  it("does not mark the message done while another message is sending the mail", async () => {
+    await post(paid());
+    await env.DB.prepare("UPDATE payments SET mailed_at = NULL, mailing_at = ?").bind(clock).run();  // another send is in flight
+    paidMails = [];
+    const message = paid();
+    expect(await post(message)).toBe(500);
+    clock += mailTry + 1;  // that send was lost
+    expect(await post(message)).toBe(200);
+    expect(paidMails).toEqual(["pat@example.com"]);
+    expect(await payment()).toEqual({ state: "paid", mailed_at: clock });
   });
 
   it("sends the mail after the thank-you page set paid first", async () => {
@@ -181,6 +193,17 @@ describe("refund and dispute", () => {
     expect(await payment()).toMatchObject({ state: "paid" });
   });
 
+  it("keeps a refund or dispute that comes before the paid message", async () => {
+    expect(await post(refund())).toBe(200);
+    expect(await post(paid())).toBe(200);
+    expect(await account()).toEqual({ state: "pending", seat: 0, paid_at: null });
+    expect(await payment()).toEqual({ state: "refunded", mailed_at: null });
+    expect(paidMails).toEqual([]);
+    await post(event("charge.dispute.created", { id: "dp_2", payment_intent: "pi_2" }));
+    await post(paid({ id: "cs_live_second000000", payment_intent: "pi_2" }));
+    expect(await account()).toMatchObject({ paid_at: null });
+  });
+
   it("ignores a refund or dispute of a payment that is not ours", async () => {
     await post(paid());
     expect(await post(event("charge.refunded", { id: "ch_9", payment_intent: "pi_other", refunded: true }))).toBe(200);
@@ -196,11 +219,16 @@ describe("refund and dispute", () => {
   });
 });
 
-it("message IDs older than 30 days go", async () => {
+it("message IDs and early refunds older than 30 days go", async () => {
   await env.DB.batch([
     env.DB.prepare("INSERT INTO stripe_events (id, at) VALUES ('old', ?)").bind(clock - eventLife - 1),
     env.DB.prepare("INSERT INTO stripe_events (id, at) VALUES ('new', ?)").bind(clock - eventLife + 1),
   ]);
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO reversals (payment_intent, state, at) VALUES ('pi_old', 'refunded', ?)").bind(clock - eventLife - 1),
+    env.DB.prepare("INSERT INTO reversals (payment_intent, state, at) VALUES ('pi_new', 'refunded', ?)").bind(clock - eventLife + 1),
+  ]);
   await dropOldEvents(env.DB, clock);
   expect((await env.DB.prepare("SELECT id FROM stripe_events").all()).results).toEqual([{ id: "new" }]);
+  expect((await env.DB.prepare("SELECT payment_intent FROM reversals").all()).results).toEqual([{ payment_intent: "pi_new" }]);
 });

@@ -45,7 +45,11 @@ export async function signed(raw: Uint8Array, header: string | null, secret: str
 
 /** Sets one payment's state and the account's paid fact from it. An account with no seat that is no longer paid loses its Macs. */
 async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | "refunded" | "disputed", now: number) {
-  if (typeof paymentIntent !== "string" || !paymentIntent) return;  // not ours: only myPod's payments are stored
+  if (typeof paymentIntent !== "string" || !paymentIntent) return;
+  // Not stored yet: maybe ours, before its paid message, maybe another project's. Keep the state
+  // for markPaid. Only myPod's stored payments change an account.
+  await db.prepare("INSERT INTO reversals (payment_intent, state, at) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET state = excluded.state, at = excluded.at")
+    .bind(paymentIntent, state, now).run();
   const account = "(SELECT account_id FROM payments WHERE payment_intent = ?1)";
   const gone = `(SELECT seat = 0 AND paid_at IS NULL FROM accounts WHERE id = ${account})`;
   await db.batch([
@@ -62,19 +66,31 @@ async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | 
   ]);
 }
 
-/** The mail once per paid payment. The claim is one statement, so two messages at once send one mail. */
+/** A send that takes longer than this is taken as lost, and another message may send the mail. */
+export const mailTry = 60_000;
+
+/**
+ * The mail once per paid payment. The claim is one statement, so two messages at once send one
+ * mail. True: the mail went out (now or before), or the payment is not paid. False: not sent, or
+ * another message is sending it now; Stripe sends this message again later.
+ */
 async function mailOnce(db: D1Database, session: string, deps: HookDeps): Promise<boolean> {
   const now = deps.now();
   const claim = await db.prepare(
-    "UPDATE payments SET mailed_at = ? WHERE session_id = ? AND state = 'paid' AND mailed_at IS NULL RETURNING account_id",
-  ).bind(now, session).first<{ account_id: string }>();
-  if (!claim) return true;  // sent before, or not paid
+    `UPDATE payments SET mailing_at = ? WHERE session_id = ? AND state = 'paid' AND mailed_at IS NULL
+     AND (mailing_at IS NULL OR mailing_at < ?) RETURNING account_id`,
+  ).bind(now, session, now - mailTry).first<{ account_id: string }>();
+  if (!claim) {
+    const row = await db.prepare("SELECT state, mailed_at FROM payments WHERE session_id = ?").bind(session).first<{ state: string; mailed_at: number | null }>();
+    return !row || row.state !== "paid" || row.mailed_at !== null;
+  }
   const a = await db.prepare("SELECT email, (SELECT COUNT(*) FROM payments WHERE account_id = accounts.id) AS n FROM accounts WHERE id = ?")
     .bind(claim.account_id).first<{ email: string; n: number }>();
   if (!a || (await deps.paidMail.send(a.email)) !== "sent") {
-    await db.prepare("UPDATE payments SET mailed_at = NULL WHERE session_id = ? AND mailed_at = ?").bind(session, now).run();
+    await db.prepare("UPDATE payments SET mailing_at = NULL WHERE session_id = ? AND mailing_at = ?").bind(session, now).run();
     return false;
   }
+  await db.prepare("UPDATE payments SET mailed_at = ? WHERE session_id = ?").bind(now, session).run();
   if (a.n > 1 && deps.alert && deps.alertTo) {
     await deps.alert({ to: deps.alertTo, subject: "myPod: a second payment for one email",
       text: `One account has ${a.n} payments now. Check it in Stripe and in D1, table payments, account ${claim.account_id}.` }).catch(() => false);
@@ -116,6 +132,8 @@ export async function stripeHook(request: Request, env: Env, deps: HookDeps): Pr
   return answer(200);
 }
 
-/** The hourly run: message IDs older than 30 days go. */
-export const dropOldEvents = (db: D1Database, now: number) =>
-  db.prepare("DELETE FROM stripe_events WHERE at < ?").bind(now - eventLife).run().catch(() => null);
+/** The hourly run: message IDs and early refunds or disputes older than 30 days go. */
+export const dropOldEvents = (db: D1Database, now: number) => db.batch([
+  db.prepare("DELETE FROM stripe_events WHERE at < ?").bind(now - eventLife),
+  db.prepare("DELETE FROM reversals WHERE at < ?").bind(now - eventLife),
+]).catch(() => null);

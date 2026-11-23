@@ -81,7 +81,7 @@ export async function boughtRoom(db: D1Database, netHash: string, now: number, p
 /**
  * The paid step (design doc step 5), shared by Bought and the webhook (PR 4). Finds or makes the
  * account for the email, stores the payment once, and sets paid_at while that payment is still
- * "paid". A Checkout session stays "paid" at Stripe after a refund, so a refunded payment row
+ * "paid". A refund or dispute that came before (table reversals) is stored with it. A Checkout session stays "paid" at Stripe after a refund, so a refunded payment row
  * keeps a later Bought call from setting paid_at again. Safe to run twice.
  * Answers true only the first time this session is stored, so the "myPod is yours" mail goes once.
  */
@@ -91,7 +91,8 @@ export async function markPaid(db: D1Database, paid: Paid, now: number, newID: (
       .bind(newID(), paid.email, now),
     db.prepare(
       `INSERT INTO payments (session_id, payment_intent, account_id, amount, currency, state, at)
-       SELECT ?, ?, id, ?, ?, 'paid', ? FROM accounts WHERE email = ? ON CONFLICT DO NOTHING`,
+       SELECT ?1, ?2, id, ?3, ?4, COALESCE((SELECT state FROM reversals WHERE payment_intent = ?2), 'paid'), ?5
+       FROM accounts WHERE email = ?6 ON CONFLICT DO NOTHING`,
     ).bind(paid.session, paid.paymentIntent, paid.amount, paid.currency, now, paid.email),
     db.prepare(
       `UPDATE accounts SET paid_at = COALESCE(paid_at, ?)

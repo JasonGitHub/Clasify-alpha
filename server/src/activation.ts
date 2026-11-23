@@ -147,8 +147,11 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       const net = await sha256(`bought:${network(request.headers.get("CF-Connecting-IP") ?? "")}:${env.TURNSTILE_SECRET ?? ""}`);
       if (!(await boughtRoom(db, net, now, Number(env.BOUGHT_HOUR)))) return reply({ result: "busy" }, 429, cors);
       const found = await findSession(env, deps.fetcher ?? fetch, body.session);
-      if (found.result === "paid") await markPaid(db, found.paid, now, token);
-      return reply({ result: found.result }, 200, cors);
+      if (found.result !== "paid") return reply({ result: found.result }, 200, cors);
+      await markPaid(db, found.paid, now, token);
+      // A refund or dispute we already know of wins over Stripe's "paid" on the session.
+      const stored = await db.prepare("SELECT state FROM payments WHERE session_id = ?").bind(found.paid.session).first<{ state: string }>();
+      return reply({ result: stored?.state === "paid" ? "paid" : "not found" }, 200, cors);
     }
     case "POST /v1/feedback": {  // the app's Report a Problem (CLA-166)
       const answer = await feedback(db, device, body, now, deps.reports ?? noReports);

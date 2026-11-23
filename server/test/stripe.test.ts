@@ -38,7 +38,7 @@ const payments = async () => (await env.DB.prepare("SELECT session_id, payment_i
 beforeEach(async () => {
   seen = [];
   answer = () => json(session());
-  await env.DB.batch(["bought_tries", "payments", "mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
+  await env.DB.batch(["reversals", "bought_tries", "payments", "mails", "swaps", "macs", "accounts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
 describe("Buy", () => {
@@ -139,7 +139,7 @@ describe("Bought", () => {
       env.DB.prepare("UPDATE payments SET state = 'refunded'"),
       env.DB.prepare("UPDATE accounts SET paid_at = NULL"),
     ]);
-    await call("/v1/bought", { session: sid });
+    expect((await call("/v1/bought", { session: sid })).json).toEqual({ result: "not found" });
     expect(await account()).toMatchObject({ paid_at: null });
   });
 
