@@ -6,9 +6,10 @@
   // headers in public/_headers. The beta page is beta.html at /beta, and the Worker runs first there,
   // so it comes filled (src/page.ts). "/" and "/beta/" run the Worker too: a 302 to /beta.
   // CLA-175: the launch page's files are in public/launch/, never public there (/launch runs the
-  // Worker: 404); "/" serves the page only with LAUNCH_PAGE "1" (src/launch.ts). Keep this list
-  // the same as workerFirstPaths there.
-  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/", "/beta", "/beta/", "/launch", "/launch/*"] },
+  // Worker: 404); "/" serves the page only with LAUNCH_PAGE "1" (src/launch.ts). /thanks (Stripe's
+  // success_url) runs the Worker with or without the switch. Keep this list the same as
+  // workerFirstPaths there.
+  "assets": { "directory": "./public", "binding": "ASSETS", "run_worker_first": ["/", "/beta", "/beta/", "/launch", "/launch/*", "/thanks"] },
   "compatibility_date": "2026-11-01",
   "d1_databases": [
     { "binding": "DB", "database_name": "mypod-activation", "database_id": "45674323-433f-468e-be42-149642c17893" }
