@@ -122,5 +122,9 @@ import Testing
         c.stack[0].sel = 1
         c.stack.append(Frame(screen: .coverFlow))
         try save(c, "coverflow")
+        for sel in 0..<Self.songs.count {  // one step of the wheel each
+            c.stack[1].sel = sel
+            try save(c, "coverflow-\(sel)")
+        }
     }
 }
