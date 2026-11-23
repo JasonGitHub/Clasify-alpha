@@ -44,16 +44,19 @@ export async function signed(raw: Uint8Array, header: string | null, secret: str
 }
 
 /** Sets one payment's state and the account's paid fact from it. An account with no seat that is no longer paid loses its Macs. */
-async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | "refunded" | "disputed", now: number) {
+async function setState(db: D1Database, paymentIntent: unknown, state: "paid" | "refunded" | "disputed", now: number, created: number) {
   if (typeof paymentIntent !== "string" || !paymentIntent) return;
   // Not stored yet: maybe ours, before its paid message, maybe another project's. Keep the state
   // for markPaid. Only myPod's stored payments change an account.
-  await db.prepare("INSERT INTO reversals (payment_intent, state, at) VALUES (?, ?, ?) ON CONFLICT DO UPDATE SET state = excluded.state, at = excluded.at")
-    .bind(paymentIntent, state, now).run();
+  // An older message (Stripe's "created") never overwrites a newer state, here and in payments.
+  await db.prepare(
+    `INSERT INTO reversals (payment_intent, state, state_at, at) VALUES (?, ?, ?, ?) ON CONFLICT DO UPDATE
+     SET state = excluded.state, state_at = excluded.state_at, at = excluded.at WHERE excluded.state_at >= reversals.state_at`,
+  ).bind(paymentIntent, state, created, now).run();
   const account = "(SELECT account_id FROM payments WHERE payment_intent = ?1)";
   const gone = `(SELECT seat = 0 AND paid_at IS NULL FROM accounts WHERE id = ${account})`;
   await db.batch([
-    db.prepare("UPDATE payments SET state = ?2 WHERE payment_intent = ?1").bind(paymentIntent, state),
+    db.prepare("UPDATE payments SET state = ?2, state_at = ?3 WHERE payment_intent = ?1 AND state_at <= ?3").bind(paymentIntent, state, created),
     db.prepare(
       `UPDATE accounts SET paid_at = CASE WHEN EXISTS (SELECT 1 FROM payments WHERE account_id = accounts.id AND state = 'paid')
        THEN COALESCE(paid_at, ?2) ELSE NULL END WHERE id = ${account}`,
@@ -107,6 +110,7 @@ export async function stripeHook(request: Request, env: Env, deps: HookDeps): Pr
   try { event = JSON.parse(new TextDecoder().decode(raw)) as Record<string, unknown>; } catch { return answer(400); }
   if (typeof event.id !== "string" || event.livemode !== wantLive(env)) return answer(400);  // test messages never count on live
   if (await env.DB.prepare("SELECT 1 FROM stripe_events WHERE id = ?").bind(event.id).first()) return answer(200);
+  const created = typeof event.created === "number" ? event.created : 0;
   const object = ((event.data as Record<string, unknown> | null)?.object ?? null) as Record<string, unknown> | null;
   switch (event.type) {
     case "checkout.session.completed":
@@ -119,13 +123,13 @@ export async function stripeHook(request: Request, env: Env, deps: HookDeps): Pr
       break;
     }
     case "charge.refunded":  // `refunded` is true only for a full refund
-      if (object?.refunded === true) await setState(env.DB, object.payment_intent, "refunded", now);
+      if (object?.refunded === true) await setState(env.DB, object.payment_intent, "refunded", now, created);
       break;
     case "charge.dispute.created":
-      await setState(env.DB, object?.payment_intent, "disputed", now);
+      await setState(env.DB, object?.payment_intent, "disputed", now, created);
       break;
     case "charge.dispute.closed":
-      if (object?.status === "won") await setState(env.DB, object.payment_intent, "paid", now);
+      if (object?.status === "won") await setState(env.DB, object.payment_intent, "paid", now, created);
       break;
   }
   await env.DB.prepare("INSERT INTO stripe_events (id, at) VALUES (?, ?) ON CONFLICT DO NOTHING").bind(event.id, now).run();

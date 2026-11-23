@@ -30,7 +30,7 @@ async function post(event: unknown, opts: { env?: Env; header?: string; raw?: st
 }
 let ids = 0;
 const event = (type: string, object: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
-  ({ id: `evt_${ids++}`, type, livemode: true, data: { object }, ...extra });
+  ({ id: `evt_${ids++}`, type, livemode: true, created: 1_700_000_000 + ids, data: { object }, ...extra });
 const session = (extra: Record<string, unknown> = {}) => ({
   id: "cs_live_a1B2c3D4e5F6g7H8", livemode: true, mode: "payment", status: "complete", payment_status: "paid",
   metadata: { app: "mypod" }, payment_intent: "pi_1", customer_details: { email: "pat@example.com" }, amount_total: 2999, currency: "usd", ...extra,
@@ -204,6 +204,24 @@ describe("refund and dispute", () => {
     expect(await account()).toMatchObject({ paid_at: null });
   });
 
+  it("never lets an older dispute message undo a newer won dispute, before or after the paid message", async () => {
+    const opened = event("charge.dispute.created", { id: "dp_1", payment_intent: "pi_1" });
+    const won = event("charge.dispute.closed", { id: "dp_1", payment_intent: "pi_1", status: "won" });
+    await post(paid());
+    expect(await signIn(mac(1))).toBe("ok");
+    await post(won);
+    await post(opened);  // late
+    expect(await account()).toMatchObject({ paid_at: expect.any(Number) });
+    expect(await payment()).toMatchObject({ state: "paid" });
+    expect(await call("GET", "/v1/status", { device: mac(1) })).toMatchObject({ state: "active" });
+    const opened2 = event("charge.dispute.created", { id: "dp_2", payment_intent: "pi_2" });
+    const won2 = event("charge.dispute.closed", { id: "dp_2", payment_intent: "pi_2", status: "won" });
+    await post(won2);
+    await post(opened2);
+    await post(paid({ id: "cs_live_second000000", payment_intent: "pi_2", customer_details: { email: "kim@example.com" } }));
+    expect(await env.DB.prepare("SELECT state FROM payments WHERE payment_intent = 'pi_2'").first("state")).toBe("paid");
+  });
+
   it("ignores a refund or dispute of a payment that is not ours", async () => {
     await post(paid());
     expect(await post(event("charge.refunded", { id: "ch_9", payment_intent: "pi_other", refunded: true }))).toBe(200);
@@ -225,8 +243,8 @@ it("message IDs and early refunds older than 30 days go", async () => {
     env.DB.prepare("INSERT INTO stripe_events (id, at) VALUES ('new', ?)").bind(clock - eventLife + 1),
   ]);
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO reversals (payment_intent, state, at) VALUES ('pi_old', 'refunded', ?)").bind(clock - eventLife - 1),
-    env.DB.prepare("INSERT INTO reversals (payment_intent, state, at) VALUES ('pi_new', 'refunded', ?)").bind(clock - eventLife + 1),
+    env.DB.prepare("INSERT INTO reversals (payment_intent, state, state_at, at) VALUES ('pi_old', 'refunded', 1, ?)").bind(clock - eventLife - 1),
+    env.DB.prepare("INSERT INTO reversals (payment_intent, state, state_at, at) VALUES ('pi_new', 'refunded', 1, ?)").bind(clock - eventLife + 1),
   ]);
   await dropOldEvents(env.DB, clock);
   expect((await env.DB.prepare("SELECT id FROM stripe_events").all()).results).toEqual([{ id: "new" }]);

@@ -90,8 +90,9 @@ export async function markPaid(db: D1Database, paid: Paid, now: number, newID: (
     db.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'pending', ?) ON CONFLICT (email) DO NOTHING")
       .bind(newID(), paid.email, now),
     db.prepare(
-      `INSERT INTO payments (session_id, payment_intent, account_id, amount, currency, state, at)
-       SELECT ?1, ?2, id, ?3, ?4, COALESCE((SELECT state FROM reversals WHERE payment_intent = ?2), 'paid'), ?5
+      `INSERT INTO payments (session_id, payment_intent, account_id, amount, currency, state, state_at, at)
+       SELECT ?1, ?2, id, ?3, ?4, COALESCE((SELECT state FROM reversals WHERE payment_intent = ?2), 'paid'),
+         COALESCE((SELECT state_at FROM reversals WHERE payment_intent = ?2), 0), ?5
        FROM accounts WHERE email = ?6 ON CONFLICT DO NOTHING`,
     ).bind(paid.session, paid.paymentIntent, paid.amount, paid.currency, now, paid.email),
     db.prepare(
