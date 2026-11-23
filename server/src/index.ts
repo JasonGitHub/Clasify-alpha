@@ -46,8 +46,11 @@ async function site(request: Request, env: Env, later: ((work: Promise<unknown>)
   const path = new URL(request.url).pathname;
   const file = everyPath && !path.startsWith("/v1/") && !workerFirst(path) ? await env.ASSETS.fetch(request) : null;
   if (file && file.status !== 404) return file;
-  const launch = await launchRoute(request, env, env.ASSETS);
-  if (launch) return launch;
+  const launch = await launchRoute(request, env, env.ASSETS, fetch, later);
+  if (launch) {
+    if (path === "/" && launch.ok && request.method === "GET") countInvite(request, env, later);  // CLA-175: invite links on "/" too
+    return launch;
+  }
   const moved = betaRedirect(request);
   if (moved) return moved;
   if (path === betaPath) {
