@@ -29,7 +29,7 @@ Swift 6, Xcode + Swift Package Manager; librespot (Rust) builds with cargo. Mini
 ## Hard constraints
 
 - IMPORTANT: the app ships only Apple frameworks and librespot. Ask before adding any package. Reasons: the app design doc.
-- The server (`server/`) runs on Cloudflare Workers with no packages in its running code. Allowed services: Cloudflare, Resend. Allowed tools are listed in the server design doc. Ask before adding any package, tool or service.
+- The server (`server/`) runs on Cloudflare Workers with no packages in its running code. Allowed services: Cloudflare, Resend, Stripe (hosted Checkout for the one-time purchase; Jason decided 2026-11-24 02:13 JST). Call Stripe with `fetch` and WebCrypto only, never with its package. Never send a device ID to Stripe. Allowed tools are listed in the server design doc. Ask before adding any package, tool or service.
 - Swift 6 language mode, strict concurrency on, zero compiler warnings. Don't silence concurrency errors with `@unchecked Sendable` or `nonisolated(unsafe)` without a comment saying why it is safe.
 - Login tokens live only in the Keychain. Crash reports and usage analytics are allowed.
 - Album covers come only from Spotify's image CDN, `https://i.scdn.co/image/<coverID>`, Apple's image server (`*.mzstatic.com`, from MusicKit `Artwork` URLs), and Apple's iTunesLibrary framework for Apple Music library songs (`AppleMusicArt`). Clasify keeps them in memory only and never writes a cover to disk: `ArtworkLoader` uses an NSCache and a URLSession with no URL cache, and reads library covers in memory. Skins get covers through the `artwork` environment value and never load them.
