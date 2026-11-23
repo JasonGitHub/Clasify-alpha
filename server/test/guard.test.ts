@@ -137,7 +137,13 @@ describe("test server (CLA-172)", () => {
     it(`${testServer ? "test server" : "live"}: sends "/", "/beta/" and "/index.html" to /beta with a 302, query kept`, async () => {
       const worker = (await import("../src/index")).default;
       const asked: string[] = [];
-      const assets = { fetch: async (r: Request) => { asked.push(new URL(r.url).pathname); return new Response("file"); } } as unknown as Fetcher;
+      // The root files, as the assets have them; any other path is a 404 there.
+      const files = ["/privacy/", "/activate/", "/beta-page/page.js", "/og-beta.png"];
+      const assets = { fetch: async (r: Request) => {
+        const path = new URL(r.url).pathname;
+        asked.push(path);
+        return files.includes(path) ? new Response("file") : new Response("not found", { status: 404 });
+      } } as unknown as Fetcher;
       const vars = { ASSETS: assets, ...(testServer ? { TEST_SERVER: "1" } : {}) };
       const ask = (url: string, method = "GET") => worker.fetch(new Request(url, { method, redirect: "manual" }), { ...env, ...vars } as Env);
       for (const [from, to] of [["/", "/beta"], ["/?from=mail", "/beta?from=mail"], ["/beta/", "/beta"], ["/beta/?a=1&b=2", "/beta?a=1&b=2"], ["/index.html", "/beta"]]) {
@@ -148,7 +154,10 @@ describe("test server (CLA-172)", () => {
           expect(answer.headers.get("X-Robots-Tag")).toBe(testServer ? "noindex, nofollow" : null);
         }
       }
-      expect(asked).toEqual([]);  // no file is read for a redirect
+      // No file is read for a redirect. The test server looks for a root file first, as live's static
+      // files do: "/index.html" has none.
+      expect(asked).toEqual(testServer ? ["/index.html", "/index.html"] : []);
+      asked.length = 0;
       // The other pages and files stay where they are.
       for (const path of ["/privacy/", "/activate/", "/beta-page/page.js", "/og-beta.png"]) {
         if (testServer) expect((await ask(`https://getmypod.app${path}`)).status, path).toBe(200);

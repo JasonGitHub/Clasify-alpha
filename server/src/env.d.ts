@@ -27,6 +27,8 @@ declare namespace Cloudflare {
     TURNSTILE_HOST?: string;
     /** CLA-172: the test server's stand-in beta build when there is no feed. Read only when TEST_SERVER is "1". */
     TEST_BUILD?: string;
+    /** CLA-175: "1" serves the launch page at "/" (the test server only, until Jason says go live). */
+    LAUNCH_PAGE?: string;
     /** The static files. The test server runs the Worker first for every path; live only for "/". */
     ASSETS?: Fetcher;
   }
