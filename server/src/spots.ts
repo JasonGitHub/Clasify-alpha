@@ -9,7 +9,8 @@ export const inviteOpen = 7 * 24 * 60 * 60_000;
 export const spotsPerRun = 10;
 
 /**
- * free = CAP - active accounts - open invites. Mails the `free` oldest waitlist accounts that
+ * free = CAP - seats - open invites (CLA-175: paid accounts hold no seat, and a paid account on
+ * the waitlist gets no open-spot mail). Mails the `free` oldest waitlist accounts that
  * were not invited yet (at most `spotsPerRun`), and sets invited_at. A mail that does not go
  * out clears its invited_at again and ends the run. Answers the number of mails sent.
  */
@@ -19,9 +20,9 @@ export async function openSpots(db: D1Database, cap: number, mailer: PageMailer,
   // negative LIMIT in SQLite means no limit.
   const picked = (await db.prepare(
     `UPDATE accounts SET invited_at = ?1 WHERE id IN (
-       SELECT id FROM accounts WHERE state = 'waitlist' AND off = 0 AND invited_at IS NULL ORDER BY created_at, id
-       LIMIT max(0, min(?2, ?3 - (SELECT COUNT(*) FROM accounts WHERE state = 'active')
-         - (SELECT COUNT(*) FROM accounts WHERE state != 'active' AND invited_at > ?4))))
+       SELECT id FROM accounts WHERE state = 'waitlist' AND off = 0 AND paid_at IS NULL AND invited_at IS NULL ORDER BY created_at, id
+       LIMIT max(0, min(?2, ?3 - (SELECT COUNT(*) FROM accounts WHERE seat = 1)
+         - (SELECT COUNT(*) FROM accounts WHERE state != 'active' AND paid_at IS NULL AND invited_at > ?4))))
      AND invited_at IS NULL RETURNING id, email, created_at`,
   ).bind(now, spotsPerRun, cap, now - inviteOpen).all<{ id: string; email: string; created_at: number }>()).results
     .sort((a, b) => a.created_at - b.created_at || a.id.localeCompare(b.id));

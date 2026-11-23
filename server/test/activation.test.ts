@@ -99,7 +99,7 @@ describe("activation", () => {
 
   it("holds the cap of 25 accounts and puts the rest on the waitlist", async () => {
     await env.DB.batch(Array.from({ length: 24 }, (_, i) =>
-      env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'active', 0)").bind(`a${i}`, `p${i}@example.com`)));
+      env.DB.prepare("INSERT INTO accounts (id, email, state, seat, created_at) VALUES (?, ?, 'active', 1, 0)").bind(`a${i}`, `p${i}@example.com`)));
     await join(mac(1), "sam@example.com");
     await join(mac(2), "kim@example.com");
     const samLink = mail.sent[0].link, kimLink = mail.sent[1].link;
@@ -233,7 +233,7 @@ describe("activation", () => {
     await activate(mac(1), "sam@example.com");
     await activate(mac(2), "sam@example.com");
     await env.DB.batch(Array.from({ length: 99 }, (_, i) =>
-      env.DB.prepare("INSERT INTO accounts (id, email, state, created_at) VALUES (?, ?, 'active', 0)").bind(`a${i}`, `p${i}@example.com`)));
+      env.DB.prepare("INSERT INTO accounts (id, email, state, seat, created_at) VALUES (?, ?, 'active', 1, 0)").bind(`a${i}`, `p${i}@example.com`)));
     clock += 1000;
     expect(await activate(mac(3), "sam@example.com")).toBe("ok");
     expect(await env.DB.prepare("SELECT COUNT(*) AS n FROM accounts WHERE state = 'active'").first("n")).toBe(100);

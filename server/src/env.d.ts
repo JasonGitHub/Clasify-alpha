@@ -3,6 +3,8 @@ declare namespace Cloudflare {
     DB: D1Database;
     CAP: string;
     MACS: string;
+    /** CLA-175: the Mac limit of a paid account. MACS stays the limit of a beta seat. */
+    PAID_MACS: string;
     /** CLA-133: a 3rd Mac may replace the least used one SWAPS times in SWAP_DAYS days per account. */
     SWAPS: string;
     SWAP_DAYS: string;

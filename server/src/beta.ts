@@ -27,7 +27,7 @@ export async function beta(db: D1Database, cap: number, fetcher: typeof fetch, n
   later: (work: Promise<unknown>) => void = (work) => { work.catch(() => null); }): Promise<Beta> {
   if (kept && kept.cap === cap && now >= kept.at && now - kept.at < keepFor) return kept.answer;
   const [count, feed] = await db.batch<Record<string, unknown>>([
-    db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE state = 'active'"),
+    db.prepare("SELECT COUNT(*) AS n FROM accounts WHERE seat = 1"),
     db.prepare("SELECT build, url, checked_at FROM beta_feed WHERE id = 1"),
   ]);
   const taken = Number(count.results[0]?.n ?? 0);
