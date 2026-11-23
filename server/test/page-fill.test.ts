@@ -102,6 +102,51 @@ describe("the server-filled beta page", () => {
     expect(loadingFill().state).toBe("loading");
   });
 
+  describe("the invite welcome card in the first picture (Jason OK 03:28 JST 11-24)", () => {
+    const at = (query: string) => new Request(`https://page.example/beta${query}`);
+    const shown = (kind: string) => `<div class="ov ${kind}" id="inv" role="dialog" aria-modal="true" aria-labelledby="invh">`;
+    const hidden = '<div class="ov" id="inv" hidden role="dialog" aria-modal="true" aria-labelledby="invh">';
+
+    it("comes first in the body, hidden in the static file", () => {
+      expect(page).toContain(`<body class="one hm loading">\n${hidden}`);
+      expect(page.match(/id="inv"/g)).toHaveLength(1);
+    });
+
+    for (const [name, taken, latest, kind] of [["open", 12, good, "open"], ["full", 25, good, "full"], ["no build", 12, {}, "open"]] as const) {
+      it(`shows the ${kind} card for a valid id: ${name}`, async () => {
+        await accounts(taken);
+        const html = await (await betaPage(at("?invite=Friends-01"), testEnv, assets, feed(latest))).text();
+        expect(html).toContain('<html lang="en" class="inv">');
+        expect(html).toContain(`<body class="one hm ${name === "full" ? "full" : name === "open" ? "open" : "soon"}">\n${shown(kind)}`);
+        expect(html).not.toContain(hidden);
+        expect(html.toLowerCase()).not.toContain("friends-01");  // the id never goes into the page
+        expect(html.length - page.length).toBeLessThan(2000);  // the same page, only filled
+      });
+    }
+
+    for (const query of ["", "?invite=", "?invite=a%20b", "?invite=%3Cb%3E", `?invite=${"a".repeat(33)}`, "?x=1"]) {
+      it(`shows no card without a valid id: "${query}"`, async () => {
+        await accounts(12);
+        const html = await (await betaPage(at(query), testEnv, assets, feed(good))).text();
+        expect(html).toContain('<html lang="en">');
+        expect(html).toContain(`<body class="one hm open">\n${hidden}`);
+        expect(html).not.toContain('class="inv"');
+      });
+    }
+
+    it("leaves the card to page.js when the page goes out as it is (loading)", async () => {
+      const response = await betaPage(at("?invite=friends-01"), testEnv, assets, feed(good, fillWait + 200));
+      expect(await response.text()).toBe(page);
+    });
+
+    it("never shares a filled page between addresses: no shared cache, and the browser keys it by the whole address", async () => {
+      await accounts(12);
+      const response = await betaPage(at("?invite=friends-01"), testEnv, assets, feed(good));
+      expect(response.headers.get("Cache-Control")).toBe("max-age=30");
+      expect(response.headers.get("Vary")).toBeNull();
+    });
+  });
+
   it("sends the page as it is when the count fails, never a 500", async () => {
     const broken = { ...testEnv, DB: { prepare() { throw new Error("D1 down"); } } } as unknown as Env;
     const response = await betaPage(get(), broken, assets, feed(good));

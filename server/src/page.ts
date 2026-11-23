@@ -1,7 +1,7 @@
 // CLA-172: the beta page comes with its live parts already in it (the button or the form,
 // "Beta N", the count and the bar), so the first picture is the final one. The rules and the
 // changes are logic.js's, the same ones page.js uses, so the server and the page cannot differ.
-import { edits, fill, parseBeta, withState, type Fill } from "../public/beta-page/logic.js";
+import { edits, fill, inviteCard, inviteID, parseBeta, withState, type Fill } from "../public/beta-page/logic.js";
 import { beta, testBuild } from "./beta";
 
 /**
@@ -57,7 +57,9 @@ export async function betaPage(request: Request, env: Env, assets: Fetcher, fetc
   // plain page again. Never a 500, never a hang.
   let stall: ReturnType<typeof setTimeout> | null = null;
   const stalled = new Promise<null>((resolve) => { stall = setTimeout(() => resolve(null), rewriteWait); });
-  const out = await Promise.race([filled(page, fill(parseBeta(answer))), stalled]).catch(() => null);
+  const f = fill(parseBeta(answer));
+  const card = inviteCard(inviteID(new URL(request.url).searchParams.get("invite")), f.state);
+  const out = await Promise.race([filled(page, f, card), stalled]).catch(() => null);
   clearTimeout(stall);
   return out ?? asset();
 }
@@ -67,8 +69,16 @@ export async function betaPage(request: Request, env: Env, assets: Fetcher, fetc
  * It goes out in one piece with its length, as the plain asset does: a page sent in pieces lets the
  * browser paint the hero half-parsed, and the next frame moves it.
  */
-export async function filled(page: Response, f: Fill): Promise<Response> {
+export async function filled(page: Response, f: Fill, card: "open" | "full" | null = null): Promise<Response> {
   let rewriter = new HTMLRewriter();
+  // A valid ?invite= shows the welcome card in the first picture (page.js only wires it). Classes
+  // and one removed attribute: the id never goes into the page.
+  if (card) {
+    const add = (el: Element, name: string) => el.setAttribute("class", [el.getAttribute("class"), name].filter(Boolean).join(" "));
+    rewriter = rewriter
+      .on("html", { element(el) { add(el, "inv"); } })
+      .on("#inv", { element(el) { el.removeAttribute("hidden"); add(el, card); } });
+  }
   for (const e of edits(f)) {
     rewriter = rewriter.on(e.selector, {
       element(el) {

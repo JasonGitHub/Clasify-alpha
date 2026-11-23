@@ -105,14 +105,16 @@ form.addEventListener("submit", async (e) => {
 if (document.body.classList.contains("loading")) load().then((beta) => { draw(fill(beta)); welcome(); });
 else welcome();
 
-/** The invite welcome card, once, after the page has its state. Everything else is inert while it
- * shows, so focus stays on its one button. Esc or the button closes it; "Join the waitlist" then
- * puts focus in the email field, else focus goes back where it was. */
+/** The invite welcome card, once, after the page has its state. A filled page comes with the card
+ * already shown (src/page.ts), so it is there in the first picture; this then only wires it. The
+ * loading page shows it here. Everything else is inert while it shows, so focus stays on its one
+ * button. Esc or the button closes it; "Join the waitlist" then puts focus in the email field,
+ * else focus goes back where it was. */
 function welcome() {
   const card = document.getElementById("inv");
-  const kind = inviteCard(invite, document.body.className);
-  const button = /** @type {HTMLButtonElement | null} */ (card?.querySelector(kind === "full" ? "button.if" : "button.io") ?? null);
-  if (!card || !kind || !button) return;
+  const kind = card && !card.hidden ? (card.classList.contains("full") ? "full" : "open") : inviteCard(invite, document.body.className);
+  const button = /** @type {HTMLAnchorElement | null} */ (card?.querySelector(kind === "full" ? "a.if" : "a.io") ?? null);
+  if (!card || !kind || !button || location.hash === "#inv") return;  // #inv: closed by its link before this ran
   const back = document.activeElement;
   const others = [...document.body.children].filter((n) => n !== card && n.tagName !== "SCRIPT");
   const shut = (/** @type {HTMLElement | null} */ next) => {
@@ -129,7 +131,10 @@ function welcome() {
   document.documentElement.classList.add("inv");
   card.hidden = false;
   document.addEventListener("keydown", key);
-  button.addEventListener("click", () => shut(kind === "full" ? formInput : back instanceof HTMLElement ? back : null), { once: true });
+  button.addEventListener("click", (e) => {
+    e.preventDefault();  // the link to #inv is only for a page without page.js
+    shut(kind === "full" ? formInput : back instanceof HTMLElement ? back : null);
+  }, { once: true });
   // No ring on open (the design); Tab or a key shows it, as for any button.
   button.focus(/** @type {FocusOptions} */ ({ focusVisible: false }));
 }
