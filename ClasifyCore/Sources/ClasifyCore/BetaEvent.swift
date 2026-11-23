@@ -32,7 +32,8 @@ public enum BetaEvent: Equatable, Sendable {
     case serviceSwitch(from: MusicService, to: MusicService)
     /// One day with music, a feature or a 3D view, sent on the first action of a later day.
     /// `color` is the Color setting when the day is reported (Jason 14:23 JST 11-22).
-    case dayActive(DayUse, service: MusicService, color: DeviceColor)
+    /// `settings`: Album Art, Clicker and Menu Bar when the day is reported (Jason 13:38 JST 11-23).
+    case dayActive(DayUse, service: MusicService, color: DeviceColor, settings: DaySettings = DaySettings())
     /// A crash or a hang of an earlier run (A4, MetricKit).
     case appProblem(AppProblem, service: MusicService)
 
@@ -89,9 +90,11 @@ public enum BetaEvent: Equatable, Sendable {
             return ["from": .text(from.eventName), "to": .text(to.eventName)]
         case .appProblem(let problem, let service):
             return problem.properties.merging(["service": .text(service.eventName)]) { old, _ in old }
-        case .dayActive(let d, let service, let color):
+        case .dayActive(let d, let service, let color, let settings):
             var p: [String: BetaValue] = [
-                "color": .text(color.eventName),
+                "color": .text(color.eventName), "album_art": .text(settings.albumArt.eventName),
+                "clicker": .flag(settings.clicker), "menu_bar": .flag(settings.menuBar),
+                "songs_shuffle": .number(d.songsShuffle), "songs_repeat": .number(d.songsRepeat),
                 "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
                 "minutes_night": .decimal(d.bands[0] / 60), "minutes_morning": .decimal(d.bands[1] / 60),
                 "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
@@ -177,6 +180,19 @@ extension Settings {
         [String(shuffle), repeatMode.rawValue, albumArt.rawValue, deviceColor.rawValue, String(clicker),
          String(nowPlayingBar), String(menuBar), service.rawValue]
     }
+}
+
+/// The settings that `day_active` says, as they are when the day is reported.
+public struct DaySettings: Equatable, Sendable {
+    public var albumArt = AlbumArt.all, clicker = true, menuBar = true
+    public init(albumArt: AlbumArt = .all, clicker: Bool = true, menuBar: Bool = true) {
+        (self.albumArt, self.clicker, self.menuBar) = (albumArt, clicker, menuBar)
+    }
+}
+
+extension AlbumArt {
+    /// `all`, `now_playing` or `off`, as the events name it.
+    public var eventName: String { rawValue.lowercased().replacingOccurrences(of: " ", with: "_") }
 }
 
 extension DeviceColor {
@@ -311,7 +327,8 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         let at = DayUse.at(t, in: timeZone)
         let open = s.isPlaying && s.dayPlayAt != nil
         if let old = s.today, old.day < at.day, force || !open {
-            if old.hadUse { fx.append(.track(.dayActive(old, service: old.service ?? s.service, color: s.deviceColor))) }
+            if old.hadUse { fx.append(.track(.dayActive(old, service: old.service ?? s.service, color: s.deviceColor,
+                                                       settings: DaySettings(albumArt: s.albumArt, clicker: s.clicker, menuBar: s.menuBar)))) }
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }
         return at
@@ -378,7 +395,15 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         }
         (s.dayPlayAt, s.dayPosition) = (now, b.position)
         _ = roll(now, force: true)
-        if s.dayTrack != current.track { s.dayTrack = current.track; count(at: now) { d, _ in d.songs += 1 } }
+        if s.dayTrack != current.track {
+            s.dayTrack = current.track
+            let (shuffle, repeating) = (s.shuffle, s.repeatMode != .off)
+            count(at: now) { d, _ in
+                d.songs += 1
+                if shuffle { d.songsShuffle += 1 }
+                if repeating { d.songsRepeat += 1 }
+            }
+        }
         let service = s.service
         count(at: now) { d, _ in d.service = service }
     } else if !s.isPlaying && s.dayPlayAt != nil {

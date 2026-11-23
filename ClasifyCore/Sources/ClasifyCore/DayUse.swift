@@ -6,6 +6,9 @@ public struct DayUse: Equatable, Sendable {
     /// The local day, as yyyymmdd, and its weekday (1 Sunday … 7 Saturday).
     public var day: Int, weekday: Int
     public var songs = 0
+    /// Of `songs`: the songs that started while Shuffle was on, and while Repeat was not Off
+    /// (Jason 13:38 JST 11-23).
+    public var songsShuffle = 0, songsRepeat = 0
     /// Seconds of music in each time band: night (0-6), morning (6-9), work (9-18), evening (18-24).
     public var bands = [0.0, 0, 0, 0]
     public var features: Set<Feature> = []
@@ -55,14 +58,15 @@ public struct DayUse: Equatable, Sendable {
     }
 
     /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings|Spotify|12.5,0.0,3.0": the saved
-    /// form, then CLA-162's window part "areas;screen count;screens". A day saved before the 3D
-    /// views or the window has no such part: its counts are 0.
+    /// form, then CLA-162's window part "areas;screen count;screens", then "shuffle,repeat" song
+    /// counts. A day saved before the 3D views, the window or the song counts has no such part:
+    /// its counts are 0.
     var saved: String {
         let b: [String] = bands.map { String($0) }
         let f: [String] = features.map(\.rawValue).sorted()
         let v: [String] = views.map { String($0) }
         return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ","), service?.rawValue ?? "",
-                v.joined(separator: ","), windowSaved].joined(separator: "|")
+                v.joined(separator: ","), windowSaved, "\(songsShuffle),\(songsRepeat)"].joined(separator: "|")
     }
 
     /// "0.0,…,60.0,…;2;1x1512x982x1=60.0": the areas, the screen count and the seconds per screen.
@@ -73,7 +77,7 @@ public struct DayUse: Equatable, Sendable {
 
     init?(saved: String) {
         let parts = saved.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard (6...8).contains(parts.count), let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
+        guard (6...9).contains(parts.count), let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
         let bands = parts[3].split(separator: ",").compactMap { Double($0) }
         guard bands.count == 4 else { return nil }
         self.init(day: day, weekday: weekday)
@@ -85,7 +89,7 @@ public struct DayUse: Equatable, Sendable {
             guard views.count == 3 else { return nil }
             self.views = views
         }
-        if parts.count == 8 {
+        if parts.count >= 8 {
             let window = parts[7].split(separator: ";", omittingEmptySubsequences: false)
             guard window.count == 3, let count = Int(window[1]) else { return nil }
             let areas = window[0].split(separator: ",").compactMap { Double($0) }
@@ -96,6 +100,11 @@ public struct DayUse: Equatable, Sendable {
                 guard kv.count == 2, let seconds = Double(kv[1]) else { return nil }
                 screens[String(kv[0])] = seconds
             }
+        }
+        if parts.count == 9 {
+            let counts = parts[8].split(separator: ",").compactMap { Int($0) }
+            guard counts.count == 2 else { return nil }
+            (songsShuffle, songsRepeat) = (counts[0], counts[1])
         }
     }
 
