@@ -36,6 +36,10 @@ export async function checkout(env: StripeEnv, fetcher: typeof fetch): Promise<s
     cancel_url: `${page}/`,
     "metadata[app]": "mypod",
     "payment_intent_data[metadata][app]": "mypod",
+    // Jason's one-time codes (100% off) for the live test: the code field on Stripe's page. Their
+    // limits (redemptions, expiry) live in Stripe. The session is made at the full price, so
+    // payment_intent_data is valid; with a $0 total Stripe makes no PaymentIntent.
+    allow_promotion_codes: "true",
   });
   const url = session?.url;
   return typeof url === "string" && url.startsWith("https://checkout.stripe.com/") ? url : null;
@@ -47,9 +51,9 @@ export type Found = { result: "paid"; paid: Paid } | { result: "pending" } | { r
 
 /**
  * Reads one Checkout session, from Stripe's answer or from a webhook message. "paid" only when
- * Stripe says it is paid, it is myPod's, it is a one-time payment of more than 0, and its mode is
- * the one this server takes. "pending" when the buyer finished Checkout and the money is still on
- * its way. Anything else is "not found".
+ * it is myPod's, a one-time payment in the mode this server takes, and either Stripe says it is
+ * paid with more than 0, or it is a completed $0 order (a 100% off code). "pending" when the buyer
+ * finished Checkout and the money is still on its way. Anything else is "not found".
  */
 export function readSession(env: Pick<Env, "TEST_SERVER">, s: Record<string, unknown> | null, id?: string): Found {
   const none = { result: "not found" } as const;
@@ -57,10 +61,14 @@ export function readSession(env: Pick<Env, "TEST_SERVER">, s: Record<string, unk
   if (s.livemode !== wantLive(env) || s.mode !== "payment") return none;
   if ((s.metadata as Record<string, unknown> | null)?.app !== "mypod") return none;
   if (s.status === "complete" && s.payment_status === "unpaid") return { result: "pending" };
-  if (s.payment_status !== "paid") return none;
+  // Paid: money taken (more than 0), or a completed $0 order (a 100% off code): Stripe's
+  // "no_payment_required", with no PaymentIntent and so no refund or dispute.
+  const free = s.payment_status === "no_payment_required" && s.status === "complete" && s.amount_total === 0 && s.payment_intent == null;
+  const charged = s.payment_status === "paid" && typeof s.amount_total === "number" && s.amount_total > 0;
+  if (!free && !charged) return none;
   const email = (s.customer_details as Record<string, unknown> | null)?.email;
   if (typeof email !== "string" || !email.includes("@") || email.length > 254) return none;
-  if (typeof s.amount_total !== "number" || !(s.amount_total > 0) || typeof s.currency !== "string") return none;
+  if (typeof s.amount_total !== "number" || !Number.isSafeInteger(s.amount_total) || typeof s.currency !== "string") return none;
   return { result: "paid", paid: { session: s.id, paymentIntent: typeof s.payment_intent === "string" ? s.payment_intent : null,
     email: email.trim().toLowerCase(), amount: s.amount_total, currency: s.currency } };
 }

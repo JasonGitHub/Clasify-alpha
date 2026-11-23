@@ -52,7 +52,7 @@ describe("Buy", () => {
     expect(form).toEqual({
       mode: "payment", "line_items[0][price]": "price_fake", "line_items[0][quantity]": "1",
       success_url: "https://getmypod.app/thanks?session={CHECKOUT_SESSION_ID}", cancel_url: "https://getmypod.app/",
-      "metadata[app]": "mypod", "payment_intent_data[metadata][app]": "mypod",
+      "metadata[app]": "mypod", "payment_intent_data[metadata][app]": "mypod", allow_promotion_codes: "true",
     });
     expect(seen[0].body).not.toContain("device");  // never a device ID to Stripe
   });
@@ -119,6 +119,27 @@ describe("Bought", () => {
     answer = () => json({ error: {} }, 404);
     expect((await call("/v1/bought", { session: sid })).json).toEqual({ result: "not found" });
     expect(await account()).toBeNull();
+    expect(await payments()).toEqual([]);
+  });
+
+  it("takes a completed $0 order (a 100% off code): paid, no PaymentIntent, and a second one for the same email too", async () => {
+    const free = { payment_status: "no_payment_required", amount_total: 0, payment_intent: null };
+    answer = () => json(session(free));
+    expect((await call("/v1/bought", { session: sid })).json).toEqual({ result: "paid" });
+    expect(await account()).toEqual({ state: "pending", seat: 0, paid_at: clock });
+    const other = "cs_live_z9Y8x7W6v5U4t3S2";
+    answer = () => json(session({ ...free, id: other }));
+    expect((await call("/v1/bought", { session: other })).json).toEqual({ result: "paid" });
+    expect((await payments()).map((p) => [p.session_id, p.payment_intent, p.amount, p.state])).toEqual([[sid, null, 0, "paid"], [other, null, 0, "paid"]]);
+  });
+
+  it("refuses a $0 order that is not complete, not myPod's, in the wrong mode, or has money or a PaymentIntent", async () => {
+    const free = { payment_status: "no_payment_required", amount_total: 0, payment_intent: null };
+    for (const extra of [{ status: "open" }, { status: "expired" }, { metadata: { app: "zapper" } }, { livemode: false }, { mode: "setup" },
+      { amount_total: 1 }, { amount_total: null }, { amount_total: -1 }, { payment_intent: "pi_9" }, { customer_details: null }, { payment_status: "paid" }]) {
+      answer = () => json(session({ ...free, ...extra }));
+      expect((await call("/v1/bought", { session: sid })).json, JSON.stringify(extra)).toEqual({ result: "not found" });
+    }
     expect(await payments()).toEqual([]);
   });
 
