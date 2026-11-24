@@ -163,12 +163,14 @@ public enum Screen: Equatable, Sendable {
     /// CLA-179, card CR: On This Mac, and the Music app library has no song that can play.
     /// It takes the main menu's place.
     case noSongs
+    /// CLA-183, card CS: Search on the device. Its rows are `AppState.searchResults`.
+    case search
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate, .activation, .noSongs:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate, .activation, .noSongs, .search:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -229,6 +231,9 @@ public enum Row: Equatable, Sendable {
     case pickService(MusicService), openPrivacy, useSpotify
     /// Card CR: "Check again" reads the Music app library again; "Pick Your Music" opens that screen.
     case checkLibrary, pickYourMusic
+    /// CLA-183, card CS: the main menu's Search row, and a song found by Search with the list
+    /// it plays in. Found artists, albums and playlists use `artist`, `album` and `playlist`.
+    case search, foundSong(String, list: String)
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
     /// A row of the Licenses list: license `License.all[i]` (card BF, change 213).
@@ -794,6 +799,14 @@ public struct AppState: Equatable, Sendable {
     public var service = MusicService.spotify
     /// CLA-179: the `local.on` test switch: Pick Your Music and the Service row offer On This Mac.
     public var localOn = false
+    /// CLA-183: the `search.on` test switch: the main menu has a Search row.
+    public var searchOn = false
+    /// CLA-183, card CS: what Search shows. `searchResults` follows the query and the library
+    /// (the reducer computes it in one place). `searchPicked`: a row is selected; until the
+    /// wheel or Return, none is, and `Frame.sel` stays 0.
+    public var searchQuery = ""
+    public var searchResults: [Search.Result] = []
+    public var searchPicked = false
     /// Card CR: On This Mac read the whole library, and it has no song that can play: no song,
     /// or only songs whose files are missing (`localOnDrive`).
     public var localEmpty: Bool {
@@ -1024,7 +1037,7 @@ public struct AppState: Equatable, Sendable {
     /// rows get shorter instead. The song panel's bar takes a row of the panel.
     public var shownRows: Int {
         switch top.screen {
-        case .tracks, .albums, .activation: return trackRows  // two-line rows (card BF.2: Activation's row)
+        case .tracks, .albums, .activation, .search: return trackRows  // two-line rows (card BF.2: Activation's row; card CS)
         case .albumPanel: return showsPanelBar ? panelRows - 1 : panelRows
         default: return showsBar ? visibleRows - 1 : visibleRows
         }
@@ -1209,8 +1222,9 @@ public struct AppState: Equatable, Sendable {
         case .main:
             (current == nil ? [] : [.nowPlaying])
                 + (words.libraryRows
-                    ? [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .settings]  // card BN
-                    : [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings])
+                    ? [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs]  // card BN
+                    : [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs])
+                + (searchOn ? [.search] : []) + [.settings]  // CLA-183, card CS
         case .playlists:
             // Card BN: Favorite Songs first. Card CR: none On This Mac, whose read has no favorites.
             (words.libraryRows && service != .local ? [.playlist(Playlist.likedSongsID)] : [])
@@ -1234,6 +1248,7 @@ public struct AppState: Equatable, Sendable {
             ((appleMusicFirst ? [.appleMusic, .spotify] : [.spotify, .appleMusic]) + (localOn ? [.local] : [])).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
         case .noSongs: [.checkLibrary, .pickYourMusic]  // card CR
+        case .search: searchResults.map(Row.init)  // CLA-183
         case .betaSoon, .betaNew: [.getNewBeta, .later]
         case .activate:  // card BW
             switch activateStep {
@@ -1339,5 +1354,17 @@ extension Track {
             let kb = (b.element.disc ?? 1, b.element.number ?? Int.max, b.offset)
             return ka < kb
         }.map(\.element)
+    }
+}
+
+extension Row {
+    /// CLA-183: the row of one Search result.
+    init(_ result: Search.Result) {
+        switch result.kind {
+        case .artist: self = .artist(result.id)
+        case .album: self = .album(result.id)
+        case .playlist: self = .playlist(result.id)
+        case .song: self = .foundSong(result.id, list: result.list ?? Playlist.libraryID)
+        }
     }
 }

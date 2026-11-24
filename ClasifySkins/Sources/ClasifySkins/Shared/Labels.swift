@@ -47,6 +47,7 @@ enum Labels {
         case .activate: "Activate"  // CLA-128
         case .activation: "Activation"  // CLA-141, card BF.2
         case .noSongs: state.words.service  // card CR: "On This Mac"
+        case .search: "Search"  // CLA-183, card CS
         }
     }
 
@@ -129,6 +130,14 @@ enum Labels {
         case .useSpotify: return RowText(label: "Use Spotify")
         case .checkLibrary: return RowText(label: "Check again")  // card CR
         case .pickYourMusic: return RowText(label: "Pick Your Music")
+        // CLA-183, card CS: the main menu's Search row, and a found song (its look comes with the skin work).
+        case .search: return RowText(label: "Search", opens: true)
+        case .foundSong(let id, let list):
+            let ref = TrackRef(playlist: list, track: id)
+            let track = state.track(ref)
+            return RowText(
+                label: track?.title ?? "", detail: track?.artist ?? "", playing: state.current == ref,
+                missing: track?.missing ?? false)
         // Card BI v2: no chevrons.
         case .getNewBeta: return RowText(label: "Get New Beta")
         case .later: return RowText(label: "Later")

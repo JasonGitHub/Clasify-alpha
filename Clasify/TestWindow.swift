@@ -154,6 +154,7 @@ private struct TestPanel: View {
         case .activate: "Activate"
         case .activation: "Activation"
         case .noSongs: "On This Mac"
+        case .search: "Search"
         }
     }
 
@@ -194,6 +195,9 @@ private struct TestPanel: View {
         case .useSpotify: "Use Spotify"
         case .checkLibrary: "Check again"
         case .pickYourMusic: "Pick Your Music"
+        case .search: "Search"
+        case .foundSong(let id, let list):
+            state.track(TrackRef(playlist: list, track: id)).map { "\($0.title) — \($0.artist)" } ?? id
         case .getNewBeta: "Get New Beta"
         case .later: "Later"
         case .quit: "Quit"

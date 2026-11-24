@@ -36,6 +36,9 @@ public struct Settings: Equatable, Sendable {
     /// CLA-179: the test switch for local music, UserDefaults `local.on`, off by default. Read
     /// only: Clasify never writes it. Off, a saved On This Mac service is Spotify.
     public var localOn = false
+    /// CLA-183: the test switch for Search on the device, UserDefaults `search.on`, off by
+    /// default. Read only, like `localOn`.
+    public var searchOn = false
     public var setupDone = false
     public var hintsDone: Set<Hint> = []
     public var tourOn = false
@@ -72,6 +75,7 @@ public struct Settings: Equatable, Sendable {
         static let menuBar = "settings.menuBar"
         static let service = "settings.service"
         static let localOn = "local.on"
+        static let searchOn = "search.on"
         static let setupDone = "setup.done"
         static let hintsDone = "hints.done"
         static let tourOn = "hints.tour"
@@ -102,6 +106,7 @@ public struct Settings: Equatable, Sendable {
         // `defaults write … local.on -bool YES` reads back as "1", `-string true` as "true".
         localOn = ["true", "1"].contains(store.string(forKey: Key.localOn))
         if service == .local && !localOn { service = .spotify }
+        searchOn = ["true", "1"].contains(store.string(forKey: Key.searchOn))
         if let v = store.string(forKey: Key.setupDone).flatMap({ Bool($0) }) { setupDone = v }
         if setupDone && store.string(forKey: Key.deviceColor).flatMap(DeviceColor.init(rawValue:)) == nil { deviceColor = .silver }
         if let v = store.string(forKey: Key.hintsDone) {  // the raw values, with commas; unknown ones are dropped
@@ -170,6 +175,7 @@ extension AppState {
             (v.nowPlayingBar, v.menuBar) = (nowPlayingBar, menuBar)
             v.service = service
             v.localOn = localOn
+            v.searchOn = searchOn
             v.setupDone = setupDone
             v.hintsDone = hintsDone
             (v.tourOn, v.tourHides) = (tourOn, tourHides)
@@ -187,6 +193,7 @@ extension AppState {
             (nowPlayingBar, menuBar) = (newValue.nowPlayingBar, newValue.menuBar)
             service = newValue.service
             localOn = newValue.localOn
+            searchOn = newValue.searchOn
             setupDone = newValue.setupDone
             hintsDone = newValue.hintsDone
             (tourOn, tourHides) = (newValue.tourOn, newValue.tourHides)

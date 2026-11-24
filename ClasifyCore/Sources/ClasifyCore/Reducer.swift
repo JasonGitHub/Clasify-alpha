@@ -827,6 +827,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             guard s.top.screen.isList, !s.top.loading, !s.top.error else { return }
             let n = s.rows(for: s.top).count
             guard n > 0 else { return }
+            // CLA-183: on Search, the first turn selects the first row.
+            if s.top.screen == .search && !s.searchPicked { s.searchPicked = true; s.top.sel = 0; s.top.off = 0; return }
             // On a list, quick steps move more rows. On Now Playing, a step stays one step.
             let sel = clamp(s.top.sel + d * s.wheelSpeed.rows(at: now), 0, n - 1)
             s.top.off = clamp(s.top.off, sel - s.shownRows + 1, sel)
@@ -896,6 +898,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             guard s.top.screen.isList, !s.top.loading else { return }
             let rows = s.rows(for: s.top)
             guard rows.indices.contains(s.top.sel) else { return }
+            // CLA-183: on Search, the first Return selects the first row; the next opens it.
+            if s.top.screen == .search && !s.searchPicked { s.searchPicked = true; s.top.sel = 0; s.top.off = 0; return }
             switch rows[s.top.sel] {
             case .logIn:
                 s.authAttempt += 1
@@ -930,6 +934,12 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .likedSongs: open(.tracks(playlist: Playlist.likedSongsID))
             case .shuffleSongs: shuffleSongs()
             case .settings: s.stack.append(Frame(screen: .settings)); s.pendingService = nil
+            case .search:  // CLA-183: an empty query and no row selected
+                s.searchQuery = ""; s.searchPicked = false
+                s.stack.append(Frame(screen: .search))
+            case .foundSong(let id, let list):
+                if s.offline { return toast(offlineStart) }
+                play(list, id)
             case .playlist(let id): open(.tracks(playlist: id))
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
@@ -1045,7 +1055,16 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 s.startToken = s.tok; s.startList = id; s.startOnCovers = true; s.shuffleToken = nil
                 return fetch(.albumPanel(album: id))
             }
+            // CLA-183, card CS: on Search, Play plays the selected result; with none selected, nothing.
+            if s.top.screen == .search && !s.searchPicked { return }
             if s.top.screen.isList, !s.top.loading, case let rows = s.rows(for: s.top), rows.indices.contains(s.top.sel) {
+                if s.top.screen == .search {
+                    switch rows[s.top.sel] {
+                    case .artist(let id): return playList(id, on: .tracks(playlist: id))
+                    case .foundSong(let id, let list): return s.offline ? toast(offlineStart) : play(list, id)
+                    default: break
+                    }
+                }
                 switch rows[s.top.sel] {
                 case .playlist(let id), .album(let id): return playList(id, on: .tracks(playlist: id))
                 default: break
@@ -1539,7 +1558,23 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     let rowBefore = s.halfRow
     let wasOffline = s.offline
     let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
+    let searchBefore = (s.searchQuery, s.library, s.artists, s.loadedTracks, s.stack.contains { $0.screen == .search })
     apply()
+    // CLA-183: the one place where Search's results follow the query and the library data,
+    // while Search is open. A selection past the new end moves to the last row.
+    if s.stack.contains(where: { $0.screen == .search }) {
+        if !searchBefore.4 || searchBefore.0 != s.searchQuery || searchBefore.1 != s.library
+            || searchBefore.2 != s.artists || searchBefore.3 != s.loadedTracks {
+            s.searchResults = Search.results(s.searchQuery, in: s)
+            for f in s.stack.indices where s.stack[f].screen == .search {
+                s.stack[f].sel = min(s.stack[f].sel, max(s.searchResults.count - 1, 0))
+                s.stack[f].off = min(s.stack[f].off, s.stack[f].sel)
+            }
+            if s.searchResults.isEmpty { s.searchPicked = false }
+        }
+    } else if searchBefore.4 {
+        s.searchResults = []; s.searchQuery = ""; s.searchPicked = false
+    }
     // CLA-179, card CR: On This Mac reads the whole library when its main menu opens, also with
     // no covers. Empty, "No songs yet" takes the main menu's place until a read finds songs.
     let library = Playlist.libraryID
