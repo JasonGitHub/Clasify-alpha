@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import ClasifyCore
 
@@ -6,10 +7,11 @@ import Testing
     static func item(
         _ pid: UInt64, _ title: String, artist: String = "Band", album: String = "Record", albumID: UInt64 = 100,
         albumArtist: String? = nil, disc: Int? = nil, number: Int? = nil, cover: Bool = true, playable: Bool = true
-    ) -> LocalItem {
-        LocalItem(
+    ) -> LocalSong {
+        LocalSong(
             persistentID: pid, title: title, artist: artist, album: album, albumID: albumID, albumArtist: albumArtist,
-            disc: disc, number: number, duration: 180, hasCover: cover, playable: playable)
+            disc: disc, number: number, duration: 180, hasCover: cover,
+            url: playable ? URL(fileURLWithPath: "/Music/\(pid).m4a") : nil)
     }
 
     @Test func idsGoBothWaysAndNeverMixWithOtherServices() {
@@ -63,7 +65,7 @@ import Testing
     }
 
     @Test func theLibraryIsAlbumsByNameWithSongsInDiscAndTrackOrder() {
-        let catalog = LocalCatalog(items: [
+        let catalog = LocalCatalog(songs: [
             Self.item(1, "Z2", album: "Zebra", albumID: 20, number: 2),
             Self.item(2, "No album", album: ""),
             Self.item(3, "A1-2", album: "apple", albumID: 10, disc: 1, number: 2),
@@ -79,14 +81,14 @@ import Testing
     }
 
     @Test func songsAreInTitleOrderAndLikedSongsIsEmpty() {
-        let catalog = LocalCatalog(items: [Self.item(1, "The Bell"), Self.item(2, "apple"), Self.item(3, "Cello")], lists: [])
+        let catalog = LocalCatalog(songs: [Self.item(1, "The Bell"), Self.item(2, "apple"), Self.item(3, "Cello")], lists: [])
         #expect(catalog.tracks(of: Playlist.songsID)?.map(\.title) == ["apple", "The Bell", "Cello"])
         #expect(catalog.tracks(of: Playlist.likedSongsID) == [])
         #expect(catalog.tracks(of: "spotify:playlist:x") == nil)
     }
 
     @Test func artistsAreEverySongAndAlbumArtistInNameOrder() {
-        let catalog = LocalCatalog(items: [
+        let catalog = LocalCatalog(songs: [
             Self.item(1, "One", artist: "The Zoo", album: "Hits", albumID: 1, albumArtist: "Various", number: 2),
             Self.item(2, "Two", artist: "Abba", album: "Hits", albumID: 1, albumArtist: "Various", number: 1),
             Self.item(3, "Three", artist: "Abba", album: "Gold", albumID: 2),
@@ -99,10 +101,24 @@ import Testing
     }
 
     @Test func anEmptyLibraryIsEmptyListsNotAFailure() {
-        let catalog = LocalCatalog(items: [], lists: [])
+        let catalog = LocalCatalog(songs: [], lists: [])
         #expect(catalog.library.isEmpty && catalog.playlists.isEmpty && catalog.artists.isEmpty)
         #expect(catalog.tracks(of: Playlist.libraryID) == [])
         #expect(catalog.tracks(of: Playlist.songsID) == [])
+    }
+
+    @Test func theSourceGivesTheFilesOfAContextFromItsSongs() {
+        let catalog = LocalCatalog(
+            songs: [Self.item(1, "A", number: 1), Self.item(2, "B", number: 2), Self.item(3, "Hidden", playable: false)],
+            lists: [LocalList(persistentID: 9, name: "Mix", items: [2, 3, 1])])
+        let mix = catalog.items(context: LocalID.playlist(9), track: LocalID.track(1))
+        #expect(mix?.map(\.id) == [LocalID.track(2), LocalID.track(1)])
+        #expect(mix?.first?.url == URL(fileURLWithPath: "/Music/2.m4a"))
+        #expect(catalog.items(context: Playlist.libraryID, track: LocalID.track(2))?.count == 2)
+        #expect(catalog.items(context: nil, track: LocalID.track(1))?.map(\.id) == [LocalID.track(1)])
+        #expect(catalog.items(context: nil, track: LocalID.track(3)) == nil)  // cannot play
+        #expect(catalog.items(context: "local:playlist:ff", track: LocalID.track(1)) == nil)  // unknown list
+        #expect(catalog.items(context: LocalID.playlist(9), track: LocalID.track(7)) == nil)  // not in the list
     }
 
     @Test func localWordsUseTheLibraryRowsAndTheLibraryForAlbums() {

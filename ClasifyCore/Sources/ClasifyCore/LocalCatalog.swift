@@ -2,6 +2,8 @@
 /// Apple's iTunesLibrary framework and kept here as plain values. This file only maps and sorts,
 /// so the rules are tested on Linux. Read-only, in memory only.
 
+import Foundation
+
 /// The store IDs of local items: "local:track:<persistent ID in hex>", "local:playlist:<hex>",
 /// "local:album:<hex>" and "local:artist:<name>". No other service's ID starts with "local:".
 public enum LocalID {
@@ -23,7 +25,7 @@ public enum LocalID {
 }
 
 /// One song of the Music app library, as the app read it.
-public struct LocalItem: Equatable, Sendable {
+public struct LocalSong: Equatable, Sendable {
     public var persistentID: UInt64
     public var title: String
     public var artist: String
@@ -34,16 +36,17 @@ public struct LocalItem: Equatable, Sendable {
     public var duration: Double
     /// The library item has a cover that `AppleMusicArt` can read.
     public var hasCover: Bool
-    /// A song in a local file that can play: not protected, not a video, not in the cloud only.
-    public var playable: Bool
+    /// The song's file, when it can play: a song (not a video), not protected, not in the
+    /// cloud only. nil: the song is hidden everywhere.
+    public var url: URL?
 
     public init(
         persistentID: UInt64, title: String, artist: String, album: String, albumID: UInt64, albumArtist: String? = nil,
-        disc: Int? = nil, number: Int? = nil, duration: Double, hasCover: Bool, playable: Bool
+        disc: Int? = nil, number: Int? = nil, duration: Double, hasCover: Bool, url: URL?
     ) {
         self.persistentID = persistentID; self.title = title; self.artist = artist
         self.album = album; self.albumID = albumID; self.albumArtist = albumArtist.flatMap { $0.isEmpty ? nil : $0 }
-        self.disc = disc; self.number = number; self.duration = duration; self.hasCover = hasCover; self.playable = playable
+        self.disc = disc; self.number = number; self.duration = duration; self.hasCover = hasCover; self.url = url
     }
 }
 
@@ -70,11 +73,14 @@ public struct LocalCatalog: Sendable {
     public let artists: [Playlist]
     private let lists: [String: [Track]]
     private let byID: [String: Track]
+    private let urls: [String: URL]
 
-    public init(items: [LocalItem], lists: [LocalList]) {
-        let tracks = items.filter(\.playable).map { Self.track(from: $0) }
+    public init(songs: [LocalSong], lists: [LocalList]) {
+        let playable = songs.filter { $0.url != nil }
+        let tracks = playable.map { Self.track(from: $0) }
         let byID = Dictionary(tracks.map { ($0.id, $0) }) { first, _ in first }
         self.byID = byID
+        urls = Dictionary(playable.compactMap { song in song.url.map { (LocalID.track(song.persistentID), $0) } }) { first, _ in first }
         // Albums by name, then songs in disc and track order; songs with no album last.
         var albums: [String: (album: Album, songs: [Track])] = [:]
         var loose: [Track] = []
@@ -126,9 +132,19 @@ public struct LocalCatalog: Sendable {
     /// One song that can play, by its store ID.
     public func track(_ id: String) -> Track? { byID[id] }
 
+    /// `LocalSource`: the files of `context` in its order, to play from `track`. Any list that
+    /// `tracks(of:)` knows, or nil for the song alone. nil when the context is unknown or does
+    /// not hold the song.
+    public func items(context: String?, track: String) -> [LocalItem]? {
+        let songs: [Track]?
+        if let context { songs = tracks(of: context) } else { songs = byID[track].map { [$0] } }
+        guard let songs, songs.contains(where: { $0.id == track }) else { return nil }
+        return songs.compactMap { song in urls[song.id].map { LocalItem(id: song.id, url: $0) } }
+    }
+
     /// The store `Track` of a song. Its album's artist is the album artist, else the song's
     /// artist. Covers come from the library item (`LibraryCover`), as for Apple Music.
-    static func track(from item: LocalItem) -> Track {
+    static func track(from item: LocalSong) -> Track {
         let album = item.album.isEmpty ? nil : Album(
             id: LocalID.album(item.albumID == 0 ? item.persistentID : item.albumID), name: item.album,
             artist: item.albumArtist ?? item.artist)

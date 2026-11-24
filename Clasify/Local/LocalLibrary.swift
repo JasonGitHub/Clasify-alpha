@@ -6,9 +6,9 @@ import iTunesLibrary
 /// iTunesLibrary framework, as `AppleMusicArt` reads its covers. Read-only: it never changes the
 /// library. One read a session, kept in memory; nothing goes to disk. There is no login: an
 /// empty library is empty lists, not a failed login. The lists come from `LocalCatalog`.
-/// Not wired into the app yet.
+/// It is also the `LocalSource` of `LocalPlayer`. Not wired into the app yet.
 @MainActor
-final class LocalLibrary: Library {
+final class LocalLibrary: Library, LocalSource {
     /// Placeholder words until the design card names them.
     let words = LibraryWords.local
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
@@ -49,6 +49,11 @@ final class LocalLibrary: Library {
 
     func prefetch() async { _ = await catalog() }
 
+    /// `LocalSource`: the song files that `LocalPlayer` plays, from the same read.
+    func items(context: String?, track: String) async -> [LocalItem]? {
+        await catalog()?.items(context: context, track: track)
+    }
+
     /// No account: the library is there or it is empty. `page` is for Spotify.
     func logIn(page: String?) async -> LoginResult { .ok }
 
@@ -76,7 +81,7 @@ enum LocalMusicRead {
         let lists = library.allPlaylists.filter(isUserList).map {
             LocalList(persistentID: $0.persistentID.uint64Value, name: $0.name, items: $0.items.map { $0.persistentID.uint64Value })
         }
-        return LocalCatalog(items: items, lists: lists)
+        return LocalCatalog(songs: items, lists: lists)
     }
 
     /// A playlist that the person made: not the whole library, not one of the Music app's own
@@ -85,17 +90,17 @@ enum LocalMusicRead {
         !list.isPrimary && list.distinguishedKind == .kindNone && list.kind != .folder && list.isVisible
     }
 
-    /// The plain values of one library item. It can play when it is a song (not a video), not
-    /// protected (Apple Music downloads, old FairPlay files), and has a file on this Mac (not
-    /// in the cloud only).
-    nonisolated static func item(_ item: ITLibMediaItem) -> LocalItem {
+    /// The plain values of one library item. It has a file URL only when it can play: a song
+    /// (not a video), not protected (Apple Music downloads, old FairPlay files), and a file on
+    /// this Mac (not in the cloud only).
+    nonisolated static func item(_ item: ITLibMediaItem) -> LocalSong {
         let album = item.album
         let playable = item.mediaKind == .kindSong && !item.isVideo && !item.isDRMProtected
-            && item.locationType == .file && item.location != nil
-        return LocalItem(
+            && item.locationType == .file
+        return LocalSong(
             persistentID: item.persistentID.uint64Value, title: item.title, artist: item.artist?.name ?? "",
             album: album.title ?? "", albumID: album.persistentID.uint64Value, albumArtist: album.albumArtist,
             disc: album.discNumber > 0 ? album.discNumber : nil, number: item.trackNumber > 0 ? item.trackNumber : nil,
-            duration: Double(item.totalTime) / 1000, hasCover: item.hasArtworkAvailable, playable: playable)
+            duration: Double(item.totalTime) / 1000, hasCover: item.hasArtworkAvailable, url: playable ? item.location : nil)
     }
 }
