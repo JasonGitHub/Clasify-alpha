@@ -122,7 +122,8 @@ func sampleState() -> AppState {
             (.mailBusy, .init(headline: "Mail is busy", line: "Many people are joining.\nPlease try again later."), .badge(.clock, word: "Busy")),
             (.full, .init(headline: "The beta is full", line: "You’re on the list.\nWe’ll write to you."), .badge(.people, word: "Full")),
             (.off, .init(headline: "Activation is off", line: "Write to us at\nfeedback@getmypod.app"), .badge(.power, word: "Off")),
-            (.offline, .init(headline: "That didn’t work", line: "No problem, it happens."), .mark(ok: false, word: "Offline")),
+            (.offline, .init(headline: "Can’t connect", line: "Check your internet,\nthen try again.",
+                             footnote: "On a VPN or filter? Allow getmypod.app there."), .mark(ok: false, word: "Offline")),  // BW.1
         ]
         for (answer, text, mark) in others {  // 324 to 327
             s.activation = answer

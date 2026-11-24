@@ -201,7 +201,9 @@ enum Labels {
         case .mailBusy: SetupWords(headline: "Mail is busy", line: "Many people are joining.\nPlease try again later.")
         case .full: SetupWords(headline: "The beta is full", line: "You’re on the list.\nWe’ll write to you.")
         case .off: SetupWords(headline: "Activation is off", line: "Write to us at\nfeedback@getmypod.app")
-        case .offline: SetupWords(headline: "That didn’t work", line: "No problem, it happens.")  // as 171
+        case .offline:  // card BW.1: and where a VPN or filter can block us
+            SetupWords(headline: "Can’t connect", line: "Check your internet,\nthen try again.",
+                       footnote: "On a VPN or filter? Allow getmypod.app there.")
         }
     }
 
