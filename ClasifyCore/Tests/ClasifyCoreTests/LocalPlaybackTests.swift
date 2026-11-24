@@ -28,7 +28,7 @@ import Testing
             }
             return commands
         }
-        mutating func load(_ track: Int, autoplay: Bool = true, generation: Int = 1) -> [Command] {
+        @discardableResult mutating func load(_ track: Int, autoplay: Bool = true, generation: Int = 1) -> [Command] {
             on(.load(track: "s\(track)", context: "c", autoplay: autoplay, generation: generation))
         }
         /// Loads song `at` of `n`, it opens, and the next song is queued.
