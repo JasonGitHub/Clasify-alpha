@@ -776,6 +776,8 @@ public struct AppState: Equatable, Sendable {
     public var menuBar = true
     /// The music service that plays and that the lists come from (CLA-103). Spotify by default.
     public var service = MusicService.spotify
+    /// CLA-179: the `local.on` test switch: Pick Your Music and the Service row offer On This Mac.
+    public var localOn = false
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
     public var aboutAt: Double = 0
     /// About is one page that scrolls 3 wheel steps (card BS, changes 294 and 295; card BF.2).
@@ -1185,14 +1187,17 @@ public struct AppState: Equatable, Sendable {
                     ? [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .settings]  // card BN
                     : [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings])
         case .playlists:
-            (words.libraryRows ? [.playlist(Playlist.likedSongsID)] : [])  // card BN: Favorite Songs first
+            // Card BN: Favorite Songs first. Card CR: none On This Mac, whose read has no favorites.
+            (words.libraryRows && service != .local ? [.playlist(Playlist.likedSongsID)] : [])
                 + library.filter { !Playlist.isHidden($0.id) }.map { .playlist($0.id) }
         case .artists: artists.map { .artist($0.id) }
         case .albums, .coverFlow: albums.map { .album($0.id) }
         case .tracks(let pl), .albumPanel(let pl): tracks(in: pl).map { .track($0.id) }
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
         // CLA-174: no Now Playing Bar row; the saved setting still shows the bar.
-        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .menuBar, .about, .logOut]
+        // Card CR: On This Mac has no account, so no Log out.
+        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .menuBar, .about]
+            + (service == .local ? [] : [.logOut])
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]
@@ -1200,7 +1205,8 @@ public struct AppState: Equatable, Sendable {
         case .spotifyApp: [.getSpotifyApp]
         // Card BM, change 259: Apple Music has "Use Spotify" in place of "Log out".
         case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
-        case .pickMusic: (appleMusicFirst ? [.appleMusic, .spotify] : MusicService.allCases).map { .pickService($0) }
+        case .pickMusic:  // card CR: On This Mac is the third row
+            ((appleMusicFirst ? [.appleMusic, .spotify] : [.spotify, .appleMusic]) + (localOn ? [.local] : [])).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
         case .betaSoon, .betaNew: [.getNewBeta, .later]
         case .activate:  // card BW

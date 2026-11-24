@@ -4,12 +4,15 @@
 public final class ServiceLibrary: Library {
     private let spotify: any Library
     private let appleMusic: any Library
+    /// CLA-179: the Music app library on this Mac.
+    private let local: any Library
     /// The active service. A change sends nothing: the store logs in to the new one.
     public var service: MusicService
 
-    public init(spotify: any Library, appleMusic: any Library, service: MusicService) {
+    public init(spotify: any Library, appleMusic: any Library, local: any Library, service: MusicService) {
         self.spotify = spotify
         self.appleMusic = appleMusic
+        self.local = local
         self.service = service
     }
 
@@ -17,13 +20,14 @@ public final class ServiceLibrary: Library {
         switch service {
         case .spotify: spotify
         case .appleMusic: appleMusic
+        case .local: local
         }
     }
 
     public var words: LibraryWords { active.words }
-    /// Both libraries report to the store; only the active one reads.
+    /// All libraries report to the store; only the active one reads.
     public var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? {
-        didSet { spotify.onProgress = onProgress; appleMusic.onProgress = onProgress }
+        didSet { spotify.onProgress = onProgress; appleMusic.onProgress = onProgress; local.onProgress = onProgress }
     }
 
     public func playlists() async -> [Playlist]? { await active.playlists() }

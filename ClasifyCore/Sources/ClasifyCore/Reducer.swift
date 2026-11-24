@@ -596,13 +596,13 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         s.premiumFound = false; s.premiumAt = 0
     }
     /// Signs out and forgets the login. Apple Music goes back to Pick Your Music, because
-    /// Clasify cannot sign out the Mac's Apple account (card BM, change 263).
+    /// Clasify cannot sign out the Mac's Apple account (card BM, change 263); On This Mac too.
     func logOut() {
         // CLA-120: Log out can come while the stored login is checked at launch: its late
         // result is stale then.
         if s.restoring { s.restoring = false; s.authAttempt += 1 }
         signOut(); fx.append(.logOut)
-        if s.service == .appleMusic { s.stack = [pickMusic()] }
+        if s.service != .spotify { s.stack = [pickMusic()] }
     }
     /// Pick Your Music, on the active service's row (card BM, change 257). When the Spotify app
     /// was not found (or not checked yet), Apple Music is the top row and is selected (CLA-103).
@@ -922,7 +922,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
                 if let list = s.top.screen.songList { play(list, id) }
-            case .service: s.pendingService = (s.pendingService ?? s.service).other  // applied when Settings closes
+            case .service: s.pendingService = (s.pendingService ?? s.service).next(localOn: s.localOn)  // applied when Settings closes
             case .shuffle: toggleShuffle()
             case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist
@@ -1093,7 +1093,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.current != nil && gen == s.playGen { s.t = t; s.beforeLoad = nil; s.loadPending = false }  // the load plays
 
         case .volumeReported(let percent):  // Spotify's volume stays in `volume` / `spotifyVolume`
-            guard s.service == .appleMusic else { return }
+            guard s.service != .spotify else { return }
             s.volume = clamp(percent, 0, 100)
 
         case .trackEnded(let gen):  // the engine already stopped; Repeat One and All never end
