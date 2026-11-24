@@ -55,11 +55,15 @@ final class LocalPlayer: Player {
         player.actionAtItemEnd = .advance
         let center = NotificationCenter.default
         observers = [
+            // The queue is .main, so these run on the main actor. Only the item's identity (Sendable)
+            // goes in: `Notification` is not Sendable.
             center.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil, queue: .main) { [weak self] note in
-                MainActor.assumeIsolated { self?.ended(note.object as? AVPlayerItem) }
+                let item = (note.object as? AVPlayerItem).map(ObjectIdentifier.init)
+                MainActor.assumeIsolated { self?.ended(item) }
             },
             center.addObserver(forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: nil, queue: .main) { [weak self] note in
-                MainActor.assumeIsolated { self?.broke(note.object as? AVPlayerItem) }
+                let item = (note.object as? AVPlayerItem).map(ObjectIdentifier.init)
+                MainActor.assumeIsolated { self?.broke(item) }
             },
         ]
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
@@ -243,8 +247,8 @@ final class LocalPlayer: Player {
     }
 
     /// The current song played to its end.
-    private func ended(_ item: AVPlayerItem?) {
-        guard let item, item === currentItem, !loading, !opening, var order = queue else { return }
+    private func ended(_ item: ObjectIdentifier?) {
+        guard let item, item == currentItem.map(ObjectIdentifier.init), !loading, !opening, var order = queue else { return }
         guard let index = order.trackEnded() else { return endOfContext() }
         queue = order
         if let up = upcoming, up.index == index {
@@ -262,8 +266,8 @@ final class LocalPlayer: Player {
     }
 
     /// The current song stopped with an error (its file went away, its drive was disconnected).
-    private func broke(_ item: AVPlayerItem?) {
-        guard let item, item === currentItem, !loading, !opening, var order = queue else { return }
+    private func broke(_ item: ObjectIdentifier?) {
+        guard let item, item == currentItem.map(ObjectIdentifier.init), !loading, !opening, var order = queue else { return }
         send(.playbackFailed(Self.cantPlay, generation: generation))
         guard order.next() != nil else { return stopPlayer() }
         queue = order
