@@ -24,6 +24,9 @@ public struct LocalNowPlaying: Equatable, Sendable {
     public private(set) var playing = false
     /// Seconds into the song when it last started, paused, played or moved.
     public private(set) var elapsed: Double = 0
+    /// Counts the times `elapsed` was set. A new time goes to the Mac even when it equals the
+    /// last one (Codex on #447: Repeat One starts the same song at 0 again; a seek back).
+    public private(set) var anchors = 0
 
     public init() {}
 
@@ -44,6 +47,10 @@ public struct LocalNowPlaying: Equatable, Sendable {
     /// call; `time` is where the audio is now, in seconds (for Play and Pause).
     public mutating func follow(_ commands: [LocalPlayback.Command], of playback: LocalPlayback, time: Double) {
         for command in commands {
+            switch command {
+            case .start, .adoptNext, .play, .pause, .seek, .stopAudio: anchors &+= 1
+            default: break
+            }
             switch command {
             case .start(_, let seek, let play): (playing, elapsed) = (play, seek ?? 0)
             case .adoptNext: elapsed = 0

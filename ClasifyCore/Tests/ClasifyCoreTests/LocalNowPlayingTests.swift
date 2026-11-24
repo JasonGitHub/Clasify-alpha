@@ -103,6 +103,24 @@ import Testing
         #expect(d.now.info == LocalNowPlaying.Info(title: "One", artist: "Band", album: "Record", duration: 180, elapsed: 0, rate: 1))
     }
 
+    /// Codex on #447: Repeat One plays the same song again from 0, so the Mac gets a new time.
+    @Test func aRepeatOfTheSameSongIsANewTime() {
+        var d = Driver()
+        d.now.active = true
+        d.on(.repeatMode(.one))
+        d.on(.load(track: "s0", context: "c", autoplay: true, generation: 1))
+        d.on(.read(id: d.readID, items: Self.songs))
+        d.on(.checked(id: d.checkID, ok: true))
+        d.on(.prepared(id: d.prepareID, ok: true))
+        let before = d.now
+        d.on(.songEnded(queued: true))
+        #expect(d.now.song?.id == "s0" && d.now.info?.elapsed == 0)
+        #expect(d.now != before)  // so `LocalPlayer` shows it again
+        let again = d.now
+        d.on(.seek(0, generation: 1))
+        #expect(d.now != again)
+    }
+
     /// CTO on #445: after the end of the list the song rests, paused, so the Play key still comes
     /// to myPod (not to the Music app). Codex on #445: Play plays and Pause does nothing.
     @Test func afterTheEndTheSongRestsAsPaused() {
