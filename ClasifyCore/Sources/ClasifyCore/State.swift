@@ -801,15 +801,31 @@ public struct AppState: Equatable, Sendable {
     public var localOn = false
     /// CLA-183: the `search.on` test switch: the main menu has a Search row.
     public var searchOn = false
-    /// CLA-183, card CS: what Search shows. `searchResults` follows the query and the library
-    /// (the reducer computes it in one place). `searchPicked`: a row is selected; until the
-    /// wheel or Return, none is, and `Frame.sel` stays 0.
-    public var searchQuery = ""
-    public var searchResults: [Search.Result] = []
-    public var searchPicked = false
+    /// CLA-183, card CS: what Search shows, on the heap (`SearchState`), so AppState grows by
+    /// one pointer only. Each byte of AppState costs about 140 bytes of the reducer's debug stack
+    /// frame, which is near the 512 KB of a macOS test thread.
+    var searchBox = Heap(SearchState())
+    /// What is typed on Search. `searchResults` follows it and the library (the reducer computes
+    /// it in one place). `searchPicked`: a row is selected; until the wheel or Return, none is,
+    /// and `Frame.sel` stays 0.
+    public var searchQuery: String {
+        get { searchBox.value.query }
+        set { searchBox.value.query = newValue }
+    }
+    public var searchResults: [Search.Result] {
+        get { searchBox.value.results }
+        set { searchBox.value.results = newValue }
+    }
+    public var searchPicked: Bool {
+        get { searchBox.value.picked }
+        set { searchBox.value.picked = newValue }
+    }
     /// CLA-183: the library's names for Search, made when it opens and when library data
     /// arrives while it is open (`Search.Index`), so each key is fast. nil while it is closed.
-    public var searchIndex: Search.Index?
+    public var searchIndex: Search.Index? {
+        get { searchBox.value.index }
+        set { searchBox.value.index = newValue }
+    }
     /// Card CR: On This Mac read the whole library, and it has no song that can play: no song,
     /// or only songs whose files are missing (`localOnDrive`).
     public var localEmpty: Bool {
@@ -1378,4 +1394,22 @@ extension Search {
     /// A key that types on Search: a letter (also é, ñ, ü), a number or a space. Input methods
     /// (Japanese, Chinese, Korean) are a known limit: the device takes keys, not a text field.
     public static func types(_ c: Character) -> Bool { c.isLetter || c.isNumber || c == " " }
+}
+
+/// CLA-183: Search's part of AppState.
+struct SearchState: Equatable, Sendable {
+    var query = ""
+    var results: [Search.Result] = []
+    var picked = false
+    var index: Search.Index?
+}
+
+/// A value kept on the heap, so the struct that holds it stays one pointer bigger only.
+indirect enum Heap<Value: Equatable & Sendable>: Equatable, Sendable {
+    case boxed(Value)
+    init(_ value: Value) { self = .boxed(value) }
+    var value: Value {
+        get { switch self { case .boxed(let v): v } }
+        set { self = .boxed(newValue) }
+    }
 }
