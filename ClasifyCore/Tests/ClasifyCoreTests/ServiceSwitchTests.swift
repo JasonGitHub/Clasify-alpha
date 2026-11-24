@@ -42,9 +42,9 @@ import Testing
         send(&s, .restored(token: s.authAttempt, ok: true))
         #expect(s.stack.count == 1 && s.top.screen == .main && s.top.sel == 0)
         #expect(s.current == nil && !s.isPlaying && s.signedIn)  // no empty Now Playing
-        // Back to Spotify the same way.
+        // Back to Spotify the same way, past On This Mac.
         openSettings(&s)
-        send(&s, .select)
+        send(&s, .select, .select)
         #expect(send(&s, .menu) == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
         #expect(s.service == .spotify)
     }
@@ -65,7 +65,7 @@ import Testing
         send(&s, .volumeReported(130))
         #expect(s.volume == 100)
         openSettings(&s)
-        send(&s, .select)
+        send(&s, .select, .select)  // past On This Mac
         #expect(send(&s, .menu) == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
         #expect(s.volume == 35 && s.spotifyVolume == 35)
     }
