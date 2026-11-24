@@ -4,7 +4,8 @@ import Testing
 @testable import ClasifySkins
 
 /// CLA-183, card CS: snapshots of the Search screen. Points: the field from y 57 to 79, the 34
-/// point result rows from y 83, and the letter strip's blue box around (183, 235).
+/// point result rows from y 83, and the letter strip's blue box from x 169 to 197 and y 227 to
+/// 252, with a white A in its middle.
 extension PocketSnapshotTests {
     static func searchRowCenter(_ index: Int) -> Int { 83 + 17 + 34 * index }
 
@@ -37,7 +38,7 @@ extension PocketSnapshotTests {
         let s = onSearch("")
         let shot = try render(s, "search-empty")
         #expect(shot.isLight(Self.screenLeft + 200, 68))  // the white field
-        #expect(shot.isBlue(Self.screenLeft + 150, 235))  // the strip's box, on A
+        #expect(shot.isBlue(Self.screenLeft + 140, 239))  // the strip's box, left of its white A
         #expect(!shot.isBlue(Self.screenLeft + 150, Self.searchRowCenter(0)))
         #expect(Labels.searchEmpty == Labels.SearchWords(title: "Type to search", line: "Find songs, albums, artists and playlists."))
     }
