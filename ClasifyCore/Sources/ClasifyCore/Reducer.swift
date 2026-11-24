@@ -341,8 +341,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if s.startToken == token && !s.top.error {  // CLA-173: a list start waited for this read
             s.startToken = nil
             // Now Playing takes the loading frame's place, so MENU goes back to the row. An
-            // empty list stays on screen: there is nothing to play.
-            if !s.tracks(in: s.startList).isEmpty { s.stack.removeLast(); startList(s.startList) }
+            // empty list stays on screen: there is nothing to play. So does a list with only
+            // missing songs (card CR): its gray rows show.
+            if s.tracks(in: s.startList).contains(where: { !$0.missing }) { s.stack.removeLast(); startList(s.startList) }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {
@@ -647,7 +648,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     }
     /// Plays the list in shuffle, from a random song.
     func shuffle(_ list: String) {
-        let songs = s.tracks(in: list)
+        let songs = s.tracks(in: list).filter { !$0.missing }  // card CR: never start on a missing file
         guard !songs.isEmpty else { return }
         s.shuffle = true  // before play, so the engine gets shuffle on with the load
         play(list, songs[env.random(songs.count)].id)
@@ -676,7 +677,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// then takes its place. An empty list opens. Cover Flow's covers: see `.play`.
     func playList(_ id: String, on screen: Screen) {
         if s.offline { return toast(offlineStart) }
-        if s.isLoaded(screen) && !s.tracks(in: id).isEmpty {
+        if s.isLoaded(screen) && s.tracks(in: id).contains(where: { !$0.missing }) {  // card CR: else the gray rows show
             refreshIfStale(screen)  // as opening it would: an old copy reads again behind Now Playing
             return startList(id)
         }
@@ -686,7 +687,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// Starts a read list as a song pick does: from its first song, or with Shuffle on from a
     /// random song, so the queue is the same as a pick in that list. An empty list plays nothing.
     func startList(_ id: String) {
-        let songs = s.tracks(in: id)
+        let songs = s.tracks(in: id).filter { !$0.missing }  // card CR: never start on a missing file
         guard !songs.isEmpty else { return }
         play(id, songs[s.shuffle ? env.random(songs.count) : 0].id)
     }
@@ -723,6 +724,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         s.coverFlowAlbum = albums[sel].id
     }
     let offlineStart = "You’re offline right now"
+    /// Card CR: the toast on a gray row, a local song whose file is missing.
+    let missingFile = "Can’t find this song’s file"
     func toggleShuffle() { s.shuffle.toggle(); fx.append(.setShuffle(s.shuffle)) }
     func setRepeat(_ mode: RepeatMode) {
         if mode != s.repeatMode { s.repeatMode = mode; fx.append(.setRepeat(mode)) }
@@ -921,7 +924,10 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .playlist(let id): open(.tracks(playlist: id))
             case .track(let id):
                 if s.offline { return toast(offlineStart) }
-                if let list = s.top.screen.songList { play(list, id) }
+                guard let list = s.top.screen.songList else { return }
+                // Card CR: a gray row (its file is missing) plays nothing.
+                if s.tracks(in: list).first(where: { $0.id == id })?.missing == true { return toast(missingFile) }
+                play(list, id)
             case .service: s.pendingService = (s.pendingService ?? s.service).next(localOn: s.localOn)  // applied when Settings closes
             case .shuffle: toggleShuffle()
             case .repeatMode: setRepeat(s.repeatMode.next)

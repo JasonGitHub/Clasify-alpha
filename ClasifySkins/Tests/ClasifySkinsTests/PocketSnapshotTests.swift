@@ -1705,6 +1705,46 @@ import Testing
         #expect(s.rows(for: s.top).map { Labels.row($0, on: .noSongs, in: s).label } == ["Check again", "Pick Your Music"])
     }
 
+    /// Card CR, part (b): a missing song's row is gray, also selected, and its toast shows. A
+    /// library with every file missing shows "Your music is on a drive".
+    @Test func onThisMacShowsMissingSongsGrayAndTheDriveScreen() throws {
+        var s = AppState.silver
+        s.service = .local; s.words = .local; s.localOn = true; s.signedIn = true; s.albumArt = .off
+        let names = [("Neon Overpass", "The Lowlights"), ("Tail Lights", "Mara Kei"), ("Exit 22", "Saltwater Radio"),
+                     ("Sodium Glow", "Hana & the Static"), ("Quiet Freeway", "Low Orbit")]
+        let songs = names.enumerated().map { i, n in
+            Track(id: "local:track:\(i + 1)", title: n.0, artist: n.1, duration: 200, missing: i == 2 || i == 3)
+        }
+        s.library = [Playlist(id: "local:playlist:1", name: "Late Night Drive", tracks: songs)]
+        s.stack = [Frame(screen: .main), Frame(screen: .tracks(playlist: "local:playlist:1"))]
+        s.top.sel = 2
+        s.toast = "Can’t find this song’s file"
+        let list = try render(s, "missing-song", time: 10)
+        // Title points of the rows under the selection: dark ink on a song that plays, gray on a missing one.
+        func darkest(_ row: Int) -> Int {
+            var n = 255
+            for x in Self.screenLeft + 10..<Self.screenLeft + 90 {
+                for y in Self.rowCenter(row, songs: true) - 10..<Self.rowCenter(row, songs: true) - 2 {
+                    let c = list.rgb(x, y); n = min(n, max(c.r, c.g, c.b))
+                }
+            }
+            return n
+        }
+        #expect(darkest(1) < 80 && darkest(3) > 120, "playing \(darkest(1)), missing \(darkest(3))")
+        #expect(list.isBlue(Self.screenLeft + 200, Self.rowCenter(2, songs: true)))
+        let text = s.rows(for: s.top).map { Labels.row($0, on: s.top.screen, in: s).missing }
+        #expect(text == [false, false, true, true, false])
+
+        s.library = [Playlist(id: Playlist.libraryID, name: "", tracks: songs.map { var t = $0; t.missing = true; return t })]
+        s.loadedTracks = [Playlist.libraryID]
+        s.toast = ""
+        s.stack = [Frame(screen: .noSongs)]
+        #expect(s.localOnDrive)
+        _ = try render(s, "no-songs-drive", time: 10)
+        let words = Labels.setupWords(for: s.top, in: s)
+        #expect(words?.headline == "Your music\nis on a drive" && words?.line == "Connect it to listen." && words?.footnote == "")
+    }
+
     /// Card AW.1, change 236: after a turn, Pick Your Color shows no light on the wheel's rim.
     /// Only the center glows.
     @Test func theColorPickShowsNoRimLightAfterATurn() throws {

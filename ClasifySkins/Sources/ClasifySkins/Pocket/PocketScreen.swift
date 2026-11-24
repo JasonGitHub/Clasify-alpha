@@ -32,6 +32,9 @@ enum Pocket {
     static let detailFont = Font.helvetica(11, weight: .medium)
     static let detail = Color(hex: 0x9ba3ad)
     static let detailSelected = Color(hex: 0xe3efff)
+    /// Card CR: a missing song's title and artist, and the same row selected.
+    static let missing = Color(hex: 0x9aa3ac)
+    static let missingSelected = Color.white.opacity(0.62)
     /// The faint 1 point line between two-line rows (card AI).
     static let divider = Color.black.opacity(0.02)
     /// The LCD's glass, behind the lists.
@@ -547,6 +550,12 @@ struct PocketRow: View {
     let scrolls: Bool
     var height: CGFloat = 22.9
 
+    /// The second line's color. Card CR: a missing song's artist is as gray as its title.
+    private var detailColor: Color {
+        if text.missing { return selected ? Pocket.missingSelected : Pocket.missing }
+        return selected ? Pocket.detailSelected : Pocket.detail
+    }
+
     var body: some View {
         HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 0) {
@@ -563,7 +572,7 @@ struct PocketRow: View {
                 if !text.detail.isEmpty {
                     FadeLine(Text(text.detail))
                         .font(Pocket.detailFont)
-                        .foregroundStyle(selected ? Pocket.detailSelected : Pocket.detail)
+                        .foregroundStyle(detailColor)
                 }
             }
             Spacer(minLength: 0)
@@ -586,7 +595,7 @@ struct PocketRow: View {
         .padding(.leading, 9)
         .padding(.trailing, scrolls ? 14 : 10)
         .frame(height: height)
-        .foregroundStyle(selected ? Color.white : Pocket.ink)
+        .foregroundStyle(text.missing ? (selected ? Pocket.missingSelected : Pocket.missing) : selected ? Color.white : Pocket.ink)
         .background { if selected { Pocket.selection } }
         .overlay {
             // Two-line rows have a faint line between them, except under the selection.
