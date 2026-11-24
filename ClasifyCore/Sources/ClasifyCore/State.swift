@@ -1400,6 +1400,11 @@ struct SearchState: Equatable, Sendable {
     var results: [Search.Result] = []
     var picked = false
     var index: Search.Index?
+    /// The list that Search's quiet read waits on (`searchReads`): a list ID, or the read key of
+    /// the playlist list or the artists. It stays set after Search closes, until the answer.
+    var reading: String?
+    /// The lists whose quiet read failed while Search is open. Cleared when it closes.
+    var skipped: Set<String> = []
 }
 
 /// A value kept on the heap, so the struct that holds it stays one pointer bigger only.

@@ -6,11 +6,12 @@ import Testing
 @Suite struct SearchScreenTests {
     let fan = Playlist(id: "spotify:artist:fan", name: "Fan Club", tracks: [])
 
-    /// The main menu with Search on and Liked Songs and Focus read.
+    /// The main menu with Search on, and the playlist list, Liked Songs and Focus read, so
+    /// Search has nothing to read quietly (`SearchReadTests`).
     func ready() -> AppState {
         var s = mainMenu()
         s.searchOn = true
-        s.library = library; s.loadedTracks = [Playlist.likedSongsID, "focus"]
+        s.library = library; s.loadedTracks = [Playlist.likedSongsID, "focus"]; s.playlistsLoaded = true
         return s
     }
 
