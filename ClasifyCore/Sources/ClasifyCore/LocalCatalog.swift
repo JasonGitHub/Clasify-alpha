@@ -145,7 +145,12 @@ public struct LocalCatalog: Sendable {
         if let context { songs = tracks(of: context) } else { songs = byID[track].map { [$0] } }
         guard let songs, songs.contains(where: { $0.id == track }) else { return nil }
         // Card CR: play skips a song whose file is missing.
-        return songs.compactMap { song in song.missing ? nil : urls[song.id].map { LocalItem(id: song.id, url: $0) } }
+        return songs.compactMap { song in
+            guard !song.missing, let url = urls[song.id] else { return nil }
+            return LocalItem(
+                id: song.id, url: url, title: song.title, artist: song.artist, album: song.album?.name ?? "",
+                duration: song.duration)
+        }
     }
 
     /// The store `Track` of a song. Its album's artist is the album artist, else the song's

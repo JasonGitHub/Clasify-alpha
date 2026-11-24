@@ -80,7 +80,8 @@ final class LocalPlayer: Player {
         let commands = playback.handle(event)
         for command in commands { run(command) }
         let before = nowPlaying
-        for command in commands { nowPlaying.apply(command) }
+        let time = player.currentTime().seconds
+        nowPlaying.follow(commands, of: playback, time: time.isFinite ? max(0, time) : 0)
         if nowPlaying != before { controls.show(nowPlaying) }
     }
 

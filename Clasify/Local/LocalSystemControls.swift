@@ -53,15 +53,24 @@ final class LocalSystemControls {
     }
 
     /// On macOS the state must follow every change, or the keys do not come to myPod.
+    /// The words and the length come from the library read; no file is opened for them, and no cover is shown.
     func show(_ now: LocalNowPlaying) {
         guard active else { return }
-        switch now.state {
-        case .stopped:
+        guard let shown = now.info else {
             info.nowPlayingInfo = nil
             info.playbackState = .stopped
-        case .playing, .paused:
-            if info.nowPlayingInfo == nil { info.nowPlayingInfo = [:] }  // the title and times come in the next step
-            info.playbackState = now.state == .playing ? .playing : .paused
+            return
         }
+        var values: [String: Any] = [
+            MPMediaItemPropertyTitle: shown.title,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.audio.rawValue,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: shown.elapsed,
+            MPNowPlayingInfoPropertyPlaybackRate: shown.rate,
+        ]
+        if let artist = shown.artist { values[MPMediaItemPropertyArtist] = artist }
+        if let album = shown.album { values[MPMediaItemPropertyAlbumTitle] = album }
+        if let duration = shown.duration { values[MPMediaItemPropertyPlaybackDuration] = duration }
+        info.nowPlayingInfo = values
+        info.playbackState = now.state == .playing ? .playing : .paused
     }
 }
