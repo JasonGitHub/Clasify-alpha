@@ -35,32 +35,80 @@ public enum Search {
     /// same bytes, so a byte search finds what a text search finds.
     static func bytes(_ text: String) -> [UInt8] { Array(fold(text).precomposedStringWithCanonicalMapping.utf8) }
 
-    /// `needle` is in `hay`. An empty needle is in every text. It runs on each key for each
-    /// row, so it works on raw bytes, with `memchr` for the first byte and `memcmp` for the rest.
-    static func find(_ needle: [UInt8], in hay: [UInt8]) -> Bool {
-        guard !needle.isEmpty else { return true }
-        guard needle.count <= hay.count else { return false }
-        return hay.withUnsafeBufferPointer { h in
-            needle.withUnsafeBufferPointer { n in
-                guard let hBase = h.baseAddress, let nBase = n.baseAddress else { return false }
-                let first = Int32(n[0]), end = hBase + (h.count - n.count + 1)
-                var at = hBase
-                while at < end, let hit = memchr(at, first, end - at) {
-                    let p = UnsafePointer(hit.assumingMemoryBound(to: UInt8.self))
-                    if memcmp(p, nBase, n.count) == 0 { return true }
-                    at = p + 1
+    /// Folded text as bytes, with the byte offsets where its letters (`Character`s) start and
+    /// end. A match must start and end there, as in a text search: "क" is not in "क्ष", which
+    /// is one letter (Codex on #465).
+    struct Text: Equatable, Sendable {
+        var bytes: [UInt8]
+        /// `edges[i]`: a letter starts at byte `i` (`edges.count == bytes.count + 1`). nil when
+        /// every byte is a letter of its own: ASCII text, the most common case, needs no array.
+        var edges: [Bool]?
+        /// Where each word starts: at a letter or digit after a space, a mark or the start.
+        var starts: [Int]
+
+        init(_ text: String) {
+            let folded = fold(text).precomposedStringWithCanonicalMapping
+            bytes = Array(folded.utf8)
+            var starts: [Int] = [], wordBefore = false
+            // In ASCII each byte is one letter, except CR LF, which never comes in a name.
+            if bytes.allSatisfy({ $0 < 0x80 }) && !bytes.contains(13) {
+                edges = nil
+                for (i, byte) in bytes.enumerated() {
+                    let inWord = (byte >= 0x30 && byte <= 0x39) || (byte >= 0x61 && byte <= 0x7A) || (byte >= 0x41 && byte <= 0x5A)
+                    if inWord && !wordBefore { starts.append(i) }
+                    wordBefore = inWord
                 }
-                return false
+            } else {
+                var edges = [Bool](repeating: false, count: bytes.count + 1), at = 0
+                for letter in folded {
+                    edges[at] = true
+                    // Unicode letter and number properties: "—" and "・" end a word too.
+                    let inWord = letter.isLetter || letter.isNumber
+                    if inWord && !wordBefore { starts.append(at) }
+                    wordBefore = inWord
+                    at += letter.utf8.count
+                }
+                edges[at] = true
+                self.edges = edges
+            }
+            self.starts = starts
+        }
+
+        /// A match of `count` bytes at `offset` starts and ends on a letter edge.
+        func whole(_ offset: Int, _ count: Int) -> Bool {
+            guard let edges else { return true }
+            return edges[offset] && edges[offset + count]
+        }
+
+        /// `needle` is in the text, on letter edges. An empty needle is in every text. It runs
+        /// on each key for each row, so it works on raw bytes, with `memchr` for the first byte
+        /// and `memcmp` for the rest.
+        func find(_ needle: [UInt8]) -> Bool {
+            guard !needle.isEmpty else { return true }
+            guard needle.count <= bytes.count else { return false }
+            let edges = edges
+            return bytes.withUnsafeBufferPointer { h in
+                needle.withUnsafeBufferPointer { n in
+                    guard let hBase = h.baseAddress, let nBase = n.baseAddress else { return false }
+                    let first = Int32(n[0]), end = hBase + (h.count - n.count + 1)
+                    var at = hBase
+                    while at < end, let hit = memchr(at, first, end - at) {
+                        let p = UnsafePointer(hit.assumingMemoryBound(to: UInt8.self))
+                        if memcmp(p, nBase, n.count) == 0, edges.map({ $0[p - hBase] && $0[p - hBase + n.count] }) ?? true { return true }
+                        at = p + 1
+                    }
+                    return false
+                }
             }
         }
-    }
 
-    /// `hay` has `needle` at `offset`.
-    static func starts(_ needle: [UInt8], in hay: [UInt8], at offset: Int) -> Bool {
-        guard !needle.isEmpty else { return true }
-        guard offset + needle.count <= hay.count else { return false }
-        return hay.withUnsafeBufferPointer { h in
-            needle.withUnsafeBufferPointer { n in memcmp(h.baseAddress! + offset, n.baseAddress!, n.count) == 0 }
+        /// The text has `needle` at `offset`, on letter edges.
+        func has(_ needle: [UInt8], at offset: Int) -> Bool {
+            guard !needle.isEmpty else { return true }
+            guard offset + needle.count <= bytes.count, whole(offset, needle.count) else { return false }
+            return bytes.withUnsafeBufferPointer { h in
+                needle.withUnsafeBufferPointer { n in memcmp(h.baseAddress! + offset, n.baseAddress!, n.count) == 0 }
+            }
         }
     }
 
@@ -79,26 +127,16 @@ public enum Search {
     public struct Index: Equatable, Sendable {
         struct Entry: Equatable, Sendable {
             var result: Result
-            /// The folded name and, for a song or an album, its folded artist names ("" for the
-            /// other kinds), as UTF-8 bytes: each key compares bytes, which is much faster than
-            /// `String` search on a large library (CTO on #461: 20,000 songs).
-            var name: [UInt8], artist: [UInt8]
-            /// Where each word of the name starts (the first is 0), and where the name starts
-            /// past a leading "The", for the rank of a match.
-            var starts: [Int], bare: Int
+            /// The folded name and, for a song or an album, its folded artist names (empty for
+            /// the other kinds), as UTF-8 bytes: each key compares bytes, which is much faster
+            /// than `String` search on a large library (CTO on #461: 20,000 songs).
+            var name: Text, artist: Text
+            /// Where the name starts past a leading "The", for the rank of a match.
+            var bare: Int
             init(_ result: Result, artist: String? = nil) {
                 self.result = result
-                name = Search.bytes(result.name); self.artist = artist.map(Search.bytes) ?? []
-                var starts: [Int] = [], wordBefore = false
-                for (i, byte) in name.enumerated() {
-                    // A word starts after a space or a mark. Bytes of 0x80 and up (letters in
-                    // other scripts) count as letters.
-                    let inWord = byte >= 0x80 || (byte >= 0x30 && byte <= 0x39) || (byte >= 0x61 && byte <= 0x7A) || (byte >= 0x41 && byte <= 0x5A)
-                    if inWord && !wordBefore { starts.append(i) }
-                    wordBefore = inWord
-                }
-                self.starts = starts
-                bare = name.starts(with: Array("the ".utf8)) && name.count > 4 ? 4 : 0
+                name = Text(result.name); self.artist = Text(artist ?? "")
+                bare = name.bytes.starts(with: Array("the ".utf8)) && name.bytes.count > 4 ? 4 : 0
             }
 
             /// Where a match ranks in its kind (Jason's test of build 458: "t" showed "39 Minutes"
@@ -107,13 +145,13 @@ public enum Search {
             /// is only in the artist names. `phrase` is the words with one space between them.
             func rank(_ words: [[UInt8]], phrase: [UInt8]) -> Int? {
                 var byArtist = false
-                for word in words where !Search.find(word, in: name) {
-                    guard Search.find(word, in: artist) else { return nil }
+                for word in words where !name.find(word) {
+                    guard artist.find(word) else { return nil }
                     byArtist = true
                 }
                 if byArtist { return 3 }
-                if Search.starts(phrase, in: name, at: 0) || Search.starts(phrase, in: name, at: bare) { return 0 }
-                return starts.contains { Search.starts(phrase, in: name, at: $0) } ? 1 : 2
+                if name.has(phrase, at: 0) || name.has(phrase, at: bare) { return 0 }
+                return name.starts.contains { name.has(phrase, at: $0) } ? 1 : 2
             }
         }
         /// Each kind in its result order: by name in `Playlist.nameOrder`, as the library lists

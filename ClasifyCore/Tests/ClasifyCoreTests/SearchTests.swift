@@ -105,6 +105,22 @@ import Testing
         #expect(found("陈") == ["u3"])  // by its artist
     }
 
+    /// Codex on #465: a match starts and ends on whole letters, as in a text search, and a word
+    /// starts after any mark that is not a letter or a number, also outside ASCII.
+    @Test func matchesKeepWholeLettersAndUnicodeWordStarts() {
+        var s = AppState()
+        s.library = [Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: [
+            Self.song("k1", "क्षमा", "Band"), Self.song("k2", "कमल", "Band"),
+            Self.song("w1", "Bitter", "Band"), Self.song("w2", "Z—Time", "Band"), Self.song("w3", "Ça・Tide", "Band"),
+        ])]
+        func found(_ q: String) -> [String] { Search.results(q, in: s).map(\.id) }
+        #expect(found("क") == ["k2"])  // "क्ष" is one letter: "क" is not in it
+        #expect(found("क्ष") == ["k1"])
+        // A word starts after "—" and "・": rank 1, before "Bitter" (rank 2).
+        #expect(found("t") == ["w3", "w2", "w1"])
+        #expect(found("ça") == ["w3"] && found("time") == ["w2"])
+    }
+
     @Test func otherScriptsMatch() {
         var s = Self.state()
         s.library[1].tracks.append(Self.song("t6", "纸飞机日记", "陈一"))
