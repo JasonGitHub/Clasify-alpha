@@ -10,14 +10,4 @@
     <stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/>
   </radialGradient>
 </defs>
-<path d="M285,100 H739 A185,185 0 0 1 924,285 V739 A185,185 0 0 1 739,924 H285 A185,185 0 0 1 100,739 V285 A185,185 0 0 1 285,100 Z" fill="url(#tile)"/><path d="M285,100 H739 A185,185 0 0 1 924,285 V739 A185,185 0 0 1 739,924 H285 A185,185 0 0 1 100,739 V285 A185,185 0 0 1 285,100 Z" fill="url(#frost)"/><g clip-path="url(#tileClip)"><circle cx="512" cy="538" r="249.4" fill="#16202e" fill-opacity=".45" filter="url(#wheelShadow)"/></g><defs>
-  <linearGradient id="ring" x1="0" y1="256.6" x2="0" y2="767.4" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#2e2f33"/><stop offset=".5" stop-color="#1d1e21"/><stop offset="1" stop-color="#141517"/>
-  </linearGradient>
-</defs>
-<circle cx="512" cy="512" r="255.4" fill="url(#ring)"/><defs>
-  <linearGradient id="btn" x1="0" y1="397.1" x2="0" y2="626.9" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#f6f7f9"/><stop offset="1" stop-color="#cdd2da"/>
-  </linearGradient>
-</defs>
-<circle cx="512" cy="512" r="114.9" fill="url(#btn)"/></svg>
+<path d="M285,100 H739 A185,185 0 0 1 924,285 V739 A185,185 0 0 1 739,924 H285 A185,185 0 0 1 100,739 V285 A185,185 0 0 1 285,100 Z" fill="url(#tile)"/><path d="M285,100 H739 A185,185 0 0 1 924,285 V739 A185,185 0 0 1 739,924 H285 A185,185 0 0 1 100,739 V285 A185,185 0 0 1 285,100 Z" fill="url(#frost)"/><circle cx="512" cy="512" r="315.6" fill="#24262b"/><circle cx="512" cy="512" r="107.3" fill="url(#tile)"/></svg>
