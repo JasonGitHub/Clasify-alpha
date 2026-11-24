@@ -35,6 +35,10 @@ public struct LocalNowPlaying: Equatable, Sendable {
         return playing ? .playing : .paused
     }
 
+    /// CLA-179: the Mac does not go to idle sleep only while a local song plays and Local is the
+    /// active service. A pause, the end, a stop or a switch lets it sleep again.
+    public var keepsAwake: Bool { state == .playing }
+
     public var info: Info? {
         guard state != .stopped, let song else { return nil }
         let title = song.title.isEmpty ? song.url.deletingPathExtension().lastPathComponent : song.title

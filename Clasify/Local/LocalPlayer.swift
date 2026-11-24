@@ -21,6 +21,8 @@ final class LocalPlayer: Player {
     /// `MPNowPlayingInfoCenter`, so with Spotify active the hidden Spotify app keeps the keys.
     private var controls: LocalSystemControls?
     private var nowPlaying = LocalNowPlaying()
+    /// Holds the Mac awake (no idle sleep) while `nowPlaying.keepsAwake`. nil: it may sleep.
+    private var awake: NSObjectProtocol?
     /// The item of the song that plays, and the next song's item, queued after it.
     private var currentItem: AVPlayerItem?
     private var nextItem: AVPlayerItem?
@@ -75,6 +77,7 @@ final class LocalPlayer: Player {
         }
         if on { controls?.activate() } else { controls?.deactivate() }
         controls?.show(nowPlaying)
+        holdAwake()
     }
 
     /// The player's own volume, not the Mac's.
@@ -89,6 +92,17 @@ final class LocalPlayer: Player {
         let time = player.currentTime().seconds
         nowPlaying.follow(commands, of: playback, time: time.isFinite ? max(0, time) : 0)
         if nowPlaying != before { controls?.show(nowPlaying) }
+        holdAwake()
+    }
+
+    /// The display may still sleep; only idle system sleep waits. A quit ends the hold with the app.
+    private func holdAwake() {
+        if nowPlaying.keepsAwake, awake == nil {
+            awake = ProcessInfo.processInfo.beginActivity(options: .idleSystemSleepDisabled, reason: "Playing a song from this Mac")
+        } else if !nowPlaying.keepsAwake, let held = awake {
+            ProcessInfo.processInfo.endActivity(held)
+            awake = nil
+        }
     }
 
     private func run(_ command: LocalPlayback.Command) {
