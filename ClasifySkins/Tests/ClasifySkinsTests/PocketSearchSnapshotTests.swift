@@ -45,7 +45,8 @@ extension PocketSnapshotTests {
 
     @Test func searchTypedNoneSelected() throws {
         let s = onSearch("lo")
-        #expect(s.searchResults.map(\.name).prefix(3) == ["The Lowlights", "Low Orbit", "Sodium Glow"])
+        // #460: rows sort like the library lists, where "The" does not count ("low orbit" < "lowlights")
+        #expect(s.searchResults.map(\.name).prefix(3) == ["Low Orbit", "The Lowlights", "Sodium Glow"])
         #expect(!s.searchPicked)
         let shot = try render(s, "search-typed")
         for row in 0..<3 { #expect(!shot.isBlue(Self.screenLeft + 200, Self.searchRowCenter(row)), "row \(row)") }
@@ -58,7 +59,7 @@ extension PocketSnapshotTests {
         let song = try render(s, "search-selected-song")
         #expect(song.isBlue(Self.screenLeft + 200, Self.searchRowCenter(2)))
         #expect(!song.isLight(Self.screenLeft + 289, Self.searchRowCenter(2)))
-        s.top.sel = 1  // Low Orbit, an artist: the white chevron
+        s.top.sel = 1  // The Lowlights, an artist: the white chevron
         let list = try render(s, "search-selected-artist")
         #expect(list.isBlue(Self.screenLeft + 200, Self.searchRowCenter(1)))
         var white = false

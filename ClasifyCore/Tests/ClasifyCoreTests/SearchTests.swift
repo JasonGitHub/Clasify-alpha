@@ -94,6 +94,41 @@ import Testing
         #expect(Search.results("halfway", in: s).map(\.kind) == [.album, .song])
     }
 
+    /// Design check of #458 (card CS): inside each kind the rows sort like the library lists,
+    /// where a leading "The" does not count. The plain name order put "Hello Glow" before
+    /// "The Glow".
+    @Test func eachKindSortsLikeTheLibraryListsWithoutALeadingThe() {
+        var s = Self.state()
+        s.artists = [
+            Playlist(id: "spotify:artist:hello", name: "Hello Glow", tracks: []),
+            Playlist(id: "spotify:artist:the", name: "The Glow", tracks: []),
+        ]
+        s.library[1].name = "The Glow Mix"
+        s.library.append(Playlist(id: "spotify:playlist:hello", name: "Hello Glow Mix", tracks: []))
+        s.library[0].tracks += [
+            Self.song("t10", "The Glow Song", album: Album(id: "spotify:album:the", name: "The Glow Album", artist: "Mara Kei")),
+            Self.song("t11", "Hello Glow Song", album: Album(id: "spotify:album:hello", name: "Hello Glow Album", artist: "Mara Kei")),
+        ]
+        let found = Search.results("glow", in: s)
+        #expect(found.filter { $0.kind == .artist }.map(\.name) == ["The Glow", "Hello Glow"])
+        #expect(found.filter { $0.kind == .album }.map(\.name) == ["The Glow Album", "Hello Glow Album"])
+        #expect(found.filter { $0.kind == .playlist }.map(\.name) == ["The Glow Mix", "Hello Glow Mix"])
+        #expect(found.filter { $0.kind == .song }.map(\.name) == ["The Glow Song", "Hello Glow Song"])
+        #expect(found.map(\.kind) == [.artist, .artist, .album, .album, .playlist, .playlist, .song, .song])
+    }
+
+    /// The limit keeps the first names in that order, not the first rows of the library.
+    @Test func theLimitKeepsTheFirstNamesInOrder() {
+        var s = Self.state()
+        s.artists = (0..<(Search.limit + 5)).reversed().map {
+            Playlist(id: "spotify:artist:\($0)", name: "Echo \(1000 + $0)", tracks: [])
+        }
+        s.artists.append(Playlist(id: "spotify:artist:the", name: "The Echo", tracks: []))  // last in the library
+        let names = Search.results("echo", in: s).map(\.name)
+        #expect(names.count == Search.limit)
+        #expect(names.first == "The Echo" && names[1] == "Echo 1000" && names.last == "Echo 1048")
+    }
+
     @Test func songsComeInTitleOrderAndAMissingSongIsLeftOut() {
         var s = Self.state()
         s.library[1].tracks += [Self.song("t7", "The Arrow"), Self.song("t8", "Zero Arrow"), Self.song("t9", "Arrow Gone", missing: true)]

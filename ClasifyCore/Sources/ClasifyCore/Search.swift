@@ -45,18 +45,28 @@ public enum Search {
             var result: Result, folded: String
             init(_ result: Result) { self.result = result; folded = Search.fold(result.name) }
         }
-        /// Each kind in its result order.
+        /// Each kind in its result order: by name in `Playlist.nameOrder`, as the library lists
+        /// sort (a leading "The" does not count), so the limit keeps the first names.
         var artists: [Entry], albums: [Entry], playlists: [Entry], songs: [Entry]
 
         public init(_ state: AppState) {
-            artists = state.artists.map { Entry(Result(kind: .artist, id: $0.id, name: $0.name, detail: "Artist")) }
-            albums = state.albums.map {
+            artists = Self.byName(state.artists.map { Entry(Result(kind: .artist, id: $0.id, name: $0.name, detail: "Artist")) })
+            albums = Self.byName(state.albums.map {
                 Entry(Result(kind: .album, id: $0.id, name: $0.name, detail: $0.artist.map { "Album · \($0)" } ?? "Album"))
-            }
-            playlists = state.library.filter { !Playlist.isHidden($0.id) }.map {
+            })
+            playlists = Self.byName(state.library.filter { !Playlist.isHidden($0.id) }.map {
                 Entry(Result(kind: .playlist, id: $0.id, name: $0.name, detail: "Playlist · \($0.trackCount) \($0.trackCount == 1 ? "song" : "songs")"))
-            }
-            songs = Search.songs(in: state).map(Entry.init)
+            })
+            songs = Search.songs(in: state).map(Entry.init)  // already in this order
+        }
+
+        /// `entries` in `Playlist.nameOrder`. Equal names keep their order.
+        static func byName(_ entries: [Entry]) -> [Entry] {
+            entries.enumerated().sorted {
+                if Playlist.nameOrder($0.element.result.name, $1.element.result.name) { return true }
+                if Playlist.nameOrder($1.element.result.name, $0.element.result.name) { return false }
+                return $0.offset < $1.offset
+            }.map(\.element)
         }
 
         public func results(_ query: String) -> [Result] {
