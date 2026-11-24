@@ -1054,7 +1054,8 @@ public struct AppState: Equatable, Sendable {
     /// rows get shorter instead. The song panel's bar takes a row of the panel.
     public var shownRows: Int {
         switch top.screen {
-        case .tracks, .albums, .activation, .search: return trackRows  // two-line rows (card BF.2: Activation's row; card CS)
+        case .tracks, .albums, .activation: return trackRows  // two-line rows (card BF.2: Activation's row)
+        case .search: return searchRows  // card CS
         case .albumPanel: return showsPanelBar ? panelRows - 1 : panelRows
         default: return showsBar ? visibleRows - 1 : visibleRows
         }
@@ -1387,6 +1388,15 @@ extension Row {
 }
 
 extension Search {
+    /// CLA-183, card CS: the letter strip under Search's list, as decor.
+    public static let stripLetters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+    /// The strip's letter: the last typed character that is on the strip (é shows E), else A.
+    public static func stripIndex(_ query: String) -> Int {
+        for c in query.reversed() {
+            if let base = fold(String(c)).uppercased().first, let i = stripLetters.firstIndex(of: base) { return i }
+        }
+        return 0
+    }
     /// CLA-183: the longest query, in characters.
     public static let maxQuery = 40
     /// A key that types on Search: a letter (also é, ñ, ü), a number or a space. Input methods

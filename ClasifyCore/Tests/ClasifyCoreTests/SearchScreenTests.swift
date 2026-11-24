@@ -211,5 +211,25 @@ import Testing
         send(&t, .searchType("x"), .searchDelete)
         #expect(t.searchQuery == "f" && t.top.screen == .now)
     }
+
+    // S4: the skin's numbers.
+
+    @Test func fourResultRowsShowAndTheBarNever() {
+        var s = onSearch()
+        #expect(s.shownRows == searchRows && searchRows == 4)
+        send(&s, .wheel(1), .wheel(5))
+        #expect(s.top.sel == 5 && s.top.off == 2)  // the selection stays in the 4 rows that show
+        s.current = TrackRef(playlist: "focus", track: "f0"); s.nowPlayingBar = true
+        #expect(!s.showsBar && s.shownRows == 4)
+    }
+
+    @Test func theStripFollowsTheLastLetterOnIt() {
+        #expect(Search.stripIndex("") == 0)
+        #expect(Search.stripLetters[Search.stripIndex("ne")] == "E")
+        #expect(Search.stripLetters[Search.stripIndex("caf\u{e9}")] == "E")  // é shows E
+        #expect(Search.stripLetters[Search.stripIndex("ab7")] == "7")
+        #expect(Search.stripLetters[Search.stripIndex("lo 日")] == "O")  // a space and 日 are not on it
+        #expect(Search.stripIndex("日") == 0)
+    }
 }
 

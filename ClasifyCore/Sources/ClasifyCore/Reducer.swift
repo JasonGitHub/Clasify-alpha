@@ -233,6 +233,9 @@ public let visibleRows = 9
 /// Song lists show two lines a row (title and artist), so fewer rows fit. The count stays
 /// the same when the bar shows: the rows get shorter instead.
 public let trackRows = 5
+/// CLA-183, card CS: Search's result rows are 34 points: 4 fit between the search field and
+/// the letter strip. The Now Playing bar does not show on Search.
+public let searchRows = 4
 /// The song rows that show at once in Cover Flow's song panel (card AF): 6, and part of a 7th.
 public let panelRows = 6
 /// Seconds after a seek in which `.position` ignores a position far from the seek target.
