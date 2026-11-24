@@ -19,6 +19,8 @@ import Testing
         #expect(send(&s, .select) == [])
         #expect(s.pendingService == .appleMusic && s.service == .spotify && s.isPlaying)
         send(&s, .select)
+        #expect(s.pendingService == .local)  // card CR: the third service
+        send(&s, .select)
         #expect(s.pendingService == .spotify)
         #expect(send(&s, .menu) == [])  // back on Spotify: nothing happens
         #expect(s.top.screen == .main && s.pendingService == nil && s.isPlaying && s.service == .spotify)
@@ -40,9 +42,9 @@ import Testing
         send(&s, .restored(token: s.authAttempt, ok: true))
         #expect(s.stack.count == 1 && s.top.screen == .main && s.top.sel == 0)
         #expect(s.current == nil && !s.isPlaying && s.signedIn)  // no empty Now Playing
-        // Back to Spotify the same way.
+        // Back to Spotify the same way, past On This Mac.
         openSettings(&s)
-        send(&s, .select)
+        send(&s, .select, .select)
         #expect(send(&s, .menu) == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
         #expect(s.service == .spotify)
     }
@@ -63,7 +65,7 @@ import Testing
         send(&s, .volumeReported(130))
         #expect(s.volume == 100)
         openSettings(&s)
-        send(&s, .select)
+        send(&s, .select, .select)  // past On This Mac
         #expect(send(&s, .menu) == [.setService(.spotify), .restoreSession(token: s.authAttempt)])
         #expect(s.volume == 35 && s.spotifyVolume == 35)
     }
@@ -99,7 +101,7 @@ import Testing
         send(&s, .launch, .restored(token: 1, ok: false), .select, .select)  // Hello, the color
         #expect(s.top.screen == .pickMusic)
         // No Spotify app check yet: Apple Music is on top and selected (CLA-103).
-        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify), .pickService(.local)])
         #expect(s.top.sel == 0)
         #expect(send(&s, .select) == [.setService(.appleMusic), .logIn(token: 2)])
         #expect(s.service == .appleMusic && s.top.screen == .pickMusic)
@@ -119,32 +121,32 @@ import Testing
         found.setupDone = false
         send(&found, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select, .select)
         #expect(found.top.screen == .pickMusic && !found.appleMusicFirst && found.top.sel == 0)
-        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic), .pickService(.local)])
         send(&found, .spotifyAppFound(false))  // a later report does not move the rows
-        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic)])
+        #expect(found.rows(for: found.top) == [.pickService(.spotify), .pickService(.appleMusic), .pickService(.local)])
 
         var unknown = afterSetup()
         unknown.setupDone = false; unknown.spotifyApp = nil
         send(&unknown, .launch, .restored(token: 1, ok: false), .select, .select)
         #expect(unknown.appleMusicFirst && unknown.top.sel == 0)
-        #expect(unknown.rows(for: unknown.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        #expect(unknown.rows(for: unknown.top) == [.pickService(.appleMusic), .pickService(.spotify), .pickService(.local)])
 
         var s = afterSetup()
         s.setupDone = false
         send(&s, .spotifyAppFound(false), .launch, .restored(token: 1, ok: false), .select, .select)
         #expect(s.top.screen == .pickMusic && s.appleMusicFirst && s.top.sel == 0)
-        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify), .pickService(.local)])
         // Spotify is the second row. MENU on its login goes back with the same order.
         send(&s, .wheel(1), .select)
         #expect(s.service == .spotify && s.top.screen == .login)
         send(&s, .menu)
         #expect(s.top.screen == .pickMusic && s.top.sel == 1)
-        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify), .pickService(.local)])
         // A pick of Apple Music, then a later check that finds the app: the order stays.
         #expect(send(&s, .wheel(-1), .select) == [.setService(.appleMusic), .logIn(token: 2)])
         send(&s, .spotifyAppFound(true))
         #expect(s.top.screen == .pickMusic && s.top.sel == 0)
-        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        #expect(s.rows(for: s.top) == [.pickService(.appleMusic), .pickService(.spotify), .pickService(.local)])
     }
 
     /// Change 258: after "Don't Allow", Access is off. MENU does nothing; "Open Settings"
@@ -243,7 +245,7 @@ import Testing
         m.top.sel = m.rows(for: m.top).firstIndex(of: .logOut) ?? -1
         #expect(send(&m, .select, .wheel(1), .select) == [.logOut])
         #expect(m.top.screen == .pickMusic && m.top.sel == 0)
-        #expect(m.rows(for: m.top) == [.pickService(.appleMusic), .pickService(.spotify)])
+        #expect(m.rows(for: m.top) == [.pickService(.appleMusic), .pickService(.spotify), .pickService(.local)])
     }
 
     /// `.libraryWords`: the texts follow the active service's library. A reset keeps them.
