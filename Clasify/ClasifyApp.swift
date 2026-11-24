@@ -488,8 +488,12 @@ final class AppModel {
         let player = SpotifyConnectPlayer(client: client, library: library)
         let appleMusic = AppleMusicPlayer()
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
-        let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
-        let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), local: LocalLibrary(), service: service)
+        // CLA-179: On This Mac plays inside myPod. One `LocalLibrary` reads the Music app library
+        // for the lists and gives `LocalPlayer` the files. Pick Your Music offers it only with `local.on`.
+        let localLibrary = LocalLibrary()
+        let local = LocalPlayer(source: localLibrary)
+        let services = ServicePlayer(spotify: player, appleMusic: appleMusic, local: local, service: service)
+        let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), local: localLibrary, service: service)
         let activator = ServerActivator()
         let betaLink = BetaDownloadLink()  // CLA-171: the newest DMG, from the beta feed
         let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(link: betaLink), activator: activator)
@@ -530,6 +534,7 @@ final class AppModel {
         }
         player.send = { [weak store] action in store?.send(action) }
         appleMusic.send = { [weak store] action in store?.send(action) }
+        local.send = { [weak store] action in store?.send(action) }
         self.store = store
         self.sender = sender
         diagnostics = BetaDiagnostics { [weak store] in store?.send($0) }  // CLA-97 (A4): crash and hang reports
