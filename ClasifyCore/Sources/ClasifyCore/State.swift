@@ -521,6 +521,8 @@ public struct AppState: Equatable, Sendable {
     public var activateHandOver = false
     /// CLA-128: this Mac's activation. The app sends the stored one before `.launch`. Not saved here.
     public var activation = Activation.locked
+    /// CLA-180: why the activation server gave no answer, while `activation` is `.offline`. Not saved.
+    public var activateFailure: ConnectionFailure?
     /// The newest request to the activation server; an older answer is dropped.
     public var activateRequest = 0
     /// Card BW: the newest request that a press sent. Only its "no connection" shows (327);

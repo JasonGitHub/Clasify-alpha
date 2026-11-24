@@ -86,8 +86,8 @@ public enum Action: Equatable, Sendable {
     /// The launch check of card BV (CLA-125) read the newest beta's build number.
     case latestBeta(Int)
     /// CLA-128: the activation server answered request number `request`. nil: the app's stored
-    /// activation, sent before `.launch`.
-    case activation(Activation, request: Int?)
+    /// activation, sent before `.launch`. `failure`: why `.offline` came (CLA-180), for analytics only.
+    case activation(Activation, request: Int?, failure: ConnectionFailure? = nil)
     /// CLA-143: the login with this token carries the activate page: after it, the tab goes on
     /// to the email page, so Activate opens on 320 and skips 319.
     case loginCarriesActivate(token: Int)
@@ -1388,7 +1388,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.beta = beta
             checkBeta()
 
-        case .activation(let activation, let request):
+        case .activation(let activation, let request, let failure):
             if let request, request == s.activateAsked { s.activateAsked = 0 }  // CLA-146: the next check may go
             guard request == nil || request == s.activateRequest else { return }  // an older request
             // Card BW: a timer check with no connection waits for the next one; a press shows 327.
@@ -1403,6 +1403,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             }
             showActivateStep {
                 s.activation = activation
+                s.activateFailure = activation == .offline ? failure : nil
                 switch activation {
                 case .waiting(_, let mail): if let open = s.activateOpenMail, mail > open { s.activateOpenMail = nil }  // a new mail: 321
                 case .locked: break  // no mail yet: 320 stays

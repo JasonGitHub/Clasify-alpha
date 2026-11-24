@@ -41,12 +41,12 @@ public protocol BetaFeed: Sendable {
 /// CLA-128: the activation server. A later PR makes it real; tests use a fake. Each call
 /// answers with where the activation stands, `.offline` when the server does not answer.
 public protocol Activator: Sendable {
-    /// Where does it stand: no mail yet, mail out, or the link clicked?
-    func status() async -> Activation
+    /// Where does it stand: no mail yet, mail out, or the link clicked? A failure: no usable answer (CLA-180).
+    func status() async -> Result<Activation, ConnectionFailure>
     /// Send the mail again, to the same address (card BW, "Send again").
-    func sendAgain() async -> Activation
-    /// The page to open, with a new one-time code (getmypod.app/activate/?d=CODE); nil with no connection.
-    func pageURL() async -> String?
+    func sendAgain() async -> Result<Activation, ConnectionFailure>
+    /// The page to open, with a new one-time code (getmypod.app/activate/?d=CODE).
+    func pageURL() async -> Result<String, ConnectionFailure>
 }
 
 /// How a login ended.
@@ -213,6 +213,14 @@ public final class Store {
         while let task = fetches.values.first { await task.value }
     }
 
+    /// An activation server answer as an action. No usable answer is `.offline`, with why (CLA-180).
+    private static func answer(_ answer: Result<Activation, ConnectionFailure>, request: Int?) -> Action {
+        switch answer {
+        case .success(let activation): .activation(activation, request: request)
+        case .failure(let failure): .activation(.offline, request: request, failure: failure)
+        }
+    }
+
     /// CLA-128: at launch, the stored activation of this Mac. The answer comes
     /// with no request number, so it is dropped here when a newer request started meanwhile.
     public func checkActivationAtLaunch() {
@@ -221,7 +229,7 @@ public final class Store {
         Task { [weak self] in
             let answer = await activator.status()
             guard let self, self.state.activateRequest == request else { return }
-            self.send(.activation(answer, request: nil))
+            self.send(Store.answer(answer, request: nil))
         }
     }
 
@@ -233,7 +241,7 @@ public final class Store {
         Task { [weak self] in
             var page: String?
             if let activator {
-                page = await Self.within(Self.pageWait) { await activator.pageURL() }
+                page = await Self.within(Self.pageWait) { try? await activator.pageURL().get() }  // a failure: the login goes on
                 // MENU, Cancel or a newer login came while it waited: this login must not start
                 // (Codex on #330).
                 guard let state = self?.state, state.top.screen == .auth, state.top.token == token else { return }
@@ -346,19 +354,22 @@ public final class Store {
                 Task { [weak self] in
                     let url = await activator.pageURL()
                     guard let self, self.state.activateFlow == flow else { return }  // Cancel or MENU came first
-                    if let url { self.onOpenActivatePage?(url) } else { self.send(.activation(.offline, request: request)) }
+                    switch url {
+                    case .success(let url): self.onOpenActivatePage?(url)
+                    case .failure(let failure): self.send(.activation(.offline, request: request, failure: failure))
+                    }
                 }
             case .sendActivationAgain(let request):
                 guard let activator else { break }
                 Task { [weak self] in
                     let answer = await activator.sendAgain()
-                    self?.send(.activation(answer, request: request))
+                    self?.send(Store.answer(answer, request: request))
                 }
             case .checkActivation(let request):
                 guard let activator else { break }
                 Task { [weak self] in
                     let answer = await activator.status()
-                    self?.send(.activation(answer, request: request))
+                    self?.send(Store.answer(answer, request: request))
                 }
             case .checkLatestBeta:
                 guard let betaFeed else { break }
