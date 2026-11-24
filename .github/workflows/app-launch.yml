@@ -93,13 +93,14 @@ jobs:
             echo "::error::start 3-open: myPod ended within 20 s"
             failed="$failed 3-open"
           fi
-          # Crash reports can take some seconds to appear.
-          if [ -n "$failed" ]; then
-            for i in $(seq 1 12); do
-              ls "$reports"/myPod* > /dev/null 2>&1 && break
-              sleep 5
-            done
-          fi
+          # Crash reports can take some seconds to appear. Wait for one report for each failed
+          # start (the runner starts with none), for at most 60 s.
+          want=$(echo $failed | wc -w)
+          for i in $(seq 1 12); do
+            have=$(ls "$reports"/myPod* 2> /dev/null | wc -l)
+            [ "$have" -ge "$want" ] && break
+            sleep 5
+          done
           cp "$reports"/myPod* "$OUT"/ 2> /dev/null || true
           ls -la "$OUT"
           for f in "$OUT"/*-std*.txt; do echo "---- $(basename "$f")"; tail -n 60 "$f"; done
