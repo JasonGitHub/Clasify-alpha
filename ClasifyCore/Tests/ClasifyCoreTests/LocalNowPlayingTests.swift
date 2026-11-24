@@ -199,16 +199,21 @@ import Testing
     /// a song with no cover never keeps the last song's image.
     @Test func aCoverShowsOnlyForTheShownSong() {
         var cover = LocalCover()
-        #expect(cover.show("a"))  // a new song: drop the old image, read "a"
-        #expect(cover.wanted == "a" && cover.shown == nil)
-        #expect(!cover.show("a"))  // the same song again (a pause, a seek): no new read
-        #expect(cover.show("b"))  // the next song before "a" arrived
-        #expect(!cover.arrived("a", found: true))  // too late: not taken
-        #expect(cover.arrived("b", found: true) && cover.shown == "b")
-        #expect(cover.show(nil))  // a song with no cover: the panel drops "b"
-        #expect(cover.wanted == nil && cover.shown == nil)
-        #expect(cover.show("c") && !cover.arrived("c", found: false))  // no image in the library
-        #expect(cover.shown == nil)
+        // `show` and `arrived` change the value, so each result goes into a constant first.
+        let first = cover.show("a")  // a new song: drop the old image, read "a"
+        #expect(first && cover.wanted == "a" && cover.shown == nil)
+        let again = cover.show("a")  // the same song again (a pause, a seek): no new read
+        #expect(!again)
+        let next = cover.show("b")  // the next song before "a" arrived
+        let late = cover.arrived("a", found: true)  // too late: not taken
+        #expect(next && !late && cover.shown == nil)
+        let taken = cover.arrived("b", found: true)
+        #expect(taken && cover.shown == "b")
+        let none = cover.show(nil)  // a song with no cover: the panel drops "b"
+        #expect(none && cover.wanted == nil && cover.shown == nil)
+        let asked = cover.show("c")
+        let missing = cover.arrived("c", found: false)  // no image in the library
+        #expect(asked && !missing && cover.shown == nil)
     }
 
     @Test func eachKeyIsTheSkinsInputAction() {
