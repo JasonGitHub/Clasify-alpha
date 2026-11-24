@@ -6,7 +6,7 @@ import iTunesLibrary
 /// iTunesLibrary framework, as `AppleMusicArt` reads its covers. Read-only: it never changes the
 /// library. One read a session, kept in memory; nothing goes to disk. There is no login: an
 /// empty library is empty lists, not a failed login. The lists come from `LocalCatalog`.
-/// It is also the `LocalSource` of `LocalPlayer`. Not wired into the app yet.
+/// It is also the `LocalSource` of `LocalPlayer`.
 @MainActor
 final class LocalLibrary: Library, LocalSource {
     /// "On This Mac" (card CR).
