@@ -13,6 +13,8 @@ struct PocketSearch: View {
     static let fieldHeight: CGFloat = 32
     /// The strip with its 1 point top line.
     static let stripHeight: CGFloat = 35
+    /// What is left between the field and the strip: 139 points, so 4 rows and 3 points of a 5th.
+    static let resultsHeight = Pocket.listHeight - fieldHeight - stripHeight
     static let mutedInk = Color(hex: 0x5d6772)
     static let faint = Color(hex: 0x9ba3ad)
 
@@ -29,7 +31,9 @@ struct PocketSearch: View {
                     results
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            // A fixed height: with 5 rows (170 points) a flexible frame took their height and
+            // pushed the field and the strip out of the screen (Jason, build 458).
+            .frame(width: Pocket.screenWidth, height: Self.resultsHeight, alignment: .top)
             .clipped()
             LetterStrip(index: Search.stripIndex(state.searchQuery))
         }
