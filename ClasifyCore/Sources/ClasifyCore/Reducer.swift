@@ -1572,11 +1572,14 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     let searchBefore = (s.searchQuery, s.library, s.artists, s.loadedTracks, s.stack.contains { $0.screen == .search })
     apply()
     // CLA-183: the one place where Search's results follow the query and the library data,
-    // while Search is open. A selection past the new end moves to the last row.
+    // while Search is open. The index is made when Search opens and when library data arrives;
+    // each key only asks it. A selection past the new end moves to the last row.
     if s.stack.contains(where: { $0.screen == .search }) {
-        if !searchBefore.4 || searchBefore.0 != s.searchQuery || searchBefore.1 != s.library
-            || searchBefore.2 != s.artists || searchBefore.3 != s.loadedTracks {
-            s.searchResults = Search.results(s.searchQuery, in: s)
+        let newData = !searchBefore.4 || searchBefore.1 != s.library || searchBefore.2 != s.artists
+            || searchBefore.3 != s.loadedTracks || s.searchIndex == nil
+        if newData { s.searchIndex = Search.Index(s) }
+        if newData || searchBefore.0 != s.searchQuery, let index = s.searchIndex {
+            s.searchResults = index.results(s.searchQuery)
             for f in s.stack.indices where s.stack[f].screen == .search {
                 s.stack[f].sel = min(s.stack[f].sel, max(s.searchResults.count - 1, 0))
                 s.stack[f].off = min(s.stack[f].off, s.stack[f].sel)
@@ -1584,7 +1587,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.searchResults.isEmpty { s.searchPicked = false }
         }
     } else if searchBefore.4 {
-        s.searchResults = []; s.searchQuery = ""; s.searchPicked = false
+        s.searchResults = []; s.searchQuery = ""; s.searchPicked = false; s.searchIndex = nil
     }
     // CLA-179, card CR: On This Mac reads the whole library when its main menu opens, also with
     // no covers. Empty, "No songs yet" takes the main menu's place until a read finds songs.

@@ -807,6 +807,9 @@ public struct AppState: Equatable, Sendable {
     public var searchQuery = ""
     public var searchResults: [Search.Result] = []
     public var searchPicked = false
+    /// CLA-183: the library's names for Search, made when it opens and when library data
+    /// arrives while it is open (`Search.Index`), so each key is fast. nil while it is closed.
+    public var searchIndex: Search.Index?
     /// Card CR: On This Mac read the whole library, and it has no song that can play: no song,
     /// or only songs whose files are missing (`localOnDrive`).
     public var localEmpty: Bool {

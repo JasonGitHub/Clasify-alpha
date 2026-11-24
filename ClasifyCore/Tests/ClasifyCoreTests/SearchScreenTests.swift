@@ -168,12 +168,18 @@ import Testing
     @Test func typingFindsAndDeleteRemoves() {
         var s = ready()
         s.top.sel = s.rows(for: s.top).firstIndex(of: .search)!
-        send(&s, .select, .searchType("F"), .searchType("1"))
+        send(&s, .select)
+        let index = s.searchIndex
+        #expect(index == Search.Index(s))  // made when Search opens
+        send(&s, .searchType("F"), .searchType("1"))
+        #expect(s.searchIndex == index)  // a key only asks it
         #expect(s.searchQuery == "F1" && s.rows(for: s.top) == [.foundSong("f1", list: "focus")] && !s.searchPicked)
         send(&s, .searchDelete)
         #expect(s.searchQuery == "F" && s.rows(for: s.top).count == 9)
         send(&s, .searchDelete, .searchDelete)  // one more than the query: nothing happens
         #expect(s.searchQuery == "" && s.searchResults.isEmpty)
+        send(&s, .menu)
+        #expect(s.searchIndex == nil)
     }
 
     @Test func typingClearsTheSelection() {
