@@ -183,6 +183,34 @@ import Testing
         #expect(!Driver.playing(autoplay: false).now.keepsAwake)
     }
 
+    /// The panel's cover is the shown song's library cover, the one the skins show.
+    @Test func theInfoCarriesTheSongsCover() {
+        let cover = LibraryCover.coverID(persistentID: 0xA1, side: 300)
+        var withCover = Self.songs
+        withCover[0].coverID = cover
+        let d = Driver.playing(withCover)
+        #expect(d.now.info?.cover == cover)
+        var next = d
+        next.on(.songEnded(queued: true))
+        #expect(next.now.info?.cover == nil)  // the next song has none
+    }
+
+    /// The cover read is async: an image shows only while its song is still the shown one, and
+    /// a song with no cover never keeps the last song's image.
+    @Test func aCoverShowsOnlyForTheShownSong() {
+        var cover = LocalCover()
+        #expect(cover.show("a"))  // a new song: drop the old image, read "a"
+        #expect(cover.wanted == "a" && cover.shown == nil)
+        #expect(!cover.show("a"))  // the same song again (a pause, a seek): no new read
+        #expect(cover.show("b"))  // the next song before "a" arrived
+        #expect(!cover.arrived("a", found: true))  // too late: not taken
+        #expect(cover.arrived("b", found: true) && cover.shown == "b")
+        #expect(cover.show(nil))  // a song with no cover: the panel drops "b"
+        #expect(cover.wanted == nil && cover.shown == nil)
+        #expect(cover.show("c") && !cover.arrived("c", found: false))  // no image in the library
+        #expect(cover.shown == nil)
+    }
+
     @Test func eachKeyIsTheSkinsInputAction() {
         #expect(LocalNowPlaying.action(for: .play, playing: false) == .play)
         #expect(LocalNowPlaying.action(for: .play, playing: true) == nil)  // already playing: Play does not pause

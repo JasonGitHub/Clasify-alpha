@@ -10,10 +10,15 @@ public struct LocalItem: Sendable, Equatable {
     public var title: String, artist: String, album: String
     /// Seconds. 0 when the library gives none.
     public var duration: Double
+    /// The song's library cover (`LibraryCover`), read in memory only. nil when it has none.
+    public var coverID: String?
 
-    public init(id: String, url: URL, title: String = "", artist: String = "", album: String = "", duration: Double = 0) {
+    public init(
+        id: String, url: URL, title: String = "", artist: String = "", album: String = "", duration: Double = 0,
+        coverID: String? = nil
+    ) {
         self.id = id; self.url = url
-        self.title = title; self.artist = artist; self.album = album; self.duration = duration
+        self.title = title; self.artist = artist; self.album = album; self.duration = duration; self.coverID = coverID
     }
 }
 
