@@ -27,6 +27,8 @@ final class LocalPlayer: Player {
     /// The queue as it was when the song that plays now started. A skip moves `queue` before its
     /// song opens; if that open is dropped, the player goes on from here.
     private var playingQueue: LocalQueue?
+    /// The songs that `playingQueue` points into. A load replaces `items` before its song opens.
+    private var playingItems: [LocalItem] = []
     /// A load reads its songs. Next and Prev pressed then wait in `pendingSkips`, a seek in `pendingSeek`.
     private var loading = false
     private var pendingSkips: [Bool] = []
@@ -174,7 +176,11 @@ final class LocalPlayer: Player {
         pendingSeek = nil
         if loading { return pendingSkips.append(forward) }  // the load runs it
         guard var order = queue else { return }
-        guard (forward ? order.next() : order.prev()) != nil else { return endOfContext() }
+        guard (forward ? order.next() : order.prev()) != nil else {
+            // An open in flight moved the queue past the song on screen: show where it stopped.
+            if opening, let index = order.current { send(.trackChanged(items[index].id, playing: false, generation: generation)) }
+            return endOfContext()
+        }
         queue = order
         openID += 1
         let id = openID
@@ -209,6 +215,7 @@ final class LocalPlayer: Player {
         player.insert(item, after: nil)
         currentItem = item
         playingQueue = queue
+        playingItems = items
         if let seek = pendingSeek { player.seek(to: CMTime(seconds: max(0, seek), preferredTimescale: 600)) }
         pendingSeek = nil
         if wantsPlay { player.play() } else { player.pause() }
@@ -271,6 +278,7 @@ final class LocalPlayer: Player {
     private func catchUp() {
         guard let item = currentItem else { return }
         queue = playingQueue  // a skip's open that the load dropped must not move the queue
+        items = playingItems  // nor a dropped open of a load replace the songs
         if player.currentItem === item, let index = queue?.current {  // the same song: as it plays now
             if wantsPlay { player.play() } else { player.pause() }  // Play or Pause pressed during the load
             return send(.trackChanged(items[index].id, playing: wantsPlay, generation: generation))
@@ -302,6 +310,7 @@ final class LocalPlayer: Player {
         player.removeAllItems()
         currentItem = nil
         playingQueue = nil
+        playingItems = []
         upcoming = nil
     }
 
