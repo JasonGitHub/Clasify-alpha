@@ -159,6 +159,30 @@ import Testing
         #expect(d.now == before)
     }
 
+    /// CLA-179 keep awake: only while a song plays and Local is active.
+    @Test func itKeepsTheMacAwakeOnlyWhileASongPlays() {
+        var d = Driver.playing()
+        #expect(d.now.keepsAwake)
+        d.on(.pause)
+        #expect(!d.now.keepsAwake)
+        d.on(.play)
+        #expect(d.now.keepsAwake)
+        d.now.active = false  // a switch to another service
+        #expect(!d.now.keepsAwake)
+        d.now.active = true
+        d.on(.songEnded(queued: true))  // the queued next song goes on
+        #expect(d.now.keepsAwake)
+        d.on(.songEnded(queued: false))  // the end of the list
+        #expect(!d.now.keepsAwake)
+        d.on(.play)
+        d.on(.checked(id: d.checkID, ok: true))
+        #expect(d.now.keepsAwake)
+        d.on(.stop)
+        #expect(!d.now.keepsAwake)
+        #expect(!Driver.playing(active: false).now.keepsAwake)
+        #expect(!Driver.playing(autoplay: false).now.keepsAwake)
+    }
+
     @Test func eachKeyIsTheSkinsInputAction() {
         #expect(LocalNowPlaying.action(for: .play, playing: false) == .play)
         #expect(LocalNowPlaying.action(for: .play, playing: true) == nil)  // already playing: Play does not pause
