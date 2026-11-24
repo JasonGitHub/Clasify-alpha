@@ -41,7 +41,9 @@ public struct Album: Equatable, Hashable, Sendable {
 
     /// True for an album URI. A song list of an album (`Screen.tracks` with this ID) shows the
     /// album's songs from Liked Songs.
-    public static func isID(_ id: String) -> Bool { id.hasPrefix("spotify:album:") || id.hasPrefix("applemusic:album:") }
+    public static func isID(_ id: String) -> Bool {
+        id.hasPrefix("spotify:album:") || id.hasPrefix("applemusic:album:") || id.hasPrefix(LocalID.albumPrefix)
+    }
 
     /// The songs of album `id` among `tracks`, in disc and track order. Songs with no number
     /// keep their order, after the numbered ones of their disc.
@@ -98,7 +100,9 @@ public struct Playlist: Equatable, Sendable {
     /// (`Track.titleOrder`). It is never a Playlists row or a playlist count.
     public static let songsID = "library:songs"
     /// An artist's songs, for a row of the Artists screen (card BN): its ID from the `Library`.
-    public static func isArtistID(_ id: String) -> Bool { id.hasPrefix("applemusic:artist:") || id.hasPrefix("spotify:artist:") }
+    public static func isArtistID(_ id: String) -> Bool {
+        id.hasPrefix("applemusic:artist:") || id.hasPrefix("spotify:artist:") || id.hasPrefix(LocalID.artistPrefix)
+    }
 
     /// The list is not a playlist: Liked Songs, the whole library, all songs, an artist or an album.
     public static func isHidden(_ id: String) -> Bool {
