@@ -16,11 +16,20 @@ final class MenuBarIcon: NSObject {
     /// 388: the click that ended the hint hid myPod. The glow stays until myPod is back.
     private var keep = false
     private var unhides: NSObjectProtocol?
+    /// CLA-185: no status item before the launch ends. Until then `follow()` only tracks the
+    /// setting; at the end the icon follows the setting as it is then.
+    private var launched = false
 
     init(store: Store) {
         self.store = store
         super.init()
         follow()
+        AppLaunch.whenDone { [weak self] in
+            guard let self else { return }
+            self.launched = true
+            self.sync(on: self.store.state.menuBar)
+            self.syncGlow()
+        }
         // myPod came back another way (the Dock, the app switcher): the kept glow ends.
         unhides = NotificationCenter.default.addObserver(forName: NSApplication.didUnhideNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
@@ -34,7 +43,9 @@ final class MenuBarIcon: NSObject {
     /// Adds or takes away the icon each time the setting changes, and its glow with the hint.
     private func follow() {
         withObservationTracking {
-            sync(on: store.state.menuBar)
+            // Read the state also before the launch ends, so a change then still calls onChange.
+            let on = store.state.menuBar
+            if launched { sync(on: on) }
             syncGlow()
         } onChange: { [weak self] in
             Task { @MainActor in self?.follow() }

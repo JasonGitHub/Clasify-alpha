@@ -103,6 +103,9 @@ struct HelpCommands: Commands {
 /// window is behind another app's window (CLA-47). With no window, SwiftUI opens one.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// CLA-185: the menu bar icon and the window watcher wait for this (`AppLaunch`).
+    func applicationDidFinishLaunching(_ notification: Notification) { AppLaunch.finished() }
+
     /// Card AN.1, 345: the icon's hide leaves the device window at alpha 0 (no blink). Every
     /// other way back (Dock, Cmd+Tab, Settings row Off) shows it at full strength here.
     func applicationDidUnhide(_ notification: Notification) { DeviceWindow.unhidden() }
