@@ -114,6 +114,28 @@ import Foundation
         }
     }
 
+    /// CLA-182: events wait to go out.
+    var waiting: Bool { on && !queue.events.isEmpty }
+
+    /// CLA-182: at a quit, one try to send what waits, for at most `seconds`. What does not go
+    /// out in time stays in `analytics.unsent` for the next start, as before.
+    func flush(within seconds: Double) async {
+        guard waiting else { return }
+        let deadline = Date() + seconds
+        while nextTry == .distantFuture, Date() < deadline {  // a request already runs: wait for it
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        guard waiting, Date() < deadline else { return }
+        nextTry = .distantPast  // at the quit, no wait from earlier failures
+        let left = deadline.timeIntervalSinceNow
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.sendIfDue() }
+            group.addTask { try? await Task.sleep(for: .seconds(left)) }
+            await group.next()
+            group.cancelAll()  // a request still running stops; its events stay
+        }
+    }
+
     private func save() { defaults.set(queue.saved, forKey: Self.unsentKey) }
 
     /// Off: nothing waits, nothing is kept, the install ID too.

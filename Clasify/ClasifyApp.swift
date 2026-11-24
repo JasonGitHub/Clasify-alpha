@@ -107,6 +107,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// other way back (Dock, Cmd+Tab, Settings row Off) shows it at full strength here.
     func applicationDidUnhide(_ notification: Notification) { DeviceWindow.unhidden() }
 
+    /// CLA-182: runs at a normal quit. It sends `.willQuit` and answers true when events wait
+    /// to go out; it then calls `done` once they went out, or after at most about 2 s.
+    static var quit: ((_ done: @escaping @MainActor () -> Void) -> Bool)?
+
+    private static var replied = false
+
+    func applicationShouldTerminate(_ app: NSApplication) -> NSApplication.TerminateReply {
+        Self.replied = false
+        guard let quit = Self.quit, quit({ Self.reply() }) else { return .terminateNow }
+        // The queue is .main, so this runs on the main actor. Never wait longer than this.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { MainActor.assumeIsolated { Self.reply() } }
+        return .terminateLater
+    }
+
+    /// The answer to `.terminateLater`, once.
+    private static func reply() {
+        guard !replied else { return }
+        replied = true
+        NSApp.reply(toApplicationShouldTerminate: true)
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // Card AN.1, 347: the Dock icon also shows a myPod that the menu bar icon hid.
         if DeviceWindow.isHidden { DeviceWindow.show(); return false }
@@ -479,6 +500,16 @@ final class AppModel {
         store.send(.analyticsOn(sender.on))
         store.send(.hintsTrial(HintsTrial.on))  // CLA-163, card CE.1: the menu bar step of the tour
         sender.start()
+        // CLA-182: a normal quit sends today's numbers and gives them about 2 s to go out.
+        AppDelegate.quit = { [weak store, weak sender] done in
+            store?.send(.willQuit)
+            guard let sender, sender.waiting else { return false }
+            Task { @MainActor in
+                await sender.flush(within: 2)
+                done()
+            }
+            return true
+        }
         // CLA-140: every launch asks the server, also with no device ID yet, so a Mac that was
         // turned off locks again. CLA-156: always, in every build (no switch).
         store.checkActivationAtLaunch()
@@ -553,13 +584,8 @@ final class AppModel {
         store.send(.betaBuild(BetaSignature.read()))  // card BI v2: before the login, so an ended beta shows only its end
         if let ms = BetaSender.msSinceProcessStart() { store.send(.appStarted(ms: ms)) }  // CLA-97: the window shows now
         store.send(.launch)  // restores the stored login
-        // CLA-97: a normal quit saves the exact day count and ends open 3D views.
-        NotificationCenter.default.addObserver(
-            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
-        ) { [weak store] _ in
-            // The queue is .main, so this runs on the main actor.
-            MainActor.assumeIsolated { store?.send(.willQuit) }
-        }
+        // CLA-97: a normal quit saves the exact day count and ends open 3D views. CLA-182: it
+        // runs in `AppDelegate.applicationShouldTerminate` (`AppDelegate.quit`), before the quit.
         // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
         // so send it only when a timer has run out.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,

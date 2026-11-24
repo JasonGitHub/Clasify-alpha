@@ -371,6 +371,10 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
 /// A day starts with its first count, so an action with nothing to count changes nothing.
 func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
     var fx: [Effect] = []
+    func send(_ day: DayUse) {
+        fx.append(.track(.dayActive(day, service: day.service ?? s.service, color: s.deviceColor,
+                                    settings: DaySettings(albumArt: s.albumArt, clicker: s.clicker, menuBar: s.menuBar))))
+    }
     /// Ends the day before `t`'s day: `day_active` for it, if it had any use. While music plays
     /// with an open interval, the day ends at the next position report or the pause, which
     /// split the interval at midnight first (Codex on #348): so each day goes out once, whole.
@@ -378,8 +382,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         let at = DayUse.at(t, in: timeZone)
         let open = s.isPlaying && s.dayPlayAt != nil
         if let old = s.today, old.day < at.day, force || !open {
-            if old.hadUse { fx.append(.track(.dayActive(old, service: old.service ?? s.service, color: s.deviceColor,
-                                                       settings: DaySettings(albumArt: s.albumArt, clicker: s.clicker, menuBar: s.menuBar)))) }
+            if old.hadUse { send(old) }
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }
         return at
@@ -506,6 +509,14 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
             s.pendingViews = [0, 0, 0]
             count(at: now) { d, _ in for i in views.indices { d.views[i] += views[i] } }
         }
+    }
+    // CLA-182 (Jason 16:33 JST 11-24): a normal quit sends today's numbers now, so a person who
+    // does not come back still counts. Today then starts again from zero: a second run on the
+    // same day sends only the rest, and the two events add up to the day. Known limit (CTO): a
+    // song that plays on over a quit and a restart on the same day counts once in each run.
+    if action == .willQuit, let today = s.today, today.hadUse {
+        send(today)
+        s.today = DayUse(day: today.day, weekday: today.weekday)
     }
     // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
     // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
