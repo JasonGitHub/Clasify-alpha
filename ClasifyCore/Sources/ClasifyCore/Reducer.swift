@@ -1796,8 +1796,15 @@ private func searchAfter(_ s: inout AppState, _ before: SearchInputs, now: Doubl
         s.searchBox.value.builtAt = now; s.searchBox.value.stale = false
     }
     guard rebuild || before.query != s.searchQuery, let index = s.searchIndex else { return }
+    let old = s.searchResults
     s.searchResults = index.results(s.searchQuery)
     for f in s.stack.indices where s.stack[f].screen == .search {
+        // New data under the same query: the selected row stays on its result when it is still
+        // there, also when rows come in above it.
+        if s.searchPicked, before.query == s.searchQuery, old.indices.contains(s.stack[f].sel),
+            let i = s.searchResults.firstIndex(of: old[s.stack[f].sel]) {
+            s.stack[f].sel = i
+        }
         s.stack[f].sel = min(s.stack[f].sel, max(s.searchResults.count - 1, 0))
         s.stack[f].off = min(s.stack[f].off, s.stack[f].sel)
     }

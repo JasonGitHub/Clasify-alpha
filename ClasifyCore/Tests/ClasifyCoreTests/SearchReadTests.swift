@@ -145,4 +145,17 @@ import Testing
         send(&s, .menu, now: 101.6)
         #expect(!s.searchIndexDue(at: 300))
     }
+
+    /// Late results move nothing under the person: the selected row stays on its song when
+    /// rows come in above it.
+    @Test func theSelectionStaysOnItsResultWhenRowsComeInAbove() {
+        var s = spotify()
+        s.library[s.library.firstIndex { $0.id == "focus" }!] = focus; s.loadedTracks.insert("focus")
+        openSearch(&s)  // Drive is read
+        send(&s, .searchType("0"), .wheel(1))
+        #expect(s.searchResults.map(\.id) == ["f0", "l0"] && s.searchPicked && s.top.sel == 0)
+        send(&s, .artTracksRead(token: 2, playlist: "drive", tracks: Self.drive.tracks), now: 101)
+        #expect(s.searchResults.map(\.id) == ["d0", "f0", "l0"])  // "d0" sorts first
+        #expect(s.searchPicked && s.top.sel == 1)
+    }
 }
