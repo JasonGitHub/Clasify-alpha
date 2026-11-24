@@ -122,7 +122,7 @@ import Testing
         #expect(s.searchResults.isEmpty)
         let gold = Track(id: "g1", title: "Gold", artist: "x", duration: 30)
         s.refreshing.insert("focus")
-        send(&s, .tracksRefreshed(playlist: "focus", tracks: focus.tracks + [gold]))
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: focus.tracks + [gold]), now: 101)  // a second later: the index is made again (#457)
         #expect(s.rows(for: s.top) == [.foundSong("g1", list: "focus")])
     }
 
@@ -131,7 +131,7 @@ import Testing
         send(&s, .wheel(1), .wheel(8), .select)  // f7, the last row
         #expect(s.top.screen == .now && s.current == TrackRef(playlist: "focus", track: "f7"))
         s.refreshing.insert("focus")
-        send(&s, .tracksRefreshed(playlist: "focus", tracks: Array(focus.tracks.prefix(3))))
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: Array(focus.tracks.prefix(3))), now: 101)  // a second later: the index is made again (#457)
         send(&s, .menu)
         #expect(s.top.screen == .search && s.searchQuery == "f")
         #expect(s.rows(for: s.top) == [.playlist("focus")] + ["f0", "f1", "f2"].map { .foundSong($0, list: "focus") })
@@ -143,14 +143,14 @@ import Testing
         send(&s, .wheel(1), .wheel(8))
         #expect(s.top.sel == 8 && s.rows(for: s.top).count == 9)
         s.refreshing.insert("focus")
-        send(&s, .tracksRefreshed(playlist: "focus", tracks: Array(focus.tracks.prefix(2))))
+        send(&s, .tracksRefreshed(playlist: "focus", tracks: Array(focus.tracks.prefix(2))), now: 101)  // a second later: the index is made again (#457)
         #expect(s.rows(for: s.top).count == 3 && s.top.sel == 2 && s.top.off <= 2 && s.searchPicked)
         // No results left: nothing is selected, and every input stays safe.
         var e = onSearch("f1")
         send(&e, .wheel(1))
         #expect(e.searchPicked && e.rows(for: e.top) == [.foundSong("f1", list: "focus")])
         e.refreshing.insert("focus")
-        send(&e, .tracksRefreshed(playlist: "focus", tracks: []))
+        send(&e, .tracksRefreshed(playlist: "focus", tracks: []), now: 101)  // a second later: the index is made again (#457)
         #expect(e.searchResults.isEmpty && !e.searchPicked && e.top.sel == 0 && e.top.off == 0)
         #expect(send(&e, .wheel(1), .select, .play).isEmpty && e.top.screen == .search)
     }
