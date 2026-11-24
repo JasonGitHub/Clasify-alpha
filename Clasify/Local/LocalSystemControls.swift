@@ -1,3 +1,4 @@
+import AppKit
 import ClasifyCore
 import MediaPlayer
 
@@ -12,6 +13,9 @@ final class LocalSystemControls {
     private let commands = MPRemoteCommandCenter.shared()
     private let info = MPNowPlayingInfoCenter.default()
     private var active = false
+    /// The shown song's cover and the panel's image of it (read in memory, never written to disk).
+    private var cover = LocalCover()
+    private var artwork: MPMediaItemArtwork?
 
     /// The commands that myPod takes. Every other one is off, so the panel shows no dead control.
     private var used: [(MPRemoteCommand, LocalNowPlaying.Command)] {
@@ -50,6 +54,8 @@ final class LocalSystemControls {
         }
         info.nowPlayingInfo = nil
         info.playbackState = .stopped
+        cover = LocalCover()
+        artwork = nil
     }
 
     /// On macOS the state must follow every change, or the keys do not come to myPod.
@@ -59,7 +65,12 @@ final class LocalSystemControls {
         guard let shown = now.info else {
             info.nowPlayingInfo = nil
             info.playbackState = .stopped
+            if cover.show(nil) { artwork = nil }
             return
+        }
+        if cover.show(shown.cover) {
+            artwork = nil  // never the last song's cover
+            if let wanted = cover.wanted { read(wanted) }
         }
         var values: [String: Any] = [
             MPMediaItemPropertyTitle: shown.title,
@@ -70,7 +81,31 @@ final class LocalSystemControls {
         if let artist = shown.artist { values[MPMediaItemPropertyArtist] = artist }
         if let album = shown.album { values[MPMediaItemPropertyAlbumTitle] = album }
         if let duration = shown.duration { values[MPMediaItemPropertyPlaybackDuration] = duration }
+        if let artwork { values[MPMediaItemPropertyArtwork] = artwork }
         info.nowPlayingInfo = values
         info.playbackState = now.state == .playing ? .playing : .paused
+    }
+
+    /// Reads the cover from the Music app library, in memory, as the skins' `ArtworkLoader`
+    /// does. It shows only if the song is still the shown one when the read ends.
+    private func read(_ id: String) {
+        guard let key = LibraryCover.parse(id) else { return }
+        Task { [weak self] in
+            let image = await AppleMusicArt.shared.image(key.persistentID, side: key.side)
+            self?.arrived(id, image)
+        }
+    }
+
+    private func arrived(_ id: String, _ image: AppleMusicArt.Image?) {
+        guard active, cover.arrived(id, found: image != nil), let image else { return }
+        let made = Self.artwork(image)
+        artwork = made
+        info.nowPlayingInfo?[MPMediaItemPropertyArtwork] = made
+    }
+
+    /// Made outside the main actor: MediaPlayer calls the handler on its own queue.
+    private nonisolated static func artwork(_ image: AppleMusicArt.Image) -> MPMediaItemArtwork {
+        let side = CGSize(width: image.cgImage.width, height: image.cgImage.height)
+        return MPMediaItemArtwork(boundsSize: side) { size in NSImage(cgImage: image.cgImage, size: size) }
     }
 }

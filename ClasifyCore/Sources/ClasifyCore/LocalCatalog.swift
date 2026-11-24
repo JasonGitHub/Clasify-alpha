@@ -149,7 +149,7 @@ public struct LocalCatalog: Sendable {
             guard !song.missing, let url = urls[song.id] else { return nil }
             return LocalItem(
                 id: song.id, url: url, title: song.title, artist: song.artist, album: song.album?.name ?? "",
-                duration: song.duration)
+                duration: song.duration, coverID: song.coverID)
         }
     }
 
