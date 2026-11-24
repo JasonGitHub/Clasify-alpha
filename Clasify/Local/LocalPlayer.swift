@@ -24,6 +24,9 @@ final class LocalPlayer: Player {
     /// The songs of the loaded context and their play order. nil: nothing loaded.
     private var items: [LocalItem] = []
     private var queue: LocalQueue?
+    /// The queue as it was when the song that plays now started. A skip moves `queue` before its
+    /// song opens; if that open is dropped, the player goes on from here.
+    private var playingQueue: LocalQueue?
     /// A load reads its songs. Next and Prev pressed then wait in `pendingSkips`, a seek in `pendingSeek`.
     private var loading = false
     private var pendingSkips: [Bool] = []
@@ -100,7 +103,10 @@ final class LocalPlayer: Player {
                 }
             }
             queue = order
-            if ended { return endOfContext() }
+            if ended {  // show the song the skips reached, as after the load
+                if let index = order.current { send(.trackChanged(list[index].id, playing: false, generation: self.generation)) }
+                return endOfContext()
+            }
             await open(id: id)
         }
     }
@@ -141,12 +147,14 @@ final class LocalPlayer: Player {
     func setShuffle(_ on: Bool) {
         shuffle = on
         queue?.setShuffle(on)
+        playingQueue?.setShuffle(on)
         prepareUpcoming()
     }
 
     func setRepeat(_ mode: RepeatMode) {
         repeatMode = mode
         queue?.repeatMode = mode
+        playingQueue?.repeatMode = mode
         prepareUpcoming()
     }
 
@@ -200,6 +208,7 @@ final class LocalPlayer: Player {
         let item = AVPlayerItem(url: items[index].url)
         player.insert(item, after: nil)
         currentItem = item
+        playingQueue = queue
         if let seek = pendingSeek { player.seek(to: CMTime(seconds: max(0, seek), preferredTimescale: 600)) }
         pendingSeek = nil
         if wantsPlay { player.play() } else { player.pause() }
@@ -233,6 +242,7 @@ final class LocalPlayer: Player {
         queue = order
         if let up = upcoming, up.index == index {
             if player.currentItem !== up.item { player.advanceToNextItem() }
+            playingQueue = order
             currentItem = up.item
             upcoming = nil
             send(.trackChanged(items[index].id, playing: wantsPlay, generation: generation))
@@ -260,11 +270,14 @@ final class LocalPlayer: Player {
     /// to the queued song, or the end of the context.
     private func catchUp() {
         guard let item = currentItem else { return }
+        queue = playingQueue  // a skip's open that the load dropped must not move the queue
         if player.currentItem === item, let index = queue?.current {  // the same song: as it plays now
+            if wantsPlay { player.play() } else { player.pause() }  // Play or Pause pressed during the load
             return send(.trackChanged(items[index].id, playing: wantsPlay, generation: generation))
         }
         if let up = upcoming, player.currentItem === up.item, var order = queue, order.trackEnded() == up.index {
             queue = order
+            playingQueue = order
             currentItem = up.item
             upcoming = nil
             send(.trackChanged(items[up.index].id, playing: wantsPlay, generation: generation))
@@ -288,6 +301,7 @@ final class LocalPlayer: Player {
         player.pause()
         player.removeAllItems()
         currentItem = nil
+        playingQueue = nil
         upcoming = nil
     }
 
