@@ -37,7 +37,7 @@ import Testing
         #expect(send(&s, .artTracksRead(token: 3, playlist: "drive", tracks: Self.drive.tracks)).isEmpty)
         #expect(s.loadedTracks == [Playlist.likedSongsID, "focus", "drive"])
         // The results follow: a song of Drive is found.
-        send(&s, .searchType("d"), .searchType("1"))
+        send(&s, .searchType("d"), .searchType("1"), now: 101)  // a second later: the index is made again
         #expect(s.searchResults.map(\.id) == ["d1"])
         #expect(s.top.screen == .search && !s.top.loading)  // no spinner
     }
@@ -111,7 +111,7 @@ import Testing
             let artist = Playlist(id: "applemusic:artist:1", name: "Vera Lune", tracks: [])
             #expect(send(&s, .artistsRefreshed([artist])).isEmpty, "\(service)")
             #expect(s.artistsLoaded && s.artists == [artist], "\(service)")
-            send(&s, .searchType("v"), .searchType("e"), .searchType("r"))
+            send(&s, .searchType("v"), .searchType("e"), .searchType("r"), now: 101)
             #expect(s.searchResults.map(\.kind) == [.artist], "\(service)")
         }
     }
@@ -123,5 +123,39 @@ import Testing
         #expect(openSearch(&s).isEmpty)
         s.offline = false
         #expect(send(&s, .tick) == [.readArtTracks(token: 2, playlist: "focus")])
+    }
+
+    /// CTO on #457: while reads arrive, the index is made again at most once a second. A key
+    /// in between asks the last index; the app sends `.tick` when the wait is over.
+    @Test func theIndexIsMadeAgainAtMostOnceASecond() {
+        var s = spotify()
+        openSearch(&s)  // at 100: the index is made; Focus is read
+        send(&s, .searchType("f"), .searchType("0"), now: 100.2)
+        #expect(s.searchResults.isEmpty)
+        send(&s, .artTracksRead(token: 2, playlist: "focus", tracks: focus.tracks), now: 100.4)
+        #expect(s.searchResults.isEmpty && !s.searchIndexDue(at: 100.9) && s.searchIndexDue(at: 101))
+        send(&s, .searchDelete, .searchType("0"), now: 100.6)  // the last index still answers
+        #expect(s.searchResults.isEmpty)
+        send(&s, .tick, now: 101)
+        #expect(s.searchResults.map(\.id) == ["f0"] && !s.searchIndexDue(at: 200))
+        // Drive lands at 101.5: the next make waits until 102.
+        send(&s, .artTracksRead(token: 3, playlist: "drive", tracks: Self.drive.tracks), now: 101.5)
+        #expect(!s.searchIndexDue(at: 101.9) && s.searchIndexDue(at: 102))
+        // Leaving Search: no tick is due.
+        send(&s, .menu, now: 101.6)
+        #expect(!s.searchIndexDue(at: 300))
+    }
+
+    /// Late results move nothing under the person: the selected row stays on its song when
+    /// rows come in above it.
+    @Test func theSelectionStaysOnItsResultWhenRowsComeInAbove() {
+        var s = spotify()
+        s.library[s.library.firstIndex { $0.id == "focus" }!] = focus; s.loadedTracks.insert("focus")
+        openSearch(&s)  // Drive is read
+        send(&s, .searchType("0"), .wheel(1))
+        #expect(s.searchResults.map(\.id) == ["f0", "l0"] && s.searchPicked && s.top.sel == 0)
+        send(&s, .artTracksRead(token: 2, playlist: "drive", tracks: Self.drive.tracks), now: 101)
+        #expect(s.searchResults.map(\.id) == ["d0", "f0", "l0"])  // "d0" sorts first
+        #expect(s.searchPicked && s.top.sel == 1)
     }
 }

@@ -1386,7 +1386,18 @@ extension Row {
     }
 }
 
+extension AppState {
+    /// CLA-183: library data arrived while Search is open, and the index can be made again
+    /// (`Search.rebuildWait`). The app sends `.tick` then.
+    public func searchIndexDue(at now: Double) -> Bool {
+        searchBox.value.stale && searchIndex != nil && now - searchBox.value.builtAt >= Search.rebuildWait
+    }
+}
+
 extension Search {
+    /// CTO on #457: the shortest time between two makes of the index while reads arrive, in
+    /// seconds. One make takes about 0.26 s on 10,000 songs in a debug build.
+    public static let rebuildWait = 1.0
     /// CLA-183: the longest query, in characters.
     public static let maxQuery = 40
     /// A key that types on Search: a letter (also é, ñ, ü), a number or a space. Input methods
@@ -1405,6 +1416,8 @@ struct SearchState: Equatable, Sendable {
     var reading: String?
     /// The lists whose quiet read failed while Search is open. Cleared when it closes.
     var skipped: Set<String> = []
+    /// When `index` was made, and whether library data arrived after that.
+    var builtAt: Double = 0, stale = false
 }
 
 /// A value kept on the heap, so the struct that holds it stays one pointer bigger only.
