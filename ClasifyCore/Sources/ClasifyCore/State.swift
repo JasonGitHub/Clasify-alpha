@@ -1368,3 +1368,11 @@ extension Row {
         }
     }
 }
+
+extension Search {
+    /// CLA-183: the longest query, in characters.
+    public static let maxQuery = 40
+    /// A key that types on Search: a letter (also é, ñ, ü), a number or a space. Input methods
+    /// (Japanese, Chinese, Korean) are a known limit: the device takes keys, not a text field.
+    public static func types(_ c: Character) -> Bool { c.isLetter || c.isNumber || c == " " }
+}

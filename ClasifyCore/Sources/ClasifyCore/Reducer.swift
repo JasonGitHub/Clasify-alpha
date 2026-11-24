@@ -5,6 +5,9 @@ public enum Action: Equatable, Sendable {
     case select, menu, play, next, prev
     /// The shuffle and repeat icons on Now Playing, and the S and R keys.
     case toggleShuffle, cycleRepeat
+    /// CLA-183, card CS: a key typed on Search (a letter, a number or a space), and Delete
+    /// there. On other screens they do nothing.
+    case searchType(Character), searchDelete
     case tick  // drives toast and overlay timers
     /// The playlist list was read: names and track counts, no tracks. nil when the read failed.
     case playlistsLoaded(token: Int, playlists: [Playlist]?)
@@ -770,7 +773,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             }
         }
         switch action {  // change 312: a key or a wheel turn; a later beta answer shows nothing
-        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: s.touched = true
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat, .searchType, .searchDelete: s.touched = true
         default: break
         }
         switch action {  // CLA-173: another input ends a start that waits on the covers
@@ -1033,6 +1036,14 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // hint for good, also before it shows.
             if s.setupDone && s.stack.first?.screen == .main { s.hintsDone.insert(.menu) }
 
+        case .searchType(let c):
+            guard s.top.screen == .search, Search.types(c), s.searchQuery.count < Search.maxQuery else { return }
+            s.searchQuery.append(c)
+            s.searchPicked = false; s.top.sel = 0; s.top.off = 0  // new results: none selected
+        case .searchDelete:
+            guard s.top.screen == .search, !s.searchQuery.isEmpty else { return }
+            s.searchQuery.removeLast()
+            s.searchPicked = false; s.top.sel = 0; s.top.off = 0
         case .toggleShuffle: toggleShuffle()
         case .cycleRepeat: setRepeat(s.repeatMode.next)
 
@@ -1549,7 +1560,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     // and the tour and hints do not see them either. CLA-130: the same while it is turned.
     if !s.arrived || s.deviceTurned {
         switch action {
-        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat: return []
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat, .searchType, .searchDelete: return []
         default: break
         }
     }
@@ -1696,7 +1707,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         switch action {
         // CE.1: a click on the menu bar icon and a ⌘ turn are input too (mock), so the next
         // hint waits 3 s after them: the menu bar hint does not glow the moment a turn ends it.
-        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat, .menuBarClick, .deviceTurned:
+        case .wheel, .select, .menu, .play, .next, .prev, .toggleShuffle, .cycleRepeat, .menuBarClick, .deviceTurned,
+            .searchType, .searchDelete:
             if let hint = tourShown, !s.hintsDone.contains(hint) {
                 let n = s.tourHides[hint, default: 0] + 1
                 s.tourHides[hint] = n
