@@ -1036,14 +1036,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // hint for good, also before it shows.
             if s.setupDone && s.stack.first?.screen == .main { s.hintsDone.insert(.menu) }
 
-        case .searchType(let c):
-            guard s.top.screen == .search, Search.types(c), s.searchQuery.count < Search.maxQuery else { return }
-            s.searchQuery.append(c)
-            s.searchPicked = false; s.top.sel = 0; s.top.off = 0  // new results: none selected
-        case .searchDelete:
-            guard s.top.screen == .search, !s.searchQuery.isEmpty else { return }
-            s.searchQuery.removeLast()
-            s.searchPicked = false; s.top.sel = 0; s.top.off = 0
+        case .searchType, .searchDelete: searchKey(&s, action)
         case .toggleShuffle: toggleShuffle()
         case .cycleRepeat: setRepeat(s.repeatMode.next)
 
@@ -1569,26 +1562,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     let rowBefore = s.halfRow
     let wasOffline = s.offline
     let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
-    let searchBefore = (s.searchQuery, s.library, s.artists, s.loadedTracks, s.stack.contains { $0.screen == .search })
+    let searchBefore = SearchInputs(s)
     apply()
-    // CLA-183: the one place where Search's results follow the query and the library data,
-    // while Search is open. The index is made when Search opens and when library data arrives;
-    // each key only asks it. A selection past the new end moves to the last row.
-    if s.stack.contains(where: { $0.screen == .search }) {
-        let newData = !searchBefore.4 || searchBefore.1 != s.library || searchBefore.2 != s.artists
-            || searchBefore.3 != s.loadedTracks || s.searchIndex == nil
-        if newData { s.searchIndex = Search.Index(s) }
-        if newData || searchBefore.0 != s.searchQuery, let index = s.searchIndex {
-            s.searchResults = index.results(s.searchQuery)
-            for f in s.stack.indices where s.stack[f].screen == .search {
-                s.stack[f].sel = min(s.stack[f].sel, max(s.searchResults.count - 1, 0))
-                s.stack[f].off = min(s.stack[f].off, s.stack[f].sel)
-            }
-            if s.searchResults.isEmpty { s.searchPicked = false }
-        }
-    } else if searchBefore.4 {
-        s.searchResults = []; s.searchQuery = ""; s.searchPicked = false; s.searchIndex = nil
-    }
+    searchAfter(&s, searchBefore)
     // CLA-179, card CR: On This Mac reads the whole library when its main menu opens, also with
     // no covers. Empty, "No songs yet" takes the main menu's place until a read finds songs.
     let library = Playlist.libraryID
@@ -1766,4 +1742,51 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         }
     }
     return fx
+}
+
+// CLA-183: Search's parts of the reducer, in their own functions. `reduceAction` is very large,
+// and its stack frame in a debug build is near the 512 KB of a macOS test thread.
+
+/// A key on Search. A typed key or Delete clears the selection, as the try page does.
+private func searchKey(_ s: inout AppState, _ action: Action) {
+    guard s.top.screen == .search else { return }
+    switch action {
+    case .searchType(let c):
+        guard Search.types(c), s.searchQuery.count < Search.maxQuery else { return }
+        s.searchQuery.append(c)
+    case .searchDelete:
+        guard !s.searchQuery.isEmpty else { return }
+        s.searchQuery.removeLast()
+    default: return
+    }
+    s.searchPicked = false; s.top.sel = 0; s.top.off = 0  // new results: none selected
+}
+
+/// What Search's results depend on, before an action.
+private struct SearchInputs {
+    let query: String, library: [Playlist], artists: [Playlist], loadedTracks: Set<String>, open: Bool
+    init(_ s: AppState) {
+        query = s.searchQuery; library = s.library; artists = s.artists; loadedTracks = s.loadedTracks
+        open = s.stack.contains { $0.screen == .search }
+    }
+}
+
+/// The one place where Search's results follow the query and the library data, while Search
+/// is open. The index is made when Search opens and when library data arrives; each key only
+/// asks it. A selection past the new end moves to the last row. Leaving Search clears it.
+private func searchAfter(_ s: inout AppState, _ before: SearchInputs) {
+    guard s.stack.contains(where: { $0.screen == .search }) else {
+        if before.open { s.searchResults = []; s.searchQuery = ""; s.searchPicked = false; s.searchIndex = nil }
+        return
+    }
+    let newData = !before.open || before.library != s.library || before.artists != s.artists
+        || before.loadedTracks != s.loadedTracks || s.searchIndex == nil
+    if newData { s.searchIndex = Search.Index(s) }
+    guard newData || before.query != s.searchQuery, let index = s.searchIndex else { return }
+    s.searchResults = index.results(s.searchQuery)
+    for f in s.stack.indices where s.stack[f].screen == .search {
+        s.stack[f].sel = min(s.stack[f].sel, max(s.searchResults.count - 1, 0))
+        s.stack[f].off = min(s.stack[f].off, s.stack[f].sel)
+    }
+    if s.searchResults.isEmpty { s.searchPicked = false }
 }
