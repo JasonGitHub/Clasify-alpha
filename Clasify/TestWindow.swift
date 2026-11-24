@@ -153,6 +153,7 @@ private struct TestPanel: View {
         case .betaSoon, .betaEnded, .betaNew: "Beta"
         case .activate: "Activate"
         case .activation: "Activation"
+        case .noSongs: "On This Mac"
         }
     }
 
@@ -191,6 +192,8 @@ private struct TestPanel: View {
         case .pickService(let service): service.rawValue
         case .openPrivacy: "Open Settings"
         case .useSpotify: "Use Spotify"
+        case .checkLibrary: "Check again"
+        case .pickYourMusic: "Pick Your Music"
         case .getNewBeta: "Get New Beta"
         case .later: "Later"
         case .quit: "Quit"

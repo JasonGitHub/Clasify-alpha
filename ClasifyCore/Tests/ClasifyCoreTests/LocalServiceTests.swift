@@ -97,3 +97,54 @@ import Testing
     only.onProgress = { _, _, _, _ in }
     #expect(localLibrary.fetches == ["playlists"] && localLibrary.onProgress != nil)
 }
+
+/// Card CR: "No songs yet" on On This Mac with an empty library, with "Check again" and
+/// "Pick Your Music".
+@Suite struct LocalNoSongsTests {
+    func signedIn(albumArt: AlbumArt) -> AppState {
+        var s = afterSetup()
+        (s.service, s.words, s.localOn, s.albumArt) = (.local, .local, true, albumArt)
+        send(&s, .launch)
+        let fx = send(&s, .restored(token: s.authAttempt, ok: true))
+        // The whole library is read when the main menu opens, also with no covers beside it.
+        #expect(fx.filter { if case .readArtTracks = $0 { true } else { false } }
+            == [.readArtTracks(token: s.artTok, playlist: Playlist.libraryID)])
+        #expect(s.top.screen == .main)
+        return s
+    }
+
+    @Test func anEmptyLibraryShowsNoSongsAndCheckAgainReadsItAgain() {
+        for art in [AlbumArt.all, .nowPlaying] {
+            var s = signedIn(albumArt: art)
+            send(&s, .artTracksRead(token: s.artTok, playlist: Playlist.libraryID, tracks: []))
+            #expect(s.localEmpty && s.stack == [Frame(screen: .noSongs)])
+            #expect(s.rows(for: s.top) == [.checkLibrary, .pickYourMusic] && s.top.screen.isList)
+            #expect(send(&s, .select) == [.refreshTracks(playlist: Playlist.libraryID)])
+            #expect(send(&s, .select) == [])  // one read at a time
+            send(&s, .tracksRefreshed(playlist: Playlist.libraryID, tracks: []))
+            #expect(s.top.screen == .noSongs)  // still empty: the screen stays
+            send(&s, .select)
+            let song = Track(id: "local:track:1", title: "Song", artist: "Band", duration: 180)
+            send(&s, .tracksRefreshed(playlist: Playlist.libraryID, tracks: [song]))
+            #expect(!s.localEmpty && s.stack == [Frame(screen: .main)])
+        }
+    }
+
+    @Test func pickYourMusicLeavesOnThisMac() {
+        var s = signedIn(albumArt: .all)
+        send(&s, .artTracksRead(token: s.artTok, playlist: Playlist.libraryID, tracks: []))
+        send(&s, .wheel(1))
+        #expect(send(&s, .select).contains(.logOut))
+        #expect(s.top.screen == .pickMusic && !s.signedIn && s.rows(for: s.top).contains(.pickService(.local)))
+    }
+
+    @Test func aLibraryWithSongsKeepsTheMainMenu() {
+        var s = signedIn(albumArt: .all)
+        let song = Track(id: "local:track:1", title: "Song", artist: "Band", duration: 180)
+        send(&s, .artTracksRead(token: s.artTok, playlist: Playlist.libraryID, tracks: [song]))
+        #expect(!s.localEmpty && s.top.screen == .main)
+        var spotify = mainMenu()  // never on Spotify
+        spotify.loadedTracks.insert(Playlist.libraryID)
+        #expect(!spotify.localEmpty)
+    }
+}

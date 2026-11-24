@@ -46,6 +46,7 @@ enum Labels {
         case .betaSoon, .betaEnded, .betaNew: "Beta"  // card BI v2, changes 233 and 234; card BV, 312
         case .activate: "Activate"  // CLA-128
         case .activation: "Activation"  // CLA-141, card BF.2
+        case .noSongs: state.words.service  // card CR: "On This Mac"
         }
     }
 
@@ -122,6 +123,8 @@ enum Labels {
         case .pickService(let service): return RowText(label: service.rawValue)
         case .openPrivacy: return RowText(label: "Open Settings")
         case .useSpotify: return RowText(label: "Use Spotify")
+        case .checkLibrary: return RowText(label: "Check again")  // card CR
+        case .pickYourMusic: return RowText(label: "Pick Your Music")
         // Card BI v2: no chevrons.
         case .getNewBeta: return RowText(label: "Get New Beta")
         case .later: return RowText(label: "Later")
@@ -224,6 +227,8 @@ enum Labels {
         case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
         case .premium: SetupWords(headline: state.words.needPlan, line: state.words.needPlanLine)  // 135; card BM, 259
         case .accessOff: SetupWords(headline: "Access is off", line: "Turn it on in System Settings.")  // card BM, 258
+        case .noSongs:  // card CR
+            SetupWords(headline: "No songs yet", line: "Add songs to\nthe Music app.", footnote: "We play songs\nsaved on this Mac.")
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
         case .yourMusic: SetupWords(headline: "You’re all set", line: ready)

@@ -346,8 +346,9 @@ struct PocketScreen: View {
     }
 
     /// The service of the selected row on Pick Your Music, whose logo shows on the right (card
-    /// BM, 264). Nil on other screens.
+    /// BM, 264), and On This Mac on its "No songs yet" screen (card CR). Nil on other screens.
     private var pickedService: MusicService? {
+        if top.screen == .noSongs { return .local }  // card CR: its tile, as on Pick Your Music
         guard top.screen == .pickMusic else { return nil }
         let rows = state.rows(for: top)
         guard rows.indices.contains(top.sel), case .pickService(let service) = rows[top.sel] else { return nil }

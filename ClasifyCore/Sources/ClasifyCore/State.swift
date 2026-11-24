@@ -155,12 +155,15 @@ public enum Screen: Equatable, Sendable {
     case activate
     /// CLA-141, card BF.2 (change 361): About > Activation, one row with the masked email.
     case activation
+    /// CLA-179, card CR: On This Mac, and the Music app library has no song that can play.
+    /// It takes the main menu's place.
+    case noSongs
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
         switch self {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
-            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate, .activation:
+            .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate, .activation, .noSongs:
             true
         case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
         }
@@ -219,6 +222,8 @@ public enum Row: Equatable, Sendable {
     case checkPremium, getPremium, premiumLogOut
     /// Card BM: a service on Pick Your Music (257), "Open Settings" (258), "Use Spotify" (262).
     case pickService(MusicService), openPrivacy, useSpotify
+    /// Card CR: "Check again" reads the Music app library again; "Pick Your Music" opens that screen.
+    case checkLibrary, pickYourMusic
     /// A row of the setup screen `color` (card AW).
     case color(DeviceColor)
     /// A row of the Licenses list: license `License.all[i]` (card BF, change 213).
@@ -780,6 +785,10 @@ public struct AppState: Equatable, Sendable {
     public var service = MusicService.spotify
     /// CLA-179: the `local.on` test switch: Pick Your Music and the Service row offer On This Mac.
     public var localOn = false
+    /// Card CR: On This Mac read the whole library, and it has no song that can play.
+    public var localEmpty: Bool {
+        service == .local && loadedTracks.contains(Playlist.libraryID) && tracks(in: Playlist.libraryID).isEmpty
+    }
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
     public var aboutAt: Double = 0
     /// About is one page that scrolls 3 wheel steps (card BS, changes 294 and 295; card BF.2).
@@ -1210,6 +1219,7 @@ public struct AppState: Equatable, Sendable {
         case .pickMusic:  // card CR: On This Mac is the third row
             ((appleMusicFirst ? [.appleMusic, .spotify] : [.spotify, .appleMusic]) + (localOn ? [.local] : [])).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
+        case .noSongs: [.checkLibrary, .pickYourMusic]  // card CR
         case .betaSoon, .betaNew: [.getNewBeta, .later]
         case .activate:  // card BW
             switch activateStep {
