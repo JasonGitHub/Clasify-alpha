@@ -42,7 +42,7 @@ import Testing
 
     @Test func songsThatCannotPlayAreHiddenEverywhere() {
         let catalog = LocalCatalog(
-            items: [Self.item(1, "Plays"), Self.item(2, "Protected", playable: false)],
+            songs: [Self.item(1, "Plays"), Self.item(2, "Protected", playable: false)],
             lists: [LocalList(persistentID: 9, name: "Mix", items: [2, 1])])
         #expect(catalog.library.map(\.title) == ["Plays"])
         #expect(catalog.track(LocalID.track(2)) == nil)
@@ -52,7 +52,7 @@ import Testing
 
     @Test func playlistsThatAreEmptyAfterThatAreLeftOut() {
         let catalog = LocalCatalog(
-            items: [Self.item(1, "A"), Self.item(2, "Video", playable: false)],
+            songs: [Self.item(1, "A"), Self.item(2, "Video", playable: false)],
             lists: [
                 LocalList(persistentID: 7, name: "Only videos", items: [2]), LocalList(persistentID: 8, name: "Empty", items: []),
                 LocalList(persistentID: 9, name: "Keep", items: [1, 1]),
