@@ -27,17 +27,21 @@ final class WindowWatcher {
                 MainActor.assumeIsolated { self?.report(always: false) }
             }
         }
-        timer = Task { @MainActor [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                self.report(always: true)
-                try? await Task.sleep(for: .seconds(60))
+        // CLA-185: the first report reads the windows and screens, so it waits for the launch's end.
+        AppLaunch.whenDone { [weak self] in
+            self?.timer = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    guard let self else { return }
+                    self.report(always: true)
+                    try? await Task.sleep(for: .seconds(60))
+                }
             }
         }
     }
 
     /// A change goes out at once; the same spot goes out only on the minute.
     private func report(always: Bool) {
+        guard AppLaunch.done else { return }
         let spot = DeviceWindow.spot
         guard always || spot != last else { return }
         last = spot
