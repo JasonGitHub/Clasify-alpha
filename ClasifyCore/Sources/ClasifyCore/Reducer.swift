@@ -16,6 +16,9 @@ public enum Action: Equatable, Sendable {
     /// failed: the old rows stay.
     case playlistsRefreshed([Playlist]?)
     case tracksRefreshed(playlist: String, tracks: [Track]?)
+    /// CLA-179: the artists, read again for On This Mac's main menu. nil when it failed: the
+    /// old rows stay.
+    case artistsRefreshed([Playlist]?)
     /// The tracks of the playlist selected on the Playlists screen were read for its covers,
     /// as `.readArtTracks` asked. nil when the read failed: the covers that show stay.
     /// A stale `token` (from before a logout or reset) is ignored.
@@ -155,6 +158,9 @@ public enum Effect: Equatable, Sendable {
     /// screen shows the old rows. The result comes back as `.playlistsRefreshed` or `.tracksRefreshed`.
     case refreshPlaylists
     case refreshTracks(playlist: String)
+    /// CLA-179: read the artists again past the cache (On This Mac only). The result comes back
+    /// as `.artistsRefreshed`.
+    case refreshArtists
     /// Read one playlist's tracks, through the library's memory cache, for the Playlists
     /// screen's covers. The result comes back as `.artTracksRead`.
     case readArtTracks(token: Int, playlist: String)
@@ -1165,8 +1171,16 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if let artists {
                 s.artists = artists.sorted { Playlist.nameOrder($0.name, $1.name) }
                 s.artistsLoaded = true
+                s.readAt[AppState.artistsKey] = now
             }
             finishLoad(token, ok: artists != nil)
+
+        case .artistsRefreshed(let artists):
+            guard s.refreshing.remove(AppState.artistsKey) != nil, let artists else { return }
+            let old = s.rows(for: Frame(screen: .artists))
+            s.artists = artists.sorted { Playlist.nameOrder($0.name, $1.name) }
+            s.readAt[AppState.artistsKey] = now
+            keepSelection(on: .artists, old: old)
 
         case .playlistsLoaded(let token, let playlists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
@@ -1542,6 +1556,13 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // until the answers come; the playing song and its queue do not change.
             for key in s.loadedTracks.sorted() { refreshIfStale(.tracks(playlist: key), after: localStaleAfter) }
             if s.playlistsLoaded { refreshIfStale(.playlists, after: localStaleAfter) }
+            // The artists are read once a session on other services (card BN); here they
+            // follow the library, so a new artist shows with its songs.
+            let artists = AppState.artistsKey
+            if s.artistsLoaded && now - (s.readAt[artists] ?? 0) >= localStaleAfter && !s.refreshing.contains(artists) {
+                s.refreshing.insert(artists)
+                fx.append(.refreshArtists)
+            }
         }
     }
     if s.localEmpty && s.signedIn && s.stack.count == 1 && s.top.screen == .main { s.stack = [Frame(screen: .noSongs)] }

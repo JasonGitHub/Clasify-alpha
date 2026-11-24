@@ -96,11 +96,14 @@ public protocol Library: AnyObject {
     /// The library's artists, as lists with no tracks: their IDs (`Playlist.isArtistID`) and
     /// names (card BN). `tracks(of:)` reads an artist's songs. nil when the read fails.
     func artists() async -> [Playlist]?
+    /// The artists, read again past any cached read (CLA-179, On This Mac). nil when it fails.
+    func rereadArtists() async -> [Playlist]?
 }
 
 extension Library {
     public var words: LibraryWords { .spotify }
     public func artists() async -> [Playlist]? { [] }
+    public func rereadArtists() async -> [Playlist]? { await artists() }
 }
 
 /// The words that name a service's library on screen. The `Library` gives them, so the
@@ -321,6 +324,13 @@ public final class Store {
                     let result = await library.reread(id)
                     guard let self, self.serviceGen == gen else { return }
                     self.send(.tracksRefreshed(playlist: id, tracks: result))
+                }
+            case .refreshArtists:
+                let (library, gen) = (self.library, serviceGen)
+                Task(priority: .utility) { [weak self] in
+                    let result = await library.rereadArtists()
+                    guard let self, self.serviceGen == gen else { return }
+                    self.send(.artistsRefreshed(result))
                 }
             case .readArtTracks(let token, let id):
                 let library = self.library

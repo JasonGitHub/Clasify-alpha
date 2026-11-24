@@ -734,6 +734,8 @@ public struct AppState: Equatable, Sendable {
     /// they were read in this session.
     public var artists: [Playlist] = []
     public var artistsLoaded = false
+    /// The `readAt` and `refreshing` key of the artists. No list ID starts with ":".
+    public static let artistsKey = ":artists"
     /// The playlists (and `Playlist.likedSongsID`) whose tracks were read in this session.
     public var loadedTracks: Set<String> = []
     public var current: TrackRef?
