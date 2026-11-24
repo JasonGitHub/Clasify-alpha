@@ -1701,7 +1701,7 @@ import Testing
         #expect(empty.isBlue(145, 140) && !empty.isBlue(145, 163))  // Check again is selected, under the words
         #expect(Labels.title(.noSongs, in: s) == "On This Mac")
         let words = Labels.setupWords(for: s.top, in: s)
-        #expect(words?.headline == "No songs yet" && words?.footnote == "We play songs saved on this Mac.")
+        #expect(words?.headline == "No songs yet" && words?.footnote == "We play songs\nsaved on this Mac.")
         #expect(s.rows(for: s.top).map { Labels.row($0, on: .noSongs, in: s).label } == ["Check again", "Pick Your Music"])
     }
 

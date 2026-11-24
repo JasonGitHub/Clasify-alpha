@@ -226,7 +226,7 @@ enum Labels {
         case .premium: SetupWords(headline: state.words.needPlan, line: state.words.needPlanLine)  // 135; card BM, 259
         case .accessOff: SetupWords(headline: "Access is off", line: "Turn it on in System Settings.")  // card BM, 258
         case .noSongs:  // card CR
-            SetupWords(headline: "No songs yet", line: "Add songs to\nthe Music app.", footnote: "We play songs saved on this Mac.")
+            SetupWords(headline: "No songs yet", line: "Add songs to\nthe Music app.", footnote: "We play songs\nsaved on this Mac.")
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")
         case .yourMusic where frame.loading: SetupWords(headline: "Getting your music", line: "This may take a minute.")
         case .yourMusic: SetupWords(headline: "You’re all set", line: ready)
