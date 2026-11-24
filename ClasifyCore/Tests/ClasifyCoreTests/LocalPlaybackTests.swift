@@ -84,6 +84,18 @@ import Testing
         ])
     }
 
+    /// Codex on #441: a read that works does not settle the end; only a song that starts does.
+    @Test func anEndDuringAReadThatANewerLoadDropsStillShows() {
+        var d = Driver.playing(2, at: 1)
+        d.load(0, generation: 2)
+        d.on(.songEnded(queued: false))
+        d.on(.read(id: d.readID, items: Self.songs(2)))  // its open runs
+        d.load(1, generation: 3)  // drops it, then fails
+        #expect(Self.reports(d.on(.read(id: d.readID, items: nil))) == [
+            .loadFailed(Self.cant, generation: 3), .trackChanged("s1", playing: false, generation: 3), .trackEnded(generation: 3),
+        ])
+    }
+
     @Test func case3NextDuringALoadRunsAfterIt() {
         var d = Driver()
         d.load(0)

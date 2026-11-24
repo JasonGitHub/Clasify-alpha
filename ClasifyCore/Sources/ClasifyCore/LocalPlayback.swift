@@ -115,7 +115,7 @@ public struct LocalPlayback: Sendable, Equatable {
                 if let before { wantsPlay = before }
                 return [.report(.loadFailed(Self.cantPlay, generation: generation))] + catchUp()
             }
-            missed = nil
+            // `missed` stays until a song starts: a newer load can still drop this one (Codex on #441).
             var queue = LocalQueue(count: items.count, start: start, shuffle: shuffle, repeatMode: repeatMode, using: &random)
             var ended = false
             for forward in skips {  // as they would run after the read
