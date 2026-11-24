@@ -176,15 +176,15 @@ enum SearchMark: Equatable {
         ZStack {
             switch self {
             case .song:
-                Self.song.applying(scale).fill(color)
+                Self.songPath.applying(scale).fill(color)
             case .artist:
-                Self.artist.applying(scale).fill(color)
+                Self.artistPath.applying(scale).fill(color)
             case .album:
                 Path(roundedRect: CGRect(x: 2.5, y: 2.5, width: 19, height: 19), cornerRadius: 2).applying(scale)
                     .stroke(color, lineWidth: 2.4 * k)
                 Path(ellipseIn: CGRect(x: 8, y: 8, width: 8, height: 8)).applying(scale).fill(color)
             case .playlist:
-                Self.playlist.applying(scale).fill(color)
+                Self.playlistPath.applying(scale).fill(color)
             case .glass:
                 Path(ellipseIn: CGRect(x: 3.5, y: 3.5, width: 13, height: 13)).applying(scale)
                     .stroke(color, lineWidth: line * k)
@@ -200,7 +200,7 @@ enum SearchMark: Equatable {
         .accessibilityHidden(true)
     }
 
-    private static var song: Path {
+    private static var songPath: Path {
         var p = Path()
         p.addEllipse(in: CGRect(x: 3.2, y: 15.2, width: 6, height: 6))
         p.addEllipse(in: CGRect(x: 14.2, y: 13.2, width: 6, height: 6))
@@ -211,7 +211,7 @@ enum SearchMark: Equatable {
         return p
     }
 
-    private static var artist: Path {
+    private static var artistPath: Path {
         var p = Path()
         p.addEllipse(in: CGRect(x: 7.5, y: 3, width: 9, height: 9))
         // "M3 22c0-5 4-8.5 9-8.5s9 3.5 9 8.5z"
@@ -222,7 +222,7 @@ enum SearchMark: Equatable {
         return p
     }
 
-    private static var playlist: Path {
+    private static var playlistPath: Path {
         var p = Path()
         p.addRoundedRect(in: CGRect(x: 2, y: 4, width: 20, height: 2.6), cornerSize: CGSize(width: 1, height: 1))
         p.addRoundedRect(in: CGRect(x: 2, y: 10.7, width: 20, height: 2.6), cornerSize: CGSize(width: 1, height: 1))
