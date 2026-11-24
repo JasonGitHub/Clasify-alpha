@@ -9,6 +9,9 @@ import Foundation
 final class LocalPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in }
+    /// The store's `isPlaying`, which `.play` toggles. Set it with `send`. Until then, what the
+    /// audio does (Codex on #445: not `wantsPlay`, which stays true after the end).
+    var isPlaying: (() -> Bool)?
 
     private let source: any LocalSource
     private let player = AVQueuePlayer()
@@ -27,7 +30,7 @@ final class LocalPlayer: Player {
         player.actionAtItemEnd = .advance
         // A key goes in as the skin's button: the same action, through the store.
         controls.onCommand = { [weak self] command in
-            guard let self, let action = LocalNowPlaying.action(for: command, playing: playback.wantsPlay) else { return }
+            guard let self, let action = LocalNowPlaying.action(for: command, playing: isPlaying?() ?? nowPlaying.playing) else { return }
             send(action)
         }
         let center = NotificationCenter.default

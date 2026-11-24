@@ -42,6 +42,19 @@ import Testing
         #expect(now == before)
     }
 
+    /// Codex on #445: after the end, the audio is off, so Play plays and Pause does nothing.
+    @Test func afterTheEndTheStateIsNotPlaying() {
+        var now = LocalNowPlaying()
+        now.active = true
+        now.apply(.start(url, seek: nil, play: true))
+        now.apply(.report(.trackChanged("s0", playing: true, generation: 1)))
+        now.apply(.stopAudio)
+        now.apply(.report(.trackEnded(generation: 1)))
+        #expect(!now.playing)
+        #expect(LocalNowPlaying.action(for: .play, playing: now.playing) == .play)
+        #expect(LocalNowPlaying.action(for: .pause, playing: now.playing) == nil)
+    }
+
     @Test func eachKeyIsTheSkinsInputAction() {
         #expect(LocalNowPlaying.action(for: .play, playing: false) == .play)
         #expect(LocalNowPlaying.action(for: .play, playing: true) == nil)  // already playing: Play does not pause
