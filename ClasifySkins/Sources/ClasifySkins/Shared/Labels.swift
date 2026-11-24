@@ -61,6 +61,8 @@ enum Labels {
         var opens = false
         /// The value in gray, as "Not activated" (card BF.2).
         var grayValue = false
+        /// Card CR: a local song whose file is missing. The whole row is gray.
+        var missing = false
     }
 
     /// CLA-141, card BF.2 (change 360): About's Status row. It opens only with the server's info.
@@ -96,7 +98,9 @@ enum Labels {
             guard let playlist = screen.songList else { return RowText(label: "") }
             let ref = TrackRef(playlist: playlist, track: id)
             let track = state.track(ref)
-            return RowText(label: track?.title ?? "", detail: track?.artist ?? "", playing: state.current == ref)
+            return RowText(
+                label: track?.title ?? "", detail: track?.artist ?? "", playing: state.current == ref,
+                missing: track?.missing ?? false)
         // Change 256: the value flips on each Select; the switch happens on leaving Settings.
         case .service: return RowText(label: "Service", value: (state.pendingService ?? state.service).rawValue)
         case .shuffle: return RowText(label: "Shuffle", value: state.shuffle ? "Songs" : "Off")
@@ -227,6 +231,8 @@ enum Labels {
         case .loggedIn: SetupWords(headline: "You’re in", line: "Nice to meet you.")
         case .premium: SetupWords(headline: state.words.needPlan, line: state.words.needPlanLine)  // 135; card BM, 259
         case .accessOff: SetupWords(headline: "Access is off", line: "Turn it on in System Settings.")  // card BM, 258
+        case .noSongs where state.localOnDrive:  // card CR: songs, but no file of them here
+            SetupWords(headline: "Your music\nis on a drive", line: "Connect it to listen.")
         case .noSongs:  // card CR
             SetupWords(headline: "No songs yet", line: "Add songs to\nthe Music app.", footnote: "We play songs\nsaved on this Mac.")
         case .spotifyApp: SetupWords(headline: "One more thing", line: "We also need the Spotify app on this Mac.")

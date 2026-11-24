@@ -13,11 +13,16 @@ public struct Track: Equatable, Sendable {
     public var album: Album?
     /// The disc and the track's place on it, from 1. Nil when Spotify does not give them.
     public var disc: Int?, number: Int?
+    /// Card CR: a local song whose file is not on this Mac now (moved, or on a drive that is
+    /// not connected). Its row is gray, a press shows a toast, and play skips it.
+    public var missing: Bool
 
     public init(
         id: String, title: String, artist: String, duration: Double, coverID: String? = nil,
-        album: Album? = nil, disc: Int? = nil, number: Int? = nil, largeCoverID: String? = nil
+        album: Album? = nil, disc: Int? = nil, number: Int? = nil, largeCoverID: String? = nil,
+        missing: Bool = false
     ) {
+        self.missing = missing
         self.id = id; self.title = title; self.artist = artist; self.duration = duration
         self.coverID = coverID.flatMap { $0.isEmpty ? nil : $0 }
         self.largeCoverID = largeCoverID.flatMap { $0.isEmpty ? nil : $0 }
@@ -787,10 +792,15 @@ public struct AppState: Equatable, Sendable {
     public var service = MusicService.spotify
     /// CLA-179: the `local.on` test switch: Pick Your Music and the Service row offer On This Mac.
     public var localOn = false
-    /// Card CR: On This Mac read the whole library, and it has no song that can play.
+    /// Card CR: On This Mac read the whole library, and it has no song that can play: no song,
+    /// or only songs whose files are missing (`localOnDrive`).
     public var localEmpty: Bool {
-        service == .local && loadedTracks.contains(Playlist.libraryID) && tracks(in: Playlist.libraryID).isEmpty
+        service == .local && loadedTracks.contains(Playlist.libraryID)
+            && tracks(in: Playlist.libraryID).allSatisfy(\.missing)
     }
+    /// Card CR: the library has songs, but no file of them is on this Mac now. Most often the
+    /// library is on a drive that is not connected: "Your music is on a drive".
+    public var localOnDrive: Bool { localEmpty && !tracks(in: Playlist.libraryID).isEmpty }
     /// When About opened (card BF). Its scroll bar shows from 0.3 s after (change 207).
     public var aboutAt: Double = 0
     /// About is one page that scrolls 3 wheel steps (card BS, changes 294 and 295; card BF.2).

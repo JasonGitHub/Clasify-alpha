@@ -93,14 +93,18 @@ enum LocalMusicRead {
     /// The plain values of one library item. It has a file URL only when it can play: a song
     /// (not a video), not protected (Apple Music downloads, old FairPlay files), and a file on
     /// this Mac (not in the cloud only).
+    /// Card CR: `missing` when the file is not there now (moved, or its drive is not connected).
+    /// This only asks whether the file exists; it opens and writes nothing.
     nonisolated static func item(_ item: ITLibMediaItem) -> LocalSong {
         let album = item.album
         let playable = item.mediaKind == .kindSong && !item.isVideo && !item.isDRMProtected
             && item.locationType == .file
+        let url = playable ? item.location : nil
         return LocalSong(
             persistentID: item.persistentID.uint64Value, title: item.title, artist: item.artist?.name ?? "",
             album: album.title ?? "", albumID: album.persistentID.uint64Value, albumArtist: album.albumArtist,
             disc: album.discNumber > 0 ? album.discNumber : nil, number: item.trackNumber > 0 ? item.trackNumber : nil,
-            duration: Double(item.totalTime) / 1000, hasCover: item.hasArtworkAvailable, url: playable ? item.location : nil)
+            duration: Double(item.totalTime) / 1000, hasCover: item.hasArtworkAvailable, url: url,
+            missing: url.map { !FileManager.default.fileExists(atPath: $0.path) } ?? false)
     }
 }
