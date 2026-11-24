@@ -1692,12 +1692,13 @@ import Testing
             return n
         }
         let pick = try render(s, "pick-music-local", time: 10)
-        #expect(pick.isBlue(100, Self.rowCenter(2)))
+        #expect(pick.isBlue(145, Self.rowCenter(2)))  // past the white label
         #expect(blue(pick) > 300, "\(blue(pick))")
         s.service = .local; s.words = .local; s.signedIn = true
         s.stack = [Frame(screen: .noSongs)]
         let empty = try render(s, "no-songs", time: 10)
         #expect(blue(empty) > 300, "\(blue(empty))")
+        #expect(empty.isBlue(145, 140) && !empty.isBlue(145, 163))  // Check again is selected, under the words
         #expect(Labels.title(.noSongs, in: s) == "On This Mac")
         let words = Labels.setupWords(for: s.top, in: s)
         #expect(words?.headline == "No songs yet" && words?.footnote == "We play songs saved on this Mac.")
