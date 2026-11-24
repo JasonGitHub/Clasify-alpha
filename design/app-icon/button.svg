@@ -1,6 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024"><defs>
-  <linearGradient id="btn" x1="0" y1="397.1" x2="0" y2="626.9" gradientUnits="userSpaceOnUse">
-    <stop offset="0" stop-color="#f6f7f9"/><stop offset="1" stop-color="#cdd2da"/>
+  <linearGradient id="tile" x1="0" y1="100" x2="0" y2="924" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fbfcfd"/><stop offset=".5" stop-color="#e7eaef"/><stop offset="1" stop-color="#c4cbd5"/>
   </linearGradient>
-</defs>
-<circle cx="512" cy="512" r="114.9" fill="url(#btn)"/></svg>
+  <radialGradient id="frost" cx="512" cy="160" r="620" gradientUnits="userSpaceOnUse">
+    <stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/>
+  </radialGradient>
+</defs><circle cx="512" cy="512" r="107.3" fill="url(#tile)"/></svg>
