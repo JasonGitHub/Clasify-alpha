@@ -72,4 +72,30 @@ extension PocketSnapshotTests {
         _ = try render(s, "search-no-match")
         #expect(Labels.searchNoMatch == Labels.SearchWords(title: "Hmm, no luck", line: "We searched your library."))
     }
+
+    /// The field and the strip stay in place: the field's border at y 57 and 78, the strip's box
+    /// at y 239. Five 34 point rows once pushed them out of the screen (Jason, build 458).
+    func expectFieldAndStripInPlace(_ shot: Snapshot, _ name: String) {
+        let x = Self.screenLeft + 200
+        #expect((55...59).contains { !shot.isLight(x, $0) }, "\(name): the field's top border")
+        #expect(shot.isLight(x, 68), "\(name): the white field")
+        #expect((76...80).contains { !shot.isLight(x, $0) }, "\(name): the field's bottom border")
+        #expect(shot.isBlue(Self.screenLeft + 140, 239), "\(name): the strip's box")
+    }
+
+    @Test func manyResultsKeepTheFieldAndTheStrip() throws {
+        var s = onSearch("song")
+        #expect(s.searchResults.count > 5)
+        let shot = try render(s, "search-many")
+        expectFieldAndStripInPlace(shot, "many")
+        for row in 0..<4 { #expect(!shot.isBlue(Self.screenLeft + 200, Self.searchRowCenter(row)), "row \(row)") }
+        // Scrolled to the end, with the last row selected at the bottom of the 4 that show.
+        s.searchPicked = true
+        s.top.sel = s.searchResults.count - 1
+        s.top.off = s.top.sel - (searchRows - 1)
+        let end = try render(s, "search-many-scrolled")
+        expectFieldAndStripInPlace(end, "scrolled")
+        #expect(end.isBlue(Self.screenLeft + 200, Self.searchRowCenter(3)))
+        #expect(!end.isBlue(Self.screenLeft + 200, Self.searchRowCenter(2)))
+    }
 }
