@@ -46,6 +46,7 @@ public struct LocalNowPlaying: Equatable, Sendable {
     /// Follows the commands of one `LocalPlayback.handle`. `playback` is its state after that
     /// call; `time` is where the audio is now, in seconds (for Play and Pause).
     public mutating func follow(_ commands: [LocalPlayback.Command], of playback: LocalPlayback, time: Double) {
+        var failed = false, changed = false
         for command in commands {
             switch command {
             case .start, .adoptNext, .play, .pause, .seek, .stopAudio: anchors &+= 1
@@ -59,10 +60,16 @@ public struct LocalNowPlaying: Equatable, Sendable {
             case .seek(let seconds): elapsed = seconds
             // The audio is off: the song on screen rests, paused at its start (Play starts it again).
             case .stopAudio: (playing, elapsed) = (false, 0)
-            case .report(.trackChanged(let id, _, _)): song = playback.now?.items.first { $0.id == id }
+            case .report(.trackChanged(let id, _, _)):
+                song = playback.now?.items.first { $0.id == id }
+                changed = true
+            case .report(.playbackFailed): failed = true
             default: break
             }
         }
+        // Codex on #447: no song opened (a new load whose files all failed): rest on the song that
+        // Play tries again, not on the one from before.
+        if failed && !changed { song = playback.now?.song }
         if playback.now == nil { song = nil }  // a stop: nothing on screen
     }
 

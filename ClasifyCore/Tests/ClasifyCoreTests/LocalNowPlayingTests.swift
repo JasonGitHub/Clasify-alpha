@@ -141,6 +141,15 @@ import Testing
         #expect(d.now.state == .paused && d.now.song?.id == "s1")
     }
 
+    /// Codex on #447: a new load whose file does not open leaves its song paused, not the old one.
+    @Test func aLoadThatCannotOpenRestsOnItsOwnSong() {
+        var d = Driver.playing()
+        d.on(.load(track: "s1", context: nil, autoplay: true, generation: 2))
+        d.on(.read(id: d.readID, items: [Self.songs[1]]))
+        d.on(.checked(id: d.checkID, ok: false))
+        #expect(d.now.state == .paused && d.now.song?.id == "s1")
+    }
+
     @Test func otherCommandsChangeNothing() {
         var d = Driver.playing()
         let before = d.now
