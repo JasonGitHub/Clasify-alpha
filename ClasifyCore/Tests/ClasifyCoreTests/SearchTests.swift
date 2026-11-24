@@ -106,7 +106,20 @@ import Testing
         #expect(Search.results("echo", in: s).count == Search.limit)
     }
 
+    /// One index serves every key; it sees new library data only when it is made again.
+    @Test func anIndexGivesTheSameResultsForEveryKeyUntilItIsMadeAgain() {
+        var s = Self.state()
+        let index = Search.Index(s)
+        for query in ["", "a", "halfway", "MARA", "tail", "glass r", "late", "xyz"] {
+            #expect(index.results(query) == Search.results(query, in: s))
+        }
+        s.library[1].tracks.append(Self.song("t5", "Halfway Gone"))
+        #expect(index.results("gone").isEmpty)
+        #expect(Search.Index(s).results("gone").map(\.id) == ["t5"])
+    }
+
     /// Typing stays fast: 10,000 songs in 3 lists, a one-letter query that matches most of them.
+    /// The CI log shows the times (a debug build; a release build is faster).
     @Test func tenThousandSongsAreFast() {
         var s = AppState()
         let words = ["Neon", "Glass", "Paper", "Still", "Halfway", "Sodium", "Pulse", "Rear", "Café", "Björk"]
@@ -119,9 +132,13 @@ import Testing
             Playlist(id: "spotify:playlist:b", name: "B", tracks: Array(songs.suffix(5_000))),
         ]
         let clock = ContinuousClock()
+        var index: Search.Index?
+        let build = clock.measure { index = Search.Index(s) }
         var found: [Search.Result] = []
-        let took = clock.measure { found = Search.results("e", in: s) }
+        let key = clock.measure { found = index?.results("e") ?? [] }
+        print("Search on 10,000 songs: index \(build), one key \(key)")
         #expect(found.filter { $0.kind == .song }.count == Search.limit)
-        #expect(took < .seconds(2), "one search took \(took)")  // a debug build on CI; a release build is much faster
+        #expect(key < .milliseconds(500), "one key took \(key)")
+        #expect(build < .seconds(5), "the index took \(build)")
     }
 }
