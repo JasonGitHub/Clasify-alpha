@@ -1,13 +1,19 @@
 import Foundation
 
 /// CLA-179: one local song that the local player can open: its ID ("local:track:<persistent ID hex>")
-/// and the address of its file.
+/// and the address of its file. The words and the length come from the library read, for the
+/// Mac's Now Playing (CLA-179).
 public struct LocalItem: Sendable, Equatable {
     public var id: String
     public var url: URL
+    /// Empty when the library gives none.
+    public var title: String, artist: String, album: String
+    /// Seconds. 0 when the library gives none.
+    public var duration: Double
 
-    public init(id: String, url: URL) {
+    public init(id: String, url: URL, title: String = "", artist: String = "", album: String = "", duration: Double = 0) {
         self.id = id; self.url = url
+        self.title = title; self.artist = artist; self.album = album; self.duration = duration
     }
 }
 

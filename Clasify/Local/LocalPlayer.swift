@@ -16,8 +16,10 @@ final class LocalPlayer: Player {
     private let source: any LocalSource
     private let player = AVQueuePlayer()
     private var playback = LocalPlayback()
-    /// The media keys and Now Playing, only while Local is the active service.
-    private let controls = LocalSystemControls()
+    /// The media keys and Now Playing, only while Local is the active service. Made at the first
+    /// `setActive(true)`: before that nothing touches `MPRemoteCommandCenter` or
+    /// `MPNowPlayingInfoCenter`, so with Spotify active the hidden Spotify app keeps the keys.
+    private var controls: LocalSystemControls?
     private var nowPlaying = LocalNowPlaying()
     /// The item of the song that plays, and the next song's item, queued after it.
     private var currentItem: AVPlayerItem?
@@ -28,11 +30,6 @@ final class LocalPlayer: Player {
     init(source: any LocalSource) {
         self.source = source
         player.actionAtItemEnd = .advance
-        // A key goes in as the skin's button: the same action, through the store.
-        controls.onCommand = { [weak self] command in
-            guard let self, let action = LocalNowPlaying.action(for: command, playing: isPlaying?() ?? nowPlaying.playing) else { return }
-            send(action)
-        }
         let center = NotificationCenter.default
         observers = [
             // The queue is .main, so these run on the main actor. Only the item's identity (Sendable)
@@ -67,8 +64,17 @@ final class LocalPlayer: Player {
     /// only while Local is active.
     func setActive(_ on: Bool) {
         nowPlaying.active = on
-        if on { controls.activate() } else { controls.deactivate() }
-        controls.show(nowPlaying)
+        if on && controls == nil {
+            let made = LocalSystemControls()
+            // A key goes in as the skin's button: the same action, through the store.
+            made.onCommand = { [weak self] command in
+                guard let self, let action = LocalNowPlaying.action(for: command, playing: isPlaying?() ?? nowPlaying.playing) else { return }
+                send(action)
+            }
+            controls = made
+        }
+        if on { controls?.activate() } else { controls?.deactivate() }
+        controls?.show(nowPlaying)
     }
 
     /// The player's own volume, not the Mac's.
@@ -80,8 +86,9 @@ final class LocalPlayer: Player {
         let commands = playback.handle(event)
         for command in commands { run(command) }
         let before = nowPlaying
-        for command in commands { nowPlaying.apply(command) }
-        if nowPlaying != before { controls.show(nowPlaying) }
+        let time = player.currentTime().seconds
+        nowPlaying.follow(commands, of: playback, time: time.isFinite ? max(0, time) : 0)
+        if nowPlaying != before { controls?.show(nowPlaying) }
     }
 
     private func run(_ command: LocalPlayback.Command) {
