@@ -487,6 +487,8 @@ public struct AppState: Equatable, Sendable {
     /// event went out once. Saved with the settings. A Mac set up before CLA-97 has no time.
     public var firstLaunchAt: Double?
     public var firstSongSent = false
+    /// CLA-181: `hint_step` `start` went out. Saved with the settings.
+    public var hintStartSent = false
     /// CLA-97: the sender takes events (`Action.analyticsOn`). Not saved. While it is off,
     /// `first_song` is not made, so the next real play makes it again (CTO 22:40 JST).
     public var analyticsOn = false

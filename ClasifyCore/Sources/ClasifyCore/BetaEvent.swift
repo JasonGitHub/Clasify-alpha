@@ -36,6 +36,9 @@ public enum BetaEvent: Equatable, Sendable {
     case dayActive(DayUse, service: MusicService, color: DeviceColor, settings: DaySettings = DaySettings())
     /// A crash or a hang of an earlier run (A4, MetricKit).
     case appProblem(AppProblem, service: MusicService)
+    /// CLA-181: the first-run hints. `start` once, when the tour first turns on; then one event
+    /// as each tour step ends, with `how` (nil on `start`). At most 6 in a person's life.
+    case hintStep(HintStep, how: HintHow?, service: MusicService)
 
     /// The event name in PostHog.
     public var name: String {
@@ -53,6 +56,7 @@ public enum BetaEvent: Equatable, Sendable {
         case .appSpeed: "app_speed"
         case .serviceSwitch: "service_switch"
         case .appProblem: "app_problem"
+        case .hintStep: "hint_step"
         }
     }
 
@@ -90,6 +94,10 @@ public enum BetaEvent: Equatable, Sendable {
             return p
         case .serviceSwitch(let from, let to):
             return ["from": .text(from.eventName), "to": .text(to.eventName)]
+        case .hintStep(let step, let how, let service):
+            var p: [String: BetaValue] = ["step": .text(step.rawValue), "service": .text(service.eventName)]
+            if let how { p["how"] = .text(how.rawValue) }
+            return p
         case .appProblem(let problem, let service):
             return problem.properties.merging(["service": .text(service.eventName)]) { old, _ in old }
         case .dayActive(let d, let service, let color, let settings):
@@ -123,6 +131,27 @@ public enum BetaEvent: Equatable, Sendable {
 /// A value in an event's data.
 public enum BetaValue: Equatable, Sendable {
     case text(String), number(Int), flag(Bool), decimal(Double)
+}
+
+/// CLA-181: a step of the first-run hints (card BA.2, CLA-163). The old card BA hints are not one.
+public enum HintStep: String, Sendable {
+    case start, play, next, menu, turn, menuBar = "menu_bar"
+
+    init?(_ hint: Hint) {
+        switch hint {
+        case .tourPlay: self = .play
+        case .tourNext: self = .next
+        case .tourMenu: self = .menu
+        case .tourTurn: self = .turn
+        case .tourMenuBar: self = .menuBar
+        case .menu, .playPause, .next: return nil
+        }
+    }
+}
+
+/// CLA-181: how a hint step ended: the person did its action, or it hid `tourHideMax` times.
+public enum HintHow: String, Sendable {
+    case done, unused
 }
 
 /// The setup steps, in order (analytics doc). `spotify_check` shows only when the Spotify app is missing.
@@ -237,10 +266,13 @@ struct BeforeEvents {
     var choices: [String], used: Feature?
     /// The action is the press on a color on the Color screen in setup.
     var colorPress = false
+    /// CLA-181: the tour and its ended steps before.
+    var tourOn: Bool, hintsDone: Set<Hint>
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
         choices = s.settings.choices
+        (tourOn, hintsDone) = (s.tourOn, s.hintsDone)
         playing = s.isPlaying
         (error, service) = (s.top.error, s.service)
         (readAt, artists) = (s.readAt, s.artistsLoaded)
@@ -307,6 +339,17 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
             s.speedSent = true
             events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded())), loaded: loaded))
         }
+    }
+    // CLA-181: `start` the first time the tour turns on (once; a later start for the trial's
+    // steps sends it only if none went out), then each tour step that ended, once ever.
+    if s.tourOn && !b.tourOn && !s.hintStartSent && s.analyticsOn {
+        s.hintStartSent = true
+        events.append(.hintStep(.start, how: nil, service: s.service))
+    }
+    for hint in s.tourSteps where s.hintsDone.contains(hint) && !b.hintsDone.contains(hint) {
+        guard let step = HintStep(hint) else { continue }
+        let unused = s.tourHides[hint, default: 0] >= AppState.tourHideMax
+        events.append(.hintStep(step, how: unused ? .unused : .done, service: s.service))
     }
     let daysLeft = s.beta.map { Int((max(0, $0.endsAt - now) / BetaBuild.day).rounded(.up)) } ?? 0
     if screen != b.screen, let notice = BetaNotice(screen) {

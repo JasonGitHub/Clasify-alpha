@@ -52,6 +52,8 @@ public struct Settings: Equatable, Sendable {
     /// CLA-97: `AppState.firstLaunchAt` and `AppState.firstSongSent`.
     public var firstLaunchAt: Double?
     public var firstSongSent = false
+    /// CLA-181: `AppState.hintStartSent`.
+    public var hintStartSent = false
     /// CLA-97: `AppState.lastBuild`.
     public var lastBuild: Int?
     /// CLA-97: `AppState.today`.
@@ -81,6 +83,7 @@ public struct Settings: Equatable, Sendable {
         static let arrived = "arrive.done"
         static let firstLaunchAt = "analytics.firstLaunch"
         static let firstSongSent = "analytics.firstSong"
+        static let hintStartSent = "analytics.hintStart"
         static let lastBuild = "analytics.lastBuild"
         static let today = "analytics.day"
     }
@@ -118,6 +121,7 @@ public struct Settings: Equatable, Sendable {
         arrived = store.string(forKey: Key.arrived).flatMap { Bool($0) } ?? false
         firstLaunchAt = store.string(forKey: Key.firstLaunchAt).flatMap { Double($0) }
         firstSongSent = store.string(forKey: Key.firstSongSent).flatMap { Bool($0) } ?? false
+        hintStartSent = store.string(forKey: Key.hintStartSent).flatMap { Bool($0) } ?? false
         lastBuild = store.string(forKey: Key.lastBuild).flatMap { Int($0) }
         today = store.string(forKey: Key.today).flatMap { DayUse(saved: $0) }
     }
@@ -142,6 +146,7 @@ public struct Settings: Equatable, Sendable {
         store.set(String(arrived), forKey: Key.arrived)
         store.set(firstLaunchAt.map { String($0) }, forKey: Key.firstLaunchAt)
         store.set(firstSongSent ? "true" : nil, forKey: Key.firstSongSent)  // only once it went out
+        store.set(hintStartSent ? "true" : nil, forKey: Key.hintStartSent)
         store.set(lastBuild.map { String($0) }, forKey: Key.lastBuild)
         store.set(today?.saved, forKey: Key.today)
     }
@@ -173,6 +178,7 @@ extension AppState {
             v.activated = activated
             v.arrived = arrived
             (v.firstLaunchAt, v.firstSongSent, v.lastBuild, v.today) = (firstLaunchAt, firstSongSent, lastBuild, savedToday)
+            v.hintStartSent = hintStartSent
             return v
         }
         set {
@@ -189,6 +195,7 @@ extension AppState {
             activated = newValue.activated
             arrived = newValue.arrived
             (firstLaunchAt, firstSongSent, lastBuild, today) = (newValue.firstLaunchAt, newValue.firstSongSent, newValue.lastBuild, newValue.today)
+            hintStartSent = newValue.hintStartSent
             savedToday = newValue.today
         }
     }
