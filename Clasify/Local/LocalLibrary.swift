@@ -15,10 +15,15 @@ final class LocalLibrary: Library, LocalSource {
 
     /// The library read of this session, done or running. A failed read leaves.
     private var read: Task<LocalCatalog?, Never>?
+    /// When `read` started. Rereads asked for together (the main menu rereads every list read
+    /// so far) share one read that started less than `shareFor` before.
+    private var readStart: ContinuousClock.Instant?
+    private static let shareFor: Duration = .seconds(2)
 
     /// The library, read once off the main actor, and shared while the read runs.
     private func catalog() async -> LocalCatalog? {
         let task = read ?? Task.detached(priority: .userInitiated) { LocalMusicRead.catalog() }
+        if read == nil { readStart = .now }
         read = task
         let catalog = await task.value
         if catalog == nil { read = nil }
@@ -66,6 +71,7 @@ final class LocalLibrary: Library, LocalSource {
 
     /// A new read next time, and new covers: `AppleMusicArt` opens the library again too.
     private func forget() async {
+        if read != nil, let start = readStart, ContinuousClock.now - start < Self.shareFor { return }
         read = nil
         await AppleMusicArt.shared.forget()
     }
