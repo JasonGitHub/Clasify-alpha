@@ -162,4 +162,54 @@ import Testing
         #expect(row(.song, list: "focus") == .foundSong("x", list: "focus"))
         #expect(row(.song) == .foundSong("x", list: Playlist.libraryID))
     }
+
+    // PR B: typing.
+
+    @Test func typingFindsAndDeleteRemoves() {
+        var s = ready()
+        s.top.sel = s.rows(for: s.top).firstIndex(of: .search)!
+        send(&s, .select)
+        let index = s.searchIndex
+        #expect(index == Search.Index(s))  // made when Search opens
+        send(&s, .searchType("F"), .searchType("1"))
+        #expect(s.searchIndex == index)  // a key only asks it
+        #expect(s.searchQuery == "F1" && s.rows(for: s.top) == [.foundSong("f1", list: "focus")] && !s.searchPicked)
+        send(&s, .searchDelete)
+        #expect(s.searchQuery == "F" && s.rows(for: s.top).count == 9)
+        send(&s, .searchDelete, .searchDelete)  // one more than the query: nothing happens
+        #expect(s.searchQuery == "" && s.searchResults.isEmpty)
+        send(&s, .menu)
+        #expect(s.searchIndex == nil)
+    }
+
+    @Test func typingClearsTheSelection() {
+        var s = onSearch()
+        send(&s, .wheel(1), .wheel(3))
+        #expect(s.searchPicked && s.top.sel == 3)
+        send(&s, .searchType("0"))
+        #expect(s.searchQuery == "f0" && !s.searchPicked && s.top.sel == 0 && s.top.off == 0)
+        send(&s, .wheel(1), .searchDelete)
+        #expect(s.searchQuery == "f" && !s.searchPicked && s.top.sel == 0)
+    }
+
+    @Test func onlyLettersNumbersAndSpacesTypeUpToForty() {
+        var s = onSearch("")
+        for c in ["é", "ñ", "ü", "7", " ", "日"] as [Character] { send(&s, .searchType(c)) }
+        #expect(s.searchQuery == "éñü7 日")
+        for c in ["\r", "\t", "-", "\u{7F}", "\u{F700}"] as [Character] { send(&s, .searchType(c)) }
+        #expect(s.searchQuery == "éñü7 日")
+        for _ in 0..<50 { send(&s, .searchType("a")) }
+        #expect(s.searchQuery.count == Search.maxQuery)
+    }
+
+    @Test func typingOffSearchDoesNothing() {
+        var s = ready()
+        send(&s, .searchType("a"), .searchDelete)
+        #expect(s.searchQuery == "" && s.top.screen == .main)
+        var t = onSearch()
+        send(&t, .wheel(1), .wheel(1), .select)  // Now Playing over Search
+        send(&t, .searchType("x"), .searchDelete)
+        #expect(t.searchQuery == "f" && t.top.screen == .now)
+    }
 }
+

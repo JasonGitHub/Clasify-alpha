@@ -129,8 +129,21 @@ public struct PocketSkin: View {
 
     /// The mockup's keys: arrows turn the wheel and skip, Return selects, Escape and Delete go back,
     /// Space plays, S and R change shuffle and repeat.
-    static func action(for key: KeyEquivalent) -> Action? {
-        switch key {
+    /// CLA-183, card CS: on Search, the keys type. A letter, a number or Space types, Delete
+    /// removes the last character, Return selects or opens, Escape is MENU and ↑/↓ turn the
+    /// wheel. ←/→, S and R are no shortcuts there. Other keys pass on to the menus.
+    static func action(for key: KeyEquivalent, searching: Bool = false) -> Action? {
+        if searching {
+            switch key {
+            case .upArrow: return .wheel(-1)
+            case .downArrow: return .wheel(1)
+            case .return: return .select
+            case .escape: return .menu
+            case .delete: return .searchDelete
+            default: return Search.types(key.character) ? .searchType(key.character) : nil
+            }
+        }
+        return switch key {
         case .upArrow: .wheel(-1)
         case .downArrow: .wheel(1)
         case .return: .select
@@ -147,14 +160,18 @@ public struct PocketSkin: View {
     /// Sends the action for a key. Returns false for a key the device does not use, so it goes on
     /// to the menus.
     private func key(_ key: KeyEquivalent, repeated: Bool) -> Bool {
-        guard let action = Self.action(for: key) else { return false }
+        guard let action = Self.action(for: key, searching: state.top.screen == .search) else { return false }
         if !repeated || Self.repeats(action) { input(action) }
         return true
     }
 
-    /// A held arrow key turns the wheel on. A held Space, Return or skip key acts once.
+    /// A held arrow key turns the wheel on, and a held key on Search types again. A held Space,
+    /// Return or skip key acts once.
     static func repeats(_ action: Action) -> Bool {
-        if case .wheel = action { true } else { false }
+        switch action {
+        case .wheel, .searchType, .searchDelete: true  // a held key types again, as in a text field
+        default: false
+        }
     }
 
     /// A button press clicks when the Clicker setting is on. A wheel step clicks in the app,

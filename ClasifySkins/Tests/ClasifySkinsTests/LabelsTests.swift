@@ -427,6 +427,20 @@ func sampleState() -> AppState {
         #expect(!PocketSkin.repeats(.play) && !PocketSkin.repeats(.select) && !PocketSkin.repeats(.next))
     }
 
+    /// CLA-183, card CS: on Search, the keys type; ←/→, S, R and Space are no shortcuts there.
+    @Test func keysTypeOnSearch() {
+        func on(_ key: KeyEquivalent) -> Action? { PocketSkin.action(for: key, searching: true) }
+        #expect(on("s") == .searchType("s") && on("R") == .searchType("R") && on("7") == .searchType("7"))
+        #expect(on("é") == .searchType("é") && on(.space) == .searchType(" "))
+        #expect(on(.delete) == .searchDelete && on(.escape) == .menu && on(.return) == .select)
+        #expect(on(.upArrow) == .wheel(-1) && on(.downArrow) == .wheel(1))
+        #expect(on(.leftArrow) == nil && on(.rightArrow) == nil && on("-") == nil && on(.tab) == nil)
+        #expect(PocketSkin.repeats(.searchType("a")) && PocketSkin.repeats(.searchDelete))
+        // Command, Option and Control keys never reach the table, so ⌘Q, ⌘W, ⌘H and ⌘, still work.
+        #expect(!KeyCatcher.takes([.command]) && !KeyCatcher.takes([.option]) && !KeyCatcher.takes([.control]))
+        #expect(KeyCatcher.takes([.shift]))
+    }
+
     @Test func windowKeysMapToTheDeviceKeys() {
         #expect(KeyCatcher.key(keyCode: 126, characters: nil) == .upArrow)
         #expect(KeyCatcher.key(keyCode: 125, characters: nil) == .downArrow)
