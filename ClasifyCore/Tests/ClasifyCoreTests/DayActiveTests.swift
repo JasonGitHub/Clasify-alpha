@@ -91,9 +91,13 @@ import Testing
         _ = events(&quit, .position(1, generation: quit.playGen), now: at(23, 59) + 59)
         _ = events(&quit, .used(.aboutFlip), now: at(0, day: 20))
         let atQuit = events(&quit, .willQuit, now: at(0, day: 20) + 1)
-        guard case .dayActive(let day, _, _, _)? = atQuit.first else { Issue.record("no day_active at quit"); return }
+        guard atQuit.count == 2, case .dayActive(let day, _, _, _) = atQuit[0], case .dayActive(let new, _, _, _) = atQuit[1] else {
+            Issue.record("no day_active at quit"); return
+        }
         #expect(day.day == 20261119 && day.features.isEmpty)
-        #expect(quit.today?.day == 20261120 && quit.today?.features == [.aboutFlip] && quit.settings.today == quit.today)
+        // CLA-182: the new day goes out at the quit too, and starts again from zero.
+        #expect(new.day == 20261120 && new.features == [.aboutFlip])
+        #expect(quit.today == DayUse(day: 20261120, weekday: 6) && quit.settings.today == quit.today)
     }
 
     /// The safety net: a part of a day that already went out goes to today's night band.
@@ -126,8 +130,9 @@ import Testing
         _ = events(&quit, .position(1, generation: quit.playGen), .position(2, generation: quit.playGen), now: at(10))
         _ = events(&quit, .position(3, generation: quit.playGen), now: at(10) + 1)
         #expect(quit.savedToday?.seconds == 0)
-        _ = events(&quit, .willQuit, now: at(10) + 1)
-        #expect(quit.savedToday?.seconds == 1 && quit.settings.today == quit.today)
+        let sent = events(&quit, .willQuit, now: at(10) + 1)
+        guard case .dayActive(let day, _, _, _)? = sent.first else { Issue.record("no day_active at quit"); return }
+        #expect(day.seconds == 1 && quit.savedToday?.seconds == 0 && quit.settings.today == quit.today)
     }
 
     /// App Nap can slow the reports while myPod is hidden: the position says what played.
@@ -282,9 +287,10 @@ import Testing
         _ = events(&s, .view3D(.apart, open: false), now: at(12))  // a window left open: 30 min at most
         _ = events(&s, .view3D(.aboutFlip, open: true), now: at(12) + 5)
         #expect(s.today?.features.isSuperset(of: [.takeApart, .aboutFlip]) == true)
-        _ = events(&s, .willQuit, now: at(12) + 15)  // a quit closes the open About flip
-        #expect(s.today?.views == [3.5, 1800, 10] && s.viewOpen.isEmpty)
-        let p = BetaEvent.dayActive(s.today!, service: .spotify, color: .silver).properties
+        let sent = events(&s, .willQuit, now: at(12) + 15)  // a quit closes the open About flip
+        guard case .dayActive(let day, _, _, _)? = sent.first else { Issue.record("no day_active at quit"); return }
+        #expect(day.views == [3.5, 1800, 10] && s.viewOpen.isEmpty)
+        let p = BetaEvent.dayActive(day, service: .spotify, color: .silver).properties
         #expect(p["seconds_3d"] == .decimal(3.5) && p["seconds_apart"] == .decimal(1800) && p["seconds_about_flip"] == .decimal(10))
         #expect(p["used_turn3D"] == .flag(true))
     }
@@ -301,11 +307,12 @@ import Testing
         _ = events(&s, .window(nil), now: at(10) + 121)  // covered: the minute before still counts
         _ = events(&s, .window(side), now: at(11))  // not visible since: nothing
         _ = events(&s, .window(side), now: at(12))  // a Mac sleep: 90 s at most
-        _ = events(&s, .willQuit, now: at(12) + 30)
-        #expect(s.today?.areas == [0, 0, 120, 0, 120, 0, 0, 0, 0] && s.windowSpot == nil && s.windowAt == nil)
-        #expect(s.today?.screens == ["1x1512x982x1": 120, "0x2560x1440x2": 120] && s.today?.screenCount == 2)
-        s.today?.areas[2] += 1; s.today?.screens["0x2560x1440x2"]? += 1
-        let p = BetaEvent.dayActive(s.today!, service: .spotify, color: .silver).properties
+        let sent = events(&s, .willQuit, now: at(12) + 30)
+        guard case .dayActive(var day, _, _, _)? = sent.first else { Issue.record("no day_active at quit"); return }
+        #expect(day.areas == [0, 0, 120, 0, 120, 0, 0, 0, 0] && s.windowSpot == nil && s.windowAt == nil)
+        #expect(day.screens == ["1x1512x982x1": 120, "0x2560x1440x2": 120] && day.screenCount == 2)
+        day.areas[2] += 1; day.screens["0x2560x1440x2"]? += 1
+        let p = BetaEvent.dayActive(day, service: .spotify, color: .silver).properties
         #expect(p["spot"] == .text("top_right") && p["minutes_visible"] == .decimal(241.0 / 60) && p["screens"] == .number(2))
         #expect(p["main_screen"] == .flag(false) && p["screen_width"] == .number(2560) && p["screen_height"] == .number(1440))
         let none = BetaEvent.dayActive(DayUse(day: 20261119, weekday: 5), service: .spotify, color: .silver).properties
@@ -359,5 +366,41 @@ import Testing
         let days = sent.compactMap { e -> DayUse? in if case .dayActive(let d, _, _, _) = e { d } else { nil } }
         #expect(days.map(\.day) == [20261119, 20261120])
         #expect(days.first?.views == [10, 10, 0] && days.last?.views == [1790, 1790, 0])
+    }
+
+    // CLA-182: the day's numbers go out at a normal quit.
+
+    @Test func aQuitWithUseSendsTodayOnceAndStartsAgainFromZero() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .position(11, generation: s.playGen), now: at(10) + 10)
+        let sent = events(&s, .willQuit, now: at(10) + 10)
+        guard sent.count == 1, case .dayActive(let day, let service, _, _) = sent[0] else { Issue.record("no day_active at quit"); return }
+        #expect(day.day == 20261119 && day.songs == 1 && day.seconds == 10 && service == .spotify)
+        #expect(s.today == DayUse(day: 20261119, weekday: 5) && s.savedToday == s.today)
+        #expect(events(&s, .willQuit, now: at(10) + 11).isEmpty)  // nothing new: nothing goes out
+        #expect(events(&s, .tick, now: at(9, day: 20)).isEmpty)  // the next day: the old day does not go out again
+    }
+
+    @Test func aQuitWithNoUseSendsNothing() {
+        var s = mainMenu()
+        #expect(events(&s, .willQuit, now: at(10)).isEmpty)
+        #expect(s.today == nil)
+    }
+
+    @Test func aSecondRunOnTheSameDaySendsOnlyTheRest() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .position(11, generation: s.playGen), now: at(10) + 10)
+        _ = events(&s, .willQuit, now: at(10) + 10)
+        // The next run, the same day: the saved settings come back.
+        var next = playing()
+        next.settings = s.settings
+        next.current?.track = "l1"
+        _ = events(&next, .position(1, generation: next.playGen), now: at(11))
+        _ = events(&next, .position(6, generation: next.playGen), now: at(11) + 5)
+        let sent = events(&next, .willQuit, now: at(11) + 5)
+        guard case .dayActive(let rest, _, _, _)? = sent.first else { Issue.record("no day_active at quit"); return }
+        #expect(rest.day == 20261119 && rest.songs == 1 && rest.seconds == 5)  // only the rest of the day
     }
 }
