@@ -176,6 +176,7 @@ final class LocalPlayer: Player {
     /// Opens the queue's current song, or the first one after it that opens. A song that does
     /// not open is reported once, then skipped; when none opens, it all stops.
     private func open(id: Int) async {
+        guard id == openID else { return }  // a stop or a newer load came before this started
         opening = true
         var skipped = false
         for _ in 0..<items.count {
@@ -254,10 +255,14 @@ final class LocalPlayer: Player {
         Task { await open(id: id) }
     }
 
-    /// A load failed and the old song plays on. Its end was not handled during the load, so
-    /// follow what the player did then: on to the queued song, or the end of the context.
+    /// A load failed and the old song plays on. Report it as it is now: paused if Pause came during
+    /// the load. Its end was not handled during the load, so follow what the player did then: on
+    /// to the queued song, or the end of the context.
     private func catchUp() {
-        guard let item = currentItem, player.currentItem !== item else { return }
+        guard let item = currentItem else { return }
+        if player.currentItem === item, let index = queue?.current {  // the same song: as it plays now
+            return send(.trackChanged(items[index].id, playing: wantsPlay, generation: generation))
+        }
         if let up = upcoming, player.currentItem === up.item, var order = queue, order.trackEnded() == up.index {
             queue = order
             currentItem = up.item
