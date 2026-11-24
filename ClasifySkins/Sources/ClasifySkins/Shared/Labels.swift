@@ -270,6 +270,14 @@ enum Labels {
     /// The line at the bottom of Pick Your Music (card BM, change 257), as on Pick Your Color.
     static let pickMusicFootnote = "You can always change it in Settings."
 
+    /// CLA-183, card CS: Search's message: a bold title and a line under it.
+    struct SearchWords: Equatable {
+        var title: String
+        var line: String
+    }
+    static let searchEmpty = SearchWords(title: "Type to search", line: "Find songs, albums, artists and playlists.")
+    static let searchNoMatch = SearchWords(title: "Hmm, no luck", line: "We searched your library.")
+
     /// The line under "You’re all set" (card AY, change 189): always the same, with no song count.
     static let ready = "Enjoy your music."
 
