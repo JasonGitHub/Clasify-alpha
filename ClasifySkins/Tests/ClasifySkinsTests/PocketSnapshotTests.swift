@@ -1677,7 +1677,6 @@ import Testing
     /// two rows and the footnote.
     @Test func onThisMacShowsItsTileAndTheNoSongsScreen() throws {
         var s = AppState.silver
-        s.localOn = true
         s.stack = [Frame(screen: .pickMusic)]
         s.top.sel = 2
         // The blue points on the right side, where the tile is.
@@ -1709,7 +1708,7 @@ import Testing
     /// library with every file missing shows "Your music is on a drive".
     @Test func onThisMacShowsMissingSongsGrayAndTheDriveScreen() throws {
         var s = AppState.silver
-        s.service = .local; s.words = .local; s.localOn = true; s.signedIn = true; s.albumArt = .off
+        s.service = .local; s.words = .local; s.signedIn = true; s.albumArt = .off
         let names = [("Neon Overpass", "The Lowlights"), ("Tail Lights", "Mara Kei"), ("Exit 22", "Saltwater Radio"),
                      ("Sodium Glow", "Hana & the Static"), ("Quiet Freeway", "Low Orbit")]
         let songs = names.enumerated().map { i, n in
