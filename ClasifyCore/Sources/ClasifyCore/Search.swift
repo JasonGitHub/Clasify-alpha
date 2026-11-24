@@ -31,9 +31,43 @@ public enum Search {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
     }
 
+    /// `text` folded, in one Unicode form (NFC), as UTF-8 bytes: the same letters give the
+    /// same bytes, so a byte search finds what a text search finds.
+    static func bytes(_ text: String) -> [UInt8] { Array(fold(text).precomposedStringWithCanonicalMapping.utf8) }
+
+    /// `needle` is in `hay`. An empty needle is in every text. It runs on each key for each
+    /// row, so it works on raw bytes, with `memchr` for the first byte and `memcmp` for the rest.
+    static func find(_ needle: [UInt8], in hay: [UInt8]) -> Bool {
+        guard !needle.isEmpty else { return true }
+        guard needle.count <= hay.count else { return false }
+        return hay.withUnsafeBufferPointer { h in
+            needle.withUnsafeBufferPointer { n in
+                guard let hBase = h.baseAddress, let nBase = n.baseAddress else { return false }
+                let first = Int32(n[0]), end = hBase + (h.count - n.count + 1)
+                var at = hBase
+                while at < end, let hit = memchr(at, first, end - at) {
+                    let p = UnsafePointer(hit.assumingMemoryBound(to: UInt8.self))
+                    if memcmp(p, nBase, n.count) == 0 { return true }
+                    at = p + 1
+                }
+                return false
+            }
+        }
+    }
+
+    /// `hay` has `needle` at `offset`.
+    static func starts(_ needle: [UInt8], in hay: [UInt8], at offset: Int) -> Bool {
+        guard !needle.isEmpty else { return true }
+        guard offset + needle.count <= hay.count else { return false }
+        return hay.withUnsafeBufferPointer { h in
+            needle.withUnsafeBufferPointer { n in memcmp(h.baseAddress! + offset, n.baseAddress!, n.count) == 0 }
+        }
+    }
+
     /// The results for `query`. The query is split at spaces, and each word must be found
     /// anywhere in the name, or for a song or an album in its artist names (Jason's test of
-    /// build 458: "green day" found nothing). More spaces change nothing; an empty query has no
+    /// build 458: "green day" found nothing). Inside each kind the better matches come first
+    /// (`Index.Entry.rank`), then name order. More spaces change nothing; an empty query has no
     /// results. For each key while Search is open, keep an `Index` instead.
     public static func results(_ query: String, in state: AppState) -> [Result] {
         Index(state).results(query)
@@ -44,14 +78,42 @@ public enum Search {
     /// again when library data arrives.
     public struct Index: Equatable, Sendable {
         struct Entry: Equatable, Sendable {
-            /// `artist`: the folded artist names of a song or an album, "" for the other kinds.
-            var result: Result, folded: String, artist: String
+            var result: Result
+            /// The folded name and, for a song or an album, its folded artist names ("" for the
+            /// other kinds), as UTF-8 bytes: each key compares bytes, which is much faster than
+            /// `String` search on a large library (CTO on #461: 20,000 songs).
+            var name: [UInt8], artist: [UInt8]
+            /// Where each word of the name starts (the first is 0), and where the name starts
+            /// past a leading "The", for the rank of a match.
+            var starts: [Int], bare: Int
             init(_ result: Result, artist: String? = nil) {
-                self.result = result; folded = Search.fold(result.name); self.artist = artist.map(Search.fold) ?? ""
+                self.result = result
+                name = Search.bytes(result.name); self.artist = artist.map(Search.bytes) ?? []
+                var starts: [Int] = [], wordBefore = false
+                for (i, byte) in name.enumerated() {
+                    // A word starts after a space or a mark. Bytes of 0x80 and up (letters in
+                    // other scripts) count as letters.
+                    let inWord = byte >= 0x80 || (byte >= 0x30 && byte <= 0x39) || (byte >= 0x61 && byte <= 0x7A) || (byte >= 0x41 && byte <= 0x5A)
+                    if inWord && !wordBefore { starts.append(i) }
+                    wordBefore = inWord
+                }
+                self.starts = starts
+                bare = name.starts(with: Array("the ".utf8)) && name.count > 4 ? 4 : 0
             }
-            /// Each word is in the name or in the artist names.
-            func matches(_ words: [Substring]) -> Bool {
-                words.allSatisfy { folded.contains($0) || artist.contains($0) }
+
+            /// Where a match ranks in its kind (Jason's test of build 458: "t" showed "39 Minutes"
+            /// first), nil for no match: 0 the name starts with the query, also past a leading
+            /// "The"; 1 a word of the name starts with it; 2 each word is in the name; 3 a word
+            /// is only in the artist names. `phrase` is the words with one space between them.
+            func rank(_ words: [[UInt8]], phrase: [UInt8]) -> Int? {
+                var byArtist = false
+                for word in words where !Search.find(word, in: name) {
+                    guard Search.find(word, in: artist) else { return nil }
+                    byArtist = true
+                }
+                if byArtist { return 3 }
+                if Search.starts(phrase, in: name, at: 0) || Search.starts(phrase, in: name, at: bare) { return 0 }
+                return starts.contains { Search.starts(phrase, in: name, at: $0) } ? 1 : 2
             }
         }
         /// Each kind in its result order: by name in `Playlist.nameOrder`, as the library lists
@@ -79,11 +141,20 @@ public enum Search {
         }
 
         public func results(_ query: String) -> [Result] {
-            let words = fold(query).split(whereSeparator: \.isWhitespace)
-            guard !words.isEmpty else { return [] }
+            let split = fold(query).split(whereSeparator: \.isWhitespace)
+            guard !split.isEmpty else { return [] }
+            let words = split.map { Search.bytes(String($0)) }, phrase = Search.bytes(split.joined(separator: " "))
             var found: [Result] = []
             for kind in [artists, albums, playlists, songs] {
-                found += kind.lazy.filter { $0.matches(words) }.prefix(limit).map(\.result)
+                // Each kind is in name order, so each rank keeps it. Once rank 0 has `limit`
+                // rows, no later row can come in.
+                var ranks: [[Result]] = [[], [], [], []]
+                for entry in kind {
+                    guard let rank = entry.rank(words, phrase: phrase), ranks[rank].count < limit else { continue }
+                    ranks[rank].append(entry.result)
+                    if rank == 0 && ranks[0].count == limit { break }
+                }
+                found += ranks.joined().prefix(limit)
             }
             return found
         }

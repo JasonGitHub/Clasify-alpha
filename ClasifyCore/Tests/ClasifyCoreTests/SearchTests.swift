@@ -76,7 +76,7 @@ import Testing
         #expect(found("guest") == ["Longview"])  // any of a song's artists
         #expect(found("case green") == ["Basket Case"])
         #expect(found("green   day ") == found("green day") && found("green ") == found("green"))
-        #expect(found("day") == ["Dookie", "Basket Case", "Holiday", "Longview"])  // in a name or an artist
+        #expect(found("day") == ["Dookie", "Holiday", "Basket Case", "Longview"])  // a name match first, then the artist
         #expect(found("green xyz").isEmpty)  // every word must be found
     }
 
@@ -86,6 +86,23 @@ import Testing
         #expect(Search.results("night late", in: s).map(\.id) == ["spotify:playlist:drive"])
         #expect(Search.results("kei mara", in: s).first?.id == "spotify:artist:mara")
         #expect(Search.results("late kei", in: s).isEmpty)  // a playlist has no artist text
+    }
+
+    /// The byte search (#B) finds what the text search found: a name and a query with the same
+    /// letters in other Unicode forms (a composed "é" and an "e" with a combining accent), and
+    /// names in other scripts, where a word starts at the start of the name.
+    @Test func accentsAndOtherScriptsMatchAndRankAsBytes() {
+        var s = Self.state()
+        s.library[1].tracks += [
+            Self.song("u1", "Cafe\u{301} Noir"), Self.song("u2", "Le Café"), Self.song("u3", "纸飞机日记", "陈一"),
+            Self.song("u4", "Ünder Ice"), Self.song("u5", "日记本"),
+        ]
+        func found(_ q: String) -> [String] { Search.results(q, in: s).map(\.id) }
+        #expect(found("café") == ["u1", "u2"])  // the start of the name first
+        #expect(found("cafe\u{301}") == found("CAFE"))
+        #expect(found("under") == ["u4"] && found("ÜND") == ["u4"])
+        #expect(found("日记") == ["u5", "u3"])  // the start of the name first
+        #expect(found("陈") == ["u3"])  // by its artist
     }
 
     @Test func otherScriptsMatch() {
@@ -182,27 +199,69 @@ import Testing
         #expect(Search.Index(s).results("gone").map(\.id) == ["t5"])
     }
 
-    /// Typing stays fast: 10,000 songs in 3 lists, a one-letter query that matches most of them.
-    /// The CI log shows the times (a debug build; a release build is faster).
-    @Test func tenThousandSongsAreFast() {
+    /// Jason's test of build 458: "t" showed "39 Minutes" first. Inside each kind: the name
+    /// starts with the query (past a leading "The" too), then a word starts with it, then it is
+    /// anywhere, then only in the artist names; each group in name order.
+    @Test func betterMatchesComeFirstInsideEachKind() {
+        var s = AppState()
+        s.library = [Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: [
+            Self.song("m", "39 Minutes", "Band"), Self.song("l", "Tail Lights", "Band"), Self.song("a", "After Time", "Band"),
+            Self.song("z", "Zeta", "Tom Ray"), Self.song("b", "The Tide", "Band"), Self.song("c", "Bitter", "Band"),
+        ])]
+        func found(_ q: String) -> [String] { Search.results(q, in: s).filter { $0.kind == .song }.map(\.name) }
+        // Starts: The Tide, Tail Lights. A word: After Time. Anywhere: 39 Minutes, Bitter. Artist: Zeta.
+        #expect(found("t") == ["Tail Lights", "The Tide", "After Time", "39 Minutes", "Bitter", "Zeta"])
+        #expect(found("ti") == ["The Tide", "After Time"])
+        #expect(found("time") == found("TIME ") && found("time") == ["After Time"])
+    }
+
+    /// Ranks 0 and 1 use the whole query, also with spaces; ranks 2 and 3 use its words.
+    @Test func aQueryWithSpacesRanksAsAWhole() {
+        var s = AppState()
+        s.library = [Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: [
+            Self.song("w", "Day Green", "Band"), Self.song("a", "American Green Day", "Band"),
+            Self.song("g", "Green Day Live", "Band"), Self.song("o", "Ocean", "Green Day"),
+        ])]
+        let found = Search.results("green  day", in: s).map(\.name)
+        #expect(found == ["Green Day Live", "American Green Day", "Day Green", "Ocean"])
+    }
+
+    /// The limit comes after the order: 50 rows of the best rank, before any worse one.
+    @Test func theLimitComesAfterTheRank() {
+        var s = AppState()
+        let anywhere = (0..<60).map { Self.song("x\($0)", "Ax \(1000 + $0)", "Band") }
+        let starts = (0..<5).map { Self.song("s\($0)", "Xylo \($0)", "Band") }
+        s.library = [Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: anywhere + starts)]
+        let found = Search.results("x", in: s).map(\.name)
+        #expect(found.count == Search.limit && Array(found.prefix(6)) == ["Xylo 0", "Xylo 1", "Xylo 2", "Xylo 3", "Xylo 4", "Ax 1000"])
+    }
+
+    /// Typing stays fast: 20,000 songs in 3 lists, a one-letter query that matches most of them
+    /// and a two-word one. Each key reads every row of a kind, for the rank (CTO on #461). The
+    /// CI log shows the times (a debug build; a release build is faster).
+    @Test func twentyThousandSongsAreFast() {
         var s = AppState()
         let words = ["Neon", "Glass", "Paper", "Still", "Halfway", "Sodium", "Pulse", "Rear", "Café", "Björk"]
-        let songs = (0..<10_000).map { i in
-            Self.song("s\(i)", "\(words[i % 10]) \(words[(i / 10) % 10]) \(i)", album: Album(id: "spotify:album:\(i / 12)", name: "Album \(i / 12)"))
+        let songs = (0..<20_000).map { i in
+            Self.song("s\(i)", "\(words[i % 10]) \(words[(i / 10) % 10]) \(i)", "Artist \(i % 300)",
+                      album: Album(id: "spotify:album:\(i / 12)", name: "Album \(i / 12)", artist: "Artist \(i % 300)"))
         }
         s.library = [
             Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: songs),
-            Playlist(id: "spotify:playlist:a", name: "A", tracks: Array(songs.prefix(5_000))),
-            Playlist(id: "spotify:playlist:b", name: "B", tracks: Array(songs.suffix(5_000))),
+            Playlist(id: "spotify:playlist:a", name: "A", tracks: Array(songs.prefix(10_000))),
+            Playlist(id: "spotify:playlist:b", name: "B", tracks: Array(songs.suffix(10_000))),
         ]
         let clock = ContinuousClock()
         var index: Search.Index?
         let build = clock.measure { index = Search.Index(s) }
-        var found: [Search.Result] = []
+        var found: [Search.Result] = [], two: [Search.Result] = []
         let key = clock.measure { found = index?.results("e") ?? [] }
-        print("Search on 10,000 songs: index \(build), one key \(key)")
+        let words2 = clock.measure { two = index?.results("artist 7") ?? [] }
+        print("Search on 20,000 songs: index \(build), key \"e\" \(key), key \"artist 7\" \(words2)")
         #expect(found.filter { $0.kind == .song }.count == Search.limit)
-        #expect(key < .milliseconds(500), "one key took \(key)")
-        #expect(build < .seconds(5), "the index took \(build)")
+        #expect(two.filter { $0.kind == .song }.count == Search.limit)
+        #expect(key < .milliseconds(150), "one key took \(key)")
+        #expect(words2 < .milliseconds(150), "one key took \(words2)")
+        #expect(build < .seconds(10), "the index took \(build)")
     }
 }
