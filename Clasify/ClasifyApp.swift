@@ -535,6 +535,7 @@ final class AppModel {
         player.send = { [weak store] action in store?.send(action) }
         appleMusic.send = { [weak store] action in store?.send(action) }
         local.send = { [weak store] action in store?.send(action) }
+        local.isPlaying = { [weak store] in store?.state.isPlaying ?? false }  // #445: the Play/Pause key reads the store
         self.store = store
         self.sender = sender
         diagnostics = BetaDiagnostics { [weak store] in store?.send($0) }  // CLA-97 (A4): crash and hang reports
