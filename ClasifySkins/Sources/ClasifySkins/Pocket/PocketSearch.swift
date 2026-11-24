@@ -59,18 +59,11 @@ struct SearchField: View {
         HStack(spacing: 0) {
             SearchMark.glass.view(size: 11, line: 2.6, color: PocketSearch.mutedInk)
                 .padding(.trailing, 5)
-            Text(query).font(.helvetica(13, bold: true)).foregroundStyle(Pocket.ink).lineLimit(1)
-                .fixedSize()
-            TimelineView(.periodic(from: .distantPast, by: 0.525)) { context in
-                let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
-                // `@keyframes bl{50%{opacity:0}}` with steps(1): on for the first half of 1.05 s.
-                Rectangle().fill(Pocket.blue)
-                    .frame(width: 1.5, height: 14)
-                    .opacity(reduceMotion || t.truncatingRemainder(dividingBy: 1.05) < 0.525 ? 1 : 0)
+            // A query too long for the field shows its end, so the caret and the last keys stay in view.
+            ViewThatFits(in: .horizontal) {
+                typed.frame(maxWidth: .infinity, alignment: .leading)
+                Color.clear.overlay(alignment: .trailing) { typed }.clipped()
             }
-            .frame(width: 1.5, height: 14)
-            .padding(.leading, 1)
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 7)
         .frame(height: 22)
@@ -89,6 +82,23 @@ struct SearchField: View {
         .clipped()
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(query.isEmpty ? "Search" : "Search: \(query)")
+    }
+
+    /// The typed text and the caret after it, at their own width.
+    private var typed: some View {
+        HStack(spacing: 0) {
+            Text(query).font(.helvetica(13, bold: true)).foregroundStyle(Pocket.ink).lineLimit(1)
+            TimelineView(.periodic(from: .distantPast, by: 0.525)) { context in
+                let t = fixedTime ?? context.date.timeIntervalSinceReferenceDate
+                // `@keyframes bl{50%{opacity:0}}` with steps(1): on for the first half of 1.05 s.
+                Rectangle().fill(Pocket.blue)
+                    .frame(width: 1.5, height: 14)
+                    .opacity(reduceMotion || t.truncatingRemainder(dividingBy: 1.05) < 0.525 ? 1 : 0)
+            }
+            .frame(width: 1.5, height: 14)
+            .padding(.leading, 1)
+        }
+        .fixedSize()
     }
 }
 
