@@ -201,8 +201,14 @@ extension DeviceColor {
 }
 
 extension MusicService {
-    /// `spotify` or `apple_music`, as the events name it.
-    public var eventName: String { self == .spotify ? "spotify" : "apple_music" }
+    /// `spotify`, `apple_music` or `local`, as the events name it.
+    public var eventName: String {
+        switch self {
+        case .spotify: "spotify"
+        case .appleMusic: "apple_music"
+        case .local: "local"
+        }
+    }
 }
 
 /// What `betaEvents` compares: the state before an action.

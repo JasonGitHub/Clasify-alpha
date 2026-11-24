@@ -468,7 +468,7 @@ final class AppModel {
         let appleMusic = AppleMusicPlayer()
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, service: service)
-        let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), service: service)
+        let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), local: LocalLibrary(), service: service)
         let activator = ServerActivator()
         let betaLink = BetaDownloadLink()  // CLA-171: the newest DMG, from the beta feed
         let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(link: betaLink), activator: activator)
@@ -491,8 +491,8 @@ final class AppModel {
         store.onSetService = { [weak services, weak libraries, weak player, weak store] service in
             services?.service = service
             libraries?.service = service
-            // The hidden Spotify app does not run while Apple Music is active (CLA-103).
-            if service == .appleMusic { player?.quitApp() }
+            // The hidden Spotify app does not run while Apple Music or On This Mac is active (CLA-103).
+            if service != .spotify { player?.quitApp() }
             // The real check, for both services: Pick Your Music orders its rows from it
             // (CLA-103). The reducer opens the Spotify App screen (card BB) only on Spotify.
             store?.send(.spotifyAppFound(Self.spotifyAppInstalled))

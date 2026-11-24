@@ -4,9 +4,18 @@ import Foundation
 /// mixed lists or queues.
 public enum MusicService: String, CaseIterable, Sendable {
     case spotify = "Spotify", appleMusic = "Apple Music"
+    /// CLA-179, card CR: the songs of the Music app library on this Mac. Only with `local.on`.
+    case local = "On This Mac"
 
-    /// The other service: the Settings "Service" row flips between the two (card BM, change 256).
-    public var other: MusicService { self == .spotify ? .appleMusic : .spotify }
+    /// The next value of the Settings "Service" row, in a loop (card BM, change 256; card CR):
+    /// Spotify, Apple Music, then On This Mac when `localOn`.
+    public func next(localOn: Bool) -> MusicService {
+        switch self {
+        case .spotify: .appleMusic
+        case .appleMusic: localOn ? .local : .spotify
+        case .local: .spotify
+        }
+    }
 }
 
 /// The settings that stay after a restart: Shuffle, Repeat, Album Art, Color (the device color),
@@ -24,6 +33,9 @@ public struct Settings: Equatable, Sendable {
     /// Card AN.1 (CLA-43, change 346): the menu bar icon that shows and hides myPod. On by default.
     public var menuBar = true
     public var service = MusicService.spotify
+    /// CLA-179: the test switch for local music, UserDefaults `local.on`, off by default. Read
+    /// only: Clasify never writes it. Off, a saved On This Mac service is Spotify.
+    public var localOn = false
     public var setupDone = false
     public var hintsDone: Set<Hint> = []
     public var tourOn = false
@@ -57,6 +69,7 @@ public struct Settings: Equatable, Sendable {
         static let nowPlayingBar = "settings.nowPlayingBar"
         static let menuBar = "settings.menuBar"
         static let service = "settings.service"
+        static let localOn = "local.on"
         static let setupDone = "setup.done"
         static let hintsDone = "hints.done"
         static let tourOn = "hints.tour"
@@ -83,6 +96,9 @@ public struct Settings: Equatable, Sendable {
         if let v = store.string(forKey: Key.nowPlayingBar).flatMap({ Bool($0) }) { nowPlayingBar = v }
         if let v = store.string(forKey: Key.menuBar).flatMap({ Bool($0) }) { menuBar = v }
         if let v = store.string(forKey: Key.service).flatMap(MusicService.init(rawValue:)) { service = v }
+        // `defaults write … local.on -bool YES` reads back as "1", `-string true` as "true".
+        localOn = ["true", "1"].contains(store.string(forKey: Key.localOn))
+        if service == .local && !localOn { service = .spotify }
         if let v = store.string(forKey: Key.setupDone).flatMap({ Bool($0) }) { setupDone = v }
         if setupDone && store.string(forKey: Key.deviceColor).flatMap(DeviceColor.init(rawValue:)) == nil { deviceColor = .silver }
         if let v = store.string(forKey: Key.hintsDone) {  // the raw values, with commas; unknown ones are dropped
@@ -148,6 +164,7 @@ extension AppState {
             (v.shuffle, v.repeatMode, v.albumArt, v.deviceColor, v.clicker) = (shuffle, repeatMode, albumArt, deviceColor, clicker)
             (v.nowPlayingBar, v.menuBar) = (nowPlayingBar, menuBar)
             v.service = service
+            v.localOn = localOn
             v.setupDone = setupDone
             v.hintsDone = hintsDone
             (v.tourOn, v.tourHides) = (tourOn, tourHides)
@@ -163,6 +180,7 @@ extension AppState {
                 (newValue.shuffle, newValue.repeatMode, newValue.albumArt, newValue.deviceColor, newValue.clicker)
             (nowPlayingBar, menuBar) = (newValue.nowPlayingBar, newValue.menuBar)
             service = newValue.service
+            localOn = newValue.localOn
             setupDone = newValue.setupDone
             hintsDone = newValue.hintsDone
             (tourOn, tourHides) = (newValue.tourOn, newValue.tourHides)

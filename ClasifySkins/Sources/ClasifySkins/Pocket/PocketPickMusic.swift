@@ -15,7 +15,11 @@ struct ServiceLogo: View {
     /// The bundled logos, each 684 px square. A logo is missing only if the package was built
     /// without its file; then the tile shows the service's name.
     @MainActor static let logos: [MusicService: NSImage] = Dictionary(uniqueKeysWithValues: MusicService.allCases.compactMap { service in
-        let name = service == .spotify ? "logo-spotify" : "logo-apple-music"
+        let name = switch service {
+        case .spotify: "logo-spotify"
+        case .appleMusic: "logo-apple-music"
+        case .local: "logo-local"  // CLA-179: the tile comes with the skins change; until then, the name
+        }
         return PocketAbout.art(name).map { (service, $0) }
     })
 

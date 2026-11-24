@@ -261,7 +261,7 @@ import Testing
 @MainActor @Test func serviceLibraryUsesTheActiveService() async {
     let spotify = FakeLibrary(), apple = FakeLibrary()
     apple.words = .appleMusic
-    let libraries = ServiceLibrary(spotify: spotify, appleMusic: apple, service: .spotify)
+    let libraries = ServiceLibrary(spotify: spotify, appleMusic: apple, local: FakeLibrary(), service: .spotify)
     #expect(libraries.words == .spotify)
     _ = await libraries.restoreSession()
     libraries.service = .appleMusic
@@ -281,7 +281,7 @@ import Testing
 @MainActor @Test func storeSetsTheServiceBeforeTheLogin() async {
     let spotify = FakeLibrary(), apple = FakeLibrary()
     apple.words = .appleMusic
-    let libraries = ServiceLibrary(spotify: spotify, appleMusic: apple, service: .spotify)
+    let libraries = ServiceLibrary(spotify: spotify, appleMusic: apple, local: FakeLibrary(), service: .spotify)
     let store = Store(player: FakePlayer(), library: libraries, state: mainMenu())
     store.onSetService = { service in libraries.service = service }
     store.send(.wheel(5))
