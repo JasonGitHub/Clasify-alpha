@@ -241,7 +241,7 @@ public final class Store {
         Task { [weak self] in
             var page: String?
             if let activator {
-                page = await Self.within(Self.pageWait) { await activator.pageURL() }
+                page = await Self.within(Self.pageWait) { try? await activator.pageURL().get() }  // a failure: the login goes on
                 // MENU, Cancel or a newer login came while it waited: this login must not start
                 // (Codex on #330).
                 guard let state = self?.state, state.top.screen == .auth, state.top.token == token else { return }
