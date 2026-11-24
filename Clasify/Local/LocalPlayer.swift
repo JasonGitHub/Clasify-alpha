@@ -30,6 +30,9 @@ final class LocalPlayer: Player {
     private var pendingSeek: Double?
     /// The newest play or pause the user asked for. An open applies it when the song is ready.
     private var wantsPlay = false
+    /// The play or pause from before a load, kept until the user presses Play or Pause: a load
+    /// that fails leaves the old song as it was.
+    private var playBeforeLoad: Bool?
     private var shuffle = false
     private var repeatMode = RepeatMode.off
     /// The player item of the current song, and the next song's item, already queued after it.
@@ -64,6 +67,7 @@ final class LocalPlayer: Player {
         openID += 1
         let id = openID
         loading = true
+        playBeforeLoad = playBeforeLoad ?? wantsPlay
         wantsPlay = autoplay
         pendingSkips = []
         pendingSeek = nil
@@ -74,8 +78,11 @@ final class LocalPlayer: Player {
             }
             guard id == openID else { return }
             loading = false
+            let before = playBeforeLoad
+            playBeforeLoad = nil
             guard let list, let start = list.firstIndex(where: { $0.id == trackID }) else {
                 opening = false  // an older open stopped for this load; the old song plays on
+                if let before { wantsPlay = before }
                 send(.loadFailed(Self.cantPlay, generation: self.generation))
                 return catchUp()
             }
@@ -83,25 +90,30 @@ final class LocalPlayer: Player {
             var order = LocalQueue(count: list.count, start: start, shuffle: shuffle, repeatMode: repeatMode)
             let skips = pendingSkips
             pendingSkips = []
-            for forward in skips {  // Next and Prev pressed during the read
-                let moved = forward ? order.next() : order.prev()
-                if moved == nil {  // Next on the last song, with Repeat Off
-                    queue = order
-                    return endOfContext()
+            var ended = false
+            for forward in skips {  // Next and Prev pressed during the read, as they would run after it
+                if forward {
+                    if !ended { ended = order.next() == nil }  // Next on the last song, with Repeat Off
+                } else {
+                    _ = order.prev()
+                    ended = false
                 }
             }
             queue = order
+            if ended { return endOfContext() }
             await open(id: id)
         }
     }
 
     func pause() {
         wantsPlay = false
+        playBeforeLoad = nil
         player.pause()
     }
 
     func resume() {
         wantsPlay = true
+        playBeforeLoad = nil
         guard !opening, !loading else { return }  // an open in flight plays when it is ready
         if currentItem != nil {
             player.play()
@@ -115,6 +127,7 @@ final class LocalPlayer: Player {
     func stop() {
         loading = false
         wantsPlay = false
+        playBeforeLoad = nil
         pendingSkips = []
         pendingSeek = nil
         stopPlayer()
