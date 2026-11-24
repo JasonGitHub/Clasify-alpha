@@ -240,6 +240,9 @@ public let artDelay = 0.3
 public let sliderTimeout = 6.0
 /// Seconds after a read when opening its screen reads it again in the background.
 public let staleAfter = 120.0
+/// CLA-179 (Jason 18:19 JST, 11-24): On This Mac reads the Music app library again when the
+/// main menu opens and the last read is older than this, so songs added or removed there show.
+public let localStaleAfter = 60.0
 /// Seconds after a read when the app coming to the front reads that list again.
 public let activationStaleAfter = 30.0
 /// Card BW, CLA-146: the Activate screen asks the server for 3 minutes (see `activateCheckDelay`),
@@ -1527,9 +1530,19 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     // no covers. Empty, "No songs yet" takes the main menu's place until a read finds songs.
     let library = Playlist.libraryID
     if s.service == .local && s.signedIn && !s.offline && s.stack.count == 1 && s.top.screen == .main
-        && (before.1 != .main || !wasSignedIn) && !s.loadedTracks.contains(library) && s.artReads[library] == nil {
-        s.artTok += 1; s.artReads[library] = s.artTok
-        fx.append(.readArtTracks(token: s.artTok, playlist: library))
+        && (before.1 != .main || !wasSignedIn) {
+        if !s.loadedTracks.contains(library) {
+            if s.artReads[library] == nil {
+                s.artTok += 1; s.artReads[library] = s.artTok
+                fx.append(.readArtTracks(token: s.artTok, playlist: library))
+            }
+        } else {
+            // Read before: every list read so far reads again quietly when older than
+            // `localStaleAfter` (the app shares one library read between them). The rows stay
+            // until the answers come; the playing song and its queue do not change.
+            for key in s.loadedTracks.sorted() { refreshIfStale(.tracks(playlist: key), after: localStaleAfter) }
+            if s.playlistsLoaded { refreshIfStale(.playlists, after: localStaleAfter) }
+        }
     }
     if s.localEmpty && s.signedIn && s.stack.count == 1 && s.top.screen == .main { s.stack = [Frame(screen: .noSongs)] }
     if s.top.screen == .noSongs && !s.localEmpty { s.stack = [Frame(screen: .main)] }
