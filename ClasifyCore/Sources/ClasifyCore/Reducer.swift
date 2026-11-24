@@ -962,6 +962,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .cancelActivate: cancelActivate()
             case .quit: fx.append(.quit)
             case .useSpotify: switchService(to: .spotify)  // change 262
+            case .checkLibrary:  // card CR: the screen stays until the new read finds songs
+                if s.refreshing.insert(Playlist.libraryID).inserted { fx.append(.refreshTracks(playlist: Playlist.libraryID)) }
+            case .pickYourMusic: logOut()  // card CR: as a log out on Apple Music, to Pick Your Music
             case .about:
                 // Card BF: it opens at the top. The scroll bar shows from 0.3 s for 1.5 s.
                 s.stack.append(Frame(screen: .about))
@@ -1513,6 +1516,16 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     let wasOffline = s.offline
     let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
     apply()
+    // CLA-179, card CR: On This Mac reads the whole library when its main menu opens, also with
+    // no covers. Empty, "No songs yet" takes the main menu's place until a read finds songs.
+    let library = Playlist.libraryID
+    if s.service == .local && s.signedIn && !s.offline && s.stack.count == 1 && s.top.screen == .main
+        && (before.1 != .main || !wasSignedIn) && !s.loadedTracks.contains(library) && s.artReads[library] == nil {
+        s.artTok += 1; s.artReads[library] = s.artTok
+        fx.append(.readArtTracks(token: s.artTok, playlist: library))
+    }
+    if s.localEmpty && s.signedIn && s.stack.count == 1 && s.top.screen == .main { s.stack = [Frame(screen: .noSongs)] }
+    if s.top.screen == .noSongs && !s.localEmpty { s.stack = [Frame(screen: .main)] }
     // A new screen slides in: from the right when it opens, from the left on a way back.
     // The screen after a login counts as opening. A reset and the first screen at launch do not slide.
     let slides = switch action {

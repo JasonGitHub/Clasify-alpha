@@ -1647,7 +1647,7 @@ import Testing
     /// big logo tile of the selected one on the right, in place of the small device. Spotify's
     /// tile has its green marks; Apple Music's tile is dark with a white note and no green.
     @Test func pickYourMusicShowsTheLogoOfTheSelectedService() throws {
-        #expect(ServiceLogo.logos.count == 2)  // both logos are bundled
+        #expect(ServiceLogo.logos.count == 3)  // all logos are bundled, On This Mac's too (card CR)
         var s = AppState.silver
         s.stack = [Frame(screen: .pickMusic)]
         // The green points on the right side, where the tile and its reflection are.
@@ -1670,6 +1670,38 @@ import Testing
         #expect(green(apple) == 0)  // the Spotify tile has faded out
         let logo = (x: Self.screenLeft + 225, y: 165)  // in the tile, under its middle
         #expect(apple.isDark(logo.x, logo.y), "\(apple.rgb(logo.x, logo.y))")
+    }
+
+    /// CLA-179, card CR: On This Mac is the third row of Pick Your Music, with its tile (A.1):
+    /// a blue screen with a white note. With no song, "No songs yet" shows the same tile, its
+    /// two rows and the footnote.
+    @Test func onThisMacShowsItsTileAndTheNoSongsScreen() throws {
+        var s = AppState.silver
+        s.localOn = true
+        s.stack = [Frame(screen: .pickMusic)]
+        s.top.sel = 2
+        // The blue points on the right side, where the tile is.
+        func blue(_ shot: Snapshot) -> Int {
+            var n = 0
+            for x in Self.screenLeft + 155..<Self.screenLeft + 300 {
+                for y in Self.listTop..<Self.screenBottom {
+                    let c = shot.rgb(x, y)
+                    if c.b > c.r + 80 && c.b > c.g + 30 { n += 1 }
+                }
+            }
+            return n
+        }
+        let pick = try render(s, "pick-music-local", time: 10)
+        #expect(pick.isBlue(100, Self.rowCenter(2)))
+        #expect(blue(pick) > 300, "\(blue(pick))")
+        s.service = .local; s.words = .local; s.signedIn = true
+        s.stack = [Frame(screen: .noSongs)]
+        let empty = try render(s, "no-songs", time: 10)
+        #expect(blue(empty) > 300, "\(blue(empty))")
+        #expect(Labels.title(.noSongs, in: s) == "On This Mac")
+        let words = Labels.setupWords(for: s.top, in: s)
+        #expect(words?.headline == "No songs yet" && words?.footnote == "We play songs saved on this Mac.")
+        #expect(s.rows(for: s.top).map { Labels.row($0, on: .noSongs, in: s).label } == ["Check again", "Pick Your Music"])
     }
 
     /// Card AW.1, change 236: after a turn, Pick Your Color shows no light on the wheel's rim.
