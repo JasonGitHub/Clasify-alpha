@@ -4,6 +4,12 @@ import Testing
 /// CLA-181: `hint_step`, the first-run hints in analytics. `start` once, then one event as each
 /// tour step ends: `done` by the person's action, `unused` after `tourHideMax` hides.
 @Suite struct HintStepTests {
+    /// One action, with its `.track` effects: the shared `send` leaves them out.
+    @discardableResult
+    func send(_ s: inout AppState, _ action: Action, now: Double) -> [Effect] {
+        reduce(&s, action, Dependencies(now: { now }, random: { _ in 0 }))
+    }
+
     func hints(_ fx: [Effect]) -> [BetaEvent] {
         fx.compactMap { if case .track(let e) = $0, case .hintStep = e { e } else { nil } }
     }
