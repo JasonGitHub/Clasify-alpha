@@ -31,8 +31,10 @@ public enum Search {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
     }
 
-    /// The results for `query`, anywhere in the name. Spaces around the query are left out; an
-    /// empty query has no results. For each key while Search is open, keep an `Index` instead.
+    /// The results for `query`. The query is split at spaces, and each word must be found
+    /// anywhere in the name, or for a song or an album in its artist names (Jason's test of
+    /// build 458: "green day" found nothing). More spaces change nothing; an empty query has no
+    /// results. For each key while Search is open, keep an `Index` instead.
     public static func results(_ query: String, in state: AppState) -> [Result] {
         Index(state).results(query)
     }
@@ -42,8 +44,15 @@ public enum Search {
     /// again when library data arrives.
     public struct Index: Equatable, Sendable {
         struct Entry: Equatable, Sendable {
-            var result: Result, folded: String
-            init(_ result: Result) { self.result = result; folded = Search.fold(result.name) }
+            /// `artist`: the folded artist names of a song or an album, "" for the other kinds.
+            var result: Result, folded: String, artist: String
+            init(_ result: Result, artist: String? = nil) {
+                self.result = result; folded = Search.fold(result.name); self.artist = artist.map(Search.fold) ?? ""
+            }
+            /// Each word is in the name or in the artist names.
+            func matches(_ words: [Substring]) -> Bool {
+                words.allSatisfy { folded.contains($0) || artist.contains($0) }
+            }
         }
         /// Each kind in its result order: by name in `Playlist.nameOrder`, as the library lists
         /// sort (a leading "The" does not count), so the limit keeps the first names.
@@ -52,12 +61,12 @@ public enum Search {
         public init(_ state: AppState) {
             artists = Self.byName(state.artists.map { Entry(Result(kind: .artist, id: $0.id, name: $0.name, detail: "Artist")) })
             albums = Self.byName(state.albums.map {
-                Entry(Result(kind: .album, id: $0.id, name: $0.name, detail: $0.artist.map { "Album · \($0)" } ?? "Album"))
+                Entry(Result(kind: .album, id: $0.id, name: $0.name, detail: $0.artist.map { "Album · \($0)" } ?? "Album"), artist: $0.artist)
             })
             playlists = Self.byName(state.library.filter { !Playlist.isHidden($0.id) }.map {
                 Entry(Result(kind: .playlist, id: $0.id, name: $0.name, detail: "Playlist · \($0.trackCount) \($0.trackCount == 1 ? "song" : "songs")"))
             })
-            songs = Search.songs(in: state).map(Entry.init)  // already in this order
+            songs = Search.songs(in: state).map { Entry($0.result, artist: $0.artist) }  // already in this order
         }
 
         /// `entries` in `Playlist.nameOrder`. Equal names keep their order.
@@ -70,19 +79,19 @@ public enum Search {
         }
 
         public func results(_ query: String) -> [Result] {
-            let q = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
-            guard !q.isEmpty else { return [] }
+            let words = fold(query).split(whereSeparator: \.isWhitespace)
+            guard !words.isEmpty else { return [] }
             var found: [Result] = []
             for kind in [artists, albums, playlists, songs] {
-                found += kind.lazy.filter { $0.folded.contains(q) }.prefix(limit).map(\.result)
+                found += kind.lazy.filter { $0.matches(words) }.prefix(limit).map(\.result)
             }
             return found
         }
     }
 
-    /// Every song of the lists read so far, each once, in the Songs list's title order. A song
-    /// that can't be found on this Mac (card CR) is left out.
-    static func songs(in state: AppState) -> [Result] {
+    /// Every song of the lists read so far, each once, in the Songs list's title order, with
+    /// its artist names. A song that can't be found on this Mac (card CR) is left out.
+    static func songs(in state: AppState) -> [(result: Result, artist: String)] {
         var found: [String: (track: Track, list: String, rank: Int, order: Int)] = [:]
         for list in state.library {
             let rank = playRank(list.id)
@@ -101,9 +110,10 @@ public enum Search {
             let (track, list) = (entry.song.track, entry.song.list)
             // The whole library is never a play context: its songs play in their album.
             let plays = list == Playlist.libraryID ? track.album?.id ?? list : list
-            return Result(
+            let result = Result(
                 kind: .song, id: track.id, name: track.title,
                 detail: track.artist.isEmpty ? "Song" : "Song · \(track.artist)", list: plays)
+            return (result, track.artist)
         }
     }
 

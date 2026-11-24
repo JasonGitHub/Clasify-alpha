@@ -40,8 +40,8 @@ import Testing
 
     @Test func eachRowHasItsWordsAndWhatOpensIt() {
         let s = Self.state()
-        #expect(Search.results("mara", in: s) == [Search.Result(kind: .artist, id: "spotify:artist:mara", name: "Mara Kei", detail: "Artist")])
-        #expect(Search.results("glass r", in: s) == [Search.Result(kind: .album, id: Self.glass.id, name: "Glass Rooms", detail: "Album · Vera Lune")])
+        #expect(Search.results("mara", in: s).first == Search.Result(kind: .artist, id: "spotify:artist:mara", name: "Mara Kei", detail: "Artist"))
+        #expect(Search.results("glass r", in: s).first == Search.Result(kind: .album, id: Self.glass.id, name: "Glass Rooms", detail: "Album · Vera Lune"))
         #expect(Search.results("late", in: s) == [Search.Result(kind: .playlist, id: "spotify:playlist:drive", name: "Late Night Drive", detail: "Playlist · 2 songs")])
         #expect(Search.results("focus", in: s).first?.detail == "Playlist · 1 song")  // the count before its songs are read
         #expect(Search.results("rear", in: s) == [
@@ -57,6 +57,35 @@ import Testing
         #expect(Search.results("  lights ", in: s).map(\.id) == ["t3"])
         #expect(Search.results("ｒｅａｒ", in: s).map(\.id) == ["t4"])  // full-width letters
         #expect(Search.results("xyz", in: s).isEmpty)
+    }
+
+    /// Jason's test of build 458: "green day" found nothing. Each word of the query is found in
+    /// the name or, for a song or an album, in its artist names, in any order.
+    @Test func songsAndAlbumsAlsoMatchByArtist() {
+        var s = Self.state()
+        let dookie = Album(id: "spotify:album:dookie", name: "Dookie", artist: "Green Day")
+        s.library[0].tracks += [  // Liked Songs: the albums come from it
+            Self.song("g1", "Basket Case", "Green Day", album: dookie),
+            Self.song("g2", "Longview", "Green Day, Guest Star", album: dookie),
+            Self.song("g3", "Holiday", "Other Band"),
+        ]
+        func found(_ q: String) -> [String] { Search.results(q, in: s).map(\.name) }
+        #expect(found("green day") == ["Dookie", "Basket Case", "Longview"])  // album, then songs
+        #expect(found("green day dookie") == ["Dookie"])  // a song's own album name does not count
+        #expect(found("dookie green day") == found("green day dookie"))
+        #expect(found("guest") == ["Longview"])  // any of a song's artists
+        #expect(found("case green") == ["Basket Case"])
+        #expect(found("green   day ") == found("green day") && found("green ") == found("green"))
+        #expect(found("day") == ["Dookie", "Basket Case", "Holiday", "Longview"])  // in a name or an artist
+        #expect(found("green xyz").isEmpty)  // every word must be found
+    }
+
+    /// Playlists and artists use the same word rule, on the name only.
+    @Test func playlistsAndArtistsMatchEachWordOfTheName() {
+        let s = Self.state()
+        #expect(Search.results("night late", in: s).map(\.id) == ["spotify:playlist:drive"])
+        #expect(Search.results("kei mara", in: s).first?.id == "spotify:artist:mara")
+        #expect(Search.results("late kei", in: s).isEmpty)  // a playlist has no artist text
     }
 
     @Test func otherScriptsMatch() {
