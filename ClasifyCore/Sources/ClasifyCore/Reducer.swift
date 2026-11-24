@@ -301,6 +301,7 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     if action == .launch && s.setupDone && s.launchedAt == nil { s.launchedAt = env.now() }
     let before = BeforeEvents(s, action)
     var fx = reduceAction(&s, action, env)
+    fx += searchReads(&s)
     fx += betaEvents(&s, before, fx, now: env.now())
     fx += dayEvents(&s, action, before, now: env.now(), in: env.timeZone)
     // 348: a beta notice or Activate that opens shows a hidden myPod. CLA-153: not Activate
@@ -1205,6 +1206,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             guard s.refreshing.remove(AppState.artistsKey) != nil, let artists else { return }
             let old = s.rows(for: Frame(screen: .artists))
             s.artists = artists.sorted { Playlist.nameOrder($0.name, $1.name) }
+            s.artistsLoaded = true  // CLA-183: Search's quiet read can be the first one
             s.readAt[AppState.artistsKey] = now
             keepSelection(on: .artists, old: old)
 
@@ -1567,7 +1569,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     let artBefore = (s.artRow, s.library, s.current, s.loadedTracks, s.extraTracks)  // copies share storage, so this is cheap
     let searchBefore = SearchInputs(s)
     apply()
-    searchAfter(&s, searchBefore)
+    searchAfter(&s, searchBefore, now: now)
     // CLA-179, card CR: On This Mac reads the whole library when its main menu opens, also with
     // no covers. Empty, "No songs yet" takes the main menu's place until a read finds songs.
     let library = Playlist.libraryID
@@ -1777,19 +1779,87 @@ private struct SearchInputs {
 /// The one place where Search's results follow the query and the library data, while Search
 /// is open. The index is made when Search opens and when library data arrives; each key only
 /// asks it. A selection past the new end moves to the last row. Leaving Search clears it.
-private func searchAfter(_ s: inout AppState, _ before: SearchInputs) {
+private func searchAfter(_ s: inout AppState, _ before: SearchInputs, now: Double) {
     guard s.stack.contains(where: { $0.screen == .search }) else {
-        if before.open { s.searchResults = []; s.searchQuery = ""; s.searchPicked = false; s.searchIndex = nil }
+        if before.open {
+            s.searchResults = []; s.searchQuery = ""; s.searchPicked = false; s.searchIndex = nil
+            s.searchBox.value.stale = false  // no `.tick` for a closed Search
+        }
         return
     }
-    let newData = !before.open || before.library != s.library || before.artists != s.artists
-        || before.loadedTracks != s.loadedTracks || s.searchIndex == nil
-    if newData { s.searchIndex = Search.Index(s) }
-    guard newData || before.query != s.searchQuery, let index = s.searchIndex else { return }
+    // CTO on #457: the quiet reads bring new data often, so the index is made again at most
+    // once a `Search.rebuildWait`. A later change waits for the next action or `.tick`
+    // (`AppState.searchIndexDue`). Opening Search makes it at once.
+    if before.library != s.library || before.artists != s.artists || before.loadedTracks != s.loadedTracks {
+        s.searchBox.value.stale = true
+    }
+    let rebuild = !before.open || s.searchIndex == nil || s.searchIndexDue(at: now)
+    if rebuild {
+        s.searchIndex = Search.Index(s)
+        s.searchBox.value.builtAt = now; s.searchBox.value.stale = false
+    }
+    guard rebuild || before.query != s.searchQuery, let index = s.searchIndex else { return }
+    let old = s.searchResults
     s.searchResults = index.results(s.searchQuery)
     for f in s.stack.indices where s.stack[f].screen == .search {
+        // New data under the same query: the selected row stays on its result when it is still
+        // there, also when rows come in above it.
+        if s.searchPicked, before.query == s.searchQuery, old.indices.contains(s.stack[f].sel),
+            let i = s.searchResults.firstIndex(of: old[s.stack[f].sel]) {
+            s.stack[f].sel = i
+        }
         s.stack[f].sel = min(s.stack[f].sel, max(s.searchResults.count - 1, 0))
         s.stack[f].off = min(s.stack[f].off, s.stack[f].sel)
     }
     if s.searchResults.isEmpty { s.searchPicked = false }
+}
+
+/// CLA-183: while Search is open, the lists it finds songs in are read quietly, one at a time,
+/// with no spinner: first the albums list, then the playlist list, then the artists (Apple Music
+/// and On This Mac), then each playlist that is not read yet, in row order. Each read uses a
+/// path that already exists, and its answer goes in like that path's answer, so the results
+/// follow it. A read that fails is not tried again while Search stays open. Leaving Search
+/// starts no new read; one in flight still lands. A sign-out or a service switch clears
+/// `artReads` and `refreshing`, so an old answer is dropped there and the next read starts on the new library.
+private func searchReads(_ s: inout AppState) -> [Effect] {
+    let playlists = AppState.readKey(.playlists), artists = AppState.artistsKey
+    func inFlight(_ key: String) -> Bool {
+        key == playlists || key == artists ? s.refreshing.contains(key) : s.artReads[key] != nil
+    }
+    func isRead(_ key: String) -> Bool {
+        switch key {
+        case playlists: s.playlistsLoaded
+        case artists: s.artistsLoaded
+        default: s.loadedTracks.contains(key)
+        }
+    }
+    // The last read is done: a list it did not fill is skipped until Search opens again.
+    if let key = s.searchBox.value.reading, !inFlight(key) {
+        s.searchBox.value.reading = nil
+        if !isRead(key) { s.searchBox.value.skipped.insert(key) }
+    }
+    guard s.stack.contains(where: { $0.screen == .search }) else {
+        if !s.searchBox.value.skipped.isEmpty { s.searchBox.value.skipped = [] }
+        return []
+    }
+    // One read at a time: none starts while any other read of the library runs (a cover read,
+    // a quiet reread, or an open, which also covers a list that the person opened).
+    guard s.searchBox.value.reading == nil, s.signedIn, !s.offline, s.artReads.isEmpty, s.refreshing.isEmpty,
+        !s.stack.contains(where: \.loading) else { return [] }
+    var keys = [s.albumsList, playlists]
+    if s.service != .spotify { keys.append(artists) }  // Spotify gives no artist list (S1)
+    keys += s.library.lazy.filter { !Playlist.isHidden($0.id) }.map(\.id)
+    guard let key = keys.first(where: { !isRead($0) && !s.searchBox.value.skipped.contains($0) }) else { return [] }
+    s.searchBox.value.reading = key
+    switch key {
+    case playlists:
+        s.refreshing.insert(key)
+        return [.refreshPlaylists]
+    case artists:
+        s.refreshing.insert(key)
+        return [.refreshArtists]
+    default:
+        s.artTok += 1; s.artReads[key] = s.artTok
+        return [.readArtTracks(token: s.artTok, playlist: key)]
+    }
 }
