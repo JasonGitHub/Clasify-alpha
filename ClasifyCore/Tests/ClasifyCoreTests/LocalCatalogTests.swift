@@ -115,6 +115,7 @@ import Testing
         #expect(mix?.map(\.id) == [LocalID.track(2), LocalID.track(1)])
         #expect(mix?.first?.url == URL(fileURLWithPath: "/Music/2.m4a"))
         #expect(mix?.first.map { [$0.title, $0.artist, $0.album] } == ["B", "Band", "Record"] && mix?.first?.duration == 180)  // for Now Playing
+        #expect(mix?.first?.coverID == LibraryCover.coverID(persistentID: 2, side: 300))  // the cover the skins show
         #expect(catalog.items(context: Playlist.libraryID, track: LocalID.track(2))?.count == 2)
         #expect(catalog.items(context: nil, track: LocalID.track(1))?.map(\.id) == [LocalID.track(1)])
         #expect(catalog.items(context: nil, track: LocalID.track(3)) == nil)  // cannot play

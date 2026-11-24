@@ -15,6 +15,8 @@ public struct LocalNowPlaying: Equatable, Sendable {
         public var elapsed: Double
         /// 1 while playing, 0 while paused.
         public var rate: Double
+        /// The song's library cover, the same one the skins show. nil when it has none.
+        public var cover: String? = nil
     }
 
     /// Local is the active service (`Player.setActive`).
@@ -44,7 +46,7 @@ public struct LocalNowPlaying: Equatable, Sendable {
         let title = song.title.isEmpty ? song.url.deletingPathExtension().lastPathComponent : song.title
         return Info(
             title: title, artist: song.artist.isEmpty ? nil : song.artist, album: song.album.isEmpty ? nil : song.album,
-            duration: song.duration > 0 ? song.duration : nil, elapsed: elapsed, rate: playing ? 1 : 0)
+            duration: song.duration > 0 ? song.duration : nil, elapsed: elapsed, rate: playing ? 1 : 0, cover: song.coverID)
     }
 
     /// Follows the commands of one `LocalPlayback.handle`. `playback` is its state after that
@@ -87,5 +89,32 @@ public struct LocalNowPlaying: Equatable, Sendable {
         case .next: .next
         case .previous: .prev
         }
+    }
+}
+
+/// CLA-179: the cover on the Mac's Now Playing panel. The read is async, so the panel takes an
+/// image only while it still belongs to the shown song, and never keeps the last song's cover.
+public struct LocalCover: Equatable, Sendable {
+    /// The cover of the shown song, nil when it has none or nothing shows.
+    public private(set) var wanted: String?
+    /// The cover whose image the panel has.
+    public private(set) var shown: String?
+
+    public init() {}
+
+    /// The shown song's cover is `cover` now. True when it changed: the panel drops the old
+    /// image at once, and reads `wanted` when it is not nil.
+    public mutating func show(_ cover: String?) -> Bool {
+        guard cover != wanted else { return false }
+        (wanted, shown) = (cover, nil)
+        return true
+    }
+
+    /// A read of `cover` ended. True when the panel takes the image: it is still the shown
+    /// song's cover, and the read found one.
+    public mutating func arrived(_ cover: String, found: Bool) -> Bool {
+        guard cover == wanted, found else { return false }
+        shown = cover
+        return true
     }
 }

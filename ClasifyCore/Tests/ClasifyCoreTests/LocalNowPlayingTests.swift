@@ -183,6 +183,39 @@ import Testing
         #expect(!Driver.playing(autoplay: false).now.keepsAwake)
     }
 
+    /// The panel's cover is the shown song's library cover, the one the skins show.
+    @Test func theInfoCarriesTheSongsCover() {
+        let cover = LibraryCover.coverID(persistentID: 0xA1, side: 300)
+        var withCover = Self.songs
+        withCover[0].coverID = cover
+        let d = Driver.playing(withCover)
+        #expect(d.now.info?.cover == cover)
+        var next = d
+        next.on(.songEnded(queued: true))
+        #expect(next.now.info?.cover == nil)  // the next song has none
+    }
+
+    /// The cover read is async: an image shows only while its song is still the shown one, and
+    /// a song with no cover never keeps the last song's image.
+    @Test func aCoverShowsOnlyForTheShownSong() {
+        var cover = LocalCover()
+        // `show` and `arrived` change the value, so each result goes into a constant first.
+        let first = cover.show("a")  // a new song: drop the old image, read "a"
+        #expect(first && cover.wanted == "a" && cover.shown == nil)
+        let again = cover.show("a")  // the same song again (a pause, a seek): no new read
+        #expect(!again)
+        let next = cover.show("b")  // the next song before "a" arrived
+        let late = cover.arrived("a", found: true)  // too late: not taken
+        #expect(next && !late && cover.shown == nil)
+        let taken = cover.arrived("b", found: true)
+        #expect(taken && cover.shown == "b")
+        let none = cover.show(nil)  // a song with no cover: the panel drops "b"
+        #expect(none && cover.wanted == nil && cover.shown == nil)
+        let asked = cover.show("c")
+        let missing = cover.arrived("c", found: false)  // no image in the library
+        #expect(asked && !missing && cover.shown == nil)
+    }
+
     @Test func eachKeyIsTheSkinsInputAction() {
         #expect(LocalNowPlaying.action(for: .play, playing: false) == .play)
         #expect(LocalNowPlaying.action(for: .play, playing: true) == nil)  // already playing: Play does not pause

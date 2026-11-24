@@ -33,7 +33,7 @@ import Testing
         #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .search, .settings])
         s.words = .appleMusic
         #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .search, .settings])
-        // Read only, like `local.on`.
+        // Read only: Clasify never writes it.
         let store = FakeSettings()
         #expect(!Settings(from: store).searchOn)
         store.values["search.on"] = "1"

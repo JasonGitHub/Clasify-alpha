@@ -950,7 +950,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 // Card CR: a gray row (its file is missing) plays nothing.
                 if s.tracks(in: list).first(where: { $0.id == id })?.missing == true { return toast(missingFile) }
                 play(list, id)
-            case .service: s.pendingService = (s.pendingService ?? s.service).next(localOn: s.localOn)  // applied when Settings closes
+            case .service: s.pendingService = (s.pendingService ?? s.service).next  // applied when Settings closes
             case .shuffle: toggleShuffle()
             case .repeatMode: setRepeat(s.repeatMode.next)
             case .skin: s.skin = s.skin.next  // not in the Settings rows until Dark and Aqua exist

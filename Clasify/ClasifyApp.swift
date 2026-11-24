@@ -489,7 +489,7 @@ final class AppModel {
         let appleMusic = AppleMusicPlayer()
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
         // CLA-179: On This Mac plays inside myPod. One `LocalLibrary` reads the Music app library
-        // for the lists and gives `LocalPlayer` the files. Pick Your Music offers it only with `local.on`.
+        // for the lists and gives `LocalPlayer` the files. Neither reads the library before On This Mac is picked.
         let localLibrary = LocalLibrary()
         let local = LocalPlayer(source: localLibrary)
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, local: local, service: service)

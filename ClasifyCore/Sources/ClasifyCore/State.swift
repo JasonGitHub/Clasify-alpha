@@ -797,8 +797,6 @@ public struct AppState: Equatable, Sendable {
     public var menuBar = true
     /// The music service that plays and that the lists come from (CLA-103). Spotify by default.
     public var service = MusicService.spotify
-    /// CLA-179: the `local.on` test switch: Pick Your Music and the Service row offer On This Mac.
-    public var localOn = false
     /// CLA-183: the `search.on` test switch: the main menu has a Search row.
     public var searchOn = false
     /// CLA-183, card CS: what Search shows, on the heap (`SearchState`), so AppState grows by
@@ -1264,7 +1262,7 @@ public struct AppState: Equatable, Sendable {
         // Card BM, change 259: Apple Music has "Use Spotify" in place of "Log out".
         case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
         case .pickMusic:  // card CR: On This Mac is the third row
-            ((appleMusicFirst ? [.appleMusic, .spotify] : [.spotify, .appleMusic]) + (localOn ? [.local] : [])).map { .pickService($0) }
+            ((appleMusicFirst ? [.appleMusic, .spotify] : [.spotify, .appleMusic]) + [.local]).map { .pickService($0) }
         case .accessOff: [.openPrivacy, .useSpotify]
         case .noSongs: [.checkLibrary, .pickYourMusic]  // card CR
         case .search: searchResults.map(Row.init)  // CLA-183

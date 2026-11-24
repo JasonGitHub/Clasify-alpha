@@ -1,7 +1,8 @@
 import Testing
 @testable import ClasifyCore
 
-/// CLA-179, card CR: On This Mac, the third service, behind the `local.on` test switch.
+/// CLA-179, card CR: On This Mac, the third service, always offered (Jason removed the
+/// `local.on` test switch after build 446).
 @Suite struct LocalServiceTests {
     func openSettings(_ s: inout AppState) {
         for _ in 0..<8 where s.top.screen != .main { send(&s, .menu) }
@@ -9,13 +10,11 @@ import Testing
         send(&s, .select)
     }
 
-    @Test func theServiceRowLoopsThroughThreeOnlyWithTheSwitch() {
-        #expect(MusicService.spotify.next(localOn: true) == .appleMusic)
-        #expect(MusicService.appleMusic.next(localOn: true) == .local)
-        #expect(MusicService.local.next(localOn: true) == .spotify)
-        #expect(MusicService.appleMusic.next(localOn: false) == .spotify)
+    @Test func theServiceRowLoopsThroughThree() {
+        #expect(MusicService.spotify.next == .appleMusic)
+        #expect(MusicService.appleMusic.next == .local)
+        #expect(MusicService.local.next == .spotify)
         var s = playing()
-        s.localOn = true
         openSettings(&s)
         send(&s, .select, .select)
         #expect(s.pendingService == .local)
@@ -27,12 +26,10 @@ import Testing
         #expect(s.service == .local)
     }
 
-    @Test func pickYourMusicHasOnThisMacThirdWithTheSwitch() {
+    @Test func pickYourMusicHasOnThisMacThird() {
         var s = afterSetup()
         s.setupDone = false
         send(&s, .spotifyAppFound(true), .launch, .restored(token: 1, ok: false), .select, .select)
-        #expect(s.rows(for: s.top) == [.pickService(.spotify), .pickService(.appleMusic)])
-        s.localOn = true
         #expect(s.rows(for: s.top) == [.pickService(.spotify), .pickService(.appleMusic), .pickService(.local)])
         s.appleMusicFirst = true
         #expect(s.rows(for: s.top).last == .pickService(.local))
@@ -54,21 +51,22 @@ import Testing
         #expect(s.rows(for: Frame(screen: .settings)).last == .logOut)
     }
 
-    @Test func theSwitchIsReadOnlyAndOffKeepsSpotify() {
+    /// A saved On This Mac stays, with no switch: an old `local.on` value is not read, and
+    /// fresh defaults are Spotify as before.
+    @Test func aSavedOnThisMacStaysWithNoSwitch() {
         let store = FakeSettings()
+        #expect(Settings(from: store).service == .spotify)
         store.values = ["settings.service": "On This Mac"]
-        #expect(Settings(from: store).service == .spotify && !Settings(from: store).localOn)
-        store.values["local.on"] = "1"  // defaults write … -bool YES
-        #expect(Settings(from: store).service == .local && Settings(from: store).localOn)
-        store.values["local.on"] = "true"
+        #expect(Settings(from: store).service == .local)
+        store.values["local.on"] = "0"  // a value left from the test switch
         let settings = Settings(from: store)
-        #expect(settings.localOn)
+        #expect(settings.service == .local)
         let saved = FakeSettings()
         settings.save(to: saved)
         #expect(saved.values["local.on"] == nil && saved.values["settings.service"] == "On This Mac")
         var s = AppState()
         s.settings = settings
-        #expect(s.localOn && s.service == .local)
+        #expect(s.service == .local)
     }
 
     @Test func onThisMacTakesTheMacVolumeAndItsEventNameIsLocal() {
@@ -103,7 +101,7 @@ import Testing
 @Suite struct LocalNoSongsTests {
     func signedIn(albumArt: AlbumArt) -> AppState {
         var s = afterSetup()
-        (s.service, s.words, s.localOn, s.albumArt) = (.local, .local, true, albumArt)
+        (s.service, s.words, s.albumArt) = (.local, .local, albumArt)
         send(&s, .launch)
         let fx = send(&s, .restored(token: s.authAttempt, ok: true))
         // The whole library is read when the main menu opens, also with no covers beside it.
