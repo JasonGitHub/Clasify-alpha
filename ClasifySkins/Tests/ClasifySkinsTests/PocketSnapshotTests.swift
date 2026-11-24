@@ -1807,6 +1807,11 @@ import Testing
             let green = any(shot, x: 225...300, y: 60...120) { r, g, b in g > r + 60 && g > b + 30 }
             #expect(green == (step.activateStep == .confirmed), "\(name): green check")
             #expect(shot.isBlue(175, firstRow) == (step.activateStep != .confirmed), "\(name): first row")
+            // The gray footnote at the bottom of the left panel: on 319, and on 327 (card BW.1).
+            let foot = any(shot, x: (Self.screenLeft + 9)...(Self.screenLeft + 140), y: (Self.screenBottom - 34)...(Self.screenBottom - 8)) { r, g, b in
+                max(r, g, b) < 160 && b > r
+            }
+            #expect(foot == ["319-join", "327-offline"].contains(name), "\(name): footnote")
         }
     }
 
