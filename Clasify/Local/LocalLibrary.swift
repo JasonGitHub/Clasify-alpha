@@ -9,7 +9,7 @@ import iTunesLibrary
 /// It is also the `LocalSource` of `LocalPlayer`. Not wired into the app yet.
 @MainActor
 final class LocalLibrary: Library, LocalSource {
-    /// Placeholder words until the design card names them.
+    /// "On This Mac" (card CR).
     let words = LibraryWords.local
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
 

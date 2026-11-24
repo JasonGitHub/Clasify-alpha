@@ -157,9 +157,10 @@ public struct LocalCatalog: Sendable {
 }
 
 extension LibraryWords {
-    /// Local music's words. Placeholders until the design card names them (CLA-179).
+    /// Local music's words (card CR): the service is "On This Mac". Local music has no plan, so
+    /// the plan words never show; Favorite Songs is the Apple Music name of the liked list.
     public static let local = LibraryWords(
-        likedSongs: "Favorite Songs", service: "Music Library", like: "Favorite",
+        likedSongs: "Favorite Songs", service: "On This Mac", like: "Favorite",
         needPlan: "Can’t play", needPlanLine: "These songs can’t play here.",
         getPlan: "Open Music", noPlan: "No songs",
         albumsList: Playlist.libraryID, oneSong: "song", manySongs: "songs", libraryRows: true)

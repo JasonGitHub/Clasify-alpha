@@ -123,7 +123,7 @@ import Testing
 
     @Test func localWordsUseTheLibraryRowsAndTheLibraryForAlbums() {
         #expect(LibraryWords.local.albumsList == Playlist.libraryID)
-        #expect(LibraryWords.local.libraryRows)
+        #expect(LibraryWords.local.libraryRows && LibraryWords.local.service == "On This Mac")
         #expect(LibraryWords.local.oneSong == "song" && LibraryWords.local.manySongs == "songs")
     }
 }
