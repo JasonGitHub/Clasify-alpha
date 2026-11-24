@@ -1,0 +1,151 @@
+name: App launch
+# CLA-185: build the app as the test DMG does (Release, universal, ad-hoc signed), start it on
+# macos-15 and fail if it is gone after 20 s. Crash reports (.ips) and the app's stderr are
+# always uploaded, and the crash's key lines are printed in the log.
+# The app under test must not reach the live server or PostHog. The ad-hoc build has no PostHog
+# key (it sends nothing) and checks the beta feed only in a signed beta. The activation check
+# has no switch, so this job points the live hosts to 127.0.0.1 in /etc/hosts before any start.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ["ClasifyCore/**", "ClasifySkins/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/actions/build-app/**", ".github/workflows/app-launch.yml"]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  launch:
+    if: github.event.pull_request.draft == false
+    runs-on: macos-15
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      APP: DerivedData/Build/Products/Release/myPod.app
+      DOMAIN: com.cappyai.mypod
+      OUT: ${{ github.workspace }}/launch-out
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - name: Show the system
+        run: |
+          sw_vers
+          xcodebuild -version
+          uname -m
+      - name: Keep the app off the live server, PostHog and the beta feed
+        run: |
+          for host in api.getmypod.app getmypod.app dl.getmypod.app us.i.posthog.com us-assets.i.posthog.com; do
+            echo "127.0.0.1 $host" | sudo tee -a /etc/hosts > /dev/null
+          done
+          sudo dscacheutil -flushcache
+          sudo killall -HUP mDNSResponder || true
+          for host in api.getmypod.app us.i.posthog.com dl.getmypod.app; do
+            answer=$(dscacheutil -q host -a name "$host" | awk '/ip_address/ {print $2}' | head -1)
+            echo "$host -> $answer"
+            if [ "$answer" != "127.0.0.1" ]; then echo "::error::$host is not blocked"; exit 1; fi
+          done
+      - name: Cache the Rust build of the bridge
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            LibrespotBridge/target
+          key: bridge-${{ runner.os }}-${{ hashFiles('LibrespotBridge/Cargo.lock') }}
+      - uses: ./.github/actions/build-app
+      - name: Ad-hoc sign, as the test DMG does
+        run: |
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --verbose "$APP"
+      - name: Start the app three times
+        run: |
+          mkdir -p "$OUT"
+          reports=~/Library/Logs/DiagnosticReports
+          # Start the binary direct, so its stderr is in the log. Fail if it is gone after 20 s.
+          start() {  # $1 = name of the start
+            echo "== start $1 at $(date -u +%H:%M:%S) UTC"
+            "$APP/Contents/MacOS/myPod" > "$OUT/$1-stderr.txt" 2>&1 &
+            pid=$!
+            sleep 20
+            if kill -0 "$pid" 2> /dev/null; then
+              echo "start $1: still running after 20 s"
+              kill "$pid"; sleep 3; kill -9 "$pid" 2> /dev/null || true
+              return 0
+            fi
+            wait "$pid"; code=$?
+            echo "::error::start $1: myPod ended within 20 s (exit $code)"
+            return 1
+          }
+          failed=""
+          # 1: a first launch, with a clean defaults domain.
+          defaults delete "$DOMAIN" 2> /dev/null || true
+          start 1-clean || failed="$failed 1-clean"
+          # 2: a later launch, with the defaults that start 1 wrote.
+          defaults export "$DOMAIN" - > "$OUT/defaults-after-1.plist" 2> /dev/null || true
+          start 2-again || failed="$failed 2-again"
+          # 3: through Launch Services (`open`), as a person starts it, with a clean domain again.
+          defaults delete "$DOMAIN" 2> /dev/null || true
+          echo "== start 3-open at $(date -u +%H:%M:%S) UTC"
+          open --stdout "$OUT/3-open-stdout.txt" --stderr "$OUT/3-open-stderr.txt" "$APP"
+          sleep 20
+          if pgrep -x myPod > /dev/null; then
+            echo "start 3-open: still running after 20 s"
+            pkill -x myPod; sleep 3; pkill -9 -x myPod || true
+          else
+            echo "::error::start 3-open: myPod ended within 20 s"
+            failed="$failed 3-open"
+          fi
+          # Crash reports can take some seconds to appear.
+          if [ -n "$failed" ]; then
+            for i in $(seq 1 12); do
+              ls "$reports"/myPod* > /dev/null 2>&1 && break
+              sleep 5
+            done
+          fi
+          cp "$reports"/myPod* "$OUT"/ 2> /dev/null || true
+          ls -la "$OUT"
+          for f in "$OUT"/*-std*.txt; do echo "---- $(basename "$f")"; tail -n 60 "$f"; done
+          echo "$failed" > "$OUT/failed.txt"
+          if [ -n "$failed" ]; then echo "Failed starts:$failed"; exit 1; fi
+      - name: Print the crash reports
+        if: always()
+        run: |
+          shopt -s nullglob
+          files=("$OUT"/*.ips)
+          if [ ${#files[@]} = 0 ]; then echo "No crash report for myPod."; exit 0; fi
+          for f in "${files[@]}"; do
+            echo "==== $(basename "$f")"
+            python3 - "$f" <<'PY'
+          import json, sys
+          text = open(sys.argv[1]).read()
+          head, _, rest = text.partition("\n")
+          try:
+              body = json.loads(rest)
+          except ValueError:
+              print(text[:4000]); sys.exit(0)
+          print("OS:", body.get("osVersion", {}).get("train"), body.get("osVersion", {}).get("build"))
+          print("App:", json.loads(head).get("app_version"), json.loads(head).get("build_version"))
+          exc = body.get("exception", {})
+          print("Exception:", exc.get("type"), exc.get("signal"), exc.get("subtype", ""), exc.get("codes", ""))
+          term = body.get("termination", {})
+          print("Termination Reason:", term.get("namespace"), term.get("code"), term.get("indicator", ""))
+          for d in term.get("details", []) or []:
+              print("  ", d)
+          if body.get("asi"):
+              print("Application Specific Information:", json.dumps(body["asi"])[:2000])
+          images = body.get("usedImages", [])
+          threads = body.get("threads", [])
+          idx = body.get("faultingThread", 0)
+          if idx < len(threads):
+              print(f"Crashed thread {idx}:")
+              for n, fr in enumerate(threads[idx].get("frames", [])[:25]):
+                  img = images[fr.get("imageIndex", 0)].get("name", "?") if images else "?"
+                  print(f"  {n:2} {img:30} {fr.get('symbol', '?')} + {fr.get('symbolLocation', fr.get('imageOffset', ''))}")
+          PY
+          done
+      - name: Upload the crash reports and the app's output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: launch-reports
+          path: launch-out
+          if-no-files-found: warn
+          retention-days: 7
