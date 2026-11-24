@@ -9,7 +9,7 @@ import Testing
     let library = Playlist.libraryID
 
     func rereads(_ fx: [Effect]) -> [Effect] {
-        fx.filter { switch $0 { case .refreshTracks, .refreshPlaylists: true; default: false } }
+        fx.filter { switch $0 { case .refreshTracks, .refreshPlaylists, .refreshArtists: true; default: false } }
     }
 
     /// On This Mac's main menu, its library read at time 100.
@@ -66,6 +66,27 @@ import Testing
         #expect(s.stack == [Frame(screen: .main)])
     }
 
+    @Test func theArtistsReadAgainQuietlyAndAFailureKeepsThem() {
+        var s = onThisMac()
+        let band = Playlist(id: "local:artist:Band", name: "Band", tracks: [])
+        let newBand = Playlist(id: "local:artist:Arc", name: "Arc", tracks: [])
+        s.stack.append(Frame(screen: .artists, loading: true, token: 7)); s.tok = 7
+        send(&s, .artistsLoaded(token: 7, artists: [band]), now: 100)
+        #expect(s.readAt[AppState.artistsKey] == 100)
+        send(&s, .menu, now: 101)
+        #expect(rereads(backToMain(&s, at: 159)).isEmpty)
+        #expect(rereads(backToMain(&s, at: 160)) == [.refreshTracks(playlist: library), .refreshArtists])
+        #expect(s.artists == [band] && s.refreshing.contains(AppState.artistsKey))  // the rows stay while it reads
+        #expect(!rereads(backToMain(&s, at: 230)).contains(.refreshArtists))  // one read at a time
+        send(&s, .artistsRefreshed(nil), now: 231)
+        #expect(s.artists == [band] && !s.refreshing.contains(AppState.artistsKey))  // a failure keeps them
+        #expect(rereads(backToMain(&s, at: 232)).contains(.refreshArtists))
+        send(&s, .artistsRefreshed([band, newBand]), now: 233)
+        #expect(s.artists == [newBand, band] && s.readAt[AppState.artistsKey] == 233)
+        send(&s, .artistsRefreshed([band]), now: 234)  // not asked for: ignored
+        #expect(s.artists == [newBand, band])
+    }
+
     @Test func spotifyAndAppleMusicDoNotChange() {
         for service in [MusicService.spotify, .appleMusic] {
             var s = mainMenu()
@@ -73,6 +94,7 @@ import Testing
             s.library.append(Playlist(id: library, name: "", tracks: [Self.song]))
             s.loadedTracks = [library, "focus"]; s.readAt = [library: 100, "focus": 100]
             s.playlistsLoaded = true; s.readAt[""] = 100
+            s.artistsLoaded = true; s.readAt[AppState.artistsKey] = 100
             #expect(rereads(backToMain(&s, at: 1000)).isEmpty, "\(service)")
         }
     }

@@ -50,6 +50,11 @@ final class LocalLibrary: Library, LocalSource {
 
     func artists() async -> [ClasifyCore.Playlist]? { await catalog()?.artists }
 
+    func rereadArtists() async -> [ClasifyCore.Playlist]? {
+        await forget()
+        return await artists()
+    }
+
     func track(_ id: String) async -> ClasifyCore.Track? { await catalog()?.track(id) }
 
     func prefetch() async { _ = await catalog() }
