@@ -32,41 +32,62 @@ public enum Search {
     }
 
     /// The results for `query`, anywhere in the name. Spaces around the query are left out; an
-    /// empty query has no results.
+    /// empty query has no results. For each key while Search is open, keep an `Index` instead.
     public static func results(_ query: String, in state: AppState) -> [Result] {
-        let q = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
-        guard !q.isEmpty else { return [] }
-        let hit = { (name: String) in fold(name).contains(q) }
-        let artists = state.artists.lazy.filter { hit($0.name) }.prefix(limit)
-            .map { Result(kind: .artist, id: $0.id, name: $0.name, detail: "Artist") }
-        let albums = state.albums.lazy.filter { hit($0.name) }.prefix(limit)
-            .map { Result(kind: .album, id: $0.id, name: $0.name, detail: $0.artist.map { "Album · \($0)" } ?? "Album") }
-        let playlists = state.library.lazy.filter { !Playlist.isHidden($0.id) && hit($0.name) }.prefix(limit)
-            .map { Result(kind: .playlist, id: $0.id, name: $0.name, detail: "Playlist · \($0.trackCount) \($0.trackCount == 1 ? "song" : "songs")") }
-        return Array(artists) + Array(albums) + Array(playlists) + songs(q, in: state)
+        Index(state).results(query)
     }
 
-    /// The songs of every list read so far whose title holds `q`, each once, in the Songs
-    /// list's title order. A song that can't be found on this Mac (card CR) is left out.
-    static func songs(_ q: String, in state: AppState) -> [Result] {
+    /// The library's names, folded and in result order once, so each key only compares
+    /// (CTO on #451: typing must stay fast on 10,000 songs). Make it when Search opens and
+    /// again when library data arrives.
+    public struct Index: Equatable, Sendable {
+        struct Entry: Equatable, Sendable {
+            var result: Result, folded: String
+            init(_ result: Result) { self.result = result; folded = Search.fold(result.name) }
+        }
+        /// Each kind in its result order.
+        var artists: [Entry], albums: [Entry], playlists: [Entry], songs: [Entry]
+
+        public init(_ state: AppState) {
+            artists = state.artists.map { Entry(Result(kind: .artist, id: $0.id, name: $0.name, detail: "Artist")) }
+            albums = state.albums.map {
+                Entry(Result(kind: .album, id: $0.id, name: $0.name, detail: $0.artist.map { "Album · \($0)" } ?? "Album"))
+            }
+            playlists = state.library.filter { !Playlist.isHidden($0.id) }.map {
+                Entry(Result(kind: .playlist, id: $0.id, name: $0.name, detail: "Playlist · \($0.trackCount) \($0.trackCount == 1 ? "song" : "songs")"))
+            }
+            songs = Search.songs(in: state).map(Entry.init)
+        }
+
+        public func results(_ query: String) -> [Result] {
+            let q = fold(query.trimmingCharacters(in: .whitespacesAndNewlines))
+            guard !q.isEmpty else { return [] }
+            var found: [Result] = []
+            for kind in [artists, albums, playlists, songs] {
+                found += kind.lazy.filter { $0.folded.contains(q) }.prefix(limit).map(\.result)
+            }
+            return found
+        }
+    }
+
+    /// Every song of the lists read so far, each once, in the Songs list's title order. A song
+    /// that can't be found on this Mac (card CR) is left out.
+    static func songs(in state: AppState) -> [Result] {
         var found: [String: (track: Track, list: String, rank: Int, order: Int)] = [:]
-        var missed = Set<String>()
         for list in state.library {
             let rank = playRank(list.id)
-            for track in list.tracks where !track.missing && !missed.contains(track.id) {
+            for track in list.tracks where !track.missing {
                 if let had = found[track.id] {
                     if rank < had.rank { found[track.id] = (had.track, list.id, rank, had.order) }
-                } else if fold(track.title).contains(q) {
-                    found[track.id] = (track, list.id, rank, found.count)
                 } else {
-                    missed.insert(track.id)
+                    found[track.id] = (track, list.id, rank, found.count)
                 }
             }
         }
         let sorted = found.values
             .map { (key: Album.SortKey(Playlist.dropThe($0.track.title)), song: $0) }
             .sorted { ($0.key, $0.song.order) < ($1.key, $1.song.order) }
-        return sorted.prefix(limit).map { entry in
+        return sorted.map { entry in
             let (track, list) = (entry.song.track, entry.song.list)
             // The whole library is never a play context: its songs play in their album.
             let plays = list == Playlist.libraryID ? track.album?.id ?? list : list
