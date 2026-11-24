@@ -76,15 +76,21 @@ final class LocalPlayer: Player {
             loading = false
             guard let list, let start = list.firstIndex(where: { $0.id == trackID }) else {
                 opening = false  // an older open stopped for this load; the old song plays on
-                return send(.loadFailed(Self.cantPlay, generation: self.generation))
+                send(.loadFailed(Self.cantPlay, generation: self.generation))
+                return catchUp()
             }
             items = list
             var order = LocalQueue(count: list.count, start: start, shuffle: shuffle, repeatMode: repeatMode)
-            for forward in pendingSkips {  // Next and Prev pressed during the read
-                _ = forward ? order.next() : order.prev()
+            let skips = pendingSkips
+            pendingSkips = []
+            for forward in skips {  // Next and Prev pressed during the read
+                let moved = forward ? order.next() : order.prev()
+                if moved == nil {  // Next on the last song, with Repeat Off
+                    queue = order
+                    return endOfContext()
+                }
             }
             queue = order
-            pendingSkips = []
             await open(id: id)
         }
     }
@@ -96,7 +102,14 @@ final class LocalPlayer: Player {
 
     func resume() {
         wantsPlay = true
-        if currentItem != nil && !opening && !loading { player.play() }  // an open in flight plays when it is ready
+        guard !opening, !loading else { return }  // an open in flight plays when it is ready
+        if currentItem != nil {
+            player.play()
+        } else if queue != nil {  // the context ended (or stopped on an error): the song on screen again
+            openID += 1
+            let id = openID
+            Task { await open(id: id) }
+        }
     }
 
     func stop() {
@@ -228,7 +241,23 @@ final class LocalPlayer: Player {
         Task { await open(id: id) }
     }
 
-    /// The last song ended (or Next on it) with Repeat Off.
+    /// A load failed and the old song plays on. Its end was not handled during the load, so
+    /// follow what the player did then: on to the queued song, or the end of the context.
+    private func catchUp() {
+        guard let item = currentItem, player.currentItem !== item else { return }
+        if let up = upcoming, player.currentItem === up.item, var order = queue, order.trackEnded() == up.index {
+            queue = order
+            currentItem = up.item
+            upcoming = nil
+            send(.trackChanged(items[up.index].id, playing: wantsPlay, generation: generation))
+            prepareUpcoming()
+        } else {
+            endOfContext()
+        }
+    }
+
+    /// The last song ended (or Next on it) with Repeat Off. The queue stays, so Play starts the
+    /// song on screen again.
     private func endOfContext() {
         stopPlayer()
         send(.trackEnded(generation: generation))
