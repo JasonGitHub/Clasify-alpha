@@ -19,27 +19,33 @@ struct ServerActivator: Activator {
         return URLSession(configuration: config)
     }()
 
-    func status() async -> Activation { await ask("GET", "/v1/status") }
-    func sendAgain() async -> Activation { await ask("POST", "/v1/start") }
+    func status() async -> Result<Activation, ConnectionFailure> { await ask("GET", "/v1/status") }
+    func sendAgain() async -> Result<Activation, ConnectionFailure> { await ask("POST", "/v1/start") }
 
-    func pageURL() async -> String? {
-        guard let answer = await call("POST", "/v1/open"), (200..<300).contains(answer.status), let code = answer.json?["code"] as? String,
-              var page = URLComponents(string: "https://getmypod.app/activate/") else { return nil }
-        page.queryItems = [URLQueryItem(name: "d", value: code)]
-        return page.url?.absoluteString
+    func pageURL() async -> Result<String, ConnectionFailure> {
+        await call("POST", "/v1/open").flatMap { answer in
+            guard (200..<300).contains(answer.status), let code = answer.json?["code"] as? String,
+                  var page = URLComponents(string: "https://getmypod.app/activate/") else { return .failure(.server(answer.status)) }
+            page.queryItems = [URLQueryItem(name: "d", value: code)]
+            return page.url.map { .success($0.absoluteString) } ?? .failure(.server(answer.status))
+        }
     }
 
     /// CLA-166: POST /v1/feedback with the report. The status, or nil for no connection.
-    func report(_ body: Data) async -> Int? { await call("POST", "/v1/feedback", body: body)?.status }
+    func report(_ body: Data) async -> Int? { try? await call("POST", "/v1/feedback", body: body).get().status }
 
-    private func ask(_ method: String, _ path: String) async -> Activation {
-        guard let answer = await call(method, path) else { return .offline }
-        return Activation(status: answer.status, json: answer.json)
+    /// The answer as an `Activation`. An answer the app does not know is a server failure (CLA-180).
+    private func ask(_ method: String, _ path: String) async -> Result<Activation, ConnectionFailure> {
+        await call(method, path).flatMap { answer in
+            let activation = Activation(status: answer.status, json: answer.json)
+            return activation == .offline ? .failure(.server(answer.status)) : .success(activation)
+        }
     }
 
-    /// One request with the device header. Nil for no connection or a timeout.
-    private func call(_ method: String, _ path: String, body: Data = Data("{}".utf8)) async -> (status: Int, json: [String: Any]?)? {
-        guard let id = deviceID() else { return nil }
+    /// One request with the device header. A failure says why there is no answer, with no URL,
+    /// host or error text (CLA-180).
+    private func call(_ method: String, _ path: String, body: Data = Data("{}".utf8)) async -> Result<(status: Int, json: [String: Any]?), ConnectionFailure> {
+        guard let id = deviceID() else { return .failure(.noDeviceID) }
         var request = URLRequest(url: Self.host.appending(path: path))
         request.httpMethod = method
         request.setValue("Device \(id)", forHTTPHeaderField: "Authorization")
@@ -47,7 +53,13 @@ struct ServerActivator: Activator {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = body
         }
-        guard let result = try? await session.data(for: request), let http = result.1 as? HTTPURLResponse else { return nil }
-        return (http.statusCode, (try? JSONSerialization.jsonObject(with: result.0)) as? [String: Any])
+        let result: (Data, URLResponse)
+        do {
+            result = try await session.data(for: request)
+        } catch {
+            return .failure(ConnectionFailure(urlErrorCode: (error as? URLError)?.errorCode ?? 0))
+        }
+        guard let http = result.1 as? HTTPURLResponse else { return .failure(.other(0)) }
+        return .success((status: http.statusCode, json: (try? JSONSerialization.jsonObject(with: result.0)) as? [String: Any]))
     }
 }

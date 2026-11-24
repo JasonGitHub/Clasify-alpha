@@ -292,7 +292,7 @@ import Testing
     /// A page that cannot get its code (no connection) shows 327 and opens nothing.
     @MainActor @Test func aPageWithNoCodeShowsOffline() async {
         let env = Dependencies(now: { 200 }, random: { _ in 0 })
-        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: join(), env: env, activator: FakeActivator(page: nil))
+        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: join(), env: env, activator: FakeActivator(page: nil, failure: .dns))
         let opened = Count()
         store.onOpenActivatePage = { _ in opened.n += 1 }
         store.send(.select)
@@ -302,6 +302,7 @@ import Testing
             try? await Task.sleep(for: .milliseconds(10))
         }
         #expect(store.state.activateStep == .offline && opened.n == 0)
+        #expect(store.state.activateFailure == .dns)  // CLA-180: the reason goes with it
         #expect(store.state.rows(for: store.state.top) == [.tryActivateAgain])
     }
 
@@ -333,10 +334,11 @@ import Testing
 struct FakeActivator: Activator {
     var page: String? = "https://getmypod.app/activate/?d=code"
     var wait = 0.0
-    func pageURL() async -> String? {
+    var failure = ConnectionFailure.offline
+    func pageURL() async -> Result<String, ConnectionFailure> {
         if wait > 0 { try? await Task.sleep(for: .seconds(wait)) }
-        return page
+        return page.map { .success($0) } ?? .failure(failure)
     }
-    func status() async -> Activation { .waiting(email: "sam@example.com", mail: 1) }
-    func sendAgain() async -> Activation { .waiting(email: "sam@example.com", mail: 2) }
+    func status() async -> Result<Activation, ConnectionFailure> { .success(.waiting(email: "sam@example.com", mail: 1)) }
+    func sendAgain() async -> Result<Activation, ConnectionFailure> { .success(.waiting(email: "sam@example.com", mail: 2)) }
 }

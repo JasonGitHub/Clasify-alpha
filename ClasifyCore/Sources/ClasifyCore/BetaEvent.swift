@@ -9,8 +9,8 @@ public enum BetaEvent: Equatable, Sendable {
     /// `seconds` is nil on a Mac with no first launch time (set up before CLA-97).
     /// `color` is on the step that the press on Color sends: the color picked (CLA-97, Jason 14:23 JST 11-22).
     case setupStep(SetupStep, seconds: Int?, service: MusicService, color: DeviceColor? = nil)
-    /// Setup stops on an error.
-    case setupError(SetupError, service: MusicService)
+    /// Setup stops on an error. `reason`: why our server got no answer, on `no_connection` only (CLA-180).
+    case setupError(SetupError, service: MusicService, reason: ConnectionFailure? = nil)
     /// The pick on Pick Your Music: the service, the top row, and whether the Spotify app was found.
     case musicPick(MusicService, top: MusicService, spotifyApp: Bool?)
     /// Once per person: seconds from the first launch to the first song that plays.
@@ -64,8 +64,10 @@ public enum BetaEvent: Equatable, Sendable {
             if let seconds { p["seconds"] = .number(seconds) }
             if let color { p["color"] = .text(color.eventName) }
             return p
-        case .setupError(let kind, let service):
-            return ["kind": .text(kind.rawValue), "service": .text(service.eventName)]
+        case .setupError(let kind, let service, let reason):
+            var p: [String: BetaValue] = ["kind": .text(kind.rawValue), "service": .text(service.eventName)]
+            if let reason { p["reason"] = .text(reason.eventName) }
+            return p
         case .musicPick(let service, let top, let spotifyApp):
             var p: [String: BetaValue] = ["service": .text(service.eventName), "top": .text(top.eventName)]
             if let spotifyApp { p["spotify_app"] = .flag(spotifyApp) }
@@ -281,7 +283,7 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
             events.append(.setupStep(step, seconds: seconds, service: s.service, color: b.colorPress ? s.deviceColor : nil))
         }
         if let error = setupError(s, changed: screen != b.screen || s.activateStep != b.activateStep) {
-            events.append(.setupError(error, service: s.service))
+            events.append(.setupError(error, service: s.service, reason: error == .noConnection ? s.activateFailure : nil))
         }
     }
     if !s.firstSongSent, s.analyticsOn, let seconds, b.played, s.isPlaying, s.current != nil {
