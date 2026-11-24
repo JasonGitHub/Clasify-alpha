@@ -341,8 +341,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         if s.startToken == token && !s.top.error {  // CLA-173: a list start waited for this read
             s.startToken = nil
             // Now Playing takes the loading frame's place, so MENU goes back to the row. An
-            // empty list stays on screen: there is nothing to play.
-            if !s.tracks(in: s.startList).isEmpty { s.stack.removeLast(); startList(s.startList) }
+            // empty list stays on screen: there is nothing to play. So does a list with only
+            // missing songs (card CR): its gray rows show.
+            if s.tracks(in: s.startList).contains(where: { !$0.missing }) { s.stack.removeLast(); startList(s.startList) }
         }
     }
     func loadTrack(_ id: String, autoplay: Bool) {

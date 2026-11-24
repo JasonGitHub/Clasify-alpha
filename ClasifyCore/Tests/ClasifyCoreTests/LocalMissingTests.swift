@@ -49,6 +49,15 @@ import Testing
         #expect(all.top.screen == .tracks(playlist: "focus") && all.current == nil)
     }
 
+    @Test func aListReadForPlayWithOnlyMissingSongsStaysOpen() {
+        var s = mainMenu()
+        send(&s, .wheel(1), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))
+        #expect(send(&s, .play) == [.fetchTracks(token: 2, playlist: "focus")])
+        let gone = Self.songs.map { var t = $0; t.missing = true; return t }
+        #expect(!send(&s, .tracksLoaded(token: 2, playlist: "focus", tracks: gone)).contains { if case .load = $0 { true } else { false } })
+        #expect(s.top.screen == .tracks(playlist: "focus") && !s.top.loading && s.current == nil)
+    }
+
     @Test func shuffleNeverStartsOnAMissingSong() {
         var s = onFocus()
         send(&s, .menu)
