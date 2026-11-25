@@ -299,10 +299,11 @@ public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -
     if action == .launch && !s.setupDone && s.firstLaunchAt == nil { s.firstLaunchAt = env.now() }
     // CLA-97, `app_speed`: not on a launch in setup, as that time holds the person's own login steps.
     if action == .launch && s.setupDone && s.launchedAt == nil { s.launchedAt = env.now() }
-    let before = BeforeEvents(s, action)
+    let before = BeforeEvents(s, action), steps = BeforeFirstSteps(s, action)
     var fx = reduceAction(&s, action, env)
     fx += searchReads(&s)
     fx += betaEvents(&s, before, fx, now: env.now())
+    fx += firstStepEvents(&s, steps, action, fx, now: env.now())
     fx += dayEvents(&s, action, before, now: env.now(), in: env.timeZone)
     // 348: a beta notice or Activate that opens shows a hidden myPod. CLA-153: not Activate
     // that opens through the login hand-over (320), because the browser shows the activate
