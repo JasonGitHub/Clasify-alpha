@@ -412,9 +412,12 @@ final class SpotifyConnectPlayer: Player {
     /// stops. The person's own Spotify stays open: only our playback (`ours`) pauses, with the
     /// same rule as every pause. Nothing of ours plays: nothing goes out and nothing waits.
     func quit() {
-        if let pid = launchedApp {
+        // Codex on #480: that Spotify can have quit, and the person opened Spotify again. Then
+        // its PID is gone (or another app's), and the open Spotify is theirs: pause it below.
+        if let pid = launchedApp, let app = NSRunningApplication(processIdentifier: pid),
+           !app.isTerminated, app.bundleIdentifier == Self.bundleID {
             launchedApp = nil
-            NSRunningApplication(processIdentifier: pid)?.terminate()
+            app.terminate()
             return
         }
         guard ours, lastRunning, let device else { return }
