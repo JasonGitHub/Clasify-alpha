@@ -101,6 +101,11 @@ extension LibrespotClient {
         return status
     }
 
+    /// CLA-189: one `LSB_COMMAND_*` whose answer the caller waits for (the pause at a quit).
+    func command(_ command: Int32, to device: String) async throws {
+        try await self.command("command failed") { lsb_connect_command(handle, device, UInt32(command), commandCallback, $0) }
+    }
+
     /// `option` is one of `LSB_OPTION_*`.
     func setOption(_ option: Int32, _ on: Bool, device: String) async throws {
         try await command("cannot set option") { lsb_connect_set_option(handle, device, UInt32(option), on, commandCallback, $0) }

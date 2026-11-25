@@ -41,6 +41,7 @@ public final class ServicePlayer: Player {
     public func pause() { active?.pause() }
     public func resume() { active?.resume() }
     public func stop() { active?.stop() }
+    public func quit() { active?.quit() }
     public func next(generation: Int) { active?.next(generation: generation) }
     public func prev(generation: Int) { active?.prev(generation: generation) }
     // All players keep shuffle and repeat, so a switch plays with the same modes.

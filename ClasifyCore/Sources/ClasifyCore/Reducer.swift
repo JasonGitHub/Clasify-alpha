@@ -146,6 +146,8 @@ public enum Effect: Equatable, Sendable {
     /// `context` is the playlist ID the track plays from. The engine uses it as the Spotify play context.
     case load(trackID: String, context: String?, autoplay: Bool, generation: Int)
     case pause, resume, stop
+    /// CLA-189: a normal quit while Spotify is the service (`Player.quit`).
+    case quitPlayer
     /// The engine owns the play order of a context: it picks the next and previous track.
     case next(generation: Int), prev(generation: Int)  // a skip starts a new generation too
     /// Sent when the setting changes and before each load, so the engine's order follows Clasify's settings.
@@ -1552,7 +1554,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.controlLostAt = now
             fx.append(.track(.controlLost(reason, service: s.service)))
 
-        case .used, .willQuit, .view3D, .window: break  // only for `day_active` (dayEvents)
+        case .willQuit:
+            // CLA-189 (Jason 16:04 JST 11-25): a quit stops our Spotify music, as a real iPod
+            // turns off. Spotify only (Jason 16:08 JST): Apple Music and On This Mac get nothing.
+            if s.service == .spotify { fx.append(.quitPlayer) }
+        case .used, .view3D, .window: break  // only for `day_active` (dayEvents)
         case .analyticsOn(let on): s.analyticsOn = on
         case .hintsTrial(let on): s.hintsTrial = on
         case .appProblems(let problems):

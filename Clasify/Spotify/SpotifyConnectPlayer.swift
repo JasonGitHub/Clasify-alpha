@@ -403,6 +403,31 @@ final class SpotifyConnectPlayer: Player {
         NSRunningApplication(processIdentifier: pid)?.terminate()
     }
 
+    /// CLA-189: the pause that a quit of myPod sent, until Spotify answered. The app waits for
+    /// it within its quit limit (`AppDelegate.quit`).
+    private(set) var quitting: Task<Void, Never>?
+
+    /// CLA-189 (Jason 16:04 JST 11-25): myPod quits normally while Spotify is the service. A
+    /// Spotify that myPod launched in this session quits, as `quitApp()` does, so its music
+    /// stops. The person's own Spotify stays open: only our playback (`ours`) pauses, with the
+    /// same rule as every pause. Nothing of ours plays: nothing goes out and nothing waits.
+    func quit() {
+        // Codex on #480: that Spotify can have quit, and the person opened Spotify again. Then
+        // its PID is gone (or another app's), and the open Spotify is theirs: pause it below.
+        if let pid = launchedApp, let app = NSRunningApplication(processIdentifier: pid),
+           !app.isTerminated, app.bundleIdentifier == Self.bundleID {
+            launchedApp = nil
+            app.terminate()
+            return
+        }
+        guard ours, lastRunning, let device else { return }
+        quitting = Task { [client] in
+            do { try await client.command(LSB_COMMAND_PAUSE, to: device) } catch {
+                log.notice("pause at quit failed")  // the status only, as everywhere in this file
+            }
+        }
+    }
+
     /// Spotify quit. Its device must be found again after the next launch. While it played
     /// our track, show paused and keep the place, so Play continues there.
     private func spotifyQuit() {
