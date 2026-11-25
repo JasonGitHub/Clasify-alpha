@@ -3,6 +3,7 @@ import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
 import { noPageMail, type PageMailer } from "./pagemail";
 import { vote } from "./vote";
+import { countLinkDownload } from "./links";
 import { link, waitlist } from "./waitlist";
 import { claimInvite, keepInviteMail } from "./invitelinks";
 import { checkout, findSession, hourRoom, markPaid, salesOn } from "./stripe";
@@ -139,6 +140,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
     }
     case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); no bot check, one a day per item per network
       return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
+    case "POST /v1/link-download":  // CLA-193: a Download press after a short link; no bot check, one a day per word per network
+      return reply({ result: await countLinkDownload(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
     case "POST /v1/buy": {  // CLA-175: the launch page's Buy. Answers Stripe's payment page; Stripe gets no device ID.
       if (!salesOn(env)) return reply({ error: "sales" }, 503, cors);  // the stop-sales switch: Stripe is not asked
       const buyNet = await sha256(`buy:${network(request.headers.get("CF-Connecting-IP") ?? "")}:${env.TURNSTILE_SECRET ?? ""}`);

@@ -1,6 +1,7 @@
 import { handle, sha256, token } from "./activation";
 import { countOpen, dropOldInviteMails, inviteOf } from "./invitelinks";
 import { launchRoute, workerFirst } from "./launch";
+import { countLinkOpen, linkOf, linkRedirect } from "./links";
 import { linkMailer, noMail, noReports, reportMailer, resend } from "./mailer";
 import { noPageMail, pageMailer, type PageMailer } from "./pagemail";
 import { refreshFeed } from "./beta";
@@ -46,6 +47,12 @@ async function site(request: Request, env: Env, later: ((work: Promise<unknown>)
   const path = new URL(request.url).pathname;
   const file = everyPath && !path.startsWith("/v1/") && !workerFirst(path) ? await env.ASSETS.fetch(request) : null;
   if (file && file.status !== 404) return file;
+  // CLA-193: a short link (/hn, /r/<name>) counts once, after the answer, and goes to /beta.
+  const link = request.method === "GET" || request.method === "HEAD" ? linkOf(request) : null;
+  if (link) {
+    if (request.method === "GET" && later) later(countLinkOpen(env.DB, link, request.headers.get("CF-Connecting-IP") ?? "", Date.now(), sha256, token));
+    return linkRedirect(link);
+  }
   const launch = await launchRoute(request, env, env.ASSETS, fetch, later);
   if (launch) {
     if (path === "/" && launch.ok && request.method === "GET") countInvite(request, env, later);  // CLA-175: invite links on "/" too

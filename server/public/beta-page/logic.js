@@ -201,6 +201,43 @@ export function inviteID(value) {
 }
 
 /**
+ * CLA-193: the short links (Jason OK 22:25 and 22:27 JST 11-25). Two kinds of link, each with its
+ * own key, so they cannot collide:
+ * - getmypod.app/r/<name> for any Reddit name: letters, digits and _, 2 to 21 characters. Key "r/<name>",
+ *   lower case.
+ * - getmypod.app/<word> for the plain words below. Key "<word>". The one list: add a word here.
+ */
+export const linkWords = /** @type {const} */ (["hn", "x"]);
+
+/**
+ * A short link key ("hn", "r/ipodclassic"), after lower-casing, or null for anything else.
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function linkKey(value) {
+  if (typeof value !== "string") return null;
+  const key = value.toLowerCase();
+  if (/^r\/[a-z0-9_]{2,21}$/.test(key)) return key;
+  return /** @type {readonly string[]} */ (linkWords).includes(key) ? key : null;
+}
+
+/** Where a Download press from a short link is counted (CLA-193). */
+export const linkDownloadPath = "/v1/link-download";
+
+/**
+ * The page address without its ?from= (CLA-193). The rest of the query and the hash stay.
+ * @param {string} path
+ * @param {string} search
+ * @param {string} hash
+ */
+export function withoutFrom(path, search, hash) {
+  const query = new URLSearchParams(search);
+  query.delete("from");
+  const rest = query.toString();
+  return path + (rest ? "?" + rest : "") + hash;
+}
+
+/**
  * The invite welcome card (Jason OK 02:19 JST 11-24): which one a page with `invite` (inviteID's
  * result) and the page state shows. None without a valid id or while the page loads; "full" for a
  * full beta; else "open". The card never shows the id, and an invite does not skip the spots limit.

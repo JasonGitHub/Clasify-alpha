@@ -1,11 +1,17 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, edits, fill, formBody, formLine, formPath, formState, inviteCard, inviteID, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
+import { apiBase, edits, linkDownloadPath, linkKey, withoutFrom, fill, formBody, formLine, formPath, formState, inviteCard, inviteID, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
 /** The invite id in the address (?invite=), or null. Both forms send it. */
 const invite = inviteID(new URLSearchParams(location.search).get("invite"));
+/** CLA-193: the short link's key (?from=), kept in memory only. The address loses ?from= at once,
+ * so it shows /beta. No cookie, no storage. */
+const from = linkKey(new URLSearchParams(location.search).get("from"));
+if (new URLSearchParams(location.search).has("from")) {
+  try { history.replaceState(history.state, "", withoutFrom(location.pathname, location.search, location.hash)); } catch { /* the address keeps it; the page is the same */ }
+}
 
 const form = /** @type {HTMLFormElement} */ (document.getElementById("wl"));
 const formButton = /** @type {HTMLButtonElement} */ (form.querySelector("button"));
@@ -161,5 +167,16 @@ for (const b of document.querySelectorAll(".next button.vb")) {
     show(true);
     if (voteKept(voteState(await post("/v1/vote", { item })))) store.set(withVote(store.get(), item));
     else show(false);
+  });
+}
+
+// CLA-193: a Download press after a short link counts once for its link. The download never waits
+// for it: no preventDefault, the answer is never read, and an error is dropped. text/plain needs no
+// preflight; keepalive lets it finish if the page goes away.
+const download = document.querySelector(".row > a.cta");
+if (from && download) {
+  download.addEventListener("click", () => {
+    if (!download.getAttribute("href")) return;  // no build link yet: nothing downloads
+    fetch(api + linkDownloadPath, { method: "POST", body: JSON.stringify({ link: from }), keepalive: true, referrerPolicy: "no-referrer" }).catch(() => {});
   });
 }
