@@ -203,6 +203,8 @@ public struct Frame: Equatable, Sendable {
     public var sel = 0, off = 0
     public var loading = false, error = false
     public var token = 0
+    /// CLA-190: the engine's error number of this screen's failed read (`.readFailed`).
+    public var failStatus: Int32?
 
     public init(screen: Screen, loading: Bool = false, token: Int = 0) {
         self.screen = screen; self.loading = loading; self.token = token

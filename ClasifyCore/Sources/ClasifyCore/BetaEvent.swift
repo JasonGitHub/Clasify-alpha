@@ -23,7 +23,9 @@ public enum BetaEvent: Equatable, Sendable {
     /// The first start of a new build: the build before, this one, and days since it was signed.
     case appUpdated(from: Int, to: Int, days: Int)
     /// After setup: a login failed, a list did not load (`offline` when the Mac was offline), or a song did not play.
-    case useError(UseError, offline: Bool, service: MusicService)
+    /// CLA-190: `list` and `status` only for `list_not_loaded`: the kind of list (never its
+    /// name or ID) and the engine's error number, each when known.
+    case useError(UseError, offline: Bool, service: MusicService, list: String? = nil, status: Int? = nil)
     /// Once a launch after setup, at the first library read that the app took: ms from the
     /// process start to the first window (nil when the app did not say), from `.launch` to that
     /// read, and whether it worked (a failed one counts too: Jason 23:57 JST).
@@ -97,8 +99,11 @@ public enum BetaEvent: Equatable, Sendable {
             return ["notice": .text(notice.rawValue), "pressed": .flag(pressed), "days_left": .number(daysLeft)]
         case .appUpdated(let from, let to, let days):
             return ["old_build": .number(from), "new_build": .number(to), "days": .number(days)]
-        case .useError(let kind, let offline, let service):
-            return ["kind": .text(kind.rawValue), "offline": .flag(offline), "service": .text(service.eventName)]
+        case .useError(let kind, let offline, let service, let list, let status):
+            var p: [String: BetaValue] = ["kind": .text(kind.rawValue), "offline": .flag(offline), "service": .text(service.eventName)]
+            if let list { p["list"] = .text(list) }
+            if let status { p["status"] = .number(status) }
+            return p
         case .appSpeed(let startMs, let libraryMs, let loaded, let playlists, let songs):
             var p: [String: BetaValue] = ["library_ms": .number(libraryMs), "loaded": .flag(loaded)]
             if let startMs { p["start_ms"] = .number(startMs) }
@@ -238,6 +243,24 @@ public enum SetupError: String, Sendable {
     case spotifyNotFound = "spotify_not_found", premiumNeeded = "premium_needed", loginFailed = "login_failed"
     case accessOff = "apple_music_access_off", noPlan = "no_apple_music_plan"
     case mailBusy = "mail_busy", betaFull = "beta_full", accountOff = "account_off", noConnection = "no_connection"
+}
+
+extension Screen {
+    /// CLA-190: the kind of list that this screen reads, for `use_error`. Never a name or an ID.
+    var listKind: String? {
+        switch self {
+        case .playlists: "playlists"
+        case .artists: "artists"
+        case .albums, .coverFlow, .yourMusic: "liked"  // they read the liked songs (`albumsList`)
+        case .tracks(let id), .albumPanel(let id):
+            if id == Playlist.likedSongsID { "liked" }
+            else if id == Playlist.libraryID || id == Playlist.songsID { "songs" }
+            else if Album.isID(id) { "album" }
+            else if Playlist.isArtistID(id) { "artist" }
+            else { "playlist" }
+        default: nil
+        }
+    }
 }
 
 /// CLA-97: the errors of `use_error`.
@@ -390,7 +413,12 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         if screen == .loginFailed && b.screen != .loginFailed { error = .loginFailed }
         if screen == b.screen && s.top.error && !b.error { error = .listNotLoaded }
         if b.songFailed { error = .songNotPlayed }
-        if let error { events.append(.useError(error, offline: s.offline, service: s.service)) }
+        if error == .listNotLoaded {
+            events.append(.useError(.listNotLoaded, offline: s.offline, service: s.service, list: s.top.screen.listKind,
+                                    status: s.top.failStatus.map { Int($0) }))
+        } else if let error {
+            events.append(.useError(error, offline: s.offline, service: s.service))
+        }
         if s.service != b.service { events.append(.serviceSwitch(from: b.service, to: s.service)) }
     }
     if !s.speedSent, let launched = s.launchedAt, b.libraryRead {

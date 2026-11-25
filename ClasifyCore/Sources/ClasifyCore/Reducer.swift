@@ -15,6 +15,9 @@ public enum Action: Equatable, Sendable {
     case tracksLoaded(token: Int, playlist: String, tracks: [Track]?)
     /// The library's artists were read (card BN). nil when the read failed.
     case artistsLoaded(token: Int, artists: [Playlist]?)
+    /// CLA-190: the read of this token failed, with the engine's error number if known. The
+    /// store sends it just before the read's nil result, for `use_error`.
+    case readFailed(token: Int, status: Int?)
     /// A background re-read that `.refreshPlaylists` or `.refreshTracks` asked for. nil when it
     /// failed: the old rows stay.
     case playlistsRefreshed([Playlist]?)
@@ -796,7 +799,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .select: applySelect()
         case .menu, .searchType, .searchDelete, .toggleShuffle, .cycleRepeat, .play, .next, .prev: applyButtons()
         case .tick, .position, .volumeReported, .trackEnded, .trackChanged, .trackRead, .adopted, .playbackFailed, .loadFailed: applyPlayback()
-        case .artistsLoaded, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
+        case .artistsLoaded, .readFailed, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
         case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset: applySession()
         }
     }
@@ -1225,6 +1228,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     }
     @inline(never) func applyLibrary() {
         switch action {
+        case .readFailed(let token, let status):
+            guard s.top.loading, s.top.token == token else { return }  // stale read
+            s.top.failStatus = status.map { Int32(clamping: $0) }
         case .artistsLoaded(let token, let artists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
             if let artists {

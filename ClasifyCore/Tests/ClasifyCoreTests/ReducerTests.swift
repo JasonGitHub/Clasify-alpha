@@ -1387,7 +1387,10 @@ func playing(_ i: Int = 0) -> AppState {
     var loginResult: LoginResult = .ok
     var words = LibraryWords.spotify
     var calls: [String] = []
-    func playlists() async -> [Playlist]? { fetches.append("playlists"); return [focusInfo] }
+    /// CLA-190: set, the playlist list read fails with this engine error number.
+    var failing: Int?
+    func playlists() async -> [Playlist]? { fetches.append("playlists"); return failing == nil ? [focusInfo] : nil }
+    func failureStatus(of key: String) -> Int? { key.isEmpty ? failing : nil }
     func tracks(of playlist: String) async -> [Track]? {
         fetches.append(playlist)
         onProgress?(playlist, 1, 2, 1)  // how far, before the result, as the bridge reports it

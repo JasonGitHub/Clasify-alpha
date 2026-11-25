@@ -42,4 +42,5 @@ public final class ServiceLibrary: Library {
     public func cancelLogIn() async { await active.cancelLogIn() }
     public func restoreSession() async -> LoginResult { await active.restoreSession() }
     public func logOut() { active.logOut() }
+    public func failureStatus(of key: String) -> Int? { active.failureStatus(of: key) }
 }
