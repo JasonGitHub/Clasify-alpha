@@ -43,7 +43,7 @@ import Testing
         s.artReads[Playlist.likedSongsID] = 4  // the main menu's cover read (Codex on #350)
         #expect(events(&s, .artTracksRead(token: 3, playlist: Playlist.likedSongsID, tracks: []), now: 101.2).isEmpty)  // stale
         #expect(events(&s, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: []), now: 101.25)
-            == [.appSpeed(startMs: 850, libraryMs: 1250, loaded: true)])
+            == [.appSpeed(startMs: 850, libraryMs: 1250, loaded: true, songs: 0)])
         s.refreshing.insert(AppState.readKey(.playlists))
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 102).isEmpty && s.speedSent)
         var artists = mainMenu()  // Apple Music: the Artists read counts too (Codex on #350)
@@ -62,6 +62,36 @@ import Testing
             == [.useError(.listNotLoaded, offline: false, service: .spotify), .appSpeed(startMs: nil, libraryMs: 750, loaded: false)])
         #expect(failed.speedSent)
         #expect(BetaEvent.appSpeed(startMs: nil, libraryMs: 5, loaded: false).properties == ["library_ms": .number(5), "loaded": .flag(false)])
+    }
+
+    /// CLA-186: `app_speed` has the library's size as read so far, from memory only.
+    @Test func appSpeedHasTheCountsThatAreRead() {
+        var s = afterSetup()
+        _ = events(&s, .launch, now: 100)
+        _ = events(&s, .select, .authDone(token: s.authAttempt, ok: true), .select)
+        s.artReads[Playlist.likedSongsID] = 4  // Spotify: the main menu's cover read of the liked songs
+        #expect(events(&s, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 101)
+            == [.appSpeed(startMs: nil, libraryMs: 1000, loaded: true, songs: 2)])  // the playlists are not read
+        var lists = mainMenu()  // Playlists first: the playlists, no songs
+        lists.launchedAt = 100
+        _ = events(&lists, .wheel(1), .select)
+        #expect(events(&lists, .playlistsLoaded(token: 1, playlists: [focusInfo]), now: 100.5)
+            == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 1)])
+        var apple = mainMenu()  // Apple Music: the library's songs; the hidden lists do not count
+        _ = events(&apple, .libraryWords(.appleMusic))
+        apple.library = [focusInfo, Playlist(id: Playlist.likedSongsID, name: "", tracks: [])]; apple.playlistsLoaded = true
+        apple.launchedAt = 100
+        apple.artReads[Playlist.libraryID] = 7
+        #expect(events(&apple, .artTracksRead(token: 7, playlist: Playlist.libraryID, tracks: focus.tracks), now: 100.5)
+            == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 1, songs: 8)])
+        var failed = mainMenu()  // a failed read: no counts
+        failed.library = [focusInfo]; failed.playlistsLoaded = true
+        failed.launchedAt = 100
+        failed.artReads[Playlist.likedSongsID] = 4
+        #expect(events(&failed, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: nil), now: 100.5)
+            == [.appSpeed(startMs: nil, libraryMs: 500, loaded: false)])
+        #expect(BetaEvent.appSpeed(startMs: 1, libraryMs: 5, loaded: true, playlists: 3, songs: 40).properties
+            == ["start_ms": .number(1), "library_ms": .number(5), "loaded": .flag(true), "playlists": .number(3), "songs": .number(40)])
     }
 
     @Test func aServiceChangeAfterSetupSendsServiceSwitch() {

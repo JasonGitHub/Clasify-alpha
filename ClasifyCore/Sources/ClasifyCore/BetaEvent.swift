@@ -27,7 +27,10 @@ public enum BetaEvent: Equatable, Sendable {
     /// Once a launch after setup, at the first library read that the app took: ms from the
     /// process start to the first window (nil when the app did not say), from `.launch` to that
     /// read, and whether it worked (a failed one counts too: Jason 23:57 JST).
-    case appSpeed(startMs: Int?, libraryMs: Int, loaded: Bool)
+    /// CLA-186: the library's size as read so far, each nil until its list is read and on a
+    /// failed read. `songs`: the songs of `albumsList` (on Spotify the liked songs only; on Apple
+    /// Music and On This Mac the library). `playlists`: the playlists the Playlists screen shows.
+    case appSpeed(startMs: Int?, libraryMs: Int, loaded: Bool, playlists: Int? = nil, songs: Int? = nil)
     /// The service changed after setup (the Settings Service row).
     case serviceSwitch(from: MusicService, to: MusicService)
     /// One day with music, a feature or a 3D view, sent on the first action of a later day.
@@ -92,9 +95,11 @@ public enum BetaEvent: Equatable, Sendable {
             return ["old_build": .number(from), "new_build": .number(to), "days": .number(days)]
         case .useError(let kind, let offline, let service):
             return ["kind": .text(kind.rawValue), "offline": .flag(offline), "service": .text(service.eventName)]
-        case .appSpeed(let startMs, let libraryMs, let loaded):
+        case .appSpeed(let startMs, let libraryMs, let loaded, let playlists, let songs):
             var p: [String: BetaValue] = ["library_ms": .number(libraryMs), "loaded": .flag(loaded)]
             if let startMs { p["start_ms"] = .number(startMs) }
+            if let playlists { p["playlists"] = .number(playlists) }
+            if let songs { p["songs"] = .number(songs) }
             return p
         case .serviceSwitch(let from, let to):
             return ["from": .text(from.eventName), "to": .text(to.eventName)]
@@ -345,7 +350,9 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         let failed = (b.loading && !s.top.loading) || s.refreshing.count < b.refreshes || s.artReads.count < b.coverReads
         if loaded || failed {
             s.speedSent = true
-            events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded())), loaded: loaded))
+            let (playlists, songs) = loaded ? s.librarySize : (nil, nil)
+            events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded())), loaded: loaded,
+                                    playlists: playlists, songs: songs))
         }
     }
     // CLA-181: `start` the first time the tour turns on (once; a later start for the trial's
@@ -554,5 +561,15 @@ private func setupError(_ s: AppState, changed: Bool) -> SetupError? {
         default: return nil
         }
     default: return nil
+    }
+}
+
+extension AppState {
+    /// CLA-186, `app_speed`: the playlists and songs read so far, each nil until its list is read.
+    /// Only what is in memory: no read for the count.
+    var librarySize: (playlists: Int?, songs: Int?) {
+        let playlists = playlistsLoaded ? library.filter { !Playlist.isHidden($0.id) }.count : nil
+        let songs = loadedTracks.contains(albumsList) ? library.first { $0.id == albumsList }?.tracks.count : nil
+        return (playlists, songs)
     }
 }
