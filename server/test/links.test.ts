@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { linkDownloadPath, linkKey, linkWords, withoutFrom } from "../public/beta-page/logic.js";
 import { sha256, token } from "../src/activation";
 import { workerFirstPaths } from "../src/launch";
-import { countLinkDownload, countLinkOpen, linkCap, linkOf } from "../src/links";
+import { countLinkDownload, countLinkOpen, linkCap, linkOf, newLinksPerDay } from "../src/links";
 
 // CLA-193: short links, getmypod.app/r/<name> and getmypod.app/<word> (Jason OK 22:25 and 22:27 JST 11-25).
 
@@ -107,6 +107,21 @@ describe("opens per short link", () => {
     expect(await open("r/name7")).toBe("ok");
     expect((await opens())["r/name7"]).toBe(2);
     expect(Object.keys(await opens())).toHaveLength(linkCap);
+  });
+});
+
+describe(`at most ${newLinksPerDay} new keys a day per network`, () => {
+  it("makes no row for the next new key, but still counts known keys and other networks", async () => {
+    expect(await open("hn", "198.51.100.1")).toBe("ok");  // hn exists now, made by another network
+    for (const name of ["r/one", "r/two", "r/three"]) expect(await open(name), name).toBe("ok");
+    expect(await open("r/four")).toBe("full");
+    expect(await open("hn")).toBe("ok");  // an existing key is not limited
+    expect(await open("r/four", "198.51.100.2")).toBe("ok");  // another network can still add a name
+    expect(await open("r/four")).toBe("ok");  // now it exists, so this network counts it too
+    expect(await open("r/five")).toBe("full");
+    expect(await opens()).toEqual({ hn: 2, "r/one": 1, "r/two": 1, "r/three": 1, "r/four": 2 });
+    clock += day;
+    expect(await open("r/five")).toBe("ok");  // a new day
   });
 });
 

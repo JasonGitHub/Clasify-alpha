@@ -21,5 +21,7 @@ CREATE TABLE link_tries (
   link TEXT NOT NULL,
   kind TEXT NOT NULL,
   day TEXT NOT NULL,
+  -- 1 when this open made a new key. One network makes at most 3 new keys a day (src/links.ts).
+  new INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (net_hash, link, kind, day)
 );

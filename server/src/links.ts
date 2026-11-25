@@ -9,6 +9,9 @@ import { network } from "./vote";
 /** At most this many different keys get a count. Past it, new keys are not counted (no row flood). */
 export const linkCap = 500;
 
+/** One network makes at most this many new keys a day, so one script cannot fill `linkCap`. */
+export const newLinksPerDay = 3;
+
 /** The key of a short link path ("/hn" → "hn", "/r/IpodClassic" → "r/ipodclassic"), or null. */
 export function linkOf(request: Request): string | null {
   const path = new URL(request.url).pathname;
@@ -25,8 +28,8 @@ export function linkRedirect(key: string): Response {
 
 /**
  * One count for `key` of `kind`, once a day per network (the invite_opens rule). "ok": counted.
- * "seen": this network already did it today. "full": an open of a new key past `linkCap`, or a
- * Download for a key with no open counted. The page and the download never wait for this.
+ * "seen": this network already did it today. "full": an open of a new key past `linkCap` or past
+ * this network's `newLinksPerDay`, or a Download for a key with no open counted. The page and the download never wait for this.
  */
 async function countOnce(db: D1Database, kind: "open" | "download", key: string, ip: string, now: number,
   hash: (s: string) => Promise<string>, newSalt: () => string): Promise<"ok" | "seen" | "full"> {
@@ -41,9 +44,13 @@ async function countOnce(db: D1Database, kind: "open" | "download", key: string,
   // The try and the count in one batch. A try (and a row) only for a known key, or for an open of a
   // new key under the cap; the count goes up only when the try is new.
   const known = "EXISTS (SELECT 1 FROM link_opens WHERE link = ?2)";
+  // A new key also needs room for this network today: its rows of today that made a new key (the
+  // primary key starts with net_hash, so this reads only this network's rows).
+  const room = `(SELECT COUNT(*) FROM link_opens) < ?5
+    AND (SELECT COUNT(*) FROM link_tries WHERE net_hash = ?1 AND day = ?4 AND new = 1) < ?6`;
   const tryRow = kind === "open"
-    ? db.prepare(`INSERT INTO link_tries (net_hash, link, kind, day) SELECT ?1, ?2, ?3, ?4
-        WHERE ${known} OR (SELECT COUNT(*) FROM link_opens) < ?5 ON CONFLICT DO NOTHING`).bind(net, key, kind, day, linkCap)
+    ? db.prepare(`INSERT INTO link_tries (net_hash, link, kind, day, new) SELECT ?1, ?2, ?3, ?4, NOT ${known}
+        WHERE ${known} OR (${room}) ON CONFLICT DO NOTHING`).bind(net, key, kind, day, linkCap, newLinksPerDay)
     : db.prepare(`INSERT INTO link_tries (net_hash, link, kind, day) SELECT ?1, ?2, ?3, ?4
         WHERE ${known} ON CONFLICT DO NOTHING`).bind(net, key, kind, day);
   const count = kind === "open"
