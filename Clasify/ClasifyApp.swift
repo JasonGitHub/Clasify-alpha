@@ -447,13 +447,16 @@ struct CloseCommands: Commands {
 }
 
 /// TEMPORARY: a View menu item that switches to the test window. Remove it with TestWindow.swift.
+/// CLA-191: only with the `testwindow.on` test switch on.
 struct DebugCommands: Commands {
     @Bindable var model: AppModel
 
     var body: some Commands {
-        CommandGroup(after: .toolbar) {
-            Toggle("Show Test Window", isOn: $model.showsTestWindow)
-                .keyboardShortcut("t", modifiers: [.command, .option])
+        if model.testWindowOn {
+            CommandGroup(after: .toolbar) {
+                Toggle("Show Test Window", isOn: $model.showsTestWindow)
+                    .keyboardShortcut("t", modifiers: [.command, .option])
+            }
         }
     }
 }
@@ -463,8 +466,15 @@ struct DebugCommands: Commands {
 @MainActor @Observable
 final class AppModel {
     let store: Store?
-    /// TEMPORARY: shows TestWindow in place of the skin.
-    var showsTestWindow = false
+    /// CLA-191: the test switch for the test window, UserDefaults `testwindow.on`, off by
+    /// default. Read once at launch, like `search.on`. Clasify never writes it.
+    let testWindowOn = UserDefaults.standard.bool(forKey: "testwindow.on")
+    private var testWindowShown = false
+    /// TEMPORARY: shows TestWindow in place of the skin. Never true with the switch off.
+    var showsTestWindow: Bool {
+        get { testWindowShown }
+        set { testWindowShown = newValue && testWindowOn }
+    }
     /// The album covers that the skin draws.
     let artwork = ArtworkLoader()
     @ObservationIgnored private var ticker: Task<Void, Never>?
