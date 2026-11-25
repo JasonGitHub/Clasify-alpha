@@ -124,7 +124,8 @@ public enum Action: Equatable, Sendable {
     /// CLA-97: ms from the process start to the first window, for `app_speed`. The app sends it once.
     case appStarted(ms: Int)
     /// CLA-97: the app quits normally. The exact day count is saved (`AppState.savedToday`).
-    case willQuit
+    /// CLA-186: `openSeconds` since the process started, for `app_closed`; nil when the app could not read it.
+    case willQuit(openSeconds: Double?)
     /// CLA-97: a 3D view opened or closed, for the view times of `day_active`. The skin sends it.
     case view3D(View3D, open: Bool)
     /// CLA-162: where the device window is now, or nil when the person cannot see it. The app

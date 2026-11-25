@@ -509,7 +509,7 @@ final class AppModel {
         sender.start()
         // CLA-182: a normal quit sends today's numbers and gives them about 2 s to go out.
         AppDelegate.quit = { [weak store, weak sender] done in
-            store?.send(.willQuit)
+            store?.send(.willQuit(openSeconds: BetaSender.msSinceProcessStart().map { Double($0) / 1000 }))
             guard let sender, sender.waiting else { return false }
             Task { @MainActor in
                 await sender.flush(within: 2)
