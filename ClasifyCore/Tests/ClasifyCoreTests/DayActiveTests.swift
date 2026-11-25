@@ -251,7 +251,7 @@ import Testing
         d.songs = 3; d.bands = [0, 1.5, 1200.25, 0]; d.features = [.settings, .coverFlow]
         d.service = .appleMusic; d.views = [12.5, 0, 3]
         #expect(d.saved == "20261119|5|3|0.0,1.5,1200.25,0.0|coverFlow,settings|Apple Music|12.5,0.0,3.0|"
-            + "0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0;0;|0,0")
+            + "0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0;0;|0,0,0")
         d.areas[4] = 60; d.screens = ["1x1512x982x1": 50, "0x2560x1440x2": 10]; d.screenCount = 2
         #expect(DayUse(saved: d.saved) == d)
         // A day saved before the window part reads with no window time.
@@ -263,7 +263,7 @@ import Testing
         // Jason 13:38 JST 11-23: the Shuffle and Repeat song counts save too. A day saved before
         // them reads with 0.
         d.songsShuffle = 2; d.songsRepeat = 1
-        #expect(d.saved.hasSuffix("|2,1") && DayUse(saved: d.saved) == d)
+        #expect(d.saved.hasSuffix("|2,1,0") && DayUse(saved: d.saved) == d)
         let old = DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2,3|0,0,0,0,0,0,0,0,0;0;")
         #expect(old?.songs == 3 && old?.songsShuffle == 0 && old?.songsRepeat == 0)
         #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2,3|0,0,0,0,0,0,0,0,0;0;|2") == nil)
