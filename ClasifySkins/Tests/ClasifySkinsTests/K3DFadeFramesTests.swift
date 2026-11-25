@@ -88,6 +88,9 @@ import Testing
             #expect(black == (degrees >= 90), "the old color to 90°, then the new one")
             var shown = state
             shown.deviceColor = black ? .black : .silver
+            // Pick Your Color shows the selected row's color (`shownColor`): select this one.
+            shown.top.sel = DeviceColor.allCases.firstIndex(of: shown.deviceColor) ?? 0
+            #expect(shown.shownColor == shown.deviceColor)
             let shot = try #require(K3DSpike.snapshot(shown))
             let png = try frame(renderer, shown, shot, angle: pose.angle, lift: pose.lift, shown: flip.flatOpacity(at: time))
             #expect(png.count > 0)
