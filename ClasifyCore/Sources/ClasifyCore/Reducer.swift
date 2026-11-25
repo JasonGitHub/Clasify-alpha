@@ -787,6 +787,18 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.startOnCovers { s.startOnCovers = false; s.startToken = nil }
         default: break
         }
+        // CLA-187: each group of actions has its own function, so its own debug stack frame. One
+        // frame for all of them came near the 512 KB of macOS test threads (reducer stack limit).
+        switch action {
+        case .wheel: applyWheel()
+        case .select: applySelect()
+        case .menu, .searchType, .searchDelete, .toggleShuffle, .cycleRepeat, .play, .next, .prev: applyButtons()
+        case .tick, .position, .volumeReported, .trackEnded, .trackChanged, .trackRead, .adopted, .playbackFailed, .loadFailed: applyPlayback()
+        case .artistsLoaded, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
+        case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset: applySession()
+        }
+    }
+    @inline(never) func applyWheel() {
         switch action {
         case .wheel(let d):
             if s.top.screen == .now {
@@ -843,7 +855,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s.top.off = clamp(s.top.off, sel - s.shownRows + 1, sel)
             s.top.sel = sel
             s.scrollUntil = now + scrollBarTime
-
+        default: break
+        }
+    }
+    @inline(never) func applySelect() {
+        switch action {
         case .select:
             if s.top.screen == .about {
                 // Change 210: a press wakes the capybara, or near the top makes it wave. From
@@ -1012,7 +1028,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 s.stack.removeLast()
             case .confirmLogOut: logOut()
             }
-
+        default: break
+        }
+    }
+    @inline(never) func applyButtons() {
+        switch action {
         case .menu:
             if s.top.screen == .now && s.nowMode != .volume { s.nowMode = .volume; s.overlayUntil = 0; return }
             // Not in the mockup: a closed browser tab would leave the login waiting forever.
@@ -1102,7 +1122,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.top.screen == .coverFlow { return moveCoverFlow(-1, wheel: false) }
             guard s.current != nil else { return }
             if s.t > 3 { s.t = 0; seek(0) } else if s.offline { toast(offlineStart) } else { skip(false) }
-
+        default: break
+        }
+    }
+    @inline(never) func applyPlayback() {
+        switch action {
         case .tick:
             if s.toastUntil > 0 && now > s.toastUntil { s.toast = ""; s.toastUntil = 0 }
             if s.readOverdue(at: now) {  // CLA-170: a silent read
@@ -1194,7 +1218,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             }
             s.beforeLoad = nil; s.loadPending = false
             if s.top.screen != .spotifyApp { toast(msg) }
-
+        default: break
+        }
+    }
+    @inline(never) func applyLibrary() {
+        switch action {
         case .artistsLoaded(let token, let artists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
             if let artists {
@@ -1327,7 +1355,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             }
             finishLoad(token, ok: tracks != nil)
             if s.top.screen == .yourMusic && !s.top.error { endFirstRead() }
-
+        default: break
+        }
+    }
+    @inline(never) func applySession() {
+        switch action {
         case .launch:
             guard !s.signedIn, s.stack == [Frame(screen: .login)] else { return }
             if !s.setupDone { s.stack = [Frame(screen: .hello)]; s.helloAt = now }
@@ -1551,6 +1583,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             s = AppState()
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
             s.battery = battery; s.spotifyApp = spotifyApp; s.beta = beta; s.words = words
+        default: break
         }
     }
     let before = (s.stack.count, s.top.screen, s.top.loading)
