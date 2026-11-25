@@ -125,7 +125,7 @@ public enum BetaEvent: Equatable, Sendable {
             var p: [String: BetaValue] = [
                 "color": .text(color.eventName), "album_art": .text(settings.albumArt.eventName),
                 "clicker": .flag(settings.clicker), "menu_bar": .flag(settings.menuBar),
-                "songs_shuffle": .number(d.songsShuffle), "songs_repeat": .number(d.songsRepeat),
+                "songs_shuffle": .number(d.songsShuffle), "songs_repeat": .number(d.songsRepeat), "songs_cut": .number(d.songsCut),
                 "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
                 "minutes_night": .decimal(d.bands[0] / 60), "minutes_morning": .decimal(d.bands[1] / 60),
                 "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
@@ -328,12 +328,15 @@ struct BeforeEvents {
     var colorPress = false
     /// CLA-181: the tour and its ended steps before.
     var tourOn: Bool, hintsDone: Set<Hint>
+    /// CLA-186: the load generation before, for `songs_cut`.
+    var gen: Int
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
         choices = s.settings.choices
         (tourOn, hintsDone) = (s.tourOn, s.hintsDone)
         playing = s.isPlaying
+        gen = s.playGen
         (error, service) = (s.top.error, s.service)
         (readAt, artists) = (s.readAt, s.artistsLoaded)
         (loading, refreshes, coverReads) = (s.top.loading, s.refreshing.count, s.artReads.count)
@@ -492,6 +495,25 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
             for view in View3D.allCases { settle(view, upTo: midnight) }
         } while midnight < last
     }
+    // CLA-186, `songs_cut`: the counted song ended by itself (the engine moved on, stopped at
+    // the end, or failed) under `cutLimit` after its start. `dayPosition` and the time since
+    // that report say how far it got. A skip, seek or new pick (a new `playGen`), a pause or a
+    // service switch first drops `dayPosition`, so their end never counts. A song shorter than
+    // `cutLimit` does not count; one with no known length does.
+    var ended = false
+    switch action {
+    case .trackChanged(let id, _, let gen): ended = gen == b.gen && id != s.dayTrack
+    case .trackEnded(let gen), .playbackFailed(_, let gen): ended = gen == b.gen
+    default: break
+    }
+    // Any end drops `dayPosition`, so it is always the counted song's (`dayTrack`).
+    if ended, b.playing, let track = s.dayTrack, let at = s.dayPlayAt, let t = s.dayPosition, t + max(0, now - at) < cutLimit {
+        let length = s.track(TrackRef(playlist: s.current?.playlist ?? "", track: track))?.duration ?? 0  // 0: not known
+        // The cut goes to the day of the song's last report: an end just after midnight, with
+        // the music stopped, would roll that day out first (Codex on #474).
+        if length == 0 || length >= cutLimit { count(at: at) { d, _ in d.songsCut += 1 } }
+    }
+    if ended || s.playGen != b.gen || s.service != b.service || (b.playing && !s.isPlaying) { s.dayPosition = nil }
     if b.played, s.isPlaying, let current = s.current {
         if let last = s.dayPlayAt, now > last {
             // A long gap on the same track counts the music that played in it, as the position
@@ -590,7 +612,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
         || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
-        || saved?.visible != today?.visible
+        || saved?.visible != today?.visible || saved?.songsCut != today?.songsCut
     if changed || (b.playing && !s.isPlaying) || quit { s.savedToday = today }
     return fx
 }
