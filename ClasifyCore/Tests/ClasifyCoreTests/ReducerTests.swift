@@ -1321,6 +1321,7 @@ func playing(_ i: Int = 0) -> AppState {
     func setRepeat(_ mode: RepeatMode) { calls.append("repeat \(mode.rawValue)") }
     func seek(to seconds: Double, generation: Int) { calls.append("seek \(seconds)") }
     func setVolume(_ percent: Int) { calls.append("volume \(percent)") }
+    func quit() { calls.append("quit") }
     /// CLA-168: kept apart from `calls`, so the other tests do not see it.
     var active: Bool?
     func setActive(_ on: Bool) { active = on }

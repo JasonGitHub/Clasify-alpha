@@ -25,10 +25,14 @@ public protocol Player: AnyObject {
     /// CLA-168: this engine's service is the active one (true) or not. `ServicePlayer` calls it
     /// at start and on each switch. An engine may then report `.volumeReported`.
     func setActive(_ on: Bool)
+    /// CLA-189: myPod quits normally while this engine's service is active. Only the Spotify
+    /// engine does something here; the default does nothing.
+    func quit()
 }
 
 extension Player {
     public func setActive(_ on: Bool) {}
+    public func quit() {}
 }
 
 /// Card BV (CLA-125): where the newest beta's build number comes from. The app reads one small
@@ -283,6 +287,7 @@ public final class Store {
             case .pause: player.pause()
             case .resume: player.resume()
             case .stop: player.stop()
+            case .quitPlayer: player.quit()
             case .next(let gen): player.next(generation: gen)
             case .prev(let gen): player.prev(generation: gen)
             case .setShuffle(let on): player.setShuffle(on)

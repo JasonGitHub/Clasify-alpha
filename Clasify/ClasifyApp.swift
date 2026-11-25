@@ -508,11 +508,16 @@ final class AppModel {
         store.send(.hintsTrial(HintsTrial.on))  // CLA-163, card CE.1: the menu bar step of the tour
         sender.start()
         // CLA-182: a normal quit sends today's numbers and gives them about 2 s to go out.
-        AppDelegate.quit = { [weak store, weak sender] done in
+        // CLA-189: the same window waits for the pause of our Spotify music, if one went out.
+        AppDelegate.quit = { [weak store, weak sender, weak player] done in
             store?.send(.willQuit(openSeconds: BetaSender.msSinceProcessStart().map { Double($0) / 1000 }))
-            guard let sender, sender.waiting else { return false }
+            let flush = sender?.waiting == true ? sender : nil
+            let pause = player?.quitting
+            guard flush != nil || pause != nil else { return false }
             Task { @MainActor in
-                await sender.flush(within: 2)
+                let flushing = Task { await flush?.flush(within: 2) }  // at the same time as the pause
+                await pause?.value
+                await flushing.value
                 done()
             }
             return true
