@@ -245,20 +245,22 @@ public enum SetupError: String, Sendable {
     case mailBusy = "mail_busy", betaFull = "beta_full", accountOff = "account_off", noConnection = "no_connection"
 }
 
-extension Screen {
-    /// CLA-190: the kind of list that this screen reads, for `use_error`. Never a name or an ID.
-    var listKind: String? {
-        switch self {
-        case .playlists: "playlists"
-        case .artists: "artists"
-        case .albums, .coverFlow, .yourMusic: "liked"  // they read the liked songs (`albumsList`)
-        case .tracks(let id), .albumPanel(let id):
-            if id == Playlist.likedSongsID { "liked" }
-            else if id == Playlist.libraryID || id == Playlist.songsID { "songs" }
-            else if Album.isID(id) { "album" }
-            else if Playlist.isArtistID(id) { "artist" }
-            else { "playlist" }
-        default: nil
+extension AppState {
+    /// CLA-190: the kind of list that a screen reads on the active service, for `use_error`.
+    /// Never a name or an ID. Albums and Cover Flow read `albumsList`: liked songs on Spotify,
+    /// the library's songs on Apple Music (Codex on #481).
+    func listKind(_ screen: Screen) -> String? {
+        switch screen {
+        case .playlists: return "playlists"
+        case .artists: return "artists"
+        case .albums, .coverFlow, .yourMusic, .tracks, .albumPanel:
+            let id = readKey(screen)
+            if id == Playlist.likedSongsID { return "liked" }
+            if id == Playlist.libraryID || id == Playlist.songsID { return "songs" }
+            if Album.isID(id) { return "album" }
+            if Playlist.isArtistID(id) { return "artist" }
+            return "playlist"
+        default: return nil
         }
     }
 }
@@ -414,7 +416,7 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         if screen == b.screen && s.top.error && !b.error { error = .listNotLoaded }
         if b.songFailed { error = .songNotPlayed }
         if error == .listNotLoaded {
-            events.append(.useError(.listNotLoaded, offline: s.offline, service: s.service, list: s.top.screen.listKind,
+            events.append(.useError(.listNotLoaded, offline: s.offline, service: s.service, list: s.listKind(s.top.screen),
                                     status: s.top.failStatus.map { Int($0) }))
         } else if let error {
             events.append(.useError(error, offline: s.offline, service: s.service))

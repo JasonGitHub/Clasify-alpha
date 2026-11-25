@@ -61,7 +61,15 @@ import Testing
             (.albumPanel(album: "spotify:album:abc"), "album"), (.tracks(playlist: "spotify:artist:abc"), "artist"),
             (.tracks(playlist: "spotify:playlist:My secret list"), "playlist"), (.main, nil), (.settings, nil),
         ]
-        for (screen, kind) in kinds { #expect(screen.listKind == kind, "\(screen)") }
+        let s = AppState()
+        for (screen, kind) in kinds { #expect(s.listKind(screen) == kind, "\(screen)") }
+    }
+
+    /// Codex on #481: on Apple Music, Albums and Cover Flow read the library's songs, not liked songs.
+    @Test func appleMusicAlbumsReadTheLibrarysSongs() {
+        var s = AppState()
+        s.words = .appleMusic
+        for screen: Screen in [.albums, .coverFlow] { #expect(s.listKind(screen) == "songs", "\(screen)") }
     }
 
     /// The store asks the library for the number of a read that came back empty-handed.
