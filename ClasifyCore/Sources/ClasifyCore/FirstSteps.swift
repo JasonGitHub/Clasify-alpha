@@ -54,13 +54,14 @@ extension AppState {
 
 /// CLA-186: the state before an action that `firstStepEvents` needs.
 struct BeforeFirstSteps {
-    var setupDone: Bool, screen: Screen, depth: Int, service: MusicService, startToken: Int?
+    var setupDone: Bool, screen: Screen, depth: Int, service: MusicService, startToken: Int?, shuffleToken: Int?
     /// The action is the player's report of music (a position past 0 for the playing load), or
     /// its failure to load the playing song.
     var played = false, failed = false
 
     init(_ s: AppState, _ action: Action) {
-        (setupDone, screen, depth, service, startToken) = (s.setupDone, s.top.screen, s.stack.count, s.service, s.startToken)
+        (setupDone, screen, depth, service) = (s.setupDone, s.top.screen, s.stack.count, s.service)
+        (startToken, shuffleToken) = (s.startToken, s.shuffleToken)
         if case .position(let t, let gen) = action, t > 0, gen == s.playGen { played = true }
         if case .loadFailed(_, let gen) = action, gen == s.playGen, s.current != nil { failed = true }
     }
@@ -80,9 +81,10 @@ func firstStepEvents(_ s: inout AppState, _ b: BeforeFirstSteps, _ action: Actio
     }
     // A list of songs opened: a new screen with songs on top.
     if s.top.screen.songList != nil && (s.top.screen != b.screen || s.stack.count != b.depth) { send(.listOpened) }
-    // A press that asks for music: a song loads or goes on, or a list starts after its read.
+    // A press that asks for music: a song loads or goes on, or a list or Shuffle Songs starts
+    // after its read (Codex on #471).
     let asks = fx.contains { if case .load = $0 { true } else { $0 == .resume } }
-        || (s.startToken != nil && s.startToken != b.startToken)
+        || (s.startToken != nil && s.startToken != b.startToken) || (s.shuffleToken != nil && s.shuffleToken != b.shuffleToken)
     let pressed = (action == .play || action == .select) && asks
     if pressed { send(.playPressed) }
     // `silent` waits only until music was heard once or `play_no_music` went out.

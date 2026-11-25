@@ -46,6 +46,15 @@ import Testing
         #expect(BetaEvent.firstStep(.listOpened, how: nil, seconds: 3, service: .local).name == "first_step")
     }
 
+    /// Codex on #471: Shuffle Songs before its list is read is a press too, and waits.
+    @Test func shuffleSongsBeforeItsReadIsAPress() {
+        var s = ready()
+        s.top.sel = s.rows(for: s.top).firstIndex(of: .shuffleSongs) ?? -1
+        let sent = events(&s, .select)
+        #expect(s.shuffleToken != nil && sent.contains(.firstStep(.playPressed, how: nil, seconds: 10, service: .spotify)))
+        #expect(s.firstStepDue(at: 120))
+    }
+
     /// The setup's launch counts from `all_set`; nothing goes out in setup.
     @Test func secondsCountFromAllSetInTheSetupsLaunch() {
         var s = ready()
