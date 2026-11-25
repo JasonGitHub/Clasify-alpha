@@ -42,6 +42,9 @@ public enum BetaEvent: Equatable, Sendable {
     /// CLA-181: the first-run hints. `start` once, when the tour first turns on; then one event
     /// as each tour step ends, with `how` (nil on `start`). At most 6 in a person's life.
     case hintStep(HintStep, how: HintHow?, service: MusicService)
+    /// CLA-186: a normal quit (not a crash or a force quit): the minutes this launch was open
+    /// (nil when the app could not read it), and the kind of screen that showed (`Screen.eventName`).
+    case appClosed(minutes: Double?, screen: String, service: MusicService)
     /// CLA-186: a first step after setup, once per install (`FirstStep`). `how` on `play_no_music`
     /// only. `seconds` from `all_set` in the setup's launch, else from this launch.
     case firstStep(FirstStep, how: NoMusic?, seconds: Int, service: MusicService)
@@ -63,6 +66,7 @@ public enum BetaEvent: Equatable, Sendable {
         case .serviceSwitch: "service_switch"
         case .appProblem: "app_problem"
         case .hintStep: "hint_step"
+        case .appClosed: "app_closed"
         case .firstStep: "first_step"
         }
     }
@@ -110,6 +114,10 @@ public enum BetaEvent: Equatable, Sendable {
         case .firstStep(let step, let how, let seconds, let service):
             var p: [String: BetaValue] = ["step": .text(step.rawValue), "seconds": .number(seconds), "service": .text(service.eventName)]
             if let how { p["how"] = .text(how.rawValue) }
+            return p
+        case .appClosed(let minutes, let screen, let service):
+            var p: [String: BetaValue] = ["screen": .text(screen), "service": .text(service.eventName)]
+            if let minutes { p["minutes"] = .decimal(minutes) }
             return p
         case .appProblem(let problem, let service):
             return problem.properties.merging(["service": .text(service.eventName)]) { old, _ in old }
@@ -165,6 +173,45 @@ public enum HintStep: String, Sendable {
 /// CLA-181: how a hint step ended: the person did its action, or it hid `tourHideMax` times.
 public enum HintHow: String, Sendable {
     case done, unused
+}
+
+extension Screen {
+    /// CLA-186: the kind of screen, for `app_closed`. Never a list, song or artist name.
+    var eventName: String {
+        switch self {
+        case .login: "login"
+        case .auth: "auth"
+        case .main: "main_menu"
+        case .playlists: "playlists"
+        case .albums: "albums"
+        case .tracks: "songs"
+        case .settings: "settings"
+        case .confirm: "confirm"
+        case .about: "about"
+        case .now: "now_playing"
+        case .coverFlow: "cover_flow"
+        case .albumPanel: "album_panel"
+        case .hello: "hello"
+        case .color: "color"
+        case .spotifyApp: "spotify_app"
+        case .yourMusic: "your_music"
+        case .loginFailed: "login_failed"
+        case .loggedIn: "logged_in"
+        case .premium: "premium"
+        case .pickMusic: "pick_music"
+        case .accessOff: "access_off"
+        case .licenses: "licenses"
+        case .license: "license"
+        case .artists: "artists"
+        case .betaSoon: "beta_soon"
+        case .betaEnded: "beta_ended"
+        case .betaNew: "beta_new"
+        case .activate: "activate"
+        case .activation: "activation"
+        case .noSongs: "no_songs"
+        case .search: "search"
+        }
+    }
 }
 
 /// The setup steps, in order (analytics doc). `spotify_check` shows only when the Spotify app is missing.
@@ -386,6 +433,8 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
 /// A day starts with its first count, so an action with nothing to count changes nothing.
 func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
     var fx: [Effect] = []
+    var quit = false, openSeconds: Double?
+    if case .willQuit(let seconds) = action { (quit, openSeconds) = (true, seconds) }
     func send(_ day: DayUse) {
         fx.append(.track(.dayActive(day, service: day.service ?? s.service, color: s.deviceColor,
                                     settings: DaySettings(albumArt: s.albumArt, clicker: s.clicker, menuBar: s.menuBar))))
@@ -486,7 +535,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     }
     // CLA-162: the time since the last window report goes to that report's area and screen, at
     // most `windowGapLimit`. Near midnight up to that much can go to the new day.
-    var windowReport = action == .willQuit
+    var windowReport = quit
     if case .window = action { windowReport = true }
     if windowReport, let spot = s.windowSpot, let last = s.windowAt, now > last {
         let add = min(now - last, windowGapLimit)
@@ -497,13 +546,13 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         }
     }
     if case .window(let spot) = action { (s.windowSpot, s.windowAt) = (spot, now) }
-    if action == .willQuit {
+    if quit {
         (s.windowSpot, s.windowAt) = (nil, nil)
         for view in View3D.allCases { settle(view, upTo: now) }
         (s.viewOpen, s.viewCounted) = ([:], [:])
     }
     // At a quit no report comes after, so the day that waits ends now.
-    _ = roll(now, force: action == .willQuit)
+    _ = roll(now, force: quit)
     var used: Set<Feature> = b.used.map { [$0] } ?? []
     if case .view3D(let view, open: true) = action {
         if s.viewOpen[view] == nil { s.viewOpen[view] = now }
@@ -529,10 +578,12 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     // does not come back still counts. Today then starts again from zero: a second run on the
     // same day sends only the rest, and the two events add up to the day. Known limit (CTO): a
     // song that plays on over a quit and a restart on the same day counts once in each run.
-    if action == .willQuit, let today = s.today, today.hadUse {
+    if quit, let today = s.today, today.hadUse {
         send(today)
         s.today = DayUse(day: today.day, weekday: today.weekday)
     }
+    // CLA-186: `app_closed`, in the same batch as that `day_active`. Only the kind of screen.
+    if quit { fx.append(.track(.appClosed(minutes: openSeconds.map { max(0, $0) / 60 }, screen: s.top.screen.eventName, service: s.service))) }
     // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
     // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
     let saved = s.savedToday, today = s.today
@@ -540,7 +591,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
         || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
         || saved?.visible != today?.visible
-    if changed || (b.playing && !s.isPlaying) || action == .willQuit { s.savedToday = today }
+    if changed || (b.playing && !s.isPlaying) || quit { s.savedToday = today }
     return fx
 }
 
