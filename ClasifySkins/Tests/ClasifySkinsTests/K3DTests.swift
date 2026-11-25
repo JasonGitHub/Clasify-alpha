@@ -336,8 +336,9 @@ import Testing
         #expect(flip.flatOpacity(at: at(turn + 0.15)) == 1 && flip.flatOpacity(at: at(turn + 0.31)) == 1)
         #expect(flip.pose(at: at(0.1)).angle == 0)  // no turn while it crossfades
         #expect(near(flip.pose(at: at(0.15 + turn / 4)).angle, 180 * 0.125))  // quad in: 2u²
-        #expect(near(flip.pose(at: at(0.15 + 0.4999 * turn)).angle, 90) && flip.pose(at: at(0.15 + 0.4999 * turn)).angle < 90)
-        #expect(near(flip.pose(at: at(0.15 + turn / 2)).angle, -90))  // the new color's front, edge-on
+        // Codex on #477: either side of the edge-on frame, not on it (a clock's rounding picks its side).
+        #expect(abs(flip.pose(at: at(0.15 + 0.49 * turn)).angle - 360 * 0.49 * 0.49) < 1e-6)  // the old front: 86.4°
+        #expect(abs(flip.pose(at: at(0.15 + 0.51 * turn)).angle - (-360 * 0.49 * 0.49)) < 1e-6)  // the new front: −86.4°
         #expect(near(flip.pose(at: at(0.15 + 3 * turn / 4)).angle, 180 * 0.875 - 180))
         #expect(flip.pose(at: at(turn + 0.2)).angle == 0 && flip.pose(at: .distantFuture).angle == 0)
         // The back never shows: every frame is within 90° of the front.
