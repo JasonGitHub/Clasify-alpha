@@ -42,6 +42,7 @@ import Testing
         var s = openPlaylists()
         _ = events(&s, .readFailed(token: 1, status: 7), .playlistsLoaded(token: 1, playlists: nil))
         _ = events(&s, .select)  // retry
+        #expect(s.top.loading && s.top.failStatus == nil)  // cleared where the retry starts
         _ = events(&s, .offline(true))
         let sent = events(&s, .playlistsLoaded(token: s.top.token, playlists: [focusInfo]))
         #expect(s.top.error && s.top.failStatus == nil)

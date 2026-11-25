@@ -471,7 +471,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     func endHeldRead() {
         s.namesHold = 0
         guard s.top.screen == .yourMusic && s.top.loading else { return }
-        s.top.loading = false; s.top.error = false
+        s.top.loading = false; s.top.error = false; s.top.failStatus = nil  // CLA-190: the read worked
         endFirstRead()
     }
     /// Change 191: holds "Getting your music" until the last playlist name has shown. False
@@ -896,6 +896,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }  // a pending shuffle follows the retry
                 if s.startToken == s.top.token { s.startToken = s.tok }
                 s.top.loading = true; s.top.error = false; s.top.token = s.tok
+                s.top.failStatus = nil  // CLA-190: a new read starts with no number
                 fetch(s.top.screen)
                 return
             }
