@@ -356,6 +356,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     func finishLoad(_ token: Int, ok: Bool) {
         s.top.loading = false
         s.top.error = s.offline || !ok
+        if ok { s.top.failStatus = nil }  // CLA-190 (Codex on #481): a read that worked has no number
         if s.top.screen == .coverFlow && !s.top.error { placeCoverFlow() }
         if s.shuffleToken == token && !s.top.error {
             s.shuffleToken = nil

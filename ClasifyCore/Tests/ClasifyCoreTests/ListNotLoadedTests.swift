@@ -36,6 +36,18 @@ import Testing
         #expect(events(&s, .playlistsLoaded(token: 1, playlists: nil)).first?.properties["status"] == nil)
     }
 
+    /// Codex on #481: a retry whose read worked, shown as failed only because the Mac went
+    /// offline, does not say the number of the attempt before.
+    @Test func aRetryThatReadsDoesNotKeepTheOldNumber() {
+        var s = openPlaylists()
+        _ = events(&s, .readFailed(token: 1, status: 7), .playlistsLoaded(token: 1, playlists: nil))
+        _ = events(&s, .select)  // retry
+        _ = events(&s, .offline(true))
+        let sent = events(&s, .playlistsLoaded(token: s.top.token, playlists: [focusInfo]))
+        #expect(s.top.error && s.top.failStatus == nil)
+        #expect(!sent.contains { $0.properties["status"] != nil })
+    }
+
     @Test func otherUseErrorsHaveNeitherField() {
         let p = BetaEvent.useError(.songNotPlayed, offline: false, service: .spotify).properties
         #expect(p["list"] == nil && p["status"] == nil)
