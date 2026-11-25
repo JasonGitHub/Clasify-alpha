@@ -15,6 +15,9 @@ public enum Action: Equatable, Sendable {
     case tracksLoaded(token: Int, playlist: String, tracks: [Track]?)
     /// The library's artists were read (card BN). nil when the read failed.
     case artistsLoaded(token: Int, artists: [Playlist]?)
+    /// CLA-190: the read of this token failed, with the engine's error number if known. The
+    /// store sends it just before the read's nil result, for `use_error`.
+    case readFailed(token: Int, status: Int?)
     /// A background re-read that `.refreshPlaylists` or `.refreshTracks` asked for. nil when it
     /// failed: the old rows stay.
     case playlistsRefreshed([Playlist]?)
@@ -353,6 +356,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     func finishLoad(_ token: Int, ok: Bool) {
         s.top.loading = false
         s.top.error = s.offline || !ok
+        if ok { s.top.failStatus = nil }  // CLA-190 (Codex on #481): a read that worked has no number
         if s.top.screen == .coverFlow && !s.top.error { placeCoverFlow() }
         if s.shuffleToken == token && !s.top.error {
             s.shuffleToken = nil
@@ -467,7 +471,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     func endHeldRead() {
         s.namesHold = 0
         guard s.top.screen == .yourMusic && s.top.loading else { return }
-        s.top.loading = false; s.top.error = false
+        s.top.loading = false; s.top.error = false; s.top.failStatus = nil  // CLA-190: the read worked
         endFirstRead()
     }
     /// Change 191: holds "Getting your music" until the last playlist name has shown. False
@@ -796,7 +800,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .select: applySelect()
         case .menu, .searchType, .searchDelete, .toggleShuffle, .cycleRepeat, .play, .next, .prev: applyButtons()
         case .tick, .position, .volumeReported, .trackEnded, .trackChanged, .trackRead, .adopted, .playbackFailed, .loadFailed: applyPlayback()
-        case .artistsLoaded, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
+        case .artistsLoaded, .readFailed, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
         case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset: applySession()
         }
     }
@@ -892,6 +896,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 if s.shuffleToken == s.top.token { s.shuffleToken = s.tok }  // a pending shuffle follows the retry
                 if s.startToken == s.top.token { s.startToken = s.tok }
                 s.top.loading = true; s.top.error = false; s.top.token = s.tok
+                s.top.failStatus = nil  // CLA-190: a new read starts with no number
                 fetch(s.top.screen)
                 return
             }
@@ -1225,6 +1230,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     }
     @inline(never) func applyLibrary() {
         switch action {
+        case .readFailed(let token, let status):
+            guard s.top.loading, s.top.token == token else { return }  // stale read
+            s.top.failStatus = status.map { Int32(clamping: $0) }
         case .artistsLoaded(let token, let artists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
             if let artists {

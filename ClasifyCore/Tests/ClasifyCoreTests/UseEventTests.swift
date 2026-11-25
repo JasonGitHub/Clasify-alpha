@@ -23,7 +23,7 @@ import Testing
     @Test func aListThatDoesNotLoadAndASongThatDoesNotPlaySendUseError() {
         var s = mainMenu()
         _ = events(&s, .wheel(1), .select)
-        #expect(events(&s, .playlistsLoaded(token: 1, playlists: nil)) == [.useError(.listNotLoaded, offline: false, service: .spotify)])
+        #expect(events(&s, .playlistsLoaded(token: 1, playlists: nil)) == [.useError(.listNotLoaded, offline: false, service: .spotify, list: "playlists")])
         #expect(events(&s, .wheel(1)).isEmpty)  // the same error: once
         var p = playing(2)
         _ = events(&p, .position(40, generation: 1), .menu, .wheel(3), .select)
@@ -59,7 +59,7 @@ import Testing
         _ = events(&failed, .wheel(1), .select, now: 100)
         failed.launchedAt = 100
         #expect(events(&failed, .playlistsLoaded(token: 1, playlists: nil), now: 100.75)
-            == [.useError(.listNotLoaded, offline: false, service: .spotify), .appSpeed(startMs: nil, libraryMs: 750, loaded: false)])
+            == [.useError(.listNotLoaded, offline: false, service: .spotify, list: "playlists"), .appSpeed(startMs: nil, libraryMs: 750, loaded: false)])
         #expect(failed.speedSent)
         #expect(BetaEvent.appSpeed(startMs: nil, libraryMs: 5, loaded: false).properties == ["library_ms": .number(5), "loaded": .flag(false)])
     }

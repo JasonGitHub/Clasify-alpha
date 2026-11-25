@@ -206,12 +206,12 @@ final class LibrespotLibrary: Library {
     }
 
     func playlists() async -> [Playlist]? {
-        let list = await withSession { try await self.readPlaylists() }
+        let list = await withSession("") { try await self.readPlaylists() }
         return list?.map { Playlist(id: $0.uri, name: $0.name, tracks: [], trackCount: $0.trackCount) }
     }
 
     func tracks(of playlist: String) async -> [Track]? {
-        await withSession { try await self.readTracks(playlist) }
+        await withSession(playlist) { try await self.readTracks(playlist) }
     }
 
     func rereadPlaylists() async -> [Playlist]? {
@@ -237,8 +237,16 @@ final class LibrespotLibrary: Library {
         _ = await (liked, list)
     }
 
-    /// Runs a read in the session. It logs in again once when the session dropped.
-    private func withSession<T: Sendable>(_ read: () async throws -> T) async -> T? {
+    /// CLA-190: the bridge status of the newest failed read of each list ("" is the playlist
+    /// list), for `use_error`. A number only, never the message. Memory only.
+    private var failures: [String: Int32] = [:]
+
+    func failureStatus(of key: String) -> Int? { failures[key].map { Int($0) } }
+
+    /// Runs a read in the session. It logs in again once when the session dropped. `key` names
+    /// the list for `failureStatus(of:)`; nil for a read that is not a list.
+    private func withSession<T: Sendable>(_ key: String? = nil, _ read: () async throws -> T) async -> T? {
+        if let key { failures[key] = nil }
         if !isLoggedIn, await restoreSession() != .ok { return nil }
         let mine = session
         do {
@@ -250,10 +258,14 @@ final class LibrespotLibrary: Library {
             guard session == mine else { return nil }
             // The session dropped. Log in again once, then try once more.
             guard await restoreSession() == .ok else { return nil }
-            return try? await read()
+            do { return try await read() } catch {
+                if let key, let error = error as? BridgeError { failures[key] = error.status }
+                return nil
+            }
         } catch {
             // Any other failure (a deleted playlist, a network error) would fail again after a
             // login, and a login empties the cache. The screen offers a retry.
+            if let key, let error = error as? BridgeError { failures[key] = error.status }
             return nil
         }
     }

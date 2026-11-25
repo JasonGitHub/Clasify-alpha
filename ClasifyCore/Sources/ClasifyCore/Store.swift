@@ -92,6 +92,9 @@ public protocol Library: AnyObject {
     func restoreSession() async -> LoginResult
     /// Forgets the stored login and ends the session.
     func logOut()
+    /// CLA-190: the engine's error number of the newest failed read of `key` (a playlist ID,
+    /// or "" for the playlist list), for `use_error`. nil when it is not known.
+    func failureStatus(of key: String) -> Int?
     /// Called on the main actor while a track read runs: how many of the list's items have
     /// their details, and how many there are. The store sets it.
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)? { get set }
@@ -108,6 +111,7 @@ extension Library {
     public var words: LibraryWords { .spotify }
     public func artists() async -> [Playlist]? { [] }
     public func rereadArtists() async -> [Playlist]? { await artists() }
+    public func failureStatus(of key: String) -> Int? { nil }
 }
 
 /// The words that name a service's library on screen. The `Library` gives them, so the
@@ -300,6 +304,7 @@ public final class Store {
                 fetches[token] = Task { [weak self] in
                     let result = await library.playlists()
                     self?.fetches[token] = nil
+                    if result == nil { self?.send(.readFailed(token: token, status: library.failureStatus(of: ""))) }
                     self?.send(.playlistsLoaded(token: token, playlists: result))
                 }
             case .fetchArtists(let token):
@@ -307,6 +312,7 @@ public final class Store {
                 fetches[token] = Task { [weak self] in
                     let result = await library.artists()
                     self?.fetches[token] = nil
+                    if result == nil { self?.send(.readFailed(token: token, status: library.failureStatus(of: AppState.artistsKey))) }
                     self?.send(.artistsLoaded(token: token, artists: result))
                 }
             case .fetchTracks(let token, let id):
@@ -314,6 +320,7 @@ public final class Store {
                 fetches[token] = Task { [weak self] in
                     let result = await library.tracks(of: id)
                     self?.fetches[token] = nil
+                    if result == nil { self?.send(.readFailed(token: token, status: library.failureStatus(of: id))) }
                     self?.send(.tracksLoaded(token: token, playlist: id, tracks: result))
                 }
             case .refreshPlaylists:
