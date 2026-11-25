@@ -67,6 +67,36 @@ import Testing
         }
     }
 
+    /// Card BR.1 (CLA-188), for MATCH: the half turn from Silver to Black on Pick Your Color, at
+    /// 0, 45, 85, 95, 135 and 180 degrees of its turn, with its own pose, color and 2D fade.
+    /// Past 90° the new color's front shows at the angle − 180°; the back never shows.
+    /// PNGs: `pocket-k3d-halfturn-<degrees>.png`.
+    @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theHalfTurnFrames() throws {
+        let renderer = try #require(K3DRenderer.shared)
+        var state = AppState.silver
+        state.top = Frame(screen: .color)
+        state.deviceColor = .black
+        let t0 = Date(timeIntervalSinceReferenceDate: 1000), turn = K3DFlip.spinPick
+        let flip = K3DFlip.spin(turn: turn, fromBlack: false, at: t0) { nil }
+        for degrees in [0.0, 45, 85, 95, 135, 180] {
+            // The quad in-out's time for this part of the turn.
+            let p = degrees / 180, u = p < 0.5 ? (p / 2).squareRoot() : 1 - (2 * (1 - p)).squareRoot() / 2
+            let time = t0.addingTimeInterval(K3DFlip.spinFade + u * turn)
+            let pose = flip.pose(at: time), black = flip.black(at: time, live: true)
+            let expected = degrees < 90 ? degrees : degrees - 180
+            #expect(abs(pose.angle - (degrees == 180 ? 0 : expected)) < 1e-6, "at \(degrees)°: \(pose.angle)")
+            #expect(black == (degrees >= 90), "the old color to 90°, then the new one")
+            var shown = state
+            shown.deviceColor = black ? .black : .silver
+            let shot = try #require(K3DSpike.snapshot(shown))
+            let png = try frame(renderer, shown, shot, angle: pose.angle, lift: pose.lift, shown: flip.flatOpacity(at: time))
+            #expect(png.count > 0)
+            if let dir = ProcessInfo.processInfo.environment["SNAPSHOT_DIR"] {
+                try? png.write(to: URL(fileURLWithPath: dir).appendingPathComponent("pocket-k3d-halfturn-\(Int(degrees)).png"))
+            }
+        }
+    }
+
     /// One frame as `K3DFlipView` composes it, at 2x, 60 pt of purple round the device.
     func frame(_ renderer: K3DRenderer, _ state: AppState, _ shot: CGImage, angle: Double, lift: Double, shown: Double) throws -> Data {
         let black = state.deviceColor == .black

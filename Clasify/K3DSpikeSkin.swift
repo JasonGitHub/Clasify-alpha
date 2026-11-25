@@ -62,6 +62,8 @@ struct K3DSpikeSkin: View {
     @Environment(\.roomSplit) private var split
     /// CLA-119: the last change that input sent and `colorChanged` already handled.
     @State private var handledCue: ColorCue?
+    /// Card BR.1 (CLA-188): waits for the end of a spin during which the color changed.
+    @State private var respin: Task<Void, Never>?
     /// CLA-130: the Cmd turn's pinch, and the landing that sends `.deviceTurned(false)`.
     @State private var cmdTurn = K3DTurn()
     @State private var landing: Task<Void, Never>?
@@ -290,31 +292,56 @@ struct K3DSpikeSkin: View {
     }
 
     /// Changes 289 and 290: a new color on the same screen spins the device. During a spin the
-    /// 3D screen stays live, and the spin lands on the last color: there is no second spin.
+    /// 3D screen stays live. Card BR.1 (CLA-188): a pick during a spin does not stop or turn it
+    /// back; the spin ends in its own new color, and then, if the device's color differs, one
+    /// more spin starts at once (`spinAgain`).
     private func colorChanged(from old: ColorCue, to new: ColorCue) {
         // During a spin or the short arrival (CLA-117), any new row, color or screen shows on the 3D front.
         if flip.takesInput(at: .now) {
             // CLA-119: with no key pressed: the press that made the change lets go a moment later.
             let wheel = WheelLook.released
-            flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork, wheel: wheel))
-            // CLA-119: to 180° the 3D front shows the old color's picture.
+            // Card BR.1: in the spin's new color, not a later pick's.
+            let spinColor = flip.spinColor(at: .now)
+            flip.show(screen: K3DSpike.snapshot(store.state, artwork: artwork, wheel: wheel, black: spinColor))
+            // CLA-119: to 90° the 3D front shows the old color's picture.
             if let old = flip.oldColor(at: .now) {
                 flip.show(old: K3DSpike.snapshot(store.state, artwork: artwork, wheel: wheel, black: old))
             }
+            if let spinColor, spinColor != new.black { spinAgain(from: spinColor) }
             return
         }
         guard old.black != new.black, old.top.screen == new.top.screen else { return }
+        startSpin(from: old.black)
+    }
+
+    /// The color spin's turn on this screen: Pick Your Color or the Settings Color row.
+    private func startSpin(from black: Bool, at start: Date? = nil) {
         let turn: Double
-        switch new.top.screen {
+        switch store.state.top.screen {
         case .color: turn = K3DFlip.spinPick
         case .settings: turn = K3DFlip.spinSettings
         default: return
         }
-        guard !reduceMotion, K3DFlip.canDraw, flip.restsOnFront(at: .now) else { return }
+        guard !reduceMotion, K3DFlip.canDraw, start != nil || flip.restsOnFront(at: .now) else { return }
         let state = store.state, wheel = WheelLook.released  // CLA-119: the centre button let go
         flip = K3DFlip.spin(
-            turn: turn, fromBlack: old.black, screen: { K3DSpike.snapshot(state, artwork: artwork, wheel: wheel) },
-            old: { K3DSpike.snapshot(state, artwork: artwork, wheel: wheel, black: old.black) })
+            turn: turn, fromBlack: black, at: start, screen: { K3DSpike.snapshot(state, artwork: artwork, wheel: wheel, black: !black) },
+            old: { K3DSpike.snapshot(state, artwork: artwork, wheel: wheel, black: black) })
+    }
+
+    /// Card BR.1 (CLA-188): a pick during a spin. One frame before the spin ends in `spinColor`,
+    /// if the device's color is another one then, one more spin from `spinColor` starts at the
+    /// end, so the 2D device never shows the later color first. Only the last pick counts: one
+    /// wait per spin, at most one more spin.
+    private func spinAgain(from spinColor: Bool) {
+        guard respin == nil else { return }
+        let ends = flip.ends
+        respin = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(max(0, ends.timeIntervalSinceNow - 1.0 / 60)))
+            respin = nil
+            guard !Task.isCancelled, flip.ends == ends, cue.black != spinColor else { return }
+            startSpin(from: spinColor, at: ends)
+        }
     }
 
     /// The screen, its row and the device's color, for `colorChanged`.
