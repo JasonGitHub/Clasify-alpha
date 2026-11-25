@@ -512,7 +512,14 @@ public struct AppState: Equatable, Sendable {
     public var lastBuild: Int?
     /// CLA-97, `app_speed`: when `.launch` came, the app's start time in ms, and the event went
     /// out on this launch. Not saved.
-    public var launchedAt: Double?, startMs: Int?, speedSent = false
+    public var startMs: Int?, speedSent = false
+    public var launchedAt: Double? {
+        get { firstStepsBox.value.speedFrom }
+        set { firstStepsBox.value.speedFrom = newValue }
+    }
+    /// CLA-186: `first_step` (`FirstSteps`), on the heap. It holds `launchedAt` too, so AppState
+    /// does not grow (the reducer stack limit).
+    var firstStepsBox = Heap(FirstSteps())
     /// CLA-97: features used after midnight while the day before waits for the next position
     /// report. They go to the new day when it starts. Not saved: a quit ends the waiting day.
     public var pendingFeatures: Set<Feature> = []

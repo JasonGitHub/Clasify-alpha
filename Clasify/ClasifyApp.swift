@@ -637,8 +637,10 @@ final class AppModel {
                 let readDue = state.readOverdue(at: now)
                 // CLA-183: library data arrived while Search is open; its index is made again.
                 let searchDue = state.searchIndexDue(at: now)
+                // CLA-186: a play press brought no music in 20 s, for `first_step`.
+                let firstStepDue = state.firstStepDue(at: now)
                 if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue
-                    || readDue || searchDue {
+                    || readDue || searchDue || firstStepDue {
                     store?.send(.tick)
                 }
                 // When the browser login works (change 170) or the Spotify app is found (174),

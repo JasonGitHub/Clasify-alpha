@@ -42,6 +42,9 @@ public enum BetaEvent: Equatable, Sendable {
     /// CLA-186: a normal quit (not a crash or a force quit): the minutes this launch was open
     /// (nil when the app could not read it), and the kind of screen that showed (`Screen.eventName`).
     case appClosed(minutes: Double?, screen: String, service: MusicService)
+    /// CLA-186: a first step after setup, once per install (`FirstStep`). `how` on `play_no_music`
+    /// only. `seconds` from `all_set` in the setup's launch, else from this launch.
+    case firstStep(FirstStep, how: NoMusic?, seconds: Int, service: MusicService)
 
     /// The event name in PostHog.
     public var name: String {
@@ -61,6 +64,7 @@ public enum BetaEvent: Equatable, Sendable {
         case .appProblem: "app_problem"
         case .hintStep: "hint_step"
         case .appClosed: "app_closed"
+        case .firstStep: "first_step"
         }
     }
 
@@ -100,6 +104,10 @@ public enum BetaEvent: Equatable, Sendable {
             return ["from": .text(from.eventName), "to": .text(to.eventName)]
         case .hintStep(let step, let how, let service):
             var p: [String: BetaValue] = ["step": .text(step.rawValue), "service": .text(service.eventName)]
+            if let how { p["how"] = .text(how.rawValue) }
+            return p
+        case .firstStep(let step, let how, let seconds, let service):
+            var p: [String: BetaValue] = ["step": .text(step.rawValue), "seconds": .number(seconds), "service": .text(service.eventName)]
             if let how { p["how"] = .text(how.rawValue) }
             return p
         case .appClosed(let minutes, let screen, let service):
