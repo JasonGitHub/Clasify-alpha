@@ -198,7 +198,9 @@ describe("beta page forms (CLA-172)", () => {
   it("keeps one vote per item per browser, for the five items only", () => {
     expect(Object.values(voteItems)).toEqual(["local-music", "nano", "radio", "like-from-wheel", "more-colors"]);
     for (const title of Object.keys(voteItems)) expect(page).toContain(`<h3>${title}</h3>`);
-    expect([...page.matchAll(/<button class="vb[^"]*" type="button">/g)]).toHaveLength(5);
+    // "Your own music files" is built (Jason 13:47 JST 11-25): its card shows a tick, not a vote button.
+    expect([...page.matchAll(/<button class="vb[^"]*" type="button">/g)]).toHaveLength(4);
+    expect(page).toContain('<h3>Your own music files</h3><p>Play the songs on your Mac, next to Spotify and Apple Music.</p><p class="built">');
     expect(page).toContain('<a class="vb" href="mailto:feedback@getmypod.app?subject=myPod%20idea">Send an idea</a>');
     expect([...votedFrom(null)]).toEqual([]);
     expect([...votedFrom("not json")]).toEqual([]);
