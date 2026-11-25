@@ -78,6 +78,23 @@ extension DayActiveTests {
         #expect(s.today?.songsCut == 1)
     }
 
+    /// Codex on #474: a song that starts just before midnight and ends just after it counts in
+    /// the day it played, and that day goes out with the cut.
+    @Test func aCutJustAfterMidnightCountsInTheDayItPlayed() {
+        var s = playing()
+        _ = events(&s, .position(0.5, generation: s.playGen), now: at(23, 59.95))  // 23:59:57
+        // The music stopped, so the end itself rolls the day before out, with its cut.
+        let sent = events(&s, .trackEnded(generation: s.playGen), now: at(0, 0.02, day: 20))  // 00:00:01
+        guard case .dayActive(let day, _, _, _)? = sent.first else { Issue.record("no day_active"); return }
+        #expect(day.day == 20261119 && day.songsCut == 1 && s.today == nil)
+    }
+
+    @Test func aDayWithOnlyACutStillHasUse() {
+        var d = DayUse(day: 20261119, weekday: 5)
+        d.songsCut = 1
+        #expect(d.hadUse)
+    }
+
     @Test func theCutCountGoesOutAndSaves() {
         var d = DayUse(day: 20261119, weekday: 5)
         d.songs = 2; d.songsCut = 1

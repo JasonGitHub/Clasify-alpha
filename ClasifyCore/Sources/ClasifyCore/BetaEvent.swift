@@ -509,7 +509,9 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     // Any end drops `dayPosition`, so it is always the counted song's (`dayTrack`).
     if ended, b.playing, let track = s.dayTrack, let at = s.dayPlayAt, let t = s.dayPosition, t + max(0, now - at) < cutLimit {
         let length = s.track(TrackRef(playlist: s.current?.playlist ?? "", track: track))?.duration ?? 0  // 0: not known
-        if length == 0 || length >= cutLimit { count(at: now) { d, _ in d.songsCut += 1 } }
+        // The cut goes to the day of the song's last report: an end just after midnight, with
+        // the music stopped, would roll that day out first (Codex on #474).
+        if length == 0 || length >= cutLimit { count(at: at) { d, _ in d.songsCut += 1 } }
     }
     if ended || s.playGen != b.gen || s.service != b.service || (b.playing && !s.isPlaying) { s.dayPosition = nil }
     if b.played, s.isPlaying, let current = s.current {

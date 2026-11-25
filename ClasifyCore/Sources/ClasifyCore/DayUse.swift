@@ -35,7 +35,7 @@ public struct DayUse: Equatable, Sendable {
     public var visible: Double { areas.reduce(0, +) }
     /// The day had music, a feature or a 3D view: `day_active` goes out for it (CTO 00:08 JST
     /// 11-20: a day with no music shows as minutes 0).
-    public var hadUse: Bool { songs > 0 || seconds > 0 || !features.isEmpty || views.contains { $0 > 0 } }
+    public var hadUse: Bool { songs > 0 || songsCut > 0 || seconds > 0 || !features.isEmpty || views.contains { $0 > 0 } }
 
     /// The day, the weekday and the band of `now` (`Dependencies.now` time) in `timeZone`.
     static func at(_ now: Double, in timeZone: TimeZone) -> (day: Int, weekday: Int, band: Int) {
