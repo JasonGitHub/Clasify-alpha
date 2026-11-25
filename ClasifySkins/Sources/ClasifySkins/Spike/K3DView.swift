@@ -174,7 +174,7 @@ public struct K3DFlipView<Content: View>: View {
             let date = resting ? Date.distantFuture : context.date
             let flat = flip.flatOpacity(at: date)
             let pose = flip.pose(at: date), look = flip.look(at: date), tilt = flip.tilt(at: date), ex = flip.ex(at: date)
-            let black = flip.black(at: date, live: self.black)  // a spin shows the old color to 180°
+            let black = flip.black(at: date, live: self.black)  // a spin shows the old color to 90°
             let flatDevice = content.environment(\.spinBlack, flip.blackOverride(at: date, live: self.black))
             K3DHandover(
                 flat: flat, ready: ready, hidesUntilReady: flip.arriving, keepsInput: flip.takesInput(at: date), content: flatDevice
@@ -528,7 +528,7 @@ final class K3DLayerView: MTKView {
     private let flat: any MTLTexture
     private var flatBlack: Bool?
     /// CLA-119: the old color's picture in a color spin (`K3DFlip.oldScreen`), the 2D device as it
-    /// shows to 180°, so the spin starts from the 2D device with no step.
+    /// shows to 90°, so the spin starts from the 2D device with no step.
     private let oldFlat: any MTLTexture
     private var oldScreen: CGImage?, oldBlack: Bool?
     /// CLA-119: the 2D layer fades out over the first part of the take-apart (`ex` 0 to this).

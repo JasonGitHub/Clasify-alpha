@@ -317,9 +317,11 @@ import Testing
         #expect(!K3DFlip.spin(turn: 0.8, fromBlack: false) { nil }.holdsInput(at: .now))
     }
 
-    /// Card BR, changes 289 and 290 (gen.py `spin`): a 0.15 s crossfade to 3D, one 360° turn with
-    /// a quad in-out, the old color until 180°, and a 0.15 s crossfade back.
+    /// Card BR, changes 289 and 290 (gen.py `spin`), card BR.1 (CLA-188): a 0.15 s crossfade to
+    /// 3D, a half turn with a quad in-out and no back (the old color's front to 90°, then the new
+    /// color's front from −90° to 0°), and a 0.15 s crossfade back.
     @Test(arguments: [K3DFlip.spinPick, K3DFlip.spinSettings]) func theColorSpinFollowsTheSketch(turn: Double) {
+        #expect(K3DFlip.spinPick == 0.8 && K3DFlip.spinSettings == 0.5)  // card BR.1
         let t0 = Date(timeIntervalSinceReferenceDate: 1000)
         let flip = K3DFlip.spin(turn: turn, fromBlack: false, at: t0) { nil }
         func at(_ t: Double) -> Date { t0.addingTimeInterval(t) }
@@ -333,18 +335,23 @@ import Testing
         #expect(near(flip.flatOpacity(at: at(late)), K3DFlip.nearRest(angle: flip.angle(at: at(late)), tilt: 0)))
         #expect(flip.flatOpacity(at: at(turn + 0.15)) == 1 && flip.flatOpacity(at: at(turn + 0.31)) == 1)
         #expect(flip.pose(at: at(0.1)).angle == 0)  // no turn while it crossfades
-        #expect(near(flip.pose(at: at(0.15 + turn / 4)).angle, 360 * 0.125))  // quad in: 2u²
-        #expect(near(flip.pose(at: at(0.15 + turn / 2)).angle, 180))
-        #expect(near(flip.pose(at: at(0.15 + 3 * turn / 4)).angle, 360 * 0.875))
-        #expect(flip.pose(at: at(turn + 0.2)).angle == 0 && flip.pose(at: .distantFuture).angle == 0)  // 360° is 0 at rest
+        #expect(near(flip.pose(at: at(0.15 + turn / 4)).angle, 180 * 0.125))  // quad in: 2u²
+        #expect(near(flip.pose(at: at(0.15 + 0.4999 * turn)).angle, 90) && flip.pose(at: at(0.15 + 0.4999 * turn)).angle < 90)
+        #expect(near(flip.pose(at: at(0.15 + turn / 2)).angle, -90))  // the new color's front, edge-on
+        #expect(near(flip.pose(at: at(0.15 + 3 * turn / 4)).angle, 180 * 0.875 - 180))
+        #expect(flip.pose(at: at(turn + 0.2)).angle == 0 && flip.pose(at: .distantFuture).angle == 0)
+        // The back never shows: every frame is within 90° of the front.
+        for i in 0...200 { #expect(abs(flip.pose(at: at(Double(i) / 200 * flip.length)).angle) <= 90) }
         #expect(flip.pose(at: at(0.15 + turn / 2)).lift == 0)
         #expect(flip.look(at: at(0.5)).scale == 1 && flip.look(at: at(0.5)).opacity == 1)
-        // The old color to 180°, then the device's color now, even if it changed again.
+        // The old color to 90°, then the spin's new color, even if the device's color changed again.
         #expect(!flip.black(at: at(0.15 + turn * 0.49), live: true))
-        #expect(flip.black(at: at(0.15 + turn * 0.51), live: true))
+        #expect(flip.black(at: at(0.15 + turn * 0.51), live: false))
+        #expect(flip.spinColor(at: at(0.1)) == true && flip.spinColor(at: at(turn + 0.31)) == nil)
         #expect(flip.blackOverride(at: at(0.05), live: true) == false)
-        #expect(flip.blackOverride(at: at(turn + 0.25), live: true) == true)
-        #expect(flip.blackOverride(at: at(turn + 0.31), live: true) == nil)  // at rest the 2D device shows its own
+        #expect(flip.blackOverride(at: at(turn + 0.25), live: false) == true)
+        #expect(flip.blackOverride(at: at(turn + 0.31), live: false) == nil)  // at rest the 2D device shows its own
+        #expect(!flip.black(at: at(turn + 0.31), live: false))
         #expect(flip.isSpinning(at: at(turn)) && !flip.isSpinning(at: at(turn + 0.31)))
         #expect(flip.restsOnFront(at: at(turn + 0.31)))
     }

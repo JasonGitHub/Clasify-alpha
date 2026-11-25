@@ -313,9 +313,10 @@ public enum K3DArrival: Equatable, Sendable {
 /// 70 pt while it turns; the 3D body and the flat 2D device crossfade in 0.1 s. `arrive` is
 /// card BR's first launch (change 288): from -120° and 55% size, one ease-out turn to the front
 /// in 1.6 s, fading in over the first 0.8 s; then the 2D device fades in over 0.35 s while
-/// Hello writes (Jason, 23:05 JST 11-15: no rest, so Hello comes sooner). `spin` is card BR's color change (changes 289 and 290): the device crossfades to 3D
-/// in 0.15 s, turns 360° with a quad in-out, and crossfades back in 0.15 s. It shows the old
-/// color until 180°, then the color the device has now. `arriveShort` is change 303, the
+/// Hello writes (Jason, 23:05 JST 11-15: no rest, so Hello comes sooner). `spin` is card BR's color change (changes 289 and 290), a half turn
+/// since card BR.1 (CLA-188): the device crossfades to 3D in 0.15 s, turns 180° with a quad
+/// in-out, and crossfades back in 0.15 s. It has two fronts and no back: the old color's front to
+/// 90° (edge-on), then the new color's front from −90° to 0°. `arriveShort` is change 303, the
 /// cold-start trial (CLA-117): from -60° and 80% size, one ease-out turn to the front in 1.0 s,
 /// fading in over the first 0.25 s, with the 2D device fading in over the turn's last 0.15 s.
 /// Input during it hurries the rest of the turn 4 times.
@@ -332,9 +333,9 @@ public struct K3DFlip {
     public static let arriveHelloLead = Hello.lead
 
     /// Changes 289 and 290: the color spin's crossfades, and its turn on Pick Your Color and in
-    /// Settings.
+    /// Settings. Card BR.1 (CLA-188): a half turn, 0.8 s and 0.5 s (were 1.4 s and 0.8 s).
     static let spinFade = 0.15
-    public static let spinPick = 1.4, spinSettings = 0.8
+    public static let spinPick = 0.8, spinSettings = 0.5
 
     /// Change 303 (cold.py `arr`): the short arrival's turn, start angle, start size, fade-in,
     /// its crossfade to the 2D device at the end of the turn, and how much faster input runs the rest.
@@ -365,11 +366,12 @@ public struct K3DFlip {
     /// When the last turn started.
     private(set) var start = Date.distantPast
     private(set) var script = Script.flip
-    /// The spin's old color (changes 289 and 290).
-    private(set) var fromBlack = false
+    /// The spin's old color (changes 289 and 290), and its new color: card BR.1 (CLA-188), a pick
+    /// during the spin does not change it; the spin ends in this color (`spinColor`).
+    private(set) var fromBlack = false, toBlack = false
     /// A live picture of the device for the 3D front's screen, taken when the turn started.
     public private(set) var screen: CGImage?
-    /// CLA-119: in a color spin, the picture in the old color, which the 3D front shows to 180°.
+    /// CLA-119: in a color spin, the picture in the old color, which the 3D front shows to 90° (card BR.1).
     public private(set) var oldScreen: CGImage?
     /// Card BT row 2: the tilt (pitch, degrees) the script starts from, which levels out; and
     /// whether it starts from the front at rest, where the 2D device shows.
@@ -446,9 +448,9 @@ public struct K3DFlip {
         script == .arrive && elapsed(at: now) < Self.arriveTurn
     }
 
-    /// Changes 289 and 290: a color spin with a turn of `turn` seconds. The device was black
-    /// before the change when `fromBlack`. The clock starts after the screen pictures are made:
-    /// `make` in the new color, `old` in the old color, as the 2D device shows to 180° (CLA-119).
+    /// Changes 289 and 290: a color spin with a turn of `turn` seconds, from Black when
+    /// `fromBlack` to the other color. The clock starts after the screen pictures are made:
+    /// `make` in the new color, `old` in the old color, as the 2D device shows to 90° (CLA-119).
     @MainActor public static func spin(
         turn: Double, fromBlack: Bool, at now: Date? = nil, screen make: () -> CGImage?, old: () -> CGImage? = { nil }
     ) -> K3DFlip {
@@ -456,9 +458,14 @@ public struct K3DFlip {
         flip.show(screen: make())
         flip.show(old: old())
         flip.script = .spin(turn)
-        (flip.fromBlack, flip.start) = (fromBlack, now ?? .now)
+        (flip.fromBlack, flip.toBlack, flip.start) = (fromBlack, !fromBlack, now ?? .now)
         return flip
     }
+
+    /// Card BR.1 (CLA-188): the color a spin ends in (Black when true), while it runs; nil when
+    /// no spin runs. A pick during the spin does not change it: when the spin ends in another
+    /// color than the device has, the skin starts one more spin.
+    public func spinColor(at now: Date) -> Bool? { isSpinning(at: now) ? toBlack : nil }
 
     /// Card BT row 2: a drag in progress holds the device at `angle` and `tilt` (change 307),
     /// with no clock. The screen picture stays.
@@ -599,23 +606,24 @@ public struct K3DFlip {
         oldScreen = old
     }
 
-    /// CLA-119: the old color while a spin still shows it (to 180°), or nil. A change on the
+    /// CLA-119: the old color while a spin still shows it (to 90°), or nil. A change on the
     /// screen then needs a new picture in that color too (`show(old:)`).
     public func oldColor(at now: Date) -> Bool? {
         guard case .spin(let turn) = script, now.timeIntervalSince(start) - Self.spinFade < turn / 2 else { return nil }
         return fromBlack
     }
 
-    /// A color spin runs now. A color change during it lands at its end, with no second spin.
+    /// A color spin runs now. Card BR.1: a color change during it waits for its end, then one more spin.
     public func isSpinning(at now: Date) -> Bool {
         if case .spin = script { return !isResting(at: now) }
         return false
     }
 
-    /// The 3D body is black: during a spin, the old color until 180°, then `live`.
+    /// The 3D body is black: during a spin, the old color until 90° (half its time, as the
+    /// quad in-out is even), then the new color (card BR.1: not a later pick).
     func black(at now: Date, live: Bool) -> Bool {
-        guard case .spin(let turn) = script else { return live }
-        return now.timeIntervalSince(start) - Self.spinFade < turn / 2 ? fromBlack : live
+        guard case .spin(let turn) = script, !isResting(at: now) else { return live }
+        return now.timeIntervalSince(start) - Self.spinFade < turn / 2 ? fromBlack : toBlack
     }
 
     /// The color the 2D device must show while a spin runs, or nil to show its own (with its
@@ -785,9 +793,11 @@ public struct K3DFlip {
         default: break
         }
         if case .spin(let turn) = script {
-            // 360° is the front again: the pose at rest is 0, so a later flip starts from 0.
-            let u = min(1, max(0, (t - Self.spinFade) / turn))
-            return ((360 * Self.quad(u)).truncatingRemainder(dividingBy: 360), 0)
+            // Card BR.1: a half turn with no back. To 90° the old color's front at the turn's
+            // angle; from 90° the new color's front at that angle − 180°, so −90° to 0°. At rest
+            // the pose is 0, so a later flip starts from 0.
+            let u = min(1, max(0, (t - Self.spinFade) / turn)), a = 180 * Self.quad(u)
+            return (a < 90 ? a : a - 180, 0)
         }
         if t >= Self.duration { return (to, 0) }
         let angle: Double
