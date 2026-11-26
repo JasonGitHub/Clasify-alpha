@@ -31,8 +31,9 @@ import Testing
         ])
         #expect(events(&s, .select, .authDone(token: 2, ok: true), now: 125).isEmpty)  // the browser is still Log In
         #expect(events(&s, .tick, now: 127) == [.setupStep(.yourMusic, seconds: 27, service: .spotify)])
+        #expect(events(&s, .libraryCounted(LibraryCount(playlists: [focusInfo], songs: liked.tracks)), now: 128).isEmpty)
         #expect(events(&s, .playlistsRefreshed([]), .tracksLoaded(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 130)
-            == [.setupStep(.allSet, seconds: 30, service: .spotify)])
+            == [.setupStep(.allSet, seconds: 30, service: .spotify, playlists: 1, songs: 2)])
         #expect(s.setupDone)
         #expect(events(&s, .tick, now: 140).isEmpty && s.top.screen == .main)  // after setup: no steps
         #expect(events(&s, .menu, .reset, now: 150).isEmpty && s.firstLaunchAt == 100)  // a reset keeps the time

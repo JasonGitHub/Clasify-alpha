@@ -8,7 +8,8 @@ public enum BetaEvent: Equatable, Sendable {
     /// Each setup screen a person reaches, once in a row (`log_in` covers the login and the browser).
     /// `seconds` is nil on a Mac with no first launch time (set up before CLA-97).
     /// `color` is on the step that the press on Color sends: the color picked (CLA-97, Jason 14:23 JST 11-22).
-    case setupStep(SetupStep, seconds: Int?, service: MusicService, color: DeviceColor? = nil)
+    /// CLA-197: `all_set` also says the active service's library size, as `app_speed` does.
+    case setupStep(SetupStep, seconds: Int?, service: MusicService, color: DeviceColor? = nil, playlists: Int? = nil, songs: Int? = nil)
     /// Setup stops on an error. `reason`: why our server got no answer, on `no_connection` only (CLA-180).
     case setupError(SetupError, service: MusicService, reason: ConnectionFailure? = nil)
     /// The pick on Pick Your Music: the service, the top row, and whether the Spotify app was found.
@@ -76,10 +77,12 @@ public enum BetaEvent: Equatable, Sendable {
     /// The event's own data. The sender adds the rest.
     public var properties: [String: BetaValue] {
         switch self {
-        case .setupStep(let step, let seconds, let service, let color):
+        case .setupStep(let step, let seconds, let service, let color, let playlists, let songs):
             var p: [String: BetaValue] = ["step": .text(step.rawValue), "service": .text(service.eventName)]
             if let seconds { p["seconds"] = .number(seconds) }
             if let color { p["color"] = .text(color.eventName) }
+            if let playlists { p["playlists"] = .number(playlists) }
+            if let songs { p["songs"] = .number(songs) }
             return p
         case .setupError(let kind, let service, let reason):
             var p: [String: BetaValue] = ["kind": .text(kind.rawValue), "service": .text(service.eventName)]
@@ -403,7 +406,15 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         if !b.setupDone && s.setupDone { step = .allSet }
         if let step, step != s.lastSetupStep {
             s.lastSetupStep = step
-            events.append(.setupStep(step, seconds: seconds, service: s.service, color: b.colorPress ? s.deviceColor : nil))
+            if step == .allSet {
+                // CLA-197: with the prefetch count (CLA-194). It waits for the count when the
+                // setup ends first, as `app_speed` does (`HeldAllSet`).
+                let memory = s.librarySize
+                let held = HeldAllSet(seconds: seconds, service: s.service, playlists: memory.playlists, songs: memory.songs)
+                if let count = s.libraryCount { events.append(held.event(count)) } else { s.heldAllSet = held }
+            } else {
+                events.append(.setupStep(step, seconds: seconds, service: s.service, color: b.colorPress ? s.deviceColor : nil))
+            }
         }
         if let error = setupError(s, changed: screen != b.screen || s.activateStep != b.activateStep) {
             events.append(.setupError(error, service: s.service, reason: error == .noConnection ? s.activateFailure : nil))
@@ -450,6 +461,18 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
     // service's): what was in memory at the read.
     if b.quit || s.service != b.service, let held = s.heldSpeed {
         s.heldSpeed = nil
+        events.append(held.event(nil))
+    }
+    if let held = s.heldAllSet, let count = s.libraryCount {
+        s.heldAllSet = nil
+        events.append(held.event(count))
+    }
+    if b.quit || s.service != b.service, var held = s.heldAllSet {
+        s.heldAllSet = nil
+        if s.service == held.service {  // what memory has now; after a switch, what it had at the end
+            let memory = s.librarySize
+            (held.playlists, held.songs) = (memory.playlists ?? held.playlists, memory.songs ?? held.songs)
+        }
         events.append(held.event(nil))
     }
     if s.service != b.service { s.libraryCount = nil }
@@ -695,6 +718,17 @@ struct HeldSpeed: Equatable, Sendable {
     func event(_ count: LibraryCount?) -> BetaEvent {
         .appSpeed(startMs: startMs, libraryMs: libraryMs, loaded: loaded,
                   playlists: count?.playlists ?? playlists, songs: count?.songs ?? songs)
+    }
+}
+
+/// CLA-197: an `all_set` whose setup ended before the prefetch count came, with the counts in
+/// memory then. It goes out once: with the count, or at the quit or a service change without it.
+struct HeldAllSet: Equatable, Sendable {
+    var seconds: Int?
+    var service: MusicService
+    var playlists: Int?, songs: Int?
+    func event(_ count: LibraryCount?) -> BetaEvent {
+        .setupStep(.allSet, seconds: seconds, service: service, playlists: count?.playlists ?? playlists, songs: count?.songs ?? songs)
     }
 }
 
