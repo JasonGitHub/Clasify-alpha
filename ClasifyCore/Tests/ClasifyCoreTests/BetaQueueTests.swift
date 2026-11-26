@@ -32,6 +32,24 @@ import Testing
         #expect(p["minutes_work"] == .number(1))  // a whole decimal reads back as a number: the same in PostHog
     }
 
+    /// CLA-194: each event carries the build that made it, stamped when it is made.
+    @Test func eachEventCarriesTheBuildThatMadeIt() throws {
+        var q = BetaQueue()
+        q.add(song, at: 1, build: 480)
+        q.add(song, at: 2)  // an event from before CLA-194, or a build with no number: no field
+        #expect(q.events[0].properties["app_build"] == .number(480) && q.events[1].properties["app_build"] == nil)
+        let back = BetaQueue(saved: q.saved)  // it waits across an update: still the old build
+        #expect(back.events[0].properties["app_build"] == .number(480))
+        let body = BetaQueue.body(back.events, key: "k", person: "p")
+        let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let p = try #require((json["batch"] as? [[String: Any]])?.first?["properties"] as? [String: Any])
+        #expect(p["app_build"] as? Int == 480)
+        // app_problem keeps its own: the build that crashed, from MetricKit.
+        let crash = AppProblem(kind: .crash, appBuild: "470", frames: [])
+        #expect(QueuedEvent(.appProblem(crash, service: .spotify), at: 3, build: 480).properties["app_build"] == .text("470"))
+        #expect(QueuedEvent(.appProblem(AppProblem(kind: .crash, frames: []), service: .spotify), at: 3, build: 480).properties["app_build"] == .number(480))
+    }
+
     @Test func theBodyHasTheKeyThePersonAndEachEvent() throws {
         let e = QueuedEvent(song, at: 816_789_600, id: "u1")  // 2026-11-19 14:00 UTC (from 2001)
         let body = BetaQueue.body([e], key: "phc_test", person: "acct-1")
