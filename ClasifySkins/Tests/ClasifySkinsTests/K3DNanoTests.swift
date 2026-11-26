@@ -15,7 +15,7 @@ import Testing
         for piece in K3DShader.numbers(.classic) { #expect(K3DShader.source.contains(piece), "\(piece)") }
         let nano = K3DShader.shader(for: .nano(.pink))
         #expect(!nano.contains("161.25") && !nano.contains("float2(0.0, -127.0)") && !nano.contains("732.0"))
-        #expect(nano.contains("float2(0.0, 107.0)") && nano.contains("float3 uTint = float3(0.986, 0.516, 0.744)"))
+        #expect(nano.contains("float2(0.0, 107.0)") && nano.contains("float3 uTint = float3(0.93, 0.36, 0.7)"))
     }
 
     /// Closed only: no Take apart parts. The body is 388 x 518 x 48.
@@ -43,21 +43,21 @@ import Testing
         #expect(!front[top...].enumerated().contains { $0.offset % 4 == 3 && ($0.element == 250 || $0.element == 251) })
     }
 
-    /// MATCH (README of n3d1-frozen): the reference poses (turn, tilt) on the reference canvas,
-    /// 560 x 640 pt at 1 px per pt, with the mock's camera (1 pt per pt at the body's center).
-    /// Every color draws; the PNGs are Silver at the 6 poses, Pink at [0, 0] and [30, 15], Blue at [0, 0].
+    /// MATCH (READMEs of n3d1-frozen and n3d2-frozen): the reference poses (turn, tilt) on the reference
+    /// canvas, 560 x 640 pt at 1 px per pt, with the mock's camera (1 pt per pt at the body's center).
+    /// The PNGs are Silver at the 6 poses, and every other color at [0, 0] and [30, 15].
     @Test(.enabled(if: Self.hasMetal, "no Metal device")) func theNanoPicturesForMatch() throws {
         let canvas = CGSize(width: 560, height: 640), scale = 2600 / (2600 - K3DMesh.depth / 2)  // see `K3DRenderer.projection`
         let saved: [K3DBody.NanoColor: [(Double, Double)]] = [
-            .silver: [(0, 0), (30, 15), (180, 0), (90, 0), (330, -15), (150, 20)], .pink: [(0, 0), (30, 15)], .blue: [(0, 0)],
+            .silver: [(0, 0), (30, 15), (180, 0), (90, 0), (330, -15), (150, 20)],
         ]
         for color in K3DBody.NanoColor.allCases {
             let renderer = try #require(K3DRenderer(body: .nano(color)))
-            for (turn, tilt) in saved[color] ?? [(0, 0)] {
+            for (turn, tilt) in saved[color] ?? [(0, 0), (30, 15)] {
                 let pose = K3DPose(angle: turn, tilt: tilt, black: color == .black, scale: scale)
                 let bytes = try #require(renderer.image(pose, screen: nil, size: canvas, scale: 1))
                 #expect(bytes.contains { $0 != 0 }, "\(color)")
-                if saved[color] != nil { save(bytes, canvas, "n3d1-\(color)-\(Int(turn))-\(Int(tilt))") }
+                save(bytes, canvas, "n3d2-\(color)-\(Int(turn))-\(Int(tilt))")
             }
         }
     }

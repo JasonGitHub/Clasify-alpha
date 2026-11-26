@@ -66,7 +66,7 @@ extension K3DBody {
         front: "k3d-nano-front", back: "k3d-nano-back", textureSize: SIMD2(776, 1036), lcd: SIMD4(88, 688, 80, 528),
         topPart: 0.54, tint: SIMD3(0.995, 0.997, 1), hasParts: false)
 
-    /// The nano's colors (the README's uTint): Silver and Black keep the classic's tint (Black is
+    /// The nano's colors (N.3D.2's uTint): Silver and Black keep the classic's tint (Black is
     /// the K.3D.13 Black, `K3DPose.black`); the others color the plate, its edge and the button.
     enum NanoColor: String, CaseIterable, Sendable {
         case silver, black, pink, blue, green, red
@@ -74,10 +74,10 @@ extension K3DBody {
         var tint: SIMD3<Double> {
             switch self {
             case .silver, .black: SIMD3(0.995, 0.997, 1)
-            case .pink: SIMD3(0.986, 0.516, 0.744)
-            case .blue: SIMD3(0.678, 0.963, 0.963)
-            case .green: SIMD3(0.734, 0.954, 0.790)
-            case .red: SIMD3(0.846, 0.286, 0.406)
+            case .pink: SIMD3(0.93, 0.36, 0.70)
+            case .blue: SIMD3(0.62, 0.86, 0.95)
+            case .green: SIMD3(0.62, 0.93, 0.78)
+            case .red: SIMD3(0.80, 0.18, 0.32)
             }
         }
     }
