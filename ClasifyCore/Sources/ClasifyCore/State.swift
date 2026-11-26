@@ -543,6 +543,11 @@ public struct AppState: Equatable, Sendable {
         get { firstStepsBox.value.heldSpeed }
         set { firstStepsBox.value.heldSpeed = newValue }
     }
+    /// CLA-197: an `all_set` whose setup ended before the prefetch count came.
+    var heldAllSet: HeldAllSet? {
+        get { firstStepsBox.value.heldAllSet }
+        set { firstStepsBox.value.heldAllSet = newValue }
+    }
     public var launchedAt: Double? {
         get { firstStepsBox.value.speedFrom }
         set { firstStepsBox.value.speedFrom = newValue }
