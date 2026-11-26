@@ -482,6 +482,9 @@ final class K3DLayerView: MTKView {
 /// The mesh, textures and pipeline, made once.
 @MainActor final class K3DRenderer {
     static let shared = K3DRenderer()
+    /// CLA-196: the body this renderer draws. Only the classic shows in the app; another body is
+    /// drawn closed, with no screen picture (`image(_:screen:size:scale:)` with no screen).
+    let body: K3DBody
     static let samples = 4
     /// CLA-119: the scene is drawn at twice the screen's pixels and filtered down 2:1, as the
     /// mock's canvas (k3d_src3.js lines 7-9: the canvas at 2x, the browser scales it down).
@@ -603,26 +606,29 @@ final class K3DLayerView: MTKView {
         return (lvp, SIMD3<Float>(Float(l.x), Float(l.y), Float(l.z)), Float(fa + 100))
     }
 
-    init?() {
+    init?(body: K3DBody = .classic) {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue(),
-              let library = try? Self.makeLibrary(device),
+              let library = try? Self.makeLibrary(device, body: body),
               let pipeline = try? Self.makePipeline(library), let depth = Self.makeDepth(device, write: true),
               let glassPipeline = try? Self.makePipeline(library, blend: true), let glassDepth = Self.makeDepth(device, write: false),
               let downPipeline = try? Self.makeDownPipeline(library),
               let shadowPipeline = try? Self.makeShadowPipeline(library)
         else { return nil }
-        let mesh = K3DMesh()
+        let mesh = K3DMesh(body: body), size = body.textureSize
         guard let vertices = device.makeBuffer(bytes: mesh.vertices, length: mesh.vertices.count * 4, options: []),
               let indices = device.makeBuffer(bytes: mesh.indices, length: mesh.indices.count * 4, options: []),
-              let frontBytes = K3DTextures.rgba(.front),
-              let front = Self.texture(device, queue, frontBytes),
-              let back = Self.texture(device, queue, K3DTextures.back(version: K3DTextures.version)),
+              let frontBytes = K3DTextures.rgba(named: body.front),
+              let front = Self.texture(device, queue, frontBytes, width: size.x, height: size.y),
+              let back = Self.texture(
+                device, queue, body == .classic ? K3DTextures.back(version: K3DTextures.version) : K3DTextures.rgba(named: body.back),
+                width: size.x, height: size.y),
               let linear = Self.sampler(device, .linear), let nearest = Self.sampler(device, .nearest),
               let filterSampler = Self.filterSampler(device),
-              let flat = Self.texture(device, queue, [UInt8](repeating: 0, count: K3DTextures.width * K3DTextures.height * 4)),
-              let oldFlat = Self.texture(device, queue, [UInt8](repeating: 0, count: K3DTextures.width * K3DTextures.height * 4)),
+              let flat = Self.texture(device, queue, [UInt8](repeating: 0, count: size.x * size.y * 4), width: size.x, height: size.y),
+              let oldFlat = Self.texture(device, queue, [UInt8](repeating: 0, count: size.x * size.y * 4), width: size.x, height: size.y),
               let flatSampler = Self.flatSampler(device)
         else { return nil }
+        self.body = body
         self.device = device
         self.queue = queue
         self.pipeline = pipeline
@@ -656,8 +662,8 @@ final class K3DLayerView: MTKView {
     /// The shaders and the pipeline. Internal so a test can check that the shaders compile.
     /// `blend`: the window glass pass, as the mock's blendFuncSeparate(SRC_ALPHA,
     /// ONE_MINUS_SRC_ALPHA, ONE, ONE_MINUS_SRC_ALPHA).
-    static func makeLibrary(_ device: any MTLDevice) throws -> any MTLLibrary {
-        try device.makeLibrary(source: K3DShader.source, options: nil)
+    static func makeLibrary(_ device: any MTLDevice, body: K3DBody = .classic) throws -> any MTLLibrary {
+        try device.makeLibrary(source: K3DShader.shader(for: body), options: nil)
     }
 
     static func makePipeline(_ library: any MTLLibrary, blend: Bool = false) throws -> any MTLRenderPipelineState {
@@ -831,7 +837,7 @@ final class K3DLayerView: MTKView {
 
     /// Puts a new screen picture in the front's LCD, and the whole picture in the 2D layer.
     private func show(screen: CGImage?) {
-        guard screen !== frontScreen else { return }
+        guard screen !== frontScreen, body == .classic else { return }  // CLA-196: the screen is the classic's
         let picture = screen.flatMap(K3DTextures.picture)
         guard let bytes = K3DTextures.front(live: picture, base: frontBytes) else { return }
         Self.fill(front, bytes, queue)
@@ -842,7 +848,7 @@ final class K3DLayerView: MTKView {
 
     /// Puts the old color's picture of a color spin in the 2D layer's second slot.
     func show(old screen: CGImage?) {
-        guard screen !== oldScreen else { return }
+        guard screen !== oldScreen, body == .classic else { return }
         let picture = screen.flatMap(K3DTextures.picture)
         if let picture { Self.fill(oldFlat, picture, queue) }
         oldBlack = picture.map(K3DTextures.isBlack)

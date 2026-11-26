@@ -50,6 +50,39 @@ enum K3DShader {
     /// CLA-119: the grain's cell on screen, in the scene's pixels: one screen pixel.
     static let grain = Double(K3DRenderer.supersample)
 
+    /// CLA-196: the shader for a body: the classic's source with the body's numbers in place of
+    /// the classic's, as the mock's nano was made from a copy of the classic engine (`mknano.py`).
+    /// The classic's own numbers give the classic's source, byte for byte.
+    static func shader(for b: K3DBody) -> String {
+        numbers(.classic).indices.reduce(source) { text, i in
+            text.replacingOccurrences(of: numbers(.classic)[i], with: numbers(b)[i])
+        }
+    }
+
+    /// The pieces of the source that hold a body's numbers, in the same order for every body.
+    static func numbers(_ b: K3DBody) -> [String] {
+        func f(_ x: Double) -> String { "\(x)" }
+        let w = f(b.width), h = f(b.height), tw = f(Double(b.textureSize.x)), th = f(Double(b.textureSize.y))
+        let c = b.wheelCenter, l = b.lcd, d = f(b.depth / 2)
+        return [
+            "float2(0.0, \(f(b.window.y)))", "float2(\(f(b.windowCut.x)), \(f(b.windowCut.y)))",
+            "float2(\(f(c.x)), \(f(c.y)))", "< \(f(b.wheelHole)))", "< \(f(b.buttonHole)))",
+            "ss(\(f(b.wheelLine.x)), \(f(b.wheelLine.y)), rw)", "ss(\(f(b.buttonLine.x)), \(f(b.buttonLine.y)), rw)",
+            "ss(\(f(b.wheelShade.x)), \(f(b.wheelShade.y)), rw)", "ss(\(f(b.wheelBlack.x)), \(f(b.wheelBlack.y)), rw)",
+            "ss(\(f(b.buttonShade.x)), \(f(b.buttonShade.y)), rw)", "d.y / \(f(b.dish)))", "/ \(f(b.dish * b.dish)))",
+            "ss(\(f(b.textureButton.x)), \(f(b.textureButton.y)), rw)", "ss(\(f(b.textureWheel.x)), \(f(b.textureWheel.y)), rw)",
+            "\(f(Double(b.textureSize.x) / 2)) / \(tw), \(f(Double(b.textureSize.y) / 2 - 2 * c.y)) / \(th)",
+            "float2(\(tw), \(th))", "float2(\(w), -\(h)) / \(f(b.dish))", "float2(\(w), \(h))",
+            "off.x / \(w), off.y / \(h)", "rp.x / \(w) + 0.5, 0.5 - rp.y / \(h)",
+            "step(\(f(l.x)), px.x) * step(px.x, \(f(l.y))) * step(\(f(l.z)), px.y) * step(px.y, \(f(l.w)))",
+            "min(min(px.x - \(f(l.x)), \(f(l.y)) - px.x), min(px.y - \(f(l.z)), \(f(l.w)) - px.y))",
+            "(pin.x < \(f(l.x)) || pin.x > \(f(l.y)) || pin.y < \(f(l.z)) || pin.y > \(f(l.w)))",
+            "step(\(f(b.topPart)), uv.y)", "step(\(f(b.topPart)), in.vuv.y)",
+            "float3(-350.0, 800.0, \(d) + 1000.0 - 2600.0)", "(2600.0 - \(d))", "in.vo.z < \(f(b.depth / 2 - 2.2)))",
+            "float3 uTint = float3(\(f(b.tint.x)), \(f(b.tint.y)), \(f(b.tint.z)))",
+        ]
+    }
+
     static let source = """
     #include <metal_stdlib>
     using namespace metal;
