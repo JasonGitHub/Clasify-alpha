@@ -30,7 +30,7 @@ import Testing
 
     @Test func aContextThatCannotLoadFallsToTheResumePoint() {
         let plan = ResumePlan.pick(
-            device: "mac", movedAway: true, seen: seen(context: "spotify:artist:x"), hasResumePoint: true)
+            device: "mac", movedAway: true, seen: seen(context: "spotify:station:x"), hasResumePoint: true)
         #expect(plan == .resumePoint)
     }
 
@@ -55,10 +55,11 @@ import Testing
         #expect(seen(position: -1).place == 0)
     }
 
-    @Test func canLoadAcceptsPlaylistsAlbumsAndLikedSongs() {
+    @Test func canLoadAcceptsPlaylistsAlbumsArtistsAndLikedSongs() {
         #expect(ResumePlan.canLoad("spotify:playlist:p"))
         #expect(ResumePlan.canLoad("spotify:album:a"))
         #expect(ResumePlan.canLoad("spotify:user:u:collection"))
-        #expect(!ResumePlan.canLoad("spotify:artist:x"))
+        #expect(ResumePlan.canLoad("spotify:artist:x"))  // CLA-195: a song from Artists
+        #expect(!ResumePlan.canLoad("spotify:station:x"))
     }
 }

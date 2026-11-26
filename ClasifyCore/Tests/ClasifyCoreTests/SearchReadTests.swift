@@ -7,13 +7,14 @@ import Testing
     static let drive = Playlist(id: "drive", name: "Drive", tracks: tracks("d", 3, 20))
     static let driveInfo = Playlist(id: "drive", name: "Drive", tracks: [], trackCount: 3)
 
-    /// Spotify's main menu with Search on, its cover read of Liked Songs (token 1) done, and
-    /// the playlist list read (Focus and Drive, no songs).
+    /// Spotify's main menu with Search on, its cover read of Liked Songs (token 1) done, the
+    /// playlist list read (Focus and Drive, no songs), and the artists read (CLA-195).
     func spotify() -> AppState {
         var s = mainMenu()
         s.searchOn = true
         send(&s, .artTracksRead(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks))
         s.library += [focusInfo, Self.driveInfo]; s.playlistsLoaded = true
+        s.artistsLoaded = true
         return s
     }
 
@@ -29,9 +30,10 @@ import Testing
         s.searchOn = true
         // The main menu's cover read of Liked Songs runs: Search waits for it.
         #expect(openSearch(&s).isEmpty)
-        // Then the playlist list, then each playlist in row order. Spotify has no artist read.
+        // Then the playlist list, the artists (CLA-195: from Liked Songs), then each playlist in row order.
         #expect(send(&s, .artTracksRead(token: 1, playlist: Playlist.likedSongsID, tracks: liked.tracks)) == [.refreshPlaylists])
-        #expect(send(&s, .playlistsRefreshed([focusInfo, Self.driveInfo])) == [.readArtTracks(token: 2, playlist: "focus")])
+        #expect(send(&s, .playlistsRefreshed([focusInfo, Self.driveInfo])) == [.refreshArtists])
+        #expect(send(&s, .artistsRefreshed([])) == [.readArtTracks(token: 2, playlist: "focus")])
         #expect(send(&s, .tick).isEmpty)  // one at a time
         #expect(send(&s, .artTracksRead(token: 2, playlist: "focus", tracks: focus.tracks)) == [.readArtTracks(token: 3, playlist: "drive")])
         #expect(send(&s, .artTracksRead(token: 3, playlist: "drive", tracks: Self.drive.tracks)).isEmpty)
@@ -99,7 +101,7 @@ import Testing
     }
 
     /// Apple Music and On This Mac have an artist list: Search reads it once, after the albums
-    /// list and the playlist list. Spotify has none (S1).
+    /// list and the playlist list. Spotify's comes from Liked Songs (CLA-195, `SpotifyArtistsTests`).
     @Test func appleMusicAndOnThisMacReadTheArtists() {
         for service in [MusicService.appleMusic, .local] {
             var s = mainMenu()

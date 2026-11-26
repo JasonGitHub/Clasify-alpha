@@ -286,7 +286,7 @@ import Testing
     let libraries = ServiceLibrary(spotify: spotify, appleMusic: apple, local: FakeLibrary(), service: .spotify)
     let store = Store(player: FakePlayer(), library: libraries, state: mainMenu())
     store.onSetService = { service in libraries.service = service }
-    store.send(.wheel(5))
+    store.send(.wheel(6))
     store.send(.select)  // Settings
     store.send(.select)  // Service: Apple Music
     store.send(.menu)

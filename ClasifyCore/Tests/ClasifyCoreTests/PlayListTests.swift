@@ -84,9 +84,9 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
     @Test func shuffleSongsAndAListStartDoNotMixTheNewerWins() {
         // Shuffle Songs waits for Liked Songs, MENU, then Play on Focus: Focus starts, Liked Songs does not.
         var s = onPlaylists()
-        send(&s, .menu, .wheel(3), .select)  // Shuffle Songs: Liked Songs loads with token 2
+        send(&s, .menu, .wheel(4), .select)  // Shuffle Songs: Liked Songs loads with token 2
         #expect(s.shuffleToken == 2)
-        send(&s, .menu, .wheel(-3), .select, .play)  // back to Playlists, Play on Focus: token 3
+        send(&s, .menu, .wheel(-4), .select, .play)  // back to Playlists, Play on Focus: token 3
         #expect(s.startToken == 3 && s.shuffleToken == nil)
         send(&s, .tracksLoaded(token: 2, playlist: Playlist.likedSongsID, tracks: liked.tracks))
         #expect(s.current == nil)
@@ -95,7 +95,7 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
 
         // A Focus start waits, MENU, then Shuffle Songs: Liked Songs shuffles, Focus does not start.
         s = onPlaylists()
-        send(&s, .play, .menu, .menu, .wheel(3), .select)
+        send(&s, .play, .menu, .menu, .wheel(4), .select)
         #expect(s.shuffleToken == 3 && s.startToken == nil)
         send(&s, .tracksLoaded(token: 2, playlist: "focus", tracks: focus.tracks))
         #expect(s.current == nil)
@@ -119,7 +119,7 @@ private let firstLoad: [Effect] = [.setShuffle(false), .setRepeat(.off), .load(t
 
     @Test func anAlbumRowStartsTheWholeAlbum() {
         var s = withLikedAlbums()
-        send(&s, .wheel(2), .select)  // Albums: 1989 first
+        send(&s, .wheel(3), .select)  // Albums: 1989 first
         let album = "spotify:album:1"
         #expect(s.top.screen == .albums && s.rows(for: s.top)[s.top.sel] == .album(album))
         #expect(send(&s, .play) == [.fetchTracks(token: s.top.token, playlist: album)])

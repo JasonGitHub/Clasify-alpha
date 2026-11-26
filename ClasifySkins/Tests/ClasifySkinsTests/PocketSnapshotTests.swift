@@ -834,6 +834,39 @@ import Testing
         #expect(artists.isLight(125, Self.rowCenter(3)))
     }
 
+    /// CLA-195: Spotify's main menu has Artists after Playlists. Its Artists screen (made from
+    /// Liked Songs) has more rows than the screen: it scrolls to the selected row.
+    @Test func spotifyArtistsScreens() throws {
+        var s = sampleState()
+        #expect(s.service == .spotify)
+        #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .likedSongs, .shuffleSongs, .settings])
+        s.top.sel = 2
+        let main = try render(s, "spotify-main")
+        #expect(main.isBlue(100, Self.rowCenter(2)) && !main.isBlue(100, Self.rowCenter(1)))
+
+        s.artists = (1...14).map { Playlist(id: "spotify:artist:a\($0)", name: "Artist \($0)", tracks: []) }
+        s.artistsLoaded = true
+        s.stack = [Frame(screen: .main), Frame(screen: .artists)]
+        s.stack[0].sel = 2
+        s.top.sel = 12; s.top.off = 4  // 9 rows show: Artist 5 to Artist 13, the 13th selected
+        s.scrollUntil = 1
+        #expect(s.rows(for: s.top).count == 14)
+        let artists = try render(s, "spotify-artists-long")
+        #expect(artists.isBlue(100, Self.rowCenter(8)) && !artists.isBlue(100, Self.rowCenter(0)))
+        // One artist's liked songs: two-line song rows, as for any list.
+        let artist = "spotify:artist:a5"
+        s.library.append(Playlist(id: artist, name: "", tracks: (1...3).map {
+            Track(id: "spotify:track:s\($0)", title: "Song \($0)", artist: "Artist 5", duration: 180,
+                  artists: [ArtistRef(id: artist, name: "Artist 5")])
+        }))
+        s.loadedTracks.insert(artist)
+        s.stack = [Frame(screen: .main), Frame(screen: .artists), Frame(screen: .tracks(playlist: artist))]
+        s.stack[0].sel = 2; s.stack[1].sel = 4
+        #expect(s.listName(artist) == "Artist 5" && s.rows(for: s.top).count == 3)
+        let songs = try render(s, "spotify-artist-songs")
+        #expect(songs.isBlue(100, Self.rowCenter(0, songs: true)) && !songs.isBlue(100, Self.rowCenter(1, songs: true)))
+    }
+
     @Test func settings() throws {
         var s = sampleState()
         s.stack.append(Frame(screen: .settings))

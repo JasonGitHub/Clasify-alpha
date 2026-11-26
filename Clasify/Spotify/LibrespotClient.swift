@@ -306,7 +306,8 @@ private func trackResult(
             id: string($0.uri) ?? "", title: string($0.title) ?? "", artist: string($0.artist) ?? "",
             duration: Double($0.duration_ms) / 1000, coverID: string($0.cover_id),
             album: Album.from(id: string($0.album_uri), name: string($0.album_name), artist: string($0.album_artist)),
-            disc: Int($0.disc_number), number: Int($0.track_number), largeCoverID: string($0.large_cover_id))
+            disc: Int($0.disc_number), number: Int($0.track_number), largeCoverID: string($0.large_cover_id),
+            artists: ArtistRef.list(uris: string($0.artist_uris), names: string($0.artist_names)))  // CLA-195
     }
     return .success(tracks)
 }

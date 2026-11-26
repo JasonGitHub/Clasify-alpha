@@ -1868,9 +1868,8 @@ private func searchAfter(_ s: inout AppState, _ before: SearchInputs, now: Doubl
 }
 
 /// CLA-183: while Search is open, the lists it finds songs in are read quietly, one at a time,
-/// with no spinner: first the albums list, then the playlist list, then the artists (Apple Music
-/// and On This Mac), then each playlist that is not read yet, in row order. Each read uses a
-/// path that already exists, and its answer goes in like that path's answer, so the results
+/// with no spinner: first the albums list, then the playlist list, then the artists, then each
+/// playlist that is not read yet, in row order. Each read uses a path that already exists, and its answer goes in like that path's answer, so the results
 /// follow it. A read that fails is not tried again while Search stays open. Leaving Search
 /// starts no new read; one in flight still lands. A sign-out or a service switch clears
 /// `artReads` and `refreshing`, so an old answer is dropped there and the next read starts on the new library.
@@ -1899,8 +1898,7 @@ private func searchReads(_ s: inout AppState) -> [Effect] {
     // a quiet reread, or an open, which also covers a list that the person opened).
     guard s.searchBox.value.reading == nil, s.signedIn, !s.offline, s.artReads.isEmpty, s.refreshing.isEmpty,
         !s.stack.contains(where: \.loading) else { return [] }
-    var keys = [s.albumsList, playlists]
-    if s.service != .spotify { keys.append(artists) }  // Spotify gives no artist list (S1)
+    var keys = [s.albumsList, playlists, artists]  // CLA-195: Spotify's artists come from Liked Songs
     keys += s.library.lazy.filter { !Playlist.isHidden($0.id) }.map(\.id)
     guard let key = keys.first(where: { !isRead($0) && !s.searchBox.value.skipped.contains($0) }) else { return [] }
     s.searchBox.value.reading = key

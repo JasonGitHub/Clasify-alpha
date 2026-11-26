@@ -2,7 +2,7 @@ import Testing
 @testable import ClasifyCore
 
 /// Card BN: on a service whose words have `libraryRows` (Apple Music), the main menu has
-/// Artists and Songs, and Playlists starts with the liked list. Spotify does not change.
+/// Artists and Songs, and Playlists starts with the liked list. Spotify adds only Artists (CLA-195).
 @Suite struct LibraryRowsTests {
     static let ids = (a: "applemusic:artist:1", b: "applemusic:artist:2", c: "applemusic:artist:3")
     /// As the `Library` gives them: in its own order.
@@ -20,7 +20,7 @@ import Testing
 
     @Test func appleMusicHasTheLibraryRowsAndSpotifyKeepsItsRows() {
         var s = mainMenu()
-        let old: [Row] = [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings]
+        let old: [Row] = [.coverFlow, .playlists, .artists, .albums, .likedSongs, .shuffleSongs, .settings]  // CLA-195: Artists
         #expect(s.rows(for: s.top) == old && !LibraryWords.spotify.libraryRows)
         #expect(LibraryWords.appleMusic.libraryRows)
         s = withRows()
