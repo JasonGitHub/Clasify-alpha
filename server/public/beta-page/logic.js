@@ -25,7 +25,7 @@ export function siteKey(hostname) {
 }
 
 /** Under this many taken spots the page says "Limited to N testers." with no bar. */
-export const barFrom = 8;
+export const barFrom = 18;
 /** The cap the page names while it has no answer. */
 export const defaultCap = 25;
 

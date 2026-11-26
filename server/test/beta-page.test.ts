@@ -109,7 +109,7 @@ describe("beta page CSP (CLA-172)", () => {
 });
 
 describe("beta page live parts (CLA-172)", () => {
-  const live = { taken: 12, cap: 25, full: false, build: 400, url: "https://dl.getmypod.app/beta/myPod-beta-400.dmg" };
+  const live = { taken: 19, cap: 25, full: false, build: 400, url: "https://dl.getmypod.app/beta/myPod-beta-400.dmg" };
 
   it("has no test slider and loads its live parts from one module", () => {
     expect(page).not.toContain("tslide");
@@ -139,13 +139,14 @@ describe("beta page live parts (CLA-172)", () => {
 
   it("shows the count, the bar, the button and the version for each answer", () => {
     const bar = (w: string) => `<rect width="${w}" height="8" rx="4" fill="url(#bf)"/>`;
-    // Open: the button with its link, "Beta N", the count and the bar (or "Limited to" under 8).
+    // Open: the button with its link, "Beta N", the count and the bar (or "Limited to" under 18).
     const open = fill(parseBeta(live));
     expect(open).toMatchObject({ state: "open", kind: "link", download: live.url, version: "Beta 400", spotsClass: "spots" });
-    expect(open.spots).toContain("<p><b>12 of 25</b> beta spots taken</p>");
-    expect(open.spots).toContain(bar("48%"));
+    expect(open.spots).toContain("<p><b>19 of 25</b> beta spots taken</p>");
+    expect(open.spots).toContain(bar("76%"));
     expect(fill(parseBeta({ ...live, taken: 3 }))).toMatchObject({ state: "open", download: live.url, spots: "<p><b>Limited to 25 testers.</b></p>" });
-    expect(fill(parseBeta({ ...live, taken: 8 })).spots).toContain(bar("32%"));
+    expect(fill(parseBeta({ ...live, taken: 17 })).spots).toBe("<p><b>Limited to 25 testers.</b></p>");
+    expect(fill(parseBeta({ ...live, taken: 18 })).spots).toContain(bar("72%"));
     expect(fill(parseBeta({ ...live, taken: 1, cap: 3 })).spots).toBe("<p><b>Limited to 3 testers.</b></p>");
     // Full: the waitlist on every screen, no link, no version.
     const full = fill(parseBeta({ ...live, taken: 25, full: true }));
