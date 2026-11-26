@@ -230,6 +230,10 @@ final class LibrespotLibrary: Library {
     }
 
     func reread(_ playlist: String) async -> [Track]? {
+        // CLA-195: an artist's songs come from Liked Songs, so read Liked Songs again.
+        if Playlist.isArtistID(playlist) {
+            return await reread(Playlist.likedSongsID).map { SpotifyArtists.songs(of: playlist, in: $0) }
+        }
         trackReads[playlist] = nil
         return await tracks(of: playlist)
     }
