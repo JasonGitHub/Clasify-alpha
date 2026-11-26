@@ -211,7 +211,17 @@ final class LibrespotLibrary: Library {
     }
 
     func tracks(of playlist: String) async -> [Track]? {
-        await withSession(playlist) { try await self.readTracks(playlist) }
+        // CLA-195: an artist's songs come from Liked Songs, with no read of their own.
+        if Playlist.isArtistID(playlist) {
+            return await tracks(of: Playlist.likedSongsID).map { SpotifyArtists.songs(of: playlist, in: $0) }
+        }
+        return await withSession(playlist) { try await self.readTracks(playlist) }
+    }
+
+    /// CLA-195: the artists of Liked Songs. It shares the Liked Songs read (cached, or the one
+    /// that runs), so it reads nothing new from Spotify.
+    func artists() async -> [Playlist]? {
+        await tracks(of: Playlist.likedSongsID).map(SpotifyArtists.list)
     }
 
     func rereadPlaylists() async -> [Playlist]? {
@@ -220,6 +230,10 @@ final class LibrespotLibrary: Library {
     }
 
     func reread(_ playlist: String) async -> [Track]? {
+        // CLA-195: an artist's songs come from Liked Songs, so read Liked Songs again.
+        if Playlist.isArtistID(playlist) {
+            return await reread(Playlist.likedSongsID).map { SpotifyArtists.songs(of: playlist, in: $0) }
+        }
         trackReads[playlist] = nil
         return await tracks(of: playlist)
     }

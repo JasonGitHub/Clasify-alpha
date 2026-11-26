@@ -25,7 +25,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
 
     @Test func theRowComesAfterNowPlayingAndOpensOnTheMiddleAlbumTheFirstTime() {
         var s = withCoverFlow(tenAlbums)
-        #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .settings])
+        #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .likedSongs, .shuffleSongs, .settings])
         #expect(send(&s, .select, now: 150) == [])  // Liked Songs was read 50 s ago: no read
         #expect(s.top.screen == .coverFlow && !s.top.loading && !s.isHalf(.coverFlow))
         #expect(shown(s) == "Clouds")  // the middle of ten: index 5
@@ -46,7 +46,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         #expect(s.navMove != .doors)  // back to Cover Flow from the panel
         send(&s, .menu, now: 153)
         #expect(s.navMove == .doors && !s.navForward)  // the doors close
-        send(&s, .wheel(2), .select, now: 154)  // Albums: both half screens, only the list slides
+        send(&s, .wheel(3), .select, now: 154)  // Albums: both half screens, only the list slides
         #expect(s.navMove != .doors)
         // With Album Art off, the main menu is a full screen: no whole move, so no doors.
         var off = withCoverFlow(tenAlbums)
@@ -193,7 +193,7 @@ let tenAlbums = ["Blue", "1989", "Aja", "Gold", "Abbey Road", "Clouds", "Born", 
         var s = withCoverFlow(tenAlbums)
         send(&s, .select, now: 150)
         #expect(s.coverFlowAlbum != nil)
-        send(&s, .menu, .wheel(5), .select, .wheel(9), .select, .wheel(1), .select, now: 151)  // Settings, Log out, Log out
+        send(&s, .menu, .wheel(6), .select, .wheel(9), .select, .wheel(1), .select, now: 151)  // Settings, Log out, Log out
         #expect(s.top.screen == .login && s.coverFlowAlbum == nil && s.letterUntil == 0)
     }
 

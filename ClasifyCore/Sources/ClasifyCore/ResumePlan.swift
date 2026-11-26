@@ -44,9 +44,10 @@ public enum ResumePlan: Equatable, Sendable {
         }
     }
 
-    /// A context that the bridge can load again: Liked Songs, a playlist, or an album.
+    /// A context that the bridge can load again: Liked Songs, a playlist, an album, or an artist.
     public static func canLoad(_ context: String) -> Bool {
         context.hasSuffix(":collection") || context.hasPrefix("spotify:playlist:") || Album.isID(context)
+            || context.hasPrefix("spotify:artist:")  // CLA-195: a song from Artists
     }
 
     /// Picks the step, in order: take back, the song that played last elsewhere, the Mac's

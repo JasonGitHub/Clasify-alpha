@@ -16,19 +16,37 @@ public struct Track: Equatable, Sendable {
     /// Card CR: a local song whose file is not on this Mac now (moved, or on a drive that is
     /// not connected). Its row is gray, a press shows a toast, and play skips it.
     public var missing: Bool
+    /// CLA-195: each artist of the song with its ID, in the order of `artist` (Spotify only;
+    /// empty elsewhere). The Spotify Artists screen is made from them.
+    public var artists: [ArtistRef]
 
     public init(
         id: String, title: String, artist: String, duration: Double, coverID: String? = nil,
         album: Album? = nil, disc: Int? = nil, number: Int? = nil, largeCoverID: String? = nil,
-        missing: Bool = false
+        missing: Bool = false, artists: [ArtistRef] = []
     ) {
-        self.missing = missing
+        self.missing = missing; self.artists = artists
         self.id = id; self.title = title; self.artist = artist; self.duration = duration
         self.coverID = coverID.flatMap { $0.isEmpty ? nil : $0 }
         self.largeCoverID = largeCoverID.flatMap { $0.isEmpty ? nil : $0 }
         self.album = album
         self.disc = disc.flatMap { $0 > 0 ? $0 : nil }
         self.number = number.flatMap { $0 > 0 ? $0 : nil }
+    }
+}
+
+/// CLA-195: one artist of a song: its ID (like `spotify:artist:<id>`) and its name.
+public struct ArtistRef: Equatable, Sendable {
+    public var id: String, name: String
+    public init(id: String, name: String) { self.id = id; self.name = name }
+
+    /// The bridge's `artist_uris` and `artist_names`: each joined with U+001F, in step. An
+    /// entry with no ID or no name is left out.
+    public static func list(uris: String?, names: String?) -> [ArtistRef] {
+        let split = { (text: String?) in (text ?? "").split(separator: "\u{1F}", omittingEmptySubsequences: false) }
+        return zip(split(uris), split(names)).compactMap { id, name in
+            id.isEmpty || name.isEmpty ? nil : ArtistRef(id: String(id), name: String(name))
+        }
     }
 }
 
@@ -1260,7 +1278,7 @@ public struct AppState: Equatable, Sendable {
             (current == nil ? [] : [.nowPlaying])
                 + (words.libraryRows
                     ? [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs]  // card BN
-                    : [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs])
+                    : [.coverFlow, .playlists, .artists, .albums, .likedSongs, .shuffleSongs])  // CLA-195
                 + (searchOn ? [.search] : []) + [.settings]  // CLA-183, card CS
         case .playlists:
             // Card BN: Favorite Songs first. Card CR: none On This Mac, whose read has no favorites.

@@ -31,7 +31,7 @@ import Testing
         var s = mainMenu()
         #expect(!s.rows(for: s.top).contains(.search))
         s.searchOn = true
-        #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .albums, .likedSongs, .shuffleSongs, .search, .settings])
+        #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .likedSongs, .shuffleSongs, .search, .settings])
         s.words = .appleMusic
         #expect(s.rows(for: s.top) == [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs, .search, .settings])
         // Read only: Clasify never writes it.

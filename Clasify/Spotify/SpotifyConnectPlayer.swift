@@ -584,7 +584,8 @@ final class SpotifyConnectPlayer: Player {
                 guard id == loadID else { return }
                 do {
                     // A song of an album plays the whole album from that song, like any other
-                    // context (CLA-45). Spotify takes a plain track list but plays nothing.
+                    // context (CLA-45). A song from Artists plays its artist's context (CLA-195).
+                    // Spotify takes a plain track list but plays nothing.
                     try await again { try await client.play(device: found, context: contextURI, track: trackID) }
                     if Album.isID(contextURI) { Self.logTime("load: album context played", since: start) }
                     Self.logTime("load: play acknowledged", since: start)
@@ -642,10 +643,11 @@ final class SpotifyConnectPlayer: Player {
     }
 
     /// A context that the bridge can load again, so Clasify keeps it as its own play:
-    /// Liked Songs, a playlist, or an album (which a song from Albums plays in).
+    /// Liked Songs, a playlist, an album (which a song from Albums plays in), or an artist
+    /// (which a song from Artists plays in, CLA-195).
     nonisolated static func canLoad(_ context: String) -> Bool { ResumePlan.canLoad(context) }
 
-    /// `Playlist.likedSongsID` plays the user's Liked Songs. Other IDs are Spotify playlist or album URIs.
+    /// `Playlist.likedSongsID` plays the user's Liked Songs. Other IDs are Spotify playlist, album or artist URIs.
     private func contextURI(for playlist: String?) -> String? {
         guard let playlist else { return nil }
         guard playlist == Playlist.likedSongsID else { return playlist }
@@ -846,7 +848,7 @@ final class SpotifyConnectPlayer: Player {
             log.notice("following Spotify into another context (\(Self.contextKind(state.contextURI), privacy: .public))")
             context = state.contextURI
             // So Play after a quit loads the track in its own context. The bridge can load only
-            // a playlist, an album or Liked Songs, so a station keeps no place to go on from.
+            // a playlist, an album, an artist or Liked Songs, so a station keeps no place to go on from.
             let likedSongs = state.contextURI.hasSuffix(":collection")
             followedOther = !Self.canLoad(state.contextURI)
             if !followedOther { playlist = likedSongs ? Playlist.likedSongsID : state.contextURI }
