@@ -8,8 +8,13 @@ public struct QueuedEvent: Codable, Equatable, Sendable {
     public var time: Double
     public var properties: [String: BetaValue]
 
-    public init(_ event: BetaEvent, at time: Double, id: String = UUID().uuidString) {
+    /// CLA-194: `build` (CFBundleVersion of the app that made the event) goes in as `app_build`,
+    /// a number, when the event is made, so an event that waits across an update keeps the build
+    /// that made it. An event that has its own `app_build` (`app_problem`: the build that
+    /// crashed, from MetricKit) keeps it.
+    public init(_ event: BetaEvent, at time: Double, build: Int? = nil, id: String = UUID().uuidString) {
         (self.id, self.name, self.time, self.properties) = (id, event.name, time, event.properties)
+        if let build, properties["app_build"] == nil { properties["app_build"] = .number(build) }
     }
 }
 
@@ -32,7 +37,7 @@ public struct BetaQueue: Equatable, Sendable {
         return String(decoding: data, as: UTF8.self)
     }
 
-    public mutating func add(_ event: BetaEvent, at time: Double) { add(QueuedEvent(event, at: time)) }
+    public mutating func add(_ event: BetaEvent, at time: Double, build: Int? = nil) { add(QueuedEvent(event, at: time, build: build)) }
     public mutating func add(_ event: QueuedEvent) {
         events.append(event)
         if events.count > Self.limit { events.removeFirst(events.count - Self.limit) }

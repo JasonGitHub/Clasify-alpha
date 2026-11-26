@@ -23,6 +23,8 @@ import Foundation
 
     /// PostHog's project key. A public write key: it can only add events (abuse list in the PR).
     let key: String
+    /// CLA-194: this app's build number (CFBundleVersion), put in each event as `app_build`.
+    let build: Int?
     private let defaults: UserDefaults
     /// The account ID, from the activation answer. In memory only.
     private let person: () -> String?
@@ -44,6 +46,7 @@ import Foundation
     init(defaults: UserDefaults = .standard, bundle: Bundle = .main, person: @escaping () -> String?) {
         let key = bundle.object(forInfoDictionaryKey: "PostHogKey") as? String ?? ""
         self.key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        build = (bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String).flatMap { Int($0) }
         (self.defaults, self.person) = (defaults, person)
         queue = BetaQueue(saved: defaults.string(forKey: Self.unsentKey))
         if !on { forget() } else { makeInstallID() }
@@ -66,7 +69,7 @@ import Foundation
     func take(_ event: BetaEvent) {
         guard on else { return forget() }
         makeInstallID()
-        queue.add(event, at: Date().timeIntervalSinceReferenceDate)
+        queue.add(event, at: Date().timeIntervalSinceReferenceDate, build: build)
         save()
         if queue.events.count >= 20 && failures == 0 { nextTry = .distantPast }
     }
