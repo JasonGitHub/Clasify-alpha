@@ -15,11 +15,13 @@ import Foundation
 /// inside of the shell. They come after the closed device's vertices and indices, so the closed
 /// device draws the first `closedIndexCount` indices, exactly as before.
 struct K3DMesh {
-    static let width = 366.0, height = 613.0, depth = 68.0, radius = 34.0
+    /// The classic's size (CLA-196: `K3DBody.classic`); a mesh of another body has `body`.
+    static let width = K3DBody.classic.width, height = K3DBody.classic.height, depth = K3DBody.classic.depth
+    static let radius = K3DBody.classic.radius
     /// Floats per vertex.
     static let stride = 13
     /// The wheel's and the center button's center.
-    static let wheelCenter = SIMD2<Double>(0, -127)
+    static let wheelCenter = K3DBody.classic.wheelCenter
 
     private(set) var vertices: [Float] = []
     private(set) var indices: [UInt32] = []
@@ -31,8 +33,12 @@ struct K3DMesh {
 
     var vertexCount: Int { vertices.count / Self.stride }
 
-    init() {
-        let w = Self.width, h = Self.height, t = Self.depth, r = Self.radius
+    /// CLA-196: the body's own size, for `cap` and `uvOf`.
+    let body: K3DBody
+
+    init(body: K3DBody = .classic) {
+        self.body = body
+        let w = body.width, h = body.height, t = body.depth, r = body.radius
         let corners = 24, keep = 0.45  // the steel's inner rings keep 45% of the corner radius change
 
         // The outline: corner centers and directions, clockwise from the top right (y up).
@@ -54,7 +60,7 @@ struct K3DMesh {
             var x = 0.0, z = 0.0, length = 0.0, lastTurn = 0.0
             for i in 0..<steps {
                 let a = (Double(i) + 0.5) / Double(steps) * .pi / 2
-                let bend = 4.4 + 180 * pow(1 - a / (.pi / 2), 9), ds = bend * .pi / 2 / Double(steps)
+                let bend = body.edgeScale * (4.4 + 180 * pow(1 - a / (.pi / 2), 9)), ds = bend * .pi / 2 / Double(steps)
                 x += cos(a) * ds
                 z += sin(a) * ds
                 length += ds
@@ -76,11 +82,11 @@ struct K3DMesh {
         }
         let zt = t / 2 - edgeDepth
         profile += [(0, zt - 0.5, 0, 3), (0, zt - 0.5, -90, 2), (1.5, zt - 0.5, -90, 2), (1.5, zt - 0.5, 0, 2),
-                    (1.5, zt - 1.1, 0, 2), (1.5, zt - 1.1, 0, 1), (1.5, -t / 2 + 24.8, 0, 1)]
+                    (1.5, zt - 1.1, 0, 2), (1.5, zt - 1.1, 0, 1), (1.5, -t / 2 + body.backDown, 0, 1)]
         for i in 1...14 {
             let s = Double(i) / 14 * .pi / 2
-            let nx = 24.8 * cos(s), nz = -22 * sin(s), l = hypot(nx, nz)
-            profile.append((1.5 + 22 * (1 - cos(s)), -t / 2 + 24.8 - 24.8 * sin(s), atan2(nz / l, nx / l) * 180 / .pi, 1))
+            let nx = body.backDown * cos(s), nz = -body.backIn * sin(s), l = hypot(nx, nz)
+            profile.append((1.5 + body.backIn * (1 - cos(s)), -t / 2 + body.backDown - body.backDown * sin(s), atan2(nz / l, nx / l) * 180 / .pi, 1))
         }
         // The shell is flush with the plate.
         for i in profile.indices where profile[i].material == 1 || profile[i].material == 2 {
@@ -159,21 +165,21 @@ struct K3DMesh {
         }
         func height(_ x: Double, _ y: Double) -> Double { t / 2 - drop(insetOf(x, y)) }
 
-        let zl = t / 2 - 0.3, zw = t / 2 - 1.6, wheel = Self.wheelCenter
-        // The screen hole's outline: center (0, 161.25), half size 156.5 x 119.25, radius 7.
-        let window = Self.roundedRect(0, 161.25, 156.5, 119.25, 7, step: 4)
+        let zl = t / 2 - 0.3, zw = t / 2 - 1.6, wheel = body.wheelCenter, b = body.window
+        // The screen hole's outline: the classic's center (0, 161.25), half size 156.5 x 119.25, radius 7.
+        let window = Self.roundedRect(b.x, b.y, b.hx, b.hy, b.r, step: 4)
         part = 1  // the plate's hole walls
         band(window, top: { height($0, $1) + 0.15 }, bottom: zl - 0.6, material: 0, inward: true)
-        band(Self.circle(wheel.x, wheel.y, 112.65, 128), top: { height($0, $1) - 0.05 }, bottom: t / 2 - 14, material: 0, inward: true)
+        band(Self.circle(wheel.x, wheel.y, body.wheelHole, 128), top: { height($0, $1) - 0.05 }, bottom: t / 2 - 14, material: 0, inward: true)
         part = 2  // the window: flat, flush with the face, with a dark cut edge
-        disc(window, z: zl, material: 3, center: (0, 161.25))
+        disc(window, z: zl, material: 3, center: (b.x, b.y))
         band(window, top: { _, _ in zl }, bottom: zl - 1.2, material: 10, inward: false)
         part = 3  // the wheel, 1.6 pt under the face, 0.15 pt larger than its hole
-        let rim = Self.circle(wheel.x, wheel.y, 112.8, 128)
+        let rim = Self.circle(wheel.x, wheel.y, body.wheel, 128)
         disc(rim, z: zw, material: 3, center: (wheel.x, wheel.y))
         band(rim, top: { _, _ in zw }, bottom: zw - 2.5, material: 3, inward: false)
         part = 5  // the center button
-        let button = Self.circle(wheel.x, wheel.y, 41.8, 128)
+        let button = Self.circle(wheel.x, wheel.y, body.button, 128)
         disc(button, z: zw - 0.05, material: 3, center: (wheel.x, wheel.y))
         band(button, top: { _, _ in zw - 0.05 }, bottom: zw - 3, material: 3, inward: false)
         part = 0  // the dark board inside, seen through no gap at rest
@@ -181,7 +187,7 @@ struct K3DMesh {
 
         closedVertexCount = vertexCount
         closedIndexCount = indices.count
-        addParts(capped: capped, plateRim: plateRim, shellRim: shellRim)
+        if body.hasParts { addParts(capped: capped, plateRim: plateRim, shellRim: shellRim) }
     }
 
     /// Adds triangles by their vertex indices.
@@ -198,11 +204,11 @@ struct K3DMesh {
     }
 
     func uvOf(_ x: Double, _ y: Double) -> (Double, Double) {
-        ((x + Self.width / 2) / Self.width, (Self.height / 2 - y) / Self.height)
+        ((x + body.width / 2) / body.width, (body.height / 2 - y) / body.height)
     }
 
     private mutating func cap(_ row: [UInt32], z: Double, nz: Double, material: Int, mirror: Bool) {
-        let w = Self.width, h = Self.height
+        let w = body.width, h = body.height
         let center = vertex((0, 0, z), (0, 0, nz), (0.5, 0.5), material)
         var points: [UInt32] = []
         for i in row {

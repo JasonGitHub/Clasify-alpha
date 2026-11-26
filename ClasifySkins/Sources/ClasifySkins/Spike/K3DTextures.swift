@@ -19,8 +19,11 @@ enum K3DTextures {
 
     /// The PNG's RGBA bytes, row by row from the top, as stored: straight alpha, no color
     /// matching. Nil when the file is missing or not 8-bit RGBA with straight alpha.
-    static func rgba(_ name: Name) -> [UInt8]? {
-        guard let url = Bundle.module.url(forResource: name.rawValue, withExtension: "png"),
+    static func rgba(_ name: Name) -> [UInt8]? { rgba(named: name.rawValue) }
+
+    /// CLA-196: a body's texture (`K3DBody.front`, `back`) by its bundled name.
+    static func rgba(named name: String) -> [UInt8]? {
+        guard let url = Bundle.module.url(forResource: name, withExtension: "png"),
               let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCache: false] as CFDictionary)
         else { return nil }
