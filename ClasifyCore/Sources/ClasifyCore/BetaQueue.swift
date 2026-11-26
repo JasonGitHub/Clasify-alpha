@@ -11,9 +11,11 @@ public struct QueuedEvent: Codable, Equatable, Sendable {
     /// CLA-194: `build` (CFBundleVersion of the app that made the event) goes in as `app_build`,
     /// a number, when the event is made, so an event that waits across an update keeps the build
     /// that made it. An event that has its own `app_build` (`app_problem`: the build that
-    /// crashed, from MetricKit) keeps it.
+    /// crashed, from MetricKit) keeps it; one that has none gets no stamp, because the running
+    /// build may not be the one that crashed.
     public init(_ event: BetaEvent, at time: Double, build: Int? = nil, id: String = UUID().uuidString) {
         (self.id, self.name, self.time, self.properties) = (id, event.name, time, event.properties)
+        if case .appProblem = event { return }
         if let build, properties["app_build"] == nil { properties["app_build"] = .number(build) }
     }
 }

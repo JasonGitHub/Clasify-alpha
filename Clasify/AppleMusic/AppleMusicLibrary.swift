@@ -76,11 +76,13 @@ final class AppleMusicLibrary: Library {
         return await AppleMusicReads.tracks([song]).first
     }
 
-    func prefetch() async {
+    /// CLA-194: the sizes of the list and library reads go to `app_speed`.
+    func prefetch() async -> LibraryCount {
         async let list = playlists()
         async let library = tracks(of: ClasifyCore.Playlist.libraryID)  // Albums and setup read it
-        _ = await (list, library)
+        let (lists, songs) = await (list, library)
         _ = await tracks(of: ClasifyCore.Playlist.likedSongsID)
+        return LibraryCount(playlists: lists, songs: songs)
     }
 
     /// The macOS prompt (card BM, change 258). macOS asks only once: after that, the answer

@@ -57,7 +57,11 @@ final class LocalLibrary: Library, LocalSource {
 
     func track(_ id: String) async -> ClasifyCore.Track? { await catalog()?.track(id) }
 
-    func prefetch() async { _ = await catalog() }
+    /// CLA-194: the sizes of the one read, for `app_speed`.
+    func prefetch() async -> LibraryCount {
+        let catalog = await catalog()
+        return LibraryCount(playlists: catalog?.playlists, songs: catalog?.tracks(of: ClasifyCore.Playlist.libraryID))
+    }
 
     /// `LocalSource`: the song files that `LocalPlayer` plays, from the same read.
     func items(context: String?, track: String) async -> [LocalItem]? {

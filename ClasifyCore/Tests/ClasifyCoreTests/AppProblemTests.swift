@@ -44,7 +44,7 @@ import Testing
         let p = BetaEvent.appProblem(crash, service: .appleMusic).properties
         #expect(BetaEvent.appProblem(crash, service: .appleMusic).name == "app_problem")
         #expect(p["kind"] == .text("crash") && p["signal"] == .number(11) && p["exception_type"] == .number(1))
-        #expect(p["exception_code"] == .number(2) && p["app_build"] == .text("356") && p["os_version"] == .text("macOS 27.0"))
+        #expect(p["exception_code"] == .number(2) && p["app_build"] == .number(356) && p["os_version"] == .text("macOS 27.0"))
         #expect(p["binary_uuid"] == .text("ABC") && p["service"] == .text("apple_music") && p["hang_ms"] == nil)
         #expect(p["termination_reason"] == .text(String(repeating: "x", count: 200)))
         #expect(p["stack"] == .text(frames.prefix(30).joined(separator: "\n")))

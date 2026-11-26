@@ -355,6 +355,8 @@ struct BeforeEvents {
     var tourOn: Bool, hintsDone: Set<Hint>
     /// CLA-186: the load generation before, for `songs_cut`.
     var gen: Int
+    /// CLA-194: the action is the quit, which sends an `app_speed` that still waits.
+    var quit = false
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
@@ -371,6 +373,7 @@ struct BeforeEvents {
         pick = nil
         if case .position(let t, let gen) = action, t > 0, gen == s.playGen { (played, position) = (true, t) }
         if case .betaBuild(let b) = action { build = b }
+        if case .willQuit = action { quit = true }
         switch action {
         case .playlistsLoaded, .tracksLoaded, .playlistsRefreshed, .tracksRefreshed, .artTracksRead, .artistsLoaded: libraryRead = true
         default: break
@@ -430,11 +433,26 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
         let failed = (b.loading && !s.top.loading) || s.refreshing.count < b.refreshes || s.artReads.count < b.coverReads
         if loaded || failed {
             s.speedSent = true
-            let (playlists, songs) = loaded ? s.librarySize : (nil, nil)
-            events.append(.appSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded())), loaded: loaded,
-                                    playlists: playlists, songs: songs))
+            let memory: (playlists: Int?, songs: Int?) = loaded ? s.librarySize : (nil, nil)
+            let held = HeldSpeed(startMs: s.startMs, libraryMs: max(0, Int(((now - launched) * 1000).rounded())), loaded: loaded,
+                                 playlists: memory.playlists, songs: memory.songs)
+            // CLA-194: the counts come from the start's prefetch, which reads the playlist list
+            // and `albumsList` on every service. When the first read ends before it, the event
+            // waits for it (or for the quit).
+            if let count = s.libraryCount { events.append(held.event(count)) } else { s.heldSpeed = held }
         }
     }
+    if let held = s.heldSpeed, let count = s.libraryCount {
+        s.heldSpeed = nil
+        events.append(held.event(count))
+    }
+    // No count by the quit, or the service changed first (the next count is the other
+    // service's): what was in memory at the read.
+    if b.quit || s.service != b.service, let held = s.heldSpeed {
+        s.heldSpeed = nil
+        events.append(held.event(nil))
+    }
+    if s.service != b.service { s.libraryCount = nil }
     // CLA-181: `start` the first time the tour turns on (once; a later start for the trial's
     // steps sends it only if none went out), then each tour step that ended, once ever.
     if s.tourOn && !b.tourOn && !s.hintStartSent && s.analyticsOn {
@@ -664,6 +682,19 @@ private func setupError(_ s: AppState, changed: Bool) -> SetupError? {
         default: return nil
         }
     default: return nil
+    }
+}
+
+/// CLA-194: an `app_speed` measured at the first read, with the counts in memory then.
+struct HeldSpeed: Equatable, Sendable {
+    var startMs: Int?
+    var libraryMs: Int
+    var loaded: Bool
+    var playlists: Int?, songs: Int?
+    /// The event. A prefetch count wins; a count that its read did not get comes from memory.
+    func event(_ count: LibraryCount?) -> BetaEvent {
+        .appSpeed(startMs: startMs, libraryMs: libraryMs, loaded: loaded,
+                  playlists: count?.playlists ?? playlists, songs: count?.songs ?? songs)
     }
 }
 

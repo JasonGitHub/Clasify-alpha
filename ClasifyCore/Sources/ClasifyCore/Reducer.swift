@@ -126,6 +126,8 @@ public enum Action: Equatable, Sendable {
     case used(Feature)
     /// CLA-97: ms from the process start to the first window, for `app_speed`. The app sends it once.
     case appStarted(ms: Int)
+    /// CLA-194: the size of what the start's prefetch read (`Library.prefetch`), for `app_speed`.
+    case libraryCounted(LibraryCount)
     /// CLA-97: the app quits normally. The exact day count is saved (`AppState.savedToday`).
     /// CLA-186: `openSeconds` since the process started, for `app_closed`; nil when the app could not read it.
     case willQuit(openSeconds: Double?)
@@ -800,7 +802,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .select: applySelect()
         case .menu, .searchType, .searchDelete, .toggleShuffle, .cycleRepeat, .play, .next, .prev: applyButtons()
         case .tick, .position, .volumeReported, .trackEnded, .trackChanged, .trackRead, .adopted, .playbackFailed, .loadFailed: applyPlayback()
-        case .artistsLoaded, .readFailed, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
+        case .artistsLoaded, .readFailed, .libraryCounted, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
         case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset: applySession()
         }
     }
@@ -1233,6 +1235,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .readFailed(let token, let status):
             guard s.top.loading, s.top.token == token else { return }  // stale read
             s.top.failStatus = status.map { Int32(clamping: $0) }
+        case .libraryCounted(let count):
+            s.libraryCount = count  // `app_speed` takes it (BetaEvent.swift)
         case .artistsLoaded(let token, let artists):
             guard s.top.loading, s.top.token == token else { return }  // stale load
             if let artists {
