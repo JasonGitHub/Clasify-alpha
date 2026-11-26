@@ -96,9 +96,9 @@ import Testing
             Issue.record("no day_active at quit"); return
         }
         #expect(day.day == 20261119 && day.features.isEmpty)
-        // CLA-182: the new day goes out at the quit too, and starts again from zero.
+        // CLA-182: the new day goes out at the quit too. CLA-197: its totals stay, marked as sent.
         #expect(new.day == 20261120 && new.features == [.aboutFlip])
-        #expect(quit.today == DayUse(day: 20261120, weekday: 6) && quit.settings.today == quit.today)
+        #expect(quit.today?.features == [.aboutFlip] && quit.today?.sent == true && quit.settings.today == quit.today)
     }
 
     /// The safety net: a part of a day that already went out goes to today's night band.
@@ -133,7 +133,7 @@ import Testing
         #expect(quit.savedToday?.seconds == 0)
         let sent = events(&quit, .willQuit(openSeconds: nil), now: at(10) + 1)
         guard case .dayActive(let day, _, _, _)? = sent.first else { Issue.record("no day_active at quit"); return }
-        #expect(day.seconds == 1 && quit.savedToday?.seconds == 0 && quit.settings.today == quit.today)
+        #expect(day.seconds == 1 && quit.savedToday?.seconds == 1 && quit.settings.today == quit.today)
     }
 
     /// App Nap can slow the reports while myPod is hidden: the position says what played.
@@ -264,6 +264,11 @@ import Testing
         // them reads with 0.
         d.songsShuffle = 2; d.songsRepeat = 1
         #expect(d.saved.hasSuffix("|2,1,0") && DayUse(saved: d.saved) == d)
+        // CLA-197: a day whose totals went out saves that too; one saved before it reads as not sent.
+        d.sent = true
+        #expect(d.saved.hasSuffix("|2,1,0,1") && DayUse(saved: d.saved) == d)
+        #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2,3|0,0,0,0,0,0,0,0,0;0;|2,1,0")?.sent == false)
+        d.sent = false
         let old = DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2,3|0,0,0,0,0,0,0,0,0;0;")
         #expect(old?.songs == 3 && old?.songsShuffle == 0 && old?.songsRepeat == 0)
         #expect(DayUse(saved: "20261119|5|3|0,0,0,0||Spotify|1,2,3|0,0,0,0,0,0,0,0,0;0;|2") == nil)
@@ -371,14 +376,15 @@ import Testing
 
     // CLA-182: the day's numbers go out at a normal quit.
 
-    @Test func aQuitWithUseSendsTodayOnceAndStartsAgainFromZero() {
+    /// CLA-197: the day's totals so far; they stay, and go out again only when they grew.
+    @Test func aQuitWithUseSendsTheTotalsSoFarOnce() {
         var s = playing()
         _ = events(&s, .position(1, generation: s.playGen), now: at(10))
         _ = events(&s, .position(11, generation: s.playGen), now: at(10) + 10)
         let sent = events(&s, .willQuit(openSeconds: nil), now: at(10) + 10)
         guard sent.count == 1, case .dayActive(let day, let service, _, _) = sent[0] else { Issue.record("no day_active at quit"); return }
         #expect(day.day == 20261119 && day.songs == 1 && day.seconds == 10 && service == .spotify)
-        #expect(s.today == DayUse(day: 20261119, weekday: 5) && s.savedToday == s.today)
+        #expect(s.today?.songs == 1 && s.today?.seconds == 10 && s.today?.sent == true && s.savedToday == s.today)
         #expect(events(&s, .willQuit(openSeconds: nil), now: at(10) + 11).isEmpty)  // nothing new: nothing goes out
         #expect(events(&s, .tick, now: at(9, day: 20)).isEmpty)  // the next day: the old day does not go out again
     }
@@ -389,7 +395,8 @@ import Testing
         #expect(s.today == nil)
     }
 
-    @Test func aSecondRunOnTheSameDaySendsOnlyTheRest() {
+    /// CLA-197: a second run with more use sends a new row with the day's totals.
+    @Test func aSecondRunOnTheSameDaySendsTheDaysTotals() {
         var s = playing()
         _ = events(&s, .position(1, generation: s.playGen), now: at(10))
         _ = events(&s, .position(11, generation: s.playGen), now: at(10) + 10)
@@ -402,6 +409,44 @@ import Testing
         _ = events(&next, .position(6, generation: next.playGen), now: at(11) + 5)
         let sent = events(&next, .willQuit(openSeconds: nil), now: at(11) + 5)
         guard case .dayActive(let rest, _, _, _)? = sent.first else { Issue.record("no day_active at quit"); return }
-        #expect(rest.day == 20261119 && rest.songs == 1 && rest.seconds == 5)  // only the rest of the day
+        #expect(rest.day == 20261119 && rest.songs == 2 && rest.seconds == 15)  // the whole day so far
+        #expect(next.today?.sent == true)
+    }
+
+    /// CLA-197: a run with no new use sends no row at its quit, and the next day does not send
+    /// the day again: its newest totals went out.
+    @Test func aRunWithNothingNewSendsNoRowAndTheNextDayDoesNotRepeatIt() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .position(11, generation: s.playGen), now: at(10) + 10)
+        #expect(events(&s, .willQuit(openSeconds: nil), now: at(10) + 10).count == 1)
+        var next = mainMenu()
+        next.settings = s.settings  // the saved day comes back, marked as sent
+        #expect(next.today?.sent == true && next.today?.songs == 1)
+        #expect(events(&next, .tick, .willQuit(openSeconds: nil), now: at(12)).isEmpty)
+        var later = mainMenu()
+        later.settings = next.settings
+        #expect(events(&later, .tick, now: at(9, day: 20)).isEmpty && later.today == nil)
+    }
+
+    /// CLA-197: use after the last row, with no quit after it (a force quit): the next day sends
+    /// the day's totals once.
+    @Test func useAfterTheQuitsRowGoesOutOnTheNextDay() {
+        var s = playing()
+        _ = events(&s, .position(1, generation: s.playGen), now: at(10))
+        _ = events(&s, .position(11, generation: s.playGen), now: at(10) + 10)
+        _ = events(&s, .willQuit(openSeconds: nil), now: at(10) + 10)
+        var next = playing()
+        next.settings = s.settings
+        next.current?.track = "l1"
+        _ = events(&next, .position(1, generation: next.playGen), now: at(11))
+        _ = events(&next, .position(6, generation: next.playGen), now: at(11) + 5)
+        _ = events(&next, .play, now: at(11) + 5)  // a pause saves the day; then a force quit
+        #expect(next.settings.today?.sent == false && next.settings.today?.songs == 2)
+        var later = mainMenu()
+        later.settings = next.settings
+        let sent = events(&later, .tick, now: at(9, day: 20))
+        guard sent.count == 1, case .dayActive(let day, _, _, _) = sent[0] else { Issue.record("no day_active"); return }
+        #expect(day.day == 20261119 && day.songs == 2 && day.seconds == 15)
     }
 }

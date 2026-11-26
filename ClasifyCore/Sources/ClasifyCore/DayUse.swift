@@ -24,6 +24,9 @@ public struct DayUse: Equatable, Sendable {
     /// `songsCut`, in the padding after the 1-byte `service`: `AppState` keeps two `DayUse`, and
     /// each byte more of it makes the reducer's stack frame larger (reducer stack limit).
     private var cuts: UInt16 = 0
+    /// CLA-197: these totals went out in a `day_active` row; any later count clears it. In the
+    /// same padding as `cuts`, so `DayUse` does not grow.
+    var sent = false
     /// CLA-162: seconds the device window was visible in each area of its screen (`WindowSpot.area`).
     public var areas = [Double](repeating: 0, count: 9)
     /// CLA-162: visible seconds on each screen (`WindowSpot.screenKey`), and the most screens seen.
@@ -67,14 +70,14 @@ public struct DayUse: Equatable, Sendable {
 
     /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings|Spotify|12.5,0.0,3.0": the saved
     /// form, then CLA-162's window part "areas;screen count;screens", then "shuffle,repeat" song
-    /// counts, and CLA-186's cut songs as a third count. A day saved before the 3D views, the
+    /// counts, CLA-186's cut songs as a third count, and CLA-197's `sent` as a fourth (1, only when set). A day saved before the 3D views, the
     /// window or the song counts has no such part: its counts are 0.
     var saved: String {
         let b: [String] = bands.map { String($0) }
         let f: [String] = features.map(\.rawValue).sorted()
         let v: [String] = views.map { String($0) }
         return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ","), service?.rawValue ?? "",
-                v.joined(separator: ","), windowSaved, "\(songsShuffle),\(songsRepeat),\(songsCut)"].joined(separator: "|")
+                v.joined(separator: ","), windowSaved, "\(songsShuffle),\(songsRepeat),\(songsCut)" + (sent ? ",1" : "")].joined(separator: "|")
     }
 
     /// "0.0,…,60.0,…;2;1x1512x982x1=60.0": the areas, the screen count and the seconds per screen.
@@ -111,9 +114,10 @@ public struct DayUse: Equatable, Sendable {
         }
         if parts.count == 9 {
             let counts = parts[8].split(separator: ",").compactMap { Int($0) }
-            guard counts.count == 2 || counts.count == 3 else { return nil }
+            guard (2...4).contains(counts.count) else { return nil }
             (songsShuffle, songsRepeat) = (counts[0], counts[1])
-            if counts.count == 3 { songsCut = counts[2] }
+            if counts.count >= 3 { songsCut = counts[2] }
+            if counts.count == 4 { sent = counts[3] == 1 }
         }
     }
 

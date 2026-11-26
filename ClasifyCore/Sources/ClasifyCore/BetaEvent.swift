@@ -505,6 +505,8 @@ func betaEvents(_ s: inout AppState, _ b: BeforeEvents, _ fx: [Effect], now: Dou
 
 /// CLA-97: counts today's music and features, and sends `day_active` for a day that ended.
 /// A day starts with its first count, so an action with nothing to count changes nothing.
+/// CLA-197: a quit also sends the day's totals so far. A row goes out only for totals that grew
+/// since the last row of that day (`DayUse.sent`); the newest row of a day is the true one.
 func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, in timeZone: TimeZone) -> [Effect] {
     var fx: [Effect] = []
     var quit = false, openSeconds: Double?
@@ -520,7 +522,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         let at = DayUse.at(t, in: timeZone)
         let open = s.isPlaying && s.dayPlayAt != nil
         if let old = s.today, old.day < at.day, force || !open {
-            if old.hadUse { send(old) }
+            if old.hadUse && !old.sent { send(old) }  // a row of these totals went out at a quit
             s.today = nil; s.dayTrack = nil  // the first song of a new day counts again
         }
         return at
@@ -530,12 +532,16 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         if var today = s.today, at.day < today.day {
             // That day already went out (for example after the clock moved). Its part goes to
             // this day's night band, so no time is lost (Jason: no silent data loss).
+            let before = today
             change(&today, 0)
+            if today != before { today.sent = false }
             s.today = today
             return
         }
         var d = s.today ?? DayUse(day: at.day, weekday: at.weekday)
+        let before = d
         change(&d, at.band)
+        if d != before { d.sent = false }  // the totals grew: the next quit sends a new row
         s.today = d
     }
     /// Counts an open 3D view from where it was counted up to `t`, at most `view3DLimit` from its
@@ -668,12 +674,13 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         }
     }
     // CLA-182 (Jason 16:33 JST 11-24): a normal quit sends today's numbers now, so a person who
-    // does not come back still counts. Today then starts again from zero: a second run on the
-    // same day sends only the rest, and the two events add up to the day. Known limit (CTO): a
-    // song that plays on over a quit and a restart on the same day counts once in each run.
-    if quit, let today = s.today, today.hadUse {
+    // does not come back still counts. CLA-197 (Jason 21:36 JST 11-26): the day's totals so far,
+    // which stay: a later quit or the next day sends a new row only if they grew. Known limit
+    // (CTO): a song that plays on over a quit and a restart on the same day counts twice.
+    if quit, var today = s.today, today.hadUse, !today.sent {
         send(today)
-        s.today = DayUse(day: today.day, weekday: today.weekday)
+        today.sent = true
+        s.today = today
     }
     // CLA-186: `app_closed`, in the same batch as that `day_active`. Only the kind of screen.
     if quit { fx.append(.track(.appClosed(minutes: openSeconds.map { max(0, $0) / 60 }, screen: s.top.screen.eventName, service: s.service))) }
@@ -683,7 +690,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
         || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
-        || saved?.visible != today?.visible || saved?.songsCut != today?.songsCut
+        || saved?.visible != today?.visible || saved?.songsCut != today?.songsCut || saved?.sent != today?.sent
     if changed || (b.playing && !s.isPlaying) || quit { s.savedToday = today }
     return fx
 }
