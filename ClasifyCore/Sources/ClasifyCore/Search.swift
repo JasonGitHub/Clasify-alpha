@@ -202,7 +202,9 @@ public enum Search {
     /// its artist names. A song that can't be found on this Mac (card CR) is left out.
     static func songs(in state: AppState) -> [(result: Result, artist: String)] {
         var found: [String: (track: Track, list: String, rank: Int, order: Int)] = [:]
-        for list in state.library {
+        // CLA-195: a Spotify artist's list can hold its Popular songs, which are not in the
+        // library, so Search finds songs in Liked Songs and the playlists only.
+        for list in state.library where !list.id.hasPrefix("spotify:artist:") {
             let rank = playRank(list.id)
             for track in list.tracks where !track.missing {
                 if let had = found[track.id] {

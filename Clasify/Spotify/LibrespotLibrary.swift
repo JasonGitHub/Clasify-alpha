@@ -61,8 +61,13 @@ final class LibrespotLibrary: Library {
 
     var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
 
-    init(client: LibrespotClient) {
+    /// CLA-195: an artist's screen shows its Popular songs from Spotify (on), or only its
+    /// liked songs (off). The app reads the `artists.popular` switch once at launch.
+    private let popularArtists: Bool
+
+    init(client: LibrespotClient, popularArtists: Bool) {
         self.client = client
+        self.popularArtists = popularArtists
     }
 
     var isLoggedIn: Bool { username != nil }
@@ -211,11 +216,15 @@ final class LibrespotLibrary: Library {
     }
 
     func tracks(of playlist: String) async -> [Track]? {
-        // CLA-195: an artist's songs come from Liked Songs, with no read of their own.
-        if Playlist.isArtistID(playlist) {
-            return await tracks(of: Playlist.likedSongsID).map { SpotifyArtists.songs(of: playlist, in: $0) }
-        }
+        if Playlist.isArtistID(playlist) { return await artistSongs(playlist, liked: tracks(of: Playlist.likedSongsID)) }
         return await withSession(playlist) { try await self.readTracks(playlist) }
+    }
+
+    /// CLA-195: an artist's Popular songs (one read of the artist, cached in memory like any
+    /// list), or its liked songs when the switch is off or that read fails or is empty.
+    private func artistSongs(_ id: String, liked: [Track]?) async -> [Track]? {
+        let popular = popularArtists ? await withSession(id) { try await self.readTracks(id) } : nil
+        return SpotifyArtists.shown(id, popular: popular, liked: liked)
     }
 
     /// CLA-195: the artists of Liked Songs. It shares the Liked Songs read (cached, or the one
@@ -230,9 +239,10 @@ final class LibrespotLibrary: Library {
     }
 
     func reread(_ playlist: String) async -> [Track]? {
-        // CLA-195: an artist's songs come from Liked Songs, so read Liked Songs again.
+        // CLA-195: read the artist's Popular songs and Liked Songs again.
         if Playlist.isArtistID(playlist) {
-            return await reread(Playlist.likedSongsID).map { SpotifyArtists.songs(of: playlist, in: $0) }
+            trackReads[playlist] = nil
+            return await artistSongs(playlist, liked: reread(Playlist.likedSongsID))
         }
         trackReads[playlist] = nil
         return await tracks(of: playlist)
@@ -313,7 +323,7 @@ final class LibrespotLibrary: Library {
         let task = trackReads[id] ?? Task<[Track], any Error> {
             do {
                 // The time covers the context read and the metadata batches.
-                return try await timed(uri == nil ? "liked songs read" : Album.isID(id) ? "album read" : "playlist read", count: { $0.count }) {
+                return try await timed(uri == nil ? "liked songs read" : Album.isID(id) ? "album read" : Playlist.isArtistID(id) ? "artist read" : "playlist read", count: { $0.count }) {
                     try await client.tracks(playlistURI: uri, progress: report)
                 }
             } catch let error as BridgeError {

@@ -11,6 +11,15 @@ public enum SpotifyArtists {
         return list
     }
 
+    /// What an artist's screen shows: its Popular songs from Spotify (`popular`, in Spotify's
+    /// order) when they were read and are not empty, else its liked songs. `popular` is nil
+    /// when the `artists.popular` switch is off or the read failed (offline too): then the
+    /// screen shows the liked songs, with no error. Nil only when neither list is known.
+    public static func shown(_ id: String, popular: [Track]?, liked: [Track]?) -> [Track]? {
+        if let popular, !popular.isEmpty { return popular }
+        return liked.map { songs(of: id, in: $0) }
+    }
+
     /// The liked songs of one artist, in `Track.artistOrder`.
     public static func songs(of id: String, in liked: [Track]) -> [Track] {
         Track.artistOrder(liked.filter { $0.artists.contains { $0.id == id } })

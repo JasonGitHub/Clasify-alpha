@@ -497,7 +497,9 @@ final class AppModel {
             store = nil
             return
         }
-        let library = LibrespotLibrary(client: client)
+        // CLA-195: the `artists.popular` test switch, on when not set. Clasify never writes it.
+        let popularArtists = UserDefaults.standard.object(forKey: "artists.popular") as? Bool ?? true
+        let library = LibrespotLibrary(client: client, popularArtists: popularArtists)
         let player = SpotifyConnectPlayer(client: client, library: library)
         let appleMusic = AppleMusicPlayer()
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
