@@ -1403,7 +1403,15 @@ func playing(_ i: Int = 0) -> AppState {
     }
     func track(_ id: String) async -> Track? { fetches.append(id); return extra[id] }
     func artists() async -> [Playlist]? { fetches.append("artists"); return [] }
-    func prefetch() async { calls.append("prefetch") }
+    /// What each prefetch answers, in turn (the last one repeats). `holdFirst` keeps the first
+    /// one running until it turns off.
+    var counts = [LibraryCount(playlists: nil, songs: nil)], holdFirst = false, prefetches = 0
+    func prefetch() async -> LibraryCount {
+        calls.append("prefetch")
+        let n = prefetches; prefetches += 1
+        while n == 0 && holdFirst { await Task.yield() }
+        return counts[min(n, counts.count - 1)]
+    }
     func logIn(page: String?) async -> LoginResult { calls.append(page.map { "logIn \($0)" } ?? "logIn"); return loginResult }
     func cancelLogIn() async { calls.append("cancelLogIn") }
     func restoreSession() async -> LoginResult { calls.append("restoreSession"); return loginResult }
@@ -1473,6 +1481,31 @@ func playing(_ i: Int = 0) -> AppState {
     // The main menu reads Liked Songs for its covers, once.
     while !store.state.loadedTracks.contains(Playlist.likedSongsID) { await Task.yield() }
     #expect(lib.fetches == [Playlist.likedSongsID] && store.state.tracks(in: Playlist.likedSongsID) == liked.tracks)
+}
+
+/// CLA-194: the prefetch's count comes back as `.libraryCounted`, for `app_speed`. The count of a
+/// service that is no longer active is dropped.
+@MainActor @Test func storeSendsThePrefetchCountOfTheActiveServiceOnly() async {
+    let lib = FakeLibrary()
+    let spotify = LibraryCount(playlists: [focusInfo], songs: liked.tracks), apple = LibraryCount(playlists: [], songs: [])
+    lib.counts = [spotify, apple]
+    let store = Store(player: FakePlayer(), library: lib, state: afterSetup(), env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    store.send(.launch)
+    while store.state.libraryCount == nil { await Task.yield() }
+    #expect(store.state.libraryCount == spotify && spotify.playlists == 1 && spotify.songs == 2)
+
+    let held = FakeLibrary()
+    held.counts = [spotify, apple]; held.holdFirst = true
+    let other = Store(player: FakePlayer(), library: held, state: afterSetup(), env: Dependencies(now: { 0 }, random: { _ in 0 }))
+    other.send(.launch)
+    while held.prefetches == 0 { await Task.yield() }
+    other.send(.wheel((other.state.rows(for: other.state.top).firstIndex(of: .settings) ?? 0) - other.state.top.sel))
+    other.send(.select); other.send(.select); other.send(.menu)  // the Service row flips to Apple Music
+    #expect(other.state.service == .appleMusic)
+    while other.state.libraryCount == nil { await Task.yield() }
+    held.holdFirst = false  // the old service's count ends now
+    for _ in 0..<50 { await Task.yield() }
+    #expect(other.state.libraryCount == apple && held.prefetches == 2)
 }
 
 @Test func trackKeepsACoverIDAndDropsAnEmptyOne() {

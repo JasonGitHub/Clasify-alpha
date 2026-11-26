@@ -80,8 +80,9 @@ public protocol Library: AnyObject {
     /// The details of one track ("spotify:track:<id>"). Returns nil when the read fails.
     func track(_ id: String) async -> Track?
     /// Reads Liked Songs and the playlist list in the background, at most two reads at a time,
-    /// so that a later `playlists()` or `tracks(of:)` can answer at once.
-    func prefetch() async
+    /// so that a later `playlists()` or `tracks(of:)` can answer at once. CLA-194: answers the
+    /// size of what it read, for `app_speed` (no extra read).
+    func prefetch() async -> LibraryCount
     /// Logs in through the browser: `.failed` when the user cancels or the login fails.
     /// `page` is nil, or the activate page that the login page then opens in the same tab
     /// (CLA-143, Spotify only).
@@ -112,6 +113,18 @@ extension Library {
     public func artists() async -> [Playlist]? { [] }
     public func rereadArtists() async -> [Playlist]? { await artists() }
     public func failureStatus(of key: String) -> Int? { nil }
+}
+
+/// CLA-194, `app_speed`: how many playlists and songs the start's prefetch read, each nil when
+/// its read failed. `songs` counts `LibraryWords.albumsList`: liked songs on Spotify, the
+/// library's songs on Apple Music and On This Mac. Hidden lists (`Playlist.isHidden`) do not
+/// count, as in `AppState.librarySize`. Counts only.
+public struct LibraryCount: Equatable, Sendable {
+    public var playlists: Int?, songs: Int?
+    public init(playlists: [Playlist]?, songs: [Track]?) {
+        self.playlists = playlists.map { $0.filter { !Playlist.isHidden($0.id) }.count }
+        self.songs = songs?.count
+    }
 }
 
 /// The words that name a service's library on screen. The `Library` gives them, so the
@@ -358,8 +371,12 @@ public final class Store {
                     self.send(.trackRead(id, track))
                 }
             case .prefetch:
-                let library = self.library
-                Task(priority: .utility) { await library.prefetch() }
+                let library = self.library, gen = serviceGen
+                Task(priority: .utility) { [weak self] in
+                    let count = await library.prefetch()
+                    guard let self, self.serviceGen == gen else { return }  // another service's count
+                    self.send(.libraryCounted(count))
+                }
             case .logIn(let token): logIn(token, activating: false)
             case .logInActivating(let token): logIn(token, activating: true)
             case .getSpotifyApp: onGetSpotifyApp?()

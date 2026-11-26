@@ -33,8 +33,12 @@ import Testing
             == ["kind": .text("list_not_loaded"), "offline": .flag(true), "service": .text("apple_music")])
     }
 
+    /// A prefetch count with nothing in it: the event takes the counts in memory.
+    static let noCount = LibraryCount(playlists: nil, songs: nil)
+
     @Test func theFirstLibraryReadOfALaunchSendsAppSpeedOnce() {
         var s = afterSetup()
+        s.libraryCount = Self.noCount
         _ = events(&s, .appStarted(ms: 850), now: 99)
         _ = events(&s, .launch, now: 100)
         #expect(s.launchedAt == 100 && s.startMs == 850)
@@ -48,7 +52,7 @@ import Testing
         #expect(events(&s, .playlistsRefreshed([focusInfo]), now: 102).isEmpty && s.speedSent)
         var artists = mainMenu()  // Apple Music: the Artists read counts too (Codex on #350)
         _ = events(&artists, .libraryWords(.appleMusic), .wheel(2), .select, now: 100)
-        artists.launchedAt = 100
+        artists.launchedAt = 100; artists.libraryCount = Self.noCount
         #expect(events(&artists, .artistsLoaded(token: 9, artists: LibraryRowsTests.artists), now: 100.5).isEmpty)  // stale
         #expect(events(&artists, .artistsLoaded(token: 1, artists: LibraryRowsTests.artists), now: 100.5)
             == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true)])
@@ -57,7 +61,7 @@ import Testing
         #expect(setup.launchedAt == nil)
         var failed = mainMenu()  // a failed first read that the app took counts too (Jason 23:57 JST)
         _ = events(&failed, .wheel(1), .select, now: 100)
-        failed.launchedAt = 100
+        failed.launchedAt = 100; failed.libraryCount = Self.noCount
         #expect(events(&failed, .playlistsLoaded(token: 1, playlists: nil), now: 100.75)
             == [.useError(.listNotLoaded, offline: false, service: .spotify, list: "playlists"), .appSpeed(startMs: nil, libraryMs: 750, loaded: false)])
         #expect(failed.speedSent)
@@ -67,26 +71,27 @@ import Testing
     /// CLA-186: `app_speed` has the library's size as read so far, from memory only.
     @Test func appSpeedHasTheCountsThatAreRead() {
         var s = afterSetup()
+        s.libraryCount = Self.noCount
         _ = events(&s, .launch, now: 100)
         _ = events(&s, .select, .authDone(token: s.authAttempt, ok: true), .select)
         s.artReads[Playlist.likedSongsID] = 4  // Spotify: the main menu's cover read of the liked songs
         #expect(events(&s, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 101)
             == [.appSpeed(startMs: nil, libraryMs: 1000, loaded: true, songs: 2)])  // the playlists are not read
         var lists = mainMenu()  // Playlists first: the playlists, no songs
-        lists.launchedAt = 100
+        lists.launchedAt = 100; lists.libraryCount = Self.noCount
         _ = events(&lists, .wheel(1), .select)
         #expect(events(&lists, .playlistsLoaded(token: 1, playlists: [focusInfo]), now: 100.5)
             == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 1)])
         var apple = mainMenu()  // Apple Music: the library's songs; the hidden lists do not count
         _ = events(&apple, .libraryWords(.appleMusic))
         apple.library = [focusInfo, Playlist(id: Playlist.likedSongsID, name: "", tracks: [])]; apple.playlistsLoaded = true
-        apple.launchedAt = 100
+        apple.launchedAt = 100; apple.libraryCount = Self.noCount
         apple.artReads[Playlist.libraryID] = 7
         #expect(events(&apple, .artTracksRead(token: 7, playlist: Playlist.libraryID, tracks: focus.tracks), now: 100.5)
             == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 1, songs: 8)])
         var failed = mainMenu()  // a failed read: no counts
         failed.library = [focusInfo]; failed.playlistsLoaded = true
-        failed.launchedAt = 100
+        failed.launchedAt = 100; failed.libraryCount = Self.noCount
         failed.artReads[Playlist.likedSongsID] = 4
         #expect(events(&failed, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: nil), now: 100.5)
             == [.appSpeed(startMs: nil, libraryMs: 500, loaded: false)])
@@ -111,5 +116,46 @@ import Testing
         _ = events(&s, .select, .select, .menu)  // the Service row flips to Apple Music
         #expect(s.controlLostAt == nil && events(&s, .controlBack).isEmpty)
         #expect(events(&s, .controlLost(.appleMusicError)) == [.controlLost(.appleMusicError, service: .appleMusic)])
+    }
+
+    /// CLA-194: the counts come from the start's prefetch, for every service. A first read
+    /// that ends before it waits for it, or for the quit or a service change.
+    @Test func appSpeedWaitsForThePrefetchCount() {
+        var s = mainMenu()
+        _ = events(&s, .libraryWords(.appleMusic))
+        s.launchedAt = 100
+        s.artReads[Playlist.libraryID] = 7
+        #expect(events(&s, .artTracksRead(token: 7, playlist: Playlist.libraryID, tracks: focus.tracks), now: 100.5).isEmpty)
+        let count = LibraryCount(playlists: [focusInfo, Playlist(id: Playlist.likedSongsID, name: "", tracks: [])], songs: liked.tracks)
+        #expect(count == LibraryCount(playlists: [focusInfo], songs: liked.tracks) && count.playlists == 1)  // hidden lists do not count
+        #expect(events(&s, .libraryCounted(count), now: 103) == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 1, songs: 2)])
+        #expect(s.libraryCount == count && s.speedSent)
+        #expect(events(&s, .libraryCounted(count)).isEmpty)  // once
+        var first = mainMenu()  // the count came first: at once, and a field it lacks comes from memory
+        _ = events(&first, .libraryCounted(LibraryCount(playlists: [focusInfo, focusInfo], songs: nil)))
+        first.launchedAt = 100
+        _ = events(&first, .wheel(1), .select)
+        #expect(events(&first, .playlistsLoaded(token: 1, playlists: [focusInfo]), now: 100.5)
+            == [.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 2)])
+        var quit = mainMenu()  // no count by the quit: the counts in memory
+        quit.launchedAt = 100
+        _ = events(&quit, .wheel(1), .select)
+        #expect(events(&quit, .playlistsLoaded(token: 1, playlists: [focusInfo]), now: 100.5).isEmpty)
+        #expect(events(&quit, .willQuit(openSeconds: 9)).contains(.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 1)))
+        #expect(quit.heldSpeed == nil)
+    }
+
+    @Test func aServiceChangeSendsTheWaitingAppSpeedWithoutTheOtherServicesCount() {
+        var s = playing()
+        s.launchedAt = 100
+        s.artReads[Playlist.likedSongsID] = 4
+        _ = events(&s, .artTracksRead(token: 4, playlist: Playlist.likedSongsID, tracks: liked.tracks), now: 100.5)
+        #expect(s.heldSpeed != nil)
+        for _ in 0..<8 where s.top.screen != .main { _ = events(&s, .menu) }
+        s.top.sel = s.rows(for: s.top).firstIndex(of: .settings) ?? -1
+        _ = events(&s, .select, .select)
+        let sent = events(&s, .menu)  // the Service row flips to Apple Music
+        #expect(sent.contains(.appSpeed(startMs: nil, libraryMs: 500, loaded: true, playlists: 1, songs: 2)) && s.heldSpeed == nil)
+        #expect(events(&s, .libraryCounted(LibraryCount(playlists: [], songs: []))).isEmpty)
     }
 }

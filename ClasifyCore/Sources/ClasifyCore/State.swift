@@ -515,6 +515,16 @@ public struct AppState: Equatable, Sendable {
     /// CLA-97, `app_speed`: when `.launch` came, the app's start time in ms, and the event went
     /// out on this launch. Not saved.
     public var startMs: Int?, speedSent = false
+    /// CLA-194: the size that the start's prefetch read (`.libraryCounted`). Not saved.
+    public var libraryCount: LibraryCount? {
+        get { firstStepsBox.value.libraryCount }
+        set { firstStepsBox.value.libraryCount = newValue }
+    }
+    /// CLA-194: an `app_speed` whose first read ended before the prefetch count came.
+    var heldSpeed: HeldSpeed? {
+        get { firstStepsBox.value.heldSpeed }
+        set { firstStepsBox.value.heldSpeed = newValue }
+    }
     public var launchedAt: Double? {
         get { firstStepsBox.value.speedFrom }
         set { firstStepsBox.value.speedFrom = newValue }

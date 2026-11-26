@@ -230,11 +230,12 @@ final class LibrespotLibrary: Library {
     }
 
     /// Two reads at a time: Liked Songs and the playlist list. A screen that opens meanwhile
-    /// joins the running read.
-    func prefetch() async {
+    /// joins the running read. CLA-194: their sizes go to `app_speed`; songs = Liked Songs only.
+    func prefetch() async -> LibraryCount {
         async let liked = tracks(of: Playlist.likedSongsID)
         async let list = playlists()
-        _ = await (liked, list)
+        let (songs, lists) = await (liked, list)
+        return LibraryCount(playlists: lists, songs: songs)
     }
 
     /// CLA-190: the bridge status of the newest failed read of each list ("" is the playlist

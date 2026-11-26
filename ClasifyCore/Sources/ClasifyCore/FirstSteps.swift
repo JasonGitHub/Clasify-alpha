@@ -34,6 +34,8 @@ struct FirstSteps: Equatable, Sendable {
     var heard = false
     /// `AppState.launchedAt`, for `app_speed`.
     var speedFrom: Double?
+    /// CLA-194: the start's prefetch count, and an `app_speed` that waits for it. Not saved.
+    var libraryCount: LibraryCount?, heldSpeed: HeldSpeed?
 
     /// The wait for music after a press (CTO 12:26 JST 11-25).
     static let silentAfter = 20.0
