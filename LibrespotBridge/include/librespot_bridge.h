@@ -129,6 +129,11 @@ typedef struct LsbTrack {
     uint32_t duration_ms;
     uint32_t disc_number;        // From 1, or 0 when Spotify does not give it.
     uint32_t track_number;       // The place on the disc, from 1, or 0.
+    // CLA-195: each artist of the song, in the order of `artist`, joined with U+001F (unit
+    // separator). artist_uris: like "spotify:artist:<id>", or an empty entry when the ID is
+    // not valid. artist_names: the names, which never hold U+001F. Both have the same count.
+    const char *artist_uris;
+    const char *artist_names;
 } LsbTrack;
 
 typedef void (*LsbPlaylistsCallback)(void *context, int32_t status, const char *message,

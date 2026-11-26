@@ -51,7 +51,16 @@ pub(crate) struct Track {
     /// The disc and the track's place on it, from 1. 0 when Spotify does not give it.
     pub disc_number: u32,
     pub track_number: u32,
+    /// CLA-195: each artist of the song, in the order of `artist`, as `spotify:artist:<id>`
+    /// (empty for an artist with no valid ID) and its name. Each list is joined with
+    /// `ARTIST_SEPARATOR`, and a name never holds that character.
+    pub artist_uris: String,
+    pub artist_names: String,
 }
+
+/// CLA-195: U+001F (unit separator) joins `artist_uris` and `artist_names`. No URI holds it,
+/// and it is taken out of the names.
+pub(crate) const ARTIST_SEPARATOR: char = '\u{1f}';
 
 /// One decoded rootlist page.
 #[derive(Debug, PartialEq)]
@@ -274,6 +283,24 @@ pub(crate) fn album_uri(track: &TrackMessage) -> String {
         .unwrap_or_default()
 }
 
+/// CLA-195: the song's artists as `spotify:artist:<id>`, joined with `ARTIST_SEPARATOR`. An
+/// artist with a gid that is not 16 bytes gives an empty entry, so the entries stay in step
+/// with the names.
+pub(crate) fn artist_uris(track: &TrackMessage) -> String {
+    track
+        .artist
+        .iter()
+        .map(|artist| {
+            SpotifyId::from_raw(artist.gid())
+                .ok()
+                .and_then(|id| id.to_base62().ok())
+                .map(|id| format!("spotify:artist:{id}"))
+                .unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(&ARTIST_SEPARATOR.to_string())
+}
+
 /// The hex file ID of the large album cover, for the main menu's 338 pt covers: the LARGE
 /// size (about 640 px), else the widest image, else empty.
 pub(crate) fn large_cover_id(track: &TrackMessage) -> String {
@@ -325,6 +352,13 @@ pub(crate) fn decode_metadata(response: &BatchedExtensionResponse, uris: &[Strin
             duration_ms: track.duration().max(0) as u32,
             disc_number: track.disc_number().max(0) as u32,
             track_number: track.number().max(0) as u32,
+            artist_uris: artist_uris(&track),
+            artist_names: track
+                .artist
+                .iter()
+                .map(|a| a.name().replace(ARTIST_SEPARATOR, ""))
+                .collect::<Vec<_>>()
+                .join(&ARTIST_SEPARATOR.to_string()),
         };
         found.insert(data.entity_uri.as_str(), track);
     }
@@ -423,6 +457,8 @@ pub struct LsbTrack {
     pub duration_ms: u32,
     pub disc_number: u32,
     pub track_number: u32,
+    pub artist_uris: *const c_char,
+    pub artist_names: *const c_char,
 }
 
 pub type LsbPlaylistsCallback = extern "C" fn(
@@ -524,6 +560,8 @@ pub(crate) fn deliver_tracks(
                         &t.album_name,
                         &t.album_artist,
                         &t.large_cover_id,
+                        &t.artist_uris,
+                        &t.artist_names,
                     ];
                     text.map(|t| c_text(t))
                 })
@@ -534,7 +572,18 @@ pub(crate) fn deliver_tracks(
                 .map(
                     |(
                         t,
-                        [uri, title, artist, cover, album_uri, album_name, album_artist, large],
+                        [
+                            uri,
+                            title,
+                            artist,
+                            cover,
+                            album_uri,
+                            album_name,
+                            album_artist,
+                            large,
+                            artist_uris,
+                            artist_names,
+                        ],
                     )| {
                         LsbTrack {
                             uri: uri.as_ptr(),
@@ -548,6 +597,8 @@ pub(crate) fn deliver_tracks(
                             duration_ms: t.duration_ms,
                             disc_number: t.disc_number,
                             track_number: t.track_number,
+                            artist_uris: artist_uris.as_ptr(),
+                            artist_names: artist_names.as_ptr(),
                         }
                     },
                 )

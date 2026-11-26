@@ -153,11 +153,12 @@ fn is_base62(id: &str) -> bool {
 /// The most tracks in one `PlayTracks` command.
 pub(crate) const MAX_PLAY_TRACKS: usize = 500;
 
-/// A playlist, an album, or Liked Songs ("spotify:user:<name>:collection").
+/// A playlist, an album, an artist (CLA-195), or Liked Songs ("spotify:user:<name>:collection").
 pub(crate) fn valid_context(uri: &str) -> bool {
     if let Some(id) = uri
         .strip_prefix("spotify:playlist:")
         .or_else(|| uri.strip_prefix("spotify:album:"))
+        .or_else(|| uri.strip_prefix("spotify:artist:"))
     {
         return is_base62(id);
     }
