@@ -144,7 +144,9 @@ typedef void (*LsbTracksCallback)(void *context, int32_t status, const char *mes
 int32_t lsb_read_playlists(LsbBridge *bridge, LsbPlaylistsCallback on_result, void *context);
 // All tracks of a playlist ("spotify:playlist:<id>") or an album ("spotify:album:<id>"),
 // or of Liked Songs when playlist_uri is NULL, in order and over all pages. Episodes,
-// local files and tracks without details are left out.
+// local files and tracks without details are left out. For an artist
+// ("spotify:artist:<id>", CLA-195): its top tracks (Popular) for the account's country,
+// else its list with no country, in Spotify's order. It can be empty.
 int32_t lsb_read_tracks(LsbBridge *bridge, const char *playlist_uri,
                         LsbTracksCallback on_result, void *context);
 // How far a read is: done of total items have their details, and those tracks are on

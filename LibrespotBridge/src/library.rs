@@ -1,16 +1,19 @@
 //! Read-only library reads through librespot's own session (spclient), not the Web API:
 //! the playlist list (rootlist), and the tracks of a playlist or of Liked Songs.
+//! CLA-195: also an artist's Popular songs (its top tracks, from the artist metadata).
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::{c_char, c_void, CString};
 
-use librespot_core::{FileId, Session, SpotifyId};
+use librespot_core::{FileId, Session, SpotifyId, SpotifyUri};
 use librespot_protocol::context_page::ContextPage;
 use librespot_protocol::extended_metadata::{
     BatchedEntityRequest, BatchedExtensionResponse, EntityRequest, ExtensionQuery,
 };
 use librespot_protocol::extension_kind::ExtensionKind;
-use librespot_protocol::metadata::{image::Size, Image, Track as TrackMessage};
+use librespot_protocol::metadata::{
+    image::Size, Artist as ArtistMessage, Image, Track as TrackMessage,
+};
 use librespot_protocol::playlist4_external::SelectedListContent;
 use protobuf::{EnumOrUnknown, Message};
 
@@ -374,8 +377,48 @@ pub(crate) async fn read_tracks(
     uri: &str,
     progress: impl FnMut(usize, usize, usize),
 ) -> Result<Vec<Track>, String> {
-    let uris = context_track_uris(&SessionPages(session), uri).await?;
+    let uris = match uri.strip_prefix("spotify:artist:") {
+        Some(_) => artist_top_track_uris(session, uri).await?,
+        None => context_track_uris(&SessionPages(session), uri).await?,
+    };
     read_metadata(session, &uris, progress).await
+}
+
+/// CLA-195: the URIs of an artist's top tracks (its Popular songs) for the account's country,
+/// in Spotify's order. One read of the artist metadata (ARTIST_V4, read-only).
+async fn artist_top_track_uris(session: &Session, uri: &str) -> Result<Vec<String>, String> {
+    let artist = SpotifyUri::from_uri(uri).map_err(|e| format!("not an artist: {e}"))?;
+    let request = async {
+        session
+            .spclient()
+            .get_artist_metadata(&artist)
+            .await
+            .map_err(|e| format!("cannot read the artist: {e}"))
+    };
+    let bytes = read_within(READ_LIMIT, "cannot read the artist", request).await?;
+    let message = ArtistMessage::parse_from_bytes(&bytes)
+        .map_err(|e| format!("cannot decode the artist: {e}"))?;
+    Ok(top_track_uris(&message, &session.country()))
+}
+
+/// The artist's top tracks for `country`, else its list with no country, else none: the rule
+/// of librespot-metadata's `CountryTopTracks::for_country`. A track with a bad gid is left
+/// out, and each track shows once.
+pub(crate) fn top_track_uris(artist: &ArtistMessage, country: &str) -> Vec<String> {
+    let list = artist
+        .top_track
+        .iter()
+        .find(|top| top.country() == country)
+        .or_else(|| artist.top_track.iter().find(|top| top.country().is_empty()));
+    let mut seen = HashSet::new();
+    list.map(|top| top.track.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|track| SpotifyId::from_raw(track.gid()).ok())
+        .filter_map(|id| id.to_base62().ok())
+        .map(|id| format!("spotify:track:{id}"))
+        .filter(|uri| seen.insert(uri.clone()))
+        .collect()
 }
 
 /// The ends of the batches of `METADATA_BATCH` over `total` items, after a 0 for the start.
@@ -660,6 +703,7 @@ pub unsafe extern "C" fn lsb_read_playlists(
 }
 
 /// Reads all tracks of a playlist or an album, or of Liked Songs when `playlist_uri` is NULL.
+/// For an artist (CLA-195), its top tracks for the account's country, in Spotify's order.
 /// The result comes once through `on_result`, on a bridge thread. Needs a login.
 ///
 /// # Safety
@@ -693,7 +737,11 @@ pub unsafe extern "C" fn lsb_read_tracks_progress(
         return LSB_ERR_INVALID_ARGUMENT;
     };
     let uri = match read_str(playlist_uri) {
-        Some(uri) if uri.starts_with("spotify:playlist:") || uri.starts_with("spotify:album:") => {
+        Some(uri)
+            if uri.starts_with("spotify:playlist:")
+                || uri.starts_with("spotify:album:")
+                || uri.starts_with("spotify:artist:") =>
+        {
             Some(uri.to_owned())
         }
         Some(_) => return LSB_ERR_INVALID_ARGUMENT,

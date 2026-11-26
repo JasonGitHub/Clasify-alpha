@@ -643,6 +643,50 @@ mod library_tests {
         assert_eq!(artist_uris(&TrackMessage::default()), "");
     }
 
+    #[test]
+    fn top_tracks_are_the_countrys_then_the_global_list() {
+        use librespot_protocol::metadata::TopTracks;
+        let track = |last: u8, len: usize| {
+            let mut gid = vec![0u8; len];
+            if let Some(end) = gid.last_mut() {
+                *end = last;
+            }
+            TrackMessage {
+                gid: Some(gid),
+                ..Default::default()
+            }
+        };
+        let top = |country: Option<&str>, tracks: Vec<TrackMessage>| TopTracks {
+            country: country.map(str::to_owned),
+            track: tracks,
+            ..Default::default()
+        };
+        let zeros = "0".repeat(21);
+        let uri = |n: u8| format!("spotify:track:{zeros}{n}");
+        let artist = Artist {
+            top_track: vec![
+                top(Some("US"), vec![track(1, 16)]),
+                top(None, vec![track(3, 16), track(2, 16)]),
+                // Japan: a bad gid is left out, and a track shows once.
+                top(
+                    Some("JP"),
+                    vec![track(5, 16), track(9, 4), track(4, 16), track(5, 16)],
+                ),
+            ],
+            ..Default::default()
+        };
+        assert_eq!(top_track_uris(&artist, "JP"), vec![uri(5), uri(4)]);
+        assert_eq!(top_track_uris(&artist, "US"), vec![uri(1)]);
+        // No list for the country: the list with no country, in Spotify's order.
+        assert_eq!(top_track_uris(&artist, "SE"), vec![uri(3), uri(2)]);
+        let no_global = Artist {
+            top_track: vec![top(Some("US"), vec![track(1, 16)])],
+            ..Default::default()
+        };
+        assert!(top_track_uris(&no_global, "SE").is_empty());
+        assert!(top_track_uris(&Artist::default(), "US").is_empty());
+    }
+
     fn image(id: u8, size: Option<Size>, width: i32) -> Image {
         Image {
             file_id: Some(vec![id; 20]),
@@ -982,7 +1026,13 @@ mod library_tests {
                 lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
                 LSB_ERR_NOT_LOGGED_IN
             );
+            // An artist reads its top tracks (CLA-195).
             let uri = c"spotify:artist:1".as_ptr();
+            assert_eq!(
+                lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
+                LSB_ERR_NOT_LOGGED_IN
+            );
+            let uri = c"spotify:show:1".as_ptr();
             assert_eq!(
                 lsb_read_tracks(bridge, uri, Some(record_tracks), ctx),
                 LSB_ERR_INVALID_ARGUMENT
