@@ -60,7 +60,8 @@ public struct AppProblem: Equatable, Sendable {
         if let signal { p["signal"] = .number(signal) }
         if let terminationReason { p["termination_reason"] = .text(String(terminationReason.prefix(Self.maxReason))) }
         if let hangMs { p["hang_ms"] = .number(hangMs) }
-        if let appBuild { p["app_build"] = .text(appBuild) }
+        // CLA-194 (CTO): a number, as on every other event. Text that is not a number: no field.
+        if let build = appBuild.flatMap({ Int($0) }) { p["app_build"] = .number(build) }
         if let osVersion { p["os_version"] = .text(osVersion) }
         if let binaryUUID { p["binary_uuid"] = .text(binaryUUID) }
         if !frames.isEmpty { p["stack"] = .text(frames.prefix(Self.maxFrames).joined(separator: "\n")) }

@@ -44,10 +44,13 @@ import Testing
         let json = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
         let p = try #require((json["batch"] as? [[String: Any]])?.first?["properties"] as? [String: Any])
         #expect(p["app_build"] as? Int == 480)
-        // app_problem keeps its own: the build that crashed, from MetricKit.
+        // app_problem keeps its own: the build that crashed, from MetricKit, as a number.
         let crash = AppProblem(kind: .crash, appBuild: "470", frames: [])
-        #expect(QueuedEvent(.appProblem(crash, service: .spotify), at: 3, build: 480).properties["app_build"] == .text("470"))
-        #expect(QueuedEvent(.appProblem(AppProblem(kind: .crash, frames: []), service: .spotify), at: 3, build: 480).properties["app_build"] == .number(480))
+        #expect(QueuedEvent(.appProblem(crash, service: .spotify), at: 3, build: 480).properties["app_build"] == .number(470))
+        for build in [nil, "4.7"] {  // none, or not a number: no field, and not the running build
+            let other = AppProblem(kind: .crash, appBuild: build, frames: [])
+            #expect(QueuedEvent(.appProblem(other, service: .spotify), at: 3, build: 480).properties["app_build"] == nil)
+        }
     }
 
     @Test func theBodyHasTheKeyThePersonAndEachEvent() throws {
