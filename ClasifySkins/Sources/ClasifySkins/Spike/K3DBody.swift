@@ -51,3 +51,41 @@ struct K3DBody: Equatable, Sendable {
         front: "k3d-front", back: "k3d-back", textureSize: SIMD2(732, 1226), lcd: SIMD4(66, 666, 65, 515), topPart: 0.5,
         tint: SIMD3(0.995, 0.997, 1), hasParts: true)
 }
+
+extension K3DBody {
+    /// CLA-196, N.3D.1 (frozen 17:11 JST 11-26, design-review/about/nano/n3d1-frozen): the nano.
+    /// 388 x 518 x 48, corner 40, the classic's front curve at 3/4, the steel back's round 18 pt
+    /// in x 20 pt down. Window (0, 107), half 164.5 x 120, corner 7; wheel (0, -129), r 98;
+    /// button r 48. Closed only. Silver: the classic's tint. Not reachable in the app.
+    static let nano = K3DBody(
+        width: 388, height: 518, depth: 48, radius: 40, edgeScale: 0.75, backIn: 18, backDown: 20,
+        window: Box(x: 0, y: 107, hx: 164.5, hy: 120, r: 7), windowCut: SIMD2(157.5, 113),
+        wheelCenter: SIMD2(0, -129), wheelHole: 98.65, wheel: 98.8, buttonHole: 48.65, button: 48.8,
+        wheelLine: SIMD2(97.6, 98.5), buttonLine: SIMD2(47.6, 48.5), wheelShade: SIMD2(94, 98), wheelBlack: SIMD2(93.5, 97.5),
+        buttonShade: SIMD2(53, 49.5), dish: 48, textureWheel: SIMD2(196.8, 195.2), textureButton: SIMD2(97.4, 96),
+        front: "k3d-nano-front", back: "k3d-nano-back", textureSize: SIMD2(776, 1036), lcd: SIMD4(88, 688, 80, 528),
+        topPart: 0.54, tint: SIMD3(0.995, 0.997, 1), hasParts: false)
+
+    /// The nano's colors (the README's uTint): Silver and Black keep the classic's tint (Black is
+    /// the K.3D.13 Black, `K3DPose.black`); the others color the plate, its edge and the button.
+    enum NanoColor: String, CaseIterable, Sendable {
+        case silver, black, pink, blue, green, red
+
+        var tint: SIMD3<Double> {
+            switch self {
+            case .silver, .black: SIMD3(0.995, 0.997, 1)
+            case .pink: SIMD3(0.986, 0.516, 0.744)
+            case .blue: SIMD3(0.678, 0.963, 0.963)
+            case .green: SIMD3(0.734, 0.954, 0.790)
+            case .red: SIMD3(0.846, 0.286, 0.406)
+            }
+        }
+    }
+
+    /// The nano in a color: its tint. Draw `.black` with `K3DPose.black`.
+    static func nano(_ color: NanoColor) -> K3DBody {
+        var body = nano
+        body.tint = color.tint
+        return body
+    }
+}
