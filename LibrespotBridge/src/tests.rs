@@ -264,7 +264,7 @@ fn library_and_token_layouts_match_c() {
         offset_of!(LsbPlaylist, track_count),
     ];
     assert_eq!(playlist, [8, 16]);
-    assert_eq!(size_of::<LsbTrack>(), 80);
+    assert_eq!(size_of::<LsbTrack>(), 96);
     let track = [
         offset_of!(LsbTrack, title),
         offset_of!(LsbTrack, artist),
@@ -276,8 +276,10 @@ fn library_and_token_layouts_match_c() {
         offset_of!(LsbTrack, duration_ms),
         offset_of!(LsbTrack, disc_number),
         offset_of!(LsbTrack, track_number),
+        offset_of!(LsbTrack, artist_uris),
+        offset_of!(LsbTrack, artist_names),
     ];
-    assert_eq!(track, [8, 16, 24, 32, 40, 48, 56, 64, 68, 72]);
+    assert_eq!(track, [8, 16, 24, 32, 40, 48, 56, 64, 68, 72, 80, 88]);
 }
 
 mod library_tests {
@@ -523,18 +525,22 @@ mod library_tests {
             ..Default::default()
         };
         let uris = ["1", "2", "3", "4"].map(|id| format!("spotify:track:{id}"));
-        let track = |id: &str, title: &str, artist: &str, duration_ms| Track {
-            uri: format!("spotify:track:{id}"),
-            title: title.to_owned(),
-            artist: artist.to_owned(),
-            duration_ms,
-            ..Default::default()
-        };
+        let track =
+            |id: &str, title: &str, artist: &str, duration_ms, ids: &str, names: &str| Track {
+                uri: format!("spotify:track:{id}"),
+                title: title.to_owned(),
+                artist: artist.to_owned(),
+                duration_ms,
+                artist_uris: ids.to_owned(),
+                artist_names: names.to_owned(),
+                ..Default::default()
+            };
+        // These artists have no gid, so each URI entry is empty.
         assert_eq!(
             decode_metadata(&response, &uris),
             vec![
-                track("1", "One", "A, A2", 1000),
-                track("2", "Two", "B", 2000)
+                track("1", "One", "A, A2", 1000, "\u{1f}", "A\u{1f}A2"),
+                track("2", "Two", "B", 2000, "", "B")
             ]
         );
     }
@@ -590,6 +596,51 @@ mod library_tests {
             ..Default::default()
         });
         assert_eq!(album_uri(&short), ""); // a gid that is not 16 bytes
+    }
+
+    #[test]
+    fn metadata_gives_each_artist_with_its_uri() {
+        let gid = |last: u8| {
+            let mut gid = vec![0u8; 16];
+            gid[15] = last;
+            gid
+        };
+        let artist = |name: &str, gid: Option<Vec<u8>>| Artist {
+            name: Some(name.to_owned()),
+            gid,
+            ..Default::default()
+        };
+        let message = TrackMessage {
+            name: Some("Song".to_owned()),
+            artist: vec![
+                artist("Mara, Kei", Some(gid(1))),
+                artist("Low\u{1f}Orbit", Some(gid(2))),
+                artist("No ID", Some(vec![1, 2])),
+            ],
+            ..Default::default()
+        };
+        let mut data = details("spotify:track:9", 200, "", &[], 0);
+        data.extension_data = MessageField::some(Any {
+            value: message.write_to_bytes().unwrap(),
+            ..Default::default()
+        });
+        let response = BatchedExtensionResponse {
+            extended_metadata: vec![EntityExtensionDataArray {
+                extension_data: vec![data],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let tracks = decode_metadata(&response, &["spotify:track:9".to_owned()]);
+        let zeros = "0".repeat(21);
+        // A comma in a name stays; the separator leaves the name; a bad gid gives "".
+        assert_eq!(tracks[0].artist, "Mara, Kei, Low\u{1f}Orbit, No ID");
+        assert_eq!(
+            tracks[0].artist_uris,
+            format!("spotify:artist:{zeros}1\u{1f}spotify:artist:{zeros}2\u{1f}")
+        );
+        assert_eq!(tracks[0].artist_names, "Mara, Kei\u{1f}LowOrbit\u{1f}No ID");
+        assert_eq!(artist_uris(&TrackMessage::default()), "");
     }
 
     fn image(id: u8, size: Option<Size>, width: i32) -> Image {
@@ -809,6 +860,8 @@ mod library_tests {
                     t.duration_ms.to_string(),
                     t.disc_number.to_string(),
                     t.track_number.to_string(),
+                    read(t.artist_uris),
+                    read(t.artist_names),
                 ]
             })
             .collect();
@@ -839,6 +892,8 @@ mod library_tests {
             duration_ms: 1000,
             disc_number: 1,
             track_number: 3,
+            artist_uris: "spotify:artist:a\u{1f}spotify:artist:b".to_owned(),
+            artist_names: "A\u{1f}B\0".to_owned(),
         };
         deliver_tracks(record_tracks, context, Ok(vec![track]), false);
         deliver_tracks(record_tracks, context, Err("offline".to_owned()), false);
@@ -867,7 +922,9 @@ mod library_tests {
                         "cd89",
                         "1000",
                         "1",
-                        "3"
+                        "3",
+                        "spotify:artist:a\u{1f}spotify:artist:b",
+                        "A\u{1f}B "
                     ])]
                 ),
                 (LSB_ERR_READ, Some("offline".to_owned()), vec![]),
@@ -1269,7 +1326,11 @@ mod connect_tests {
         assert!(valid_context(PLAYLIST));
         assert!(valid_context("spotify:user:jason.w:collection"));
         assert!(valid_context("spotify:album:4aawyAB9vmqN3uQ7FjRGTy"));
+        assert!(valid_context("spotify:artist:0OdUWJ0sBjDrqHygGUXeCF"));
         for bad in [
+            "spotify:artist:",
+            "spotify:artist:a/b",
+            "spotify:artist:a\"b",
             "spotify:playlist:",
             "spotify:playlist:a/b",
             "spotify:album:",
