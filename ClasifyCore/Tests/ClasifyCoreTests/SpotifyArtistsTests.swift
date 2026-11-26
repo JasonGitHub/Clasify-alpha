@@ -97,3 +97,37 @@ import Testing
     #expect(refs == [ArtistRef(id: "spotify:artist:a", name: "Mara, Kei"), ArtistRef(id: "spotify:artist:c", name: "Low")])
     #expect(ArtistRef.list(uris: nil, names: nil).isEmpty && ArtistRef.list(uris: "", names: "").isEmpty)
 }
+
+/// CLA-195: with the `artists.popular` switch on, an artist's screen shows its Popular songs;
+/// else, or when they cannot be read or are none, its liked songs.
+@Suite struct SpotifyPopularTests {
+    let id = SpotifyArtistsTests.low
+    let liked = SpotifyArtistsTests.liked
+    let popular = [Track(id: "spotify:track:p2", title: "Hit", artist: "Low Orbit", duration: 180),
+                   Track(id: "spotify:track:4", title: "Orbit", artist: "Low Orbit", duration: 200)]
+
+    @Test func switchOnShowsThePopularSongsInSpotifysOrder() {
+        #expect(SpotifyArtists.shown(id, popular: popular, liked: liked) == popular)
+        #expect(SpotifyArtists.shown(id, popular: popular, liked: nil) == popular)  // Liked Songs failed
+    }
+
+    @Test func switchOffShowsTheLikedSongs() {
+        // Off: the library reads no Popular songs, so `popular` is nil.
+        #expect(SpotifyArtists.shown(id, popular: nil, liked: liked)?.map(\.title) == ["Together", "Orbit"])
+    }
+
+    @Test func aFailedOrEmptyReadShowsTheLikedSongsWithNoError() {
+        #expect(SpotifyArtists.shown(id, popular: nil, liked: liked) == SpotifyArtists.songs(of: id, in: liked))  // failed or offline
+        #expect(SpotifyArtists.shown(id, popular: [], liked: liked) == SpotifyArtists.songs(of: id, in: liked))  // empty
+        #expect(SpotifyArtists.shown(id, popular: nil, liked: nil) == nil)  // nothing known: the error screen
+    }
+
+    @Test func searchFindsNoPopularSongOutsideTheLibrary() {
+        var s = mainMenu()
+        s.library = [Playlist(id: Playlist.likedSongsID, name: "Liked Songs", tracks: liked),
+                     Playlist(id: id, name: "", tracks: popular)]
+        let songs = Search.songs(in: s).map(\.result)
+        #expect(!songs.contains { $0.id == "spotify:track:p2" })
+        #expect(songs.first { $0.id == "spotify:track:4" }?.list == Playlist.likedSongsID)
+    }
+}
