@@ -134,6 +134,7 @@ public enum BetaEvent: Equatable, Sendable {
                 "color": .text(color.eventName), "album_art": .text(settings.albumArt.eventName),
                 "clicker": .flag(settings.clicker), "menu_bar": .flag(settings.menuBar),
                 "songs_shuffle": .number(d.songsShuffle), "songs_repeat": .number(d.songsRepeat), "songs_cut": .number(d.songsCut),
+                "menu_bar_clicks": .number(d.menuBarClicks),
                 "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
                 "minutes_night": .decimal(d.bands[0] / 60), "minutes_morning": .decimal(d.bands[1] / 60),
                 "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
@@ -639,6 +640,9 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         }
     }
     if case .window(let spot) = action { (s.windowSpot, s.windowAt) = (spot, now) }
+    // CLA-201: each menu bar icon click, shown or hidden, also in setup. While the day before
+    // waits for the next music report (just after midnight), a click goes to that day.
+    if case .menuBarClick = action { count(at: now) { d, _ in d.menuBarClicks += 1 } }
     if quit {
         (s.windowSpot, s.windowAt) = (nil, nil)
         for view in View3D.allCases { settle(view, upTo: now) }
@@ -683,7 +687,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     let minute: (DayUse?) -> Int? = { $0.map { Int($0.seconds / 60) } }
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
         || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
-        || saved?.visible != today?.visible || saved?.songsCut != today?.songsCut
+        || saved?.visible != today?.visible || saved?.songsCut != today?.songsCut || saved?.menuBarClicks != today?.menuBarClicks
     if changed || (b.playing && !s.isPlaying) || quit { s.savedToday = today }
     return fx
 }
