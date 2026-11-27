@@ -14,6 +14,11 @@ public struct DayUse: Equatable, Sendable {
         get { Int(cuts) }
         set { cuts = UInt16(clamping: newValue) }
     }
+    /// CLA-201: clicks on the menu bar icon (`.menuBarClick`, shown or hidden), all day.
+    public var menuBarClicks: Int {
+        get { Int(clicks) }
+        set { clicks = UInt16(clamping: newValue) }
+    }
     /// Seconds of music in each time band: night (0-6), morning (6-9), work (9-18), evening (18-24).
     public var bands = [0.0, 0, 0, 0]
     public var features: Set<Feature> = []
@@ -24,6 +29,8 @@ public struct DayUse: Equatable, Sendable {
     /// `songsCut`, in the padding after the 1-byte `service`: `AppState` keeps two `DayUse`, and
     /// each byte more of it makes the reducer's stack frame larger (reducer stack limit).
     private var cuts: UInt16 = 0
+    /// `menuBarClicks`, in the same padding, so `DayUse` does not grow.
+    private var clicks: UInt16 = 0
     /// CLA-162: seconds the device window was visible in each area of its screen (`WindowSpot.area`).
     public var areas = [Double](repeating: 0, count: 9)
     /// CLA-162: visible seconds on each screen (`WindowSpot.screenKey`), and the most screens seen.
@@ -35,7 +42,10 @@ public struct DayUse: Equatable, Sendable {
     public var visible: Double { areas.reduce(0, +) }
     /// The day had music, a feature or a 3D view: `day_active` goes out for it (CTO 00:08 JST
     /// 11-20: a day with no music shows as minutes 0).
-    public var hadUse: Bool { songs > 0 || songsCut > 0 || seconds > 0 || !features.isEmpty || views.contains { $0 > 0 } }
+    /// CLA-201: a menu bar icon click is use too.
+    public var hadUse: Bool {
+        songs > 0 || songsCut > 0 || seconds > 0 || !features.isEmpty || views.contains { $0 > 0 } || menuBarClicks > 0
+    }
 
     /// The day, the weekday and the band of `now` (`Dependencies.now` time) in `timeZone`.
     static func at(_ now: Double, in timeZone: TimeZone) -> (day: Int, weekday: Int, band: Int) {
@@ -67,14 +77,14 @@ public struct DayUse: Equatable, Sendable {
 
     /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings|Spotify|12.5,0.0,3.0": the saved
     /// form, then CLA-162's window part "areas;screen count;screens", then "shuffle,repeat" song
-    /// counts, and CLA-186's cut songs as a third count. A day saved before the 3D views, the
+    /// counts, CLA-186's cut songs as a third count, and CLA-201's menu bar clicks as a fourth. A day saved before the 3D views, the
     /// window or the song counts has no such part: its counts are 0.
     var saved: String {
         let b: [String] = bands.map { String($0) }
         let f: [String] = features.map(\.rawValue).sorted()
         let v: [String] = views.map { String($0) }
         return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ","), service?.rawValue ?? "",
-                v.joined(separator: ","), windowSaved, "\(songsShuffle),\(songsRepeat),\(songsCut)"].joined(separator: "|")
+                v.joined(separator: ","), windowSaved, "\(songsShuffle),\(songsRepeat),\(songsCut),\(menuBarClicks)"].joined(separator: "|")
     }
 
     /// "0.0,…,60.0,…;2;1x1512x982x1=60.0": the areas, the screen count and the seconds per screen.
@@ -111,9 +121,10 @@ public struct DayUse: Equatable, Sendable {
         }
         if parts.count == 9 {
             let counts = parts[8].split(separator: ",").compactMap { Int($0) }
-            guard counts.count == 2 || counts.count == 3 else { return nil }
+            guard (2...4).contains(counts.count) else { return nil }
             (songsShuffle, songsRepeat) = (counts[0], counts[1])
-            if counts.count == 3 { songsCut = counts[2] }
+            if counts.count >= 3 { songsCut = counts[2] }
+            if counts.count == 4 { menuBarClicks = counts[3] }
         }
     }
 

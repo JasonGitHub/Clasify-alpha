@@ -98,7 +98,7 @@ extension DayActiveTests {
     @Test func theCutCountGoesOutAndSaves() {
         var d = DayUse(day: 20261119, weekday: 5)
         d.songs = 2; d.songsCut = 1
-        #expect(DayUse(saved: d.saved) == d && d.saved.hasSuffix("|0,0,1"))
+        #expect(DayUse(saved: d.saved) == d && d.saved.hasSuffix("|0,0,1,0"))
         let p = BetaEvent.dayActive(d, service: .local, color: .silver).properties
         #expect(p["songs_cut"] == .number(1))
     }
