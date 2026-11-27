@@ -1,8 +1,38 @@
-// CLA-172: the beta page's "What next?" votes (POST /v1/vote). There is no GET for the counts:
-// Jason reads them from D1 through the CTO. CLA-198: a vote counts only with a passed bot check.
+// CLA-172: the beta page's "What next?" votes (POST /v1/vote). CLA-198: a vote counts only with a
+// passed bot check. GET /v1/votes gives each open item's share in whole percent, never the counts
+// (Jason 08:11 JST 11-28); Jason reads the counts from D1 through the CTO.
 
 /** The items, from the website thread (fixed list). Any other item is "bad". */
 export const voteItems = ["local-music", "nano", "radio", "like-from-wheel", "more-colors"] as const;
+/** The "Which color first?" pick under More colors (Jason 08:20 JST 11-28): the Nano colors that
+ * Silver and Black do not cover. Counted like a vote; never in the shares. */
+export const colorItems = ["color-pink", "color-blue", "color-green", "color-red"] as const;
+/** Items that are built: still counted on a vote, but left out of the shares. */
+export const builtItems: readonly string[] = ["local-music"];
+
+/**
+ * Each open item's share of the open items' votes, in whole percent that add up to 100 (largest
+ * remainder; a tie goes to the item first in `voteItems`), and `top`: the item with the most
+ * votes when it leads alone, else null. No votes: an empty list.
+ */
+export async function shares(db: D1Database): Promise<{ shares: Record<string, number>; top: string | null }> {
+  const rows = (await db.prepare("SELECT item, count FROM votes").all<{ item: string; count: number }>()).results;
+  const open = voteItems.filter((i) => !builtItems.includes(i));
+  const count = (i: string) => Math.max(0, rows.find((r) => r.item === i)?.count ?? 0);
+  const total = open.reduce((n, i) => n + count(i), 0);
+  if (!total) return { shares: {}, top: null };
+  // The leader from the counts, not the rounded shares: rounding must not make a winner of a tie.
+  const most = Math.max(...open.map(count));
+  const leaders = open.filter((i) => count(i) === most);
+  const exact = open.map((i, at) => ({ i, at, p: (count(i) * 100) / total }));
+  const out = Object.fromEntries(exact.map((e) => [e.i, Math.floor(e.p)]));
+  let left = 100 - Object.values(out).reduce((a, b) => a + b, 0);
+  for (const e of [...exact].sort((a, b) => (b.p - Math.floor(b.p)) - (a.p - Math.floor(a.p)) || a.at - b.at)) {
+    if (left-- <= 0) break;
+    out[e.i] += 1;
+  }
+  return { shares: out, top: leaders.length === 1 ? leaders[0] : null };
+}
 
 /**
  * One vote per item a day per network. "busy": this network already voted for it today. "bot": no
@@ -12,7 +42,7 @@ export async function vote(db: D1Database, body: Record<string, unknown>, ip: st
   hash: (s: string) => Promise<string>, newSalt: () => string,
   human: (token: string) => Promise<boolean>): Promise<"ok" | "busy" | "bad" | "bot"> {
   const item = body.item;
-  if (typeof item !== "string" || !(voteItems as readonly string[]).includes(item)) return "bad";
+  if (typeof item !== "string" || ![...voteItems, ...colorItems].includes(item as never)) return "bad";
   // Before any D1 write. The token is never stored or logged.
   if (typeof body.human !== "string" || !(await human(body.human))) return "bot";
   const day = new Date(now).toISOString().slice(0, 10);

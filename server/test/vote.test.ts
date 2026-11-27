@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/activation";
 import { noMail } from "../src/mailer";
 import { turnstile } from "../src/turnstile";
-import { network, voteItems } from "../src/vote";
+import { colorItems, network, voteItems } from "../src/vote";
 
 // CLA-172: POST /v1/vote from the beta page. CLA-198: with the page's bot check token (`human`).
 
@@ -101,6 +101,43 @@ describe("POST /v1/vote", () => {
     expect((await vote({ item: "radio" }, "192.0.2.1")).result).toBe("ok");
     expect((await vote({ item: "radio" }, "192.0.2.2")).result).toBe("ok");  // IPv4: the whole address
     expect(await counts()).toEqual({ radio: 4 });
+  });
+});
+
+describe("GET /v1/votes", () => {
+  const shares = async (origin = "https://getmypod.app") => {
+    const response = await handle(new Request("https://api.example/v1/votes", { headers: { Origin: origin } }), env, { now: () => clock, mailer: noMail, human: passes });
+    return { response, body: (await response.json()) as { shares: Record<string, number>; top: string | null } };
+  };
+  const set = (rows: Record<string, number>) =>
+    env.DB.batch(Object.entries(rows).map(([item, count]) => env.DB.prepare("INSERT INTO votes (item, count) VALUES (?, ?)").bind(item, count)));
+
+  it("gives only whole percent for the open items, never the counts, and leaves out the built item", async () => {
+    expect((await shares()).body).toEqual({ shares: {}, top: null });  // no votes yet
+    await set({ "local-music": 3, "more-colors": 4, nano: 3, radio: 3, "like-from-wheel": 3 });
+    const { response, body } = await shares();
+    // 4/13 and 3/13: largest remainder makes 100; the tie goes to the item first in the list.
+    expect(body).toEqual({ shares: { nano: 23, radio: 23, "like-from-wheel": 23, "more-colors": 31 }, top: "more-colors" });
+    expect(response.headers.get("Cache-Control")).toBe("max-age=30");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://getmypod.app");
+    expect((await shares("https://evil.example")).response.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+
+  it("counts a color pick like a vote, and never puts it in the shares", async () => {
+    for (const item of colorItems) expect((await vote({ item })).result).toBe("ok");
+    expect((await vote({ item: "color-red" })).result).toBe("busy");  // one a day per network
+    expect((await vote({ item: "color-black" })).result).toBe("bad");
+    expect((await vote({ item: "color-red" }, "198.51.100.9", "POST", async () => false)).result).toBe("bot");
+    expect(await counts()).toMatchObject({ "color-pink": 1, "color-blue": 1, "color-green": 1, "color-red": 1 });
+    expect((await shares()).body).toEqual({ shares: {}, top: null });
+  });
+
+  it("adds up to 100 and counts a new vote", async () => {
+    await set({ nano: 1, radio: 1, "like-from-wheel": 1 });
+    // Rounding gives Nano the extra point, but a three-way tie has no leader.
+    expect((await shares()).body).toEqual({ shares: { nano: 34, radio: 33, "like-from-wheel": 33, "more-colors": 0 }, top: null });
+    expect((await vote({ item: "more-colors" })).result).toBe("ok");
+    expect((await shares()).body.shares).toEqual({ nano: 25, radio: 25, "like-from-wheel": 25, "more-colors": 25 });
   });
 });
 

@@ -2,7 +2,7 @@ import { beta, testBuild } from "./beta";
 import { feedback } from "./feedback";
 import { noReports, type Mailer, type ReportMailer } from "./mailer";
 import { noPageMail, type PageMailer } from "./pagemail";
-import { vote } from "./vote";
+import { shares, vote } from "./vote";
 import { countLinkDownload } from "./links";
 import { link, waitlist } from "./waitlist";
 import { claimInvite, keepInviteMail } from "./invitelinks";
@@ -137,6 +137,11 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       // After the mail: the invite id waits for this email to activate (src/invitelinks.ts).
       if (result === "ok") await keepInviteMail(db, body, env.TURNSTILE_SECRET, now);
       return reply({ result }, 200, cors);
+    }
+    case "GET /v1/votes": {  // the beta page's ranking: shares in percent and the sole leader, never counts; cached 30 s
+      const answer = reply(await shares(db), 200, cors, "max-age=30");
+      answer.headers.set("Vary", "Origin");
+      return answer;
     }
     case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); the bot check (CLA-198), one a day per item per network
       return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token, deps.human) }, 200, cors);

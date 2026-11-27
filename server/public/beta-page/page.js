@@ -1,6 +1,6 @@
 // CLA-172: the beta page's live parts, from GET /v1/beta: the spots count and bar, the
 // Download button and "Beta N". The frozen page's look; this file only fills it in.
-import { apiBase, edits, linkDownloadPath, linkKey, withoutFrom, fill, formBody, formLine, formPath, formState, inviteCard, inviteID, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
+import { apiBase, edits, linkDownloadPath, linkKey, withoutFrom, fill, formBody, formLine, formPath, formState, inviteCard, inviteID, parseBeta, siteKey, withState, votedFrom, voteItems, parseShares, ranked, topWords, colorFrom, colorStore, voteKept, voteState, votesStore, voteWords, withLimit, withVote, humanWait } from "./logic.js";
 
 const api = apiBase(location.hostname);
 const turnstileSiteKey = siteKey(location.hostname);
@@ -153,6 +153,87 @@ const store = {
   set(/** @type {string} */ v) { try { localStorage.setItem(votesStore, v); } catch { /* private mode: the vote still counts once on the server */ } },
 };
 const voted = votedFrom(store.get());
+
+// The ranking (Jason 08:11 JST 11-28): the open cards sort by their share of the votes, the leader
+// goes in the big slot next to the built card. The % bars show only after this browser voted.
+const next = document.querySelector(".next");
+const cards = /** @type {HTMLElement[]} */ ([...document.querySelectorAll(".next .sc[data-v]")]);
+const pageOrder = cards.map((c) => /** @type {import("./logic.js").VoteItem} */ (c.dataset.v));
+async function loadShares(/** @type {boolean} */ fresh) {
+  try {
+    const r = await fetch(api + "/v1/votes", { referrerPolicy: "no-referrer", signal: AbortSignal.timeout(5000), cache: fresh ? "no-store" : "default" });
+    return r.ok ? parseShares(await r.json()) : null;
+  } catch {
+    return null;
+  }
+}
+function rank(/** @type {NonNullable<ReturnType<typeof parseShares>>} */ answer, /** @type {boolean} */ show) {
+  const { shares } = answer;
+  const big = next?.querySelector(".soon2"), grid = next?.querySelector(".vgrid"), idea = grid?.querySelector(".idea");
+  if (!big || !grid) return;
+  const { order, top } = ranked(pageOrder, answer);
+  order.forEach((item, at) => {
+    const card = cards[pageOrder.indexOf(item)];
+    if (at === 0) big.append(card); else grid.insertBefore(card, idea ?? null);
+    const sx = card.querySelector(".sx");
+    let label = /** @type {HTMLElement | null} */ (card.querySelector(".sl"));
+    if (item === top && !label && sx) { label = document.createElement("p"); label.className = "sl"; sx.prepend(label); }
+    if (label) {
+      label.dataset.was ??= label.textContent ?? "";
+      if (item === top) label.textContent = topWords;
+      else if (label.dataset.was) label.textContent = label.dataset.was;
+      else label.remove();
+    }
+    const row = /** @type {HTMLElement | null} */ (card.querySelector(".vr"));
+    const p = shares.get(item);
+    if (!row || p === undefined) return;
+    /** @type {HTMLElement} */ (row.querySelector("i")).style.width = `${p}%`;  // CSSOM: allowed by the CSP
+    /** @type {HTMLElement} */ (row.querySelector("b")).textContent = `${p}%`;
+    row.hidden = !show;
+  });
+  const note = /** @type {HTMLElement | null} */ (next?.querySelector(".rk"));
+  if (note) note.hidden = false;
+}
+// Each read gets a number; an answer older than the last one drawn is dropped, so a slow first
+// read cannot undo the read made after a vote.
+let sharesAsked = 0, sharesDrawn = 0;
+async function refreshShares(/** @type {boolean} */ fresh) {
+  const n = ++sharesAsked;
+  const s = await loadShares(fresh);
+  if (!s || n < sharesDrawn) return;
+  sharesDrawn = n;
+  rank(s, voted.size > 0);
+}
+refreshShares(false);
+
+// "Which color first?" (Jason 08:20 JST 11-28): shows under More colors once this browser voted
+// for it. One pick per browser, sent like a vote (bot check, one a day per network); no take-back.
+const colors = /** @type {HTMLElement | null} */ (document.querySelector(".fu"));
+const colorStored = {
+  get() { try { return colorFrom(localStorage.getItem(colorStore)); } catch { return null; } },
+  set(/** @type {string} */ v) { try { localStorage.setItem(colorStore, v); } catch { /* private mode */ } },
+};
+function showColors() {
+  if (!colors) return;
+  colors.hidden = false;
+  const kept = colorStored.get();
+  for (const t of colors.querySelectorAll("button")) {
+    t.classList.toggle("on", t.dataset.c === kept);
+    t.setAttribute("aria-pressed", String(t.dataset.c === kept));
+  }
+}
+if (voted.has("more-colors")) showColors();
+for (const t of colors?.querySelectorAll("button") ?? []) {
+  t.addEventListener("click", async () => {
+    const item = colorFrom(t.dataset.c ?? null);
+    if (!item || colorStored.get() || colors?.querySelector(".on")) return;  // one pick, no take-back
+    t.classList.add("on");
+    t.setAttribute("aria-pressed", "true");
+    const token = await human((box) => (t.closest(".next") ?? document.body).append(box));
+    if (token && voteKept(voteState(await post("/v1/vote", { item, human: token })))) colorStored.set(item);
+    else { t.classList.remove("on"); t.setAttribute("aria-pressed", "false"); }
+  });
+}
 for (const b of document.querySelectorAll(".next button.vb")) {
   const title = b.parentElement?.querySelector("h3")?.textContent ?? "";
   const item = /** @type {Record<string, import("./logic.js").VoteItem>} */ (voteItems)[title];
@@ -169,8 +250,12 @@ for (const b of document.querySelectorAll(".next button.vb")) {
     show(true);
     // The box goes at the end of the section (a block), not in a card's flex column.
     const token = await human((box) => (b.closest(".next") ?? document.body).append(box));
-    if (token && voteKept(voteState(await post("/v1/vote", { item, human: token })))) store.set(withVote(store.get(), item));
-    else show(false);
+    if (token && voteKept(voteState(await post("/v1/vote", { item, human: token })))) {
+      store.set(withVote(store.get(), item));
+      voted.add(item);
+      if (item === "more-colors") showColors();
+      await refreshShares(true);  // with this vote in it
+    } else show(false);
   });
 }
 

@@ -320,6 +320,57 @@ export function voteKept(state) {
 
 export const voteWords = { idle: "I’d love this", voted: "Thanks, noted" };
 
+/**
+ * GET /v1/votes: each open item's share in whole percent, and `top`, the item that leads alone in
+ * the counts (the server decides, so rounding cannot make a winner of a tie). Unknown items and bad
+ * numbers are dropped. Null when no share is left (offline, no votes yet, or a bad answer).
+ * @param {unknown} answer
+ * @returns {{ shares: Map<VoteItem, number>, top: VoteItem | null } | null}
+ */
+export function parseShares(answer) {
+  const a = answer && typeof answer === "object" ? /** @type {{ shares?: unknown, top?: unknown }} */ (answer) : {};
+  const s = a.shares;
+  if (!s || typeof s !== "object" || Array.isArray(s)) return null;
+  /** @type {readonly string[]} */
+  const known = Object.values(voteItems);
+  /** @type {Map<VoteItem, number>} */
+  const shares = new Map();
+  for (const [item, p] of Object.entries(s)) {
+    if (known.includes(item) && Number.isInteger(p) && p >= 0 && p <= 100) shares.set(/** @type {VoteItem} */ (item), p);
+  }
+  if (!shares.size) return null;
+  const top = typeof a.top === "string" && shares.has(/** @type {VoteItem} */ (a.top)) ? /** @type {VoteItem} */ (a.top) : null;
+  return { shares, top };
+}
+
+/**
+ * The cards' order: the server's leader first, then the highest share; a tie keeps the page's
+ * order. Items with no share keep their place after the others.
+ * @param {readonly VoteItem[]} page
+ * @param {{ shares: Map<VoteItem, number>, top: VoteItem | null }} answer
+ */
+export function ranked(page, { shares, top }) {
+  const share = (/** @type {VoteItem} */ i) => (i === top ? 101 : shares.get(i) ?? -1);
+  const order = [...page].sort((a, b) => share(b) - share(a) || page.indexOf(a) - page.indexOf(b));
+  return { order, top: top && page.includes(top) ? top : null };
+}
+
+/** The "Which color first?" pick after a More colors vote: one per browser. */
+export const colorItems = /** @type {const} */ (["color-pink", "color-blue", "color-green", "color-red"]);
+/** @typedef {typeof colorItems[number]} ColorItem */
+export const colorStore = "mypod.color";
+/**
+ * The stored pick, or null for anything else.
+ * @param {string | null} raw
+ * @returns {ColorItem | null}
+ */
+export function colorFrom(raw) {
+  return colorItems.find((c) => c === raw) ?? null;
+}
+
+/** The label on the card that leads alone. */
+export const topWords = "most wanted";
+
 /** How long a send waits for the bot check, a challenge the person ignores included. */
 export const humanWait = 60_000;
 
