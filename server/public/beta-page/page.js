@@ -167,10 +167,11 @@ async function loadShares(/** @type {boolean} */ fresh) {
     return null;
   }
 }
-function rank(/** @type {Map<import("./logic.js").VoteItem, number>} */ shares, /** @type {boolean} */ show) {
+function rank(/** @type {NonNullable<ReturnType<typeof parseShares>>} */ answer, /** @type {boolean} */ show) {
+  const { shares } = answer;
   const big = next?.querySelector(".soon2"), grid = next?.querySelector(".vgrid"), idea = grid?.querySelector(".idea");
   if (!big || !grid) return;
-  const { order, top } = ranked(pageOrder, shares);
+  const { order, top } = ranked(pageOrder, answer);
   order.forEach((item, at) => {
     const card = cards[pageOrder.indexOf(item)];
     if (at === 0) big.append(card); else grid.insertBefore(card, idea ?? null);
@@ -193,7 +194,17 @@ function rank(/** @type {Map<import("./logic.js").VoteItem, number>} */ shares, 
   const note = /** @type {HTMLElement | null} */ (next?.querySelector(".rk"));
   if (note) note.hidden = false;
 }
-loadShares(false).then((s) => { if (s) rank(s, voted.size > 0); });
+// Each read gets a number; an answer older than the last one drawn is dropped, so a slow first
+// read cannot undo the read made after a vote.
+let sharesAsked = 0, sharesDrawn = 0;
+async function refreshShares(/** @type {boolean} */ fresh) {
+  const n = ++sharesAsked;
+  const s = await loadShares(fresh);
+  if (!s || n < sharesDrawn) return;
+  sharesDrawn = n;
+  rank(s, voted.size > 0);
+}
+refreshShares(false);
 
 // "Which color first?" (Jason 08:20 JST 11-28): shows under More colors once this browser voted
 // for it. One pick per browser, sent like a vote (bot check, one a day per network); no take-back.
@@ -241,9 +252,9 @@ for (const b of document.querySelectorAll(".next button.vb")) {
     const token = await human((box) => (b.closest(".next") ?? document.body).append(box));
     if (token && voteKept(voteState(await post("/v1/vote", { item, human: token })))) {
       store.set(withVote(store.get(), item));
+      voted.add(item);
       if (item === "more-colors") showColors();
-      const s = await loadShares(true);  // with this vote in it
-      if (s) rank(s, true);
+      await refreshShares(true);  // with this vote in it
     } else show(false);
   });
 }

@@ -12,14 +12,18 @@ export const builtItems: readonly string[] = ["local-music"];
 
 /**
  * Each open item's share of the open items' votes, in whole percent that add up to 100 (largest
- * remainder; a tie goes to the item first in `voteItems`). No votes: an empty list.
+ * remainder; a tie goes to the item first in `voteItems`), and `top`: the item with the most
+ * votes when it leads alone, else null. No votes: an empty list.
  */
-export async function shares(db: D1Database): Promise<Record<string, number>> {
+export async function shares(db: D1Database): Promise<{ shares: Record<string, number>; top: string | null }> {
   const rows = (await db.prepare("SELECT item, count FROM votes").all<{ item: string; count: number }>()).results;
   const open = voteItems.filter((i) => !builtItems.includes(i));
   const count = (i: string) => Math.max(0, rows.find((r) => r.item === i)?.count ?? 0);
   const total = open.reduce((n, i) => n + count(i), 0);
-  if (!total) return {};
+  if (!total) return { shares: {}, top: null };
+  // The leader from the counts, not the rounded shares: rounding must not make a winner of a tie.
+  const most = Math.max(...open.map(count));
+  const leaders = open.filter((i) => count(i) === most);
   const exact = open.map((i, at) => ({ i, at, p: (count(i) * 100) / total }));
   const out = Object.fromEntries(exact.map((e) => [e.i, Math.floor(e.p)]));
   let left = 100 - Object.values(out).reduce((a, b) => a + b, 0);
@@ -27,7 +31,7 @@ export async function shares(db: D1Database): Promise<Record<string, number>> {
     if (left-- <= 0) break;
     out[e.i] += 1;
   }
-  return out;
+  return { shares: out, top: leaders.length === 1 ? leaders[0] : null };
 }
 
 /**

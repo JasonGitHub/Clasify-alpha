@@ -138,8 +138,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       if (result === "ok") await keepInviteMail(db, body, env.TURNSTILE_SECRET, now);
       return reply({ result }, 200, cors);
     }
-    case "GET /v1/votes": {  // the beta page's ranking: shares in percent only, cached 30 s
-      const answer = reply({ shares: await shares(db) }, 200, cors, "max-age=30");
+    case "GET /v1/votes": {  // the beta page's ranking: shares in percent and the sole leader, never counts; cached 30 s
+      const answer = reply(await shares(db), 200, cors, "max-age=30");
       answer.headers.set("Vary", "Origin");
       return answer;
     }

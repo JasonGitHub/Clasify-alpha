@@ -321,35 +321,38 @@ export function voteKept(state) {
 export const voteWords = { idle: "I’d love this", voted: "Thanks, noted" };
 
 /**
- * GET /v1/votes: each open item's share in whole percent. Unknown items and bad numbers are
- * dropped. Null when nothing is left (offline, no votes yet, or a bad answer).
+ * GET /v1/votes: each open item's share in whole percent, and `top`, the item that leads alone in
+ * the counts (the server decides, so rounding cannot make a winner of a tie). Unknown items and bad
+ * numbers are dropped. Null when no share is left (offline, no votes yet, or a bad answer).
  * @param {unknown} answer
- * @returns {Map<VoteItem, number> | null}
+ * @returns {{ shares: Map<VoteItem, number>, top: VoteItem | null } | null}
  */
 export function parseShares(answer) {
-  const s = answer && typeof answer === "object" ? /** @type {{ shares?: unknown }} */ (answer).shares : undefined;
+  const a = answer && typeof answer === "object" ? /** @type {{ shares?: unknown, top?: unknown }} */ (answer) : {};
+  const s = a.shares;
   if (!s || typeof s !== "object" || Array.isArray(s)) return null;
   /** @type {readonly string[]} */
   const known = Object.values(voteItems);
   /** @type {Map<VoteItem, number>} */
-  const out = new Map();
+  const shares = new Map();
   for (const [item, p] of Object.entries(s)) {
-    if (known.includes(item) && Number.isInteger(p) && p >= 0 && p <= 100) out.set(/** @type {VoteItem} */ (item), p);
+    if (known.includes(item) && Number.isInteger(p) && p >= 0 && p <= 100) shares.set(/** @type {VoteItem} */ (item), p);
   }
-  return out.size ? out : null;
+  if (!shares.size) return null;
+  const top = typeof a.top === "string" && shares.has(/** @type {VoteItem} */ (a.top)) ? /** @type {VoteItem} */ (a.top) : null;
+  return { shares, top };
 }
 
 /**
- * The cards' order: the highest share first; a tie keeps the page's order. Items with no share
- * keep their place after the others. `top` is the first item only when it leads alone.
+ * The cards' order: the server's leader first, then the highest share; a tie keeps the page's
+ * order. Items with no share keep their place after the others.
  * @param {readonly VoteItem[]} page
- * @param {Map<VoteItem, number>} shares
+ * @param {{ shares: Map<VoteItem, number>, top: VoteItem | null }} answer
  */
-export function ranked(page, shares) {
-  const share = (/** @type {VoteItem} */ i) => shares.get(i) ?? -1;
+export function ranked(page, { shares, top }) {
+  const share = (/** @type {VoteItem} */ i) => (i === top ? 101 : shares.get(i) ?? -1);
   const order = [...page].sort((a, b) => share(b) - share(a) || page.indexOf(a) - page.indexOf(b));
-  const top = order.length > 1 && share(order[0]) > share(order[1]) ? order[0] : null;
-  return { order, top };
+  return { order, top: top && page.includes(top) ? top : null };
 }
 
 /** The "Which color first?" pick after a More colors vote: one per browser. */

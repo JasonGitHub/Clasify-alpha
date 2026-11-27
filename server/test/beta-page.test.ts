@@ -230,18 +230,21 @@ describe("beta page forms (CLA-172)", () => {
     }
     expect(page).not.toContain('data-v="local-music"');
     expect(page).toContain('<span class="rk" hidden> Ranked by your votes so far.</span>');
-    expect(parseShares({ shares: { nano: 23, "more-colors": 31, x: 5, radio: 1.5, "like-from-wheel": 101 } })).toEqual(new Map([["nano", 23], ["more-colors", 31]]));
+    expect(parseShares({ shares: { nano: 23, "more-colors": 31, x: 5, radio: 1.5, "like-from-wheel": 101 }, top: "more-colors" }))
+      .toEqual({ shares: new Map([["nano", 23], ["more-colors", 31]]), top: "more-colors" });
+    expect(parseShares({ shares: { nano: 50, radio: 50 }, top: "x" })?.top).toBeNull();
     for (const a of [null, {}, { shares: {} }, { shares: [] }, { shares: { x: 3 } }]) expect(parseShares(a)).toBeNull();
-    const page4 = /** @type {const} */ (["nano", "radio", "like-from-wheel", "more-colors"] as const);
-    expect(ranked(page4, new Map([["nano", 23], ["radio", 23], ["like-from-wheel", 23], ["more-colors", 31]])))
+    const page4 = ["nano", "radio", "like-from-wheel", "more-colors"] as const;
+    const map = (n: number, r: number, l: number, m: number) => new Map([["nano", n], ["radio", r], ["like-from-wheel", l], ["more-colors", m]] as const);
+    expect(ranked(page4, { shares: map(23, 23, 23, 31), top: "more-colors" }))
       .toEqual({ order: ["more-colors", "nano", "radio", "like-from-wheel"], top: "more-colors" });
+    // No leader from the server (a tie): no "most wanted", even when rounding made one share bigger.
+    expect(ranked(page4, { shares: map(34, 33, 33, 0), top: null }))
+      .toEqual({ order: ["nano", "radio", "like-from-wheel", "more-colors"], top: null });
     // "Which color first?": hidden in the More colors card until this browser voted for it.
     expect(page).toMatch(/<div class="sc" data-v="more-colors">.*?<div class="fu" hidden><p>Which color first\?<\/p><div class="fc">(<button type="button" data-c="color-(pink|blue|green|red)" aria-pressed="false"><img src="beta-page\/nano\/\2\.webp" width="40" height="53" alt="">(Pink|Blue|Green|Red)<\/button>){4}<\/div><\/div><\/div><\/div>/s);
     expect(colorFrom("color-red")).toBe("color-red");
     for (const raw of [null, "", "red", "color-black", '"color-red"']) expect(colorFrom(raw)).toBeNull();
-    // A tie at the top: page order, no "most wanted".
-    expect(ranked(page4, new Map([["nano", 25], ["radio", 25], ["like-from-wheel", 25], ["more-colors", 25]])))
-      .toEqual({ order: ["nano", "radio", "like-from-wheel", "more-colors"], top: null });
   });
 
   it("stops waiting for the bot check after the limit, so the button works again", async () => {
