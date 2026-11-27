@@ -212,7 +212,10 @@ describe("beta page forms (CLA-172)", () => {
     expect(voteState({ result: "ok" })).toBe("ok");
     expect(voteState({ result: "busy" })).toBe("busy");
     expect(voteState({ result: "bad" })).toBe("bad");
-    for (const a of [null, {}, { result: "bot" }, "ok"]) expect(voteState(a)).toBe("offline");
+    // CLA-198: "bot" = the bot check failed or could not run: the button comes back, unsaved.
+    expect(voteState({ result: "bot" })).toBe("bot");
+    expect(voteKept("bot")).toBe(false);
+    for (const a of [null, {}, { result: "nope" }, "ok"]) expect(voteState(a)).toBe("offline");
     // "busy" = this network already voted for this item today: the vote stays on.
     expect(voteKept("ok")).toBe(true);
     expect(voteKept("busy")).toBe(true);

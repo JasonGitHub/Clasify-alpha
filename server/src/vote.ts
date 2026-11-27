@@ -1,14 +1,20 @@
 // CLA-172: the beta page's "What next?" votes (POST /v1/vote). There is no GET for the counts:
-// Jason reads them from D1 through the CTO.
+// Jason reads them from D1 through the CTO. CLA-198: a vote counts only with a passed bot check.
 
 /** The items, from the website thread (fixed list). Any other item is "bad". */
 export const voteItems = ["local-music", "nano", "radio", "like-from-wheel", "more-colors"] as const;
 
-/** One vote per item a day per network. "busy": this network already voted for it today. */
+/**
+ * One vote per item a day per network. "busy": this network already voted for it today. "bot": no
+ * bot check token (`human`), or the check failed or could not run (CLA-198): nothing is written.
+ */
 export async function vote(db: D1Database, body: Record<string, unknown>, ip: string, now: number,
-  hash: (s: string) => Promise<string>, newSalt: () => string): Promise<"ok" | "busy" | "bad"> {
+  hash: (s: string) => Promise<string>, newSalt: () => string,
+  human: (token: string) => Promise<boolean>): Promise<"ok" | "busy" | "bad" | "bot"> {
   const item = body.item;
   if (typeof item !== "string" || !(voteItems as readonly string[]).includes(item)) return "bad";
+  // Before any D1 write. The token is never stored or logged.
+  if (typeof body.human !== "string" || !(await human(body.human))) return "bot";
   const day = new Date(now).toISOString().slice(0, 10);
   const old = new Date(now - 2 * 24 * 60 * 60_000).toISOString().slice(0, 10);
   await db.batch([

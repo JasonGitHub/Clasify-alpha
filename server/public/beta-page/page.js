@@ -44,15 +44,16 @@ async function load() {
   }
 }
 
-/** The bot check runs without a box, unless Cloudflare asks. A new token for each send; null after
- * an error, an expired token, or no answer in `humanWait` (a challenge the person ignores). */
-async function human() {
+/** The bot check runs without a box, unless Cloudflare asks. A new token for each send (a token is
+ * single-use); null after an error, an expired token, or no answer in `humanWait` (a challenge the
+ * person ignores). `place` puts the box on the page: by default under the email row. */
+async function human(/** @type {(box: HTMLElement) => void} */ place = (box) => form.parentElement?.after(box)) {
   const w = /** @type {any} */ (window).turnstile;
   if (!w) return null;
   // Under the row, not in the form: an empty item in the form's flex row would add a gap.
   const box = document.createElement("div");
   box.className = "ts";
-  form.parentElement?.after(box);
+  place(box);
   /** @type {Promise<string | null>} */
   const token = new Promise((resolve) => {
     try {
@@ -146,6 +147,7 @@ function welcome() {
 }
 
 // Votes (CLA-172): one per item per browser. The vote shows at once; "ok" or "busy" keeps it.
+// CLA-198: each vote sends a fresh bot check token. No token or "bot" gives the button back, unsaved.
 const store = {
   get() { try { return localStorage.getItem(votesStore); } catch { return null; } },
   set(/** @type {string} */ v) { try { localStorage.setItem(votesStore, v); } catch { /* private mode: the vote still counts once on the server */ } },
@@ -165,7 +167,9 @@ for (const b of document.querySelectorAll(".next button.vb")) {
   b.addEventListener("click", async () => {
     if (b.classList.contains("on")) return;  // one vote per item: no take-back, no second send
     show(true);
-    if (voteKept(voteState(await post("/v1/vote", { item })))) store.set(withVote(store.get(), item));
+    // The box goes at the end of the section (a block), not in a card's flex column.
+    const token = await human((box) => (b.closest(".next") ?? document.body).append(box));
+    if (token && voteKept(voteState(await post("/v1/vote", { item, human: token })))) store.set(withVote(store.get(), item));
     else show(false);
   });
 }

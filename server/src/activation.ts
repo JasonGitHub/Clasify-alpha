@@ -138,8 +138,8 @@ export async function handle(request: Request, env: Env, deps: Deps): Promise<Re
       if (result === "ok") await keepInviteMail(db, body, env.TURNSTILE_SECRET, now);
       return reply({ result }, 200, cors);
     }
-    case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); no bot check, one a day per item per network
-      return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
+    case "POST /v1/vote":  // the beta page's "What next?" (CLA-172); the bot check (CLA-198), one a day per item per network
+      return reply({ result: await vote(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token, deps.human) }, 200, cors);
     case "POST /v1/link-download":  // CLA-193: a Download press after a short link; no bot check, one a day per word per network
       return reply({ result: await countLinkDownload(db, body, request.headers.get("CF-Connecting-IP") ?? "", now, sha256, token) }, 200, cors);
     case "POST /v1/buy": {  // CLA-175: the launch page's Buy. Answers Stripe's payment page; Stripe gets no device ID.

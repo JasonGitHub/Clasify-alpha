@@ -2,18 +2,24 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { handle } from "../src/activation";
 import { noMail } from "../src/mailer";
+import { turnstile } from "../src/turnstile";
 import { network, voteItems } from "../src/vote";
 
-// CLA-172: POST /v1/vote from the beta page.
+// CLA-172: POST /v1/vote from the beta page. CLA-198: with the page's bot check token (`human`).
 
 const day = 24 * 60 * 60_000;
 let clock = Date.UTC(2026, 10, 21, 12);
 
-async function vote(body: unknown, ip = "203.0.113.5", method = "POST") {
+/** The bot check: a token "pass…" passes; the tokens it was asked about, in order. */
+let checked: string[] = [];
+const passes = async (token: string) => { checked.push(token); return token.startsWith("pass"); };
+
+async function vote(body: unknown, ip = "203.0.113.5", method = "POST", human = passes) {
+  const withToken = body && typeof body === "object" && !("human" in body) ? { human: "pass-1", ...body } : body;
   const request = new Request("https://api.example/v1/vote", {
-    method, headers: { Origin: "https://getmypod.app", "CF-Connecting-IP": ip }, body: method === "POST" ? JSON.stringify(body) : undefined,
+    method, headers: { Origin: "https://getmypod.app", "CF-Connecting-IP": ip }, body: method === "POST" ? JSON.stringify(withToken) : undefined,
   });
-  const response = await handle(request, env, { now: () => clock, mailer: noMail, human: async () => false });
+  const response = await handle(request, env, { now: () => clock, mailer: noMail, human });
   return { status: response.status, result: ((await response.json()) as { result?: string }).result };
 }
 const counts = async () => Object.fromEntries((await env.DB.prepare("SELECT item, count FROM votes").all<{ item: string; count: number }>())
@@ -21,6 +27,7 @@ const counts = async () => Object.fromEntries((await env.DB.prepare("SELECT item
 
 beforeEach(async () => {
   clock = Date.UTC(2026, 10, 21, 12);
+  checked = [];
   await env.DB.batch(["votes", "vote_tries", "vote_salts"].map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
 });
 
@@ -47,6 +54,32 @@ describe("POST /v1/vote", () => {
       expect((await vote({ item }, "192.0.2.1")).result, String(item)).toBe("bad");
     }
     expect(await counts()).toEqual({});
+  });
+
+  it("counts nothing and writes nothing without a passed bot check", async () => {
+    const rows = async () => Promise.all(["votes", "vote_tries", "vote_salts"].map(async (t) =>
+      (await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${t}`).first<{ n: number }>())?.n));
+    for (const human of [undefined, "", 3, null, { token: "pass-1" }]) {
+      expect((await vote({ item: "nano", human })).result, String(human)).toBe("bot");  // no token
+    }
+    expect((await vote({ item: "nano", human: "fail-1" })).result).toBe("bot");  // the check fails
+    // The verify call fails (no network, an error page, no secret): the real check fails closed.
+    const down = turnstile("secret", "getmypod.app", async () => { throw new Error("down"); });
+    const error = turnstile("secret", "getmypod.app", async () => new Response("no", { status: 500 }));
+    for (const human of [down, error, turnstile(undefined, "getmypod.app")]) {
+      expect((await vote({ item: "nano" }, undefined, "POST", human)).result).toBe("bot");
+    }
+    expect(await rows()).toEqual([0, 0, 0]);
+    expect(checked).toEqual(["", "fail-1"]);  // only text goes to the check; turnstile() refuses "" with no call
+    // A passed check: ok, then busy for the same network and item.
+    expect((await vote({ item: "nano", human: "pass-2" })).result).toBe("ok");
+    expect((await vote({ item: "nano", human: "pass-3" })).result).toBe("busy");
+    expect(await counts()).toEqual({ nano: 1 });
+  });
+
+  it("checks the item before the bot check", async () => {
+    expect((await vote({ item: "x", human: "pass-1" })).result).toBe("bad");
+    expect(checked).toEqual([]);
   });
 
   it("has no GET for the counts", async () => {

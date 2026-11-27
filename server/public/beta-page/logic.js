@@ -297,20 +297,22 @@ export function withVote(raw, item) {
 }
 
 /**
- * The answer of POST /v1/vote. See `voteKept` for which answers keep the vote.
+ * The answer of POST /v1/vote. See `voteKept` for which answers keep the vote. "bot": the bot
+ * check failed or could not run (CLA-198), so the vote did not count.
  * @param {unknown} answer
- * @returns {"ok" | "busy" | "bad" | "offline"}
+ * @returns {"ok" | "busy" | "bad" | "bot" | "offline"}
  */
 export function voteState(answer) {
   const r = answer && typeof answer === "object" ? /** @type {{ result?: unknown }} */ (answer).result : undefined;
-  return r === "ok" || r === "busy" || r === "bad" ? r : "offline";
+  return r === "ok" || r === "busy" || r === "bad" || r === "bot" ? r : "offline";
 }
 
 /**
  * Whether the vote stays on. "busy" means this network already voted for this item today
  * (the same person after clearing the browser, or a second person in one office): the vote
- * is counted, so the button stays on. "bad" and no answer give the button back.
- * @param {"ok" | "busy" | "bad" | "offline"} state
+ * is counted, so the button stays on. "bad", "bot" and no answer give the button back, so the
+ * person can press again.
+ * @param {"ok" | "busy" | "bad" | "bot" | "offline"} state
  */
 export function voteKept(state) {
   return state === "ok" || state === "busy";
