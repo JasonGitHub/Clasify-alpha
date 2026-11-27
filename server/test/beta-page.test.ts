@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import headers from "../public/_headers?raw";
 import page from "../public/beta.html?raw";
 import privacy from "../public/privacy/index.html?raw";
-import { apiBase, dmgURL, edits, fill, formLine, formPath, formState, inviteCard, inviteID, loadingFill, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, withLimit, withVote } from "../public/beta-page/logic.js";
+import { apiBase, dmgURL, edits, fill, formLine, formPath, formState, inviteCard, inviteID, loadingFill, parseBeta, siteKey, withState, votedFrom, voteItems, voteKept, voteState, withLimit, parseShares, ranked, colorFrom, withVote } from "../public/beta-page/logic.js";
 
 /** The Content-Security-Policy that public/_headers gives `path`. */
 function policy(path: string): string {
@@ -221,6 +221,27 @@ describe("beta page forms (CLA-172)", () => {
     expect(voteKept("busy")).toBe(true);
     expect(voteKept("bad")).toBe(false);
     expect(voteKept("offline")).toBe(false);
+  });
+
+  it("ranks the open cards by share, and shows the % only after a vote", () => {
+    // Each open card can move between the big slot and the grid; its bar starts hidden.
+    for (const v of ["nano", "radio", "like-from-wheel", "more-colors"]) {
+      expect(page).toMatch(new RegExp(`<div class="sc" data-v="${v}">.*?<div class="vr" hidden><span class="tr"><i></i></span><b></b></div><button class="vb"`, "s"));
+    }
+    expect(page).not.toContain('data-v="local-music"');
+    expect(page).toContain('<span class="rk" hidden> Ranked by your votes so far.</span>');
+    expect(parseShares({ shares: { nano: 23, "more-colors": 31, x: 5, radio: 1.5, "like-from-wheel": 101 } })).toEqual(new Map([["nano", 23], ["more-colors", 31]]));
+    for (const a of [null, {}, { shares: {} }, { shares: [] }, { shares: { x: 3 } }]) expect(parseShares(a)).toBeNull();
+    const page4 = /** @type {const} */ (["nano", "radio", "like-from-wheel", "more-colors"] as const);
+    expect(ranked(page4, new Map([["nano", 23], ["radio", 23], ["like-from-wheel", 23], ["more-colors", 31]])))
+      .toEqual({ order: ["more-colors", "nano", "radio", "like-from-wheel"], top: "more-colors" });
+    // "Which color first?": hidden in the More colors card until this browser voted for it.
+    expect(page).toMatch(/<div class="sc" data-v="more-colors">.*?<div class="fu" hidden><p>Which color first\?<\/p><div class="fc">(<button type="button" data-c="color-(pink|blue|green|red)" aria-pressed="false"><img src="beta-page\/nano\/\2\.webp" width="40" height="53" alt="">(Pink|Blue|Green|Red)<\/button>){4}<\/div><\/div><\/div><\/div>/s);
+    expect(colorFrom("color-red")).toBe("color-red");
+    for (const raw of [null, "", "red", "color-black", '"color-red"']) expect(colorFrom(raw)).toBeNull();
+    // A tie at the top: page order, no "most wanted".
+    expect(ranked(page4, new Map([["nano", 25], ["radio", 25], ["like-from-wheel", 25], ["more-colors", 25]])))
+      .toEqual({ order: ["nano", "radio", "like-from-wheel", "more-colors"], top: null });
   });
 
   it("stops waiting for the bot check after the limit, so the button works again", async () => {

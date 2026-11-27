@@ -320,6 +320,54 @@ export function voteKept(state) {
 
 export const voteWords = { idle: "I’d love this", voted: "Thanks, noted" };
 
+/**
+ * GET /v1/votes: each open item's share in whole percent. Unknown items and bad numbers are
+ * dropped. Null when nothing is left (offline, no votes yet, or a bad answer).
+ * @param {unknown} answer
+ * @returns {Map<VoteItem, number> | null}
+ */
+export function parseShares(answer) {
+  const s = answer && typeof answer === "object" ? /** @type {{ shares?: unknown }} */ (answer).shares : undefined;
+  if (!s || typeof s !== "object" || Array.isArray(s)) return null;
+  /** @type {readonly string[]} */
+  const known = Object.values(voteItems);
+  /** @type {Map<VoteItem, number>} */
+  const out = new Map();
+  for (const [item, p] of Object.entries(s)) {
+    if (known.includes(item) && Number.isInteger(p) && p >= 0 && p <= 100) out.set(/** @type {VoteItem} */ (item), p);
+  }
+  return out.size ? out : null;
+}
+
+/**
+ * The cards' order: the highest share first; a tie keeps the page's order. Items with no share
+ * keep their place after the others. `top` is the first item only when it leads alone.
+ * @param {readonly VoteItem[]} page
+ * @param {Map<VoteItem, number>} shares
+ */
+export function ranked(page, shares) {
+  const share = (/** @type {VoteItem} */ i) => shares.get(i) ?? -1;
+  const order = [...page].sort((a, b) => share(b) - share(a) || page.indexOf(a) - page.indexOf(b));
+  const top = order.length > 1 && share(order[0]) > share(order[1]) ? order[0] : null;
+  return { order, top };
+}
+
+/** The "Which color first?" pick after a More colors vote: one per browser. */
+export const colorItems = /** @type {const} */ (["color-pink", "color-blue", "color-green", "color-red"]);
+/** @typedef {typeof colorItems[number]} ColorItem */
+export const colorStore = "mypod.color";
+/**
+ * The stored pick, or null for anything else.
+ * @param {string | null} raw
+ * @returns {ColorItem | null}
+ */
+export function colorFrom(raw) {
+  return colorItems.find((c) => c === raw) ?? null;
+}
+
+/** The label on the card that leads alone. */
+export const topWords = "most wanted";
+
 /** How long a send waits for the bot check, a challenge the person ignores included. */
 export const humanWait = 60_000;
 
