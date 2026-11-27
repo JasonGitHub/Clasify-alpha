@@ -1082,6 +1082,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.tour == .tourPlay && s.top.screen == .main { return shuffleSongs() }
             // CLA-173: a playlist or album row, or Cover Flow's covers, start that list. A list
             // start that waits for its read stays as it is. Every other screen and row: as before.
+            // CLA-199: an artist row starts that artist's songs, on Artists as on Search.
             if (s.top.loading && s.startToken == s.top.token) || s.startOnCovers { return }
             if s.top.screen == .coverFlow, !s.top.loading, s.albums.indices.contains(s.top.sel) {
                 let id = s.albums[s.top.sel].id
@@ -1097,15 +1098,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // CLA-183, card CS: on Search, Play plays the selected result; with none selected, nothing.
             if s.top.screen == .search && !s.searchPicked { return }
             if s.top.screen.isList, !s.top.loading, case let rows = s.rows(for: s.top), rows.indices.contains(s.top.sel) {
-                if s.top.screen == .search {
-                    switch rows[s.top.sel] {
-                    case .artist(let id): return playList(id, on: .tracks(playlist: id))
-                    case .foundSong(let id, let list): return s.offline ? toast(offlineStart) : play(list, id)
-                    default: break
-                    }
-                }
                 switch rows[s.top.sel] {
-                case .playlist(let id), .album(let id): return playList(id, on: .tracks(playlist: id))
+                case .playlist(let id), .album(let id), .artist(let id): return playList(id, on: .tracks(playlist: id))
+                case .foundSong(let id, let list): return s.offline ? toast(offlineStart) : play(list, id)
                 default: break
                 }
             }
