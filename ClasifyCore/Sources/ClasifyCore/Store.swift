@@ -208,6 +208,8 @@ public final class Store {
     @ObservationIgnored public var onBetaEvent: (@MainActor (BetaEvent) -> Void)?
     /// Card BW: opens the activator's page URL (getmypod.app/activate/?d=CODE) in the browser. The app sets it.
     @ObservationIgnored public var onOpenActivatePage: (@MainActor (String) -> Void)?
+    /// CLA-203: the last 2 minutes of facts, in memory only, for the problem events.
+    @ObservationIgnored public let timeline = Timeline()
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
     /// Card BV: the launch check's source. With none, the check finds nothing.
@@ -302,6 +304,7 @@ public final class Store {
     public func send(_ action: Action) {
         let before = state
         let effects = reduce(&state, action, env)
+        timeline.record(action, from: before, to: state, at: env.now())
         if let settingsStore, state.settings != before.settings { state.settings.save(to: settingsStore) }
         if case .wheel = action, wheelMoved(from: before, to: state) { onWheelStep?() }
         for effect in effects {

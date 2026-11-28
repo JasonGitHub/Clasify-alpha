@@ -128,6 +128,9 @@ public enum Action: Equatable, Sendable {
     /// after a loss, or before myPod took over. `song`: a new song started. The engine sends it
     /// on each change; only `day_active` counts it (`outside_songs`, `outside_minutes`).
     case outsideMusic(playing: Bool, song: Bool)
+    /// CLA-203: a fact from the engine or the Mac, for the problem timeline (`Timeline`). The
+    /// Store records it; the reducer changes nothing.
+    case note(EngineNote)
     /// CLA-97: a skin feature that the reducer does not see (the About flip, the take-apart),
     /// for `day_active`.
     case used(Feature)
@@ -820,7 +823,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .menu, .searchType, .searchDelete, .toggleShuffle, .cycleRepeat, .play, .next, .prev: applyButtons()
         case .tick, .position, .volumeReported, .trackEnded, .trackChanged, .trackRead, .adopted, .playbackFailed, .loadFailed: applyPlayback()
         case .artistsLoaded, .readFailed, .libraryCounted, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
-        case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset, .mailFailed, .outsideMusic: applySession()
+        case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset, .mailFailed, .outsideMusic, .note: applySession()
         }
     }
     @inline(never) func applyWheel() {
@@ -1601,6 +1604,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             // turns off. Spotify only (Jason 16:08 JST): Apple Music and On This Mac get nothing.
             if s.service == .spotify { fx.append(.quitPlayer) }
         case .used, .view3D, .window, .outsideMusic: break  // only for `day_active` (dayEvents)
+        case .note: break  // only for the timeline (`Store.timeline`)
         case .analyticsOn(let on): s.analyticsOn = on
         case .hintsTrial(let on): s.hintsTrial = on
         case .appProblems(let problems):
