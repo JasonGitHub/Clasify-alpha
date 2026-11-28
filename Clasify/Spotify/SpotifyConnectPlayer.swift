@@ -197,6 +197,7 @@ final class SpotifyConnectPlayer: Player {
         let id = loadID
         ours = false
         loading = true
+        endOutside()  // CLA-203: myPod takes over now
         wantsRunning = autoplay
         pendingSkips = []
         pendingSeek = nil
@@ -262,6 +263,7 @@ final class SpotifyConnectPlayer: Player {
         loadID += 1
         let id = loadID
         loading = true
+        endOutside()  // CLA-203: myPod takes over now
         wantsRunning = true
         pendingSkips = []
         pendingSeek = nil
@@ -451,6 +453,8 @@ final class SpotifyConnectPlayer: Player {
     /// Music on a phone or another computer has another active device ID, so it counts as not
     /// playing. Before a first load or warm-up finds `device`, nothing counts. Sent on each change.
     private func noteOutside(_ state: SpotifyPlayerState, device: String) {
+        // During a load of ours nothing counts: the outside music ended at its start (`start`,
+        // `takeBack`; Codex on #526). After a failed load, the next change opens it again.
         guard !ours, !loading else { return }
         let playing = state.activeDeviceID == device && state.hasTrack && state.isRunning
         let song = playing && state.trackURI != outsideTrack
