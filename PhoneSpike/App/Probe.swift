@@ -1,6 +1,6 @@
 import Foundation
 
-/// CLA-202 spike: what Jason copies to us. Numbers, times, states and error kinds only: no
+/// CLA-202 spike: what the tester copies to us. Numbers, times, states and error kinds only: no
 /// names, no IDs, no account data. Lines stay in memory; nothing goes to disk.
 @MainActor final class Probe {
     private(set) var lines: [String] = []
