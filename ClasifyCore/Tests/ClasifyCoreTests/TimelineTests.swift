@@ -45,20 +45,31 @@ import Testing
         ])
     }
 
-    @Test func theActionsAndThePlayerFactsAreRecorded() {
+    /// Each state copy in a debug test frame is large (reducer stack limit): the states are
+    /// made one at a time in these helpers, and the test keeps only the text.
+    @inline(never) static func changed(_ s: AppState, playing: Bool) -> AppState {
+        var s = s
+        s.current = TrackRef(playlist: "p1", track: "t1")
+        s.isPlaying = playing
+        return s
+    }
+
+    @inline(never) func recordedText() -> String {
         let t = Timeline()
-        var before = mainMenu()
-        var after = before
-        after.current = TrackRef(playlist: "p1", track: "t1")
-        after.isPlaying = true
-        t.record(.play, from: before, to: after, at: 10)
-        before = after
-        after.isPlaying = false
-        t.record(.controlLost(.stoppedInSpotify), from: before, to: after, at: 12)
-        t.record(.tick, from: after, to: after, at: 13)  // nothing changed: no entry
-        t.record(.note(.wake), from: after, to: after, at: 14)
-        #expect(t.text(at: 14) == "play@-4.0 song@-4.0 playing@-4.0 lost:stopped_in_spotify@-2.0 paused@-2.0 wake@-0.0")
-        #expect(!t.text(at: 14).contains("p1") && !t.text(at: 14).contains("t1"))
+        let start = mainMenu()
+        let played = Self.changed(start, playing: true)
+        t.record(.play, from: start, to: played, at: 10)
+        let paused = Self.changed(played, playing: false)
+        t.record(.controlLost(.stoppedInSpotify), from: played, to: paused, at: 12)
+        t.record(.tick, from: paused, to: paused, at: 13)  // nothing changed: no entry
+        t.record(.note(.wake), from: paused, to: paused, at: 14)
+        return t.text(at: 14)
+    }
+
+    @Test func theActionsAndThePlayerFactsAreRecorded() {
+        let text = recordedText()
+        #expect(text == "play@-4.0 song@-4.0 playing@-4.0 lost:stopped_in_spotify@-2.0 paused@-2.0 wake@-0.0")
+        #expect(!text.contains("p1") && !text.contains("t1"))
     }
 
     /// The Store records each action; `.note` changes no state and has no effect.

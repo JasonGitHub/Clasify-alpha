@@ -83,7 +83,8 @@ public final class Timeline {
     }
 
     /// The facts of one `Store.send`: the action, and the player facts that it changed.
-    func record(_ action: Action, from before: AppState, to after: AppState, at now: Double) {
+    /// Not inlined, so `Store.send`'s stack frame stays small (reducer stack limit).
+    @inline(never) func record(_ action: Action, from before: AppState, to after: AppState, at now: Double) {
         if let text = Self.text(of: action) { record(text, at: now) }
         if after.current != before.current, after.current != nil { record("song", at: now) }
         if after.isPlaying != before.isPlaying { record(after.isPlaying ? "playing" : "paused", at: now) }
