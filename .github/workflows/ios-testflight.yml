@@ -3,7 +3,7 @@ name: iPhone TestFlight
 # main, sign it in the cloud with the App Store Connect API key (Admin role) at export, and upload
 # it to TestFlight. The test app PhoneSpike/ is no longer uploaded.
 # Started by hand only, on main only. It is the only job here that uses environment "release".
-# The build can go to external testers: Jason adds it to the group "Testers" and sends it to
+# The build can go to external testers: Jason adds it to the group "External" and sends it to
 # beta review by hand. The job does neither.
 # Never add `set -x` here, and never print a secret.
 on:
@@ -17,7 +17,9 @@ jobs:
   testflight:
     # Any other branch or tag is refused: the job does not start, so it never gets the secrets.
     if: github.ref == 'refs/heads/main'
-    runs-on: macos-26  # TestFlight uploads need Xcode 26 and the iOS 26 SDK.
+    # The Xcode 27 image (macOS 27, Xcode 27.1 default) builds with the iOS 27 SDK, which App Store
+    # Connect asks for from April 2027 (notice ITMS-90725). It has no macos-27 label.
+    runs-on: xcode-27
     timeout-minutes: 45
     environment: release
     env:
