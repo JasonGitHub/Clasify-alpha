@@ -17,11 +17,15 @@ public struct Features: Equatable, Sendable {
     public var wheelVolume: Bool
     /// The main menu's Search row (with `search.on`).
     public var search: Bool
+    /// Activate (card BW) and its server checks. TestFlight and the App Store do this on the phone.
+    public var activation: Bool
+    /// The beta's end, its warning and the new-beta notice (Beta Soon, Ended, New; Get New Beta).
+    public var betaNotices: Bool
 
     public init(_ platform: Platform) {
         let mac = platform == .mac
         services = mac ? MusicService.allCases : [.appleMusic]
-        (menuBar, views3D, wheelVolume, search) = (mac, mac, mac, mac)
+        (menuBar, views3D, wheelVolume, search, activation, betaNotices) = (mac, mac, mac, mac, mac, mac)
     }
 
     public var serviceChoice: Bool { services.count > 1 }
@@ -34,4 +38,8 @@ extension AppState {
     }
 
     public var features: Features { Features(platform) }
+
+    /// The screen that the music service's login prompt shows over: Pick Your Music, or on the
+    /// phone (one service, no pick) the color pick, whose press starts the Apple Music login.
+    var promptScreen: Screen { features.serviceChoice ? .pickMusic : .color }
 }

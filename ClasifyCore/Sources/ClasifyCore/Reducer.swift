@@ -636,7 +636,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         // result is stale then.
         if s.restoring { s.restoring = false; s.authAttempt += 1 }
         signOut(); fx.append(.logOut)
-        if s.service != .spotify { s.stack = [pickMusic()] }
+        if s.service != .spotify { s.stack = [s.features.serviceChoice ? pickMusic() : Frame(screen: .color)] }  // CLA-202
     }
     /// Pick Your Music, on the active service's row (card BM, change 257). When the Spotify app
     /// was not found (or not checked yet), Apple Music is the top row and is selected (CLA-103).
@@ -767,7 +767,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
     /// Card BI v2: the warning once on day 27 (change 233), over the screen that shows; on day
     /// 30 the beta ends (234). The ended screen replaces everything, and nothing plays.
     func checkBeta() {
-        guard let beta = s.beta else { return }
+        guard s.features.betaNotices, let beta = s.beta else { return }  // CLA-202: not on the phone
         if now >= beta.endsAt {
             guard s.top.screen != .betaEnded else { return }
             stop()
@@ -999,7 +999,12 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             case .menuBar: s.menuBar.toggle()  // card AN.1, 346: the app adds or takes away the icon
             case .color(let color):  // card AW: a press saves the color, then the music pick (card BM, 257)
                 s.deviceColor = color
-                if s.signedIn { setupNext() } else { s.stack.append(pickMusic()) }
+                if s.signedIn { setupNext() } else if s.features.serviceChoice { s.stack.append(pickMusic()) } else {
+                    // CLA-202: the phone has Apple Music only, so no pick: its prompt shows over Color.
+                    s.authAttempt += 1
+                    s.stack[s.stack.count - 1].token = s.authAttempt
+                    logIn()
+                }
             case .pickService(let service):
                 if service != s.service { use(service); fx.append(.setService(service)) }
                 if service == .spotify {
@@ -1446,8 +1451,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .notPremium(let token):
             // Only for the login or restore that runs now, or a session that is in. A late one
             // from an older attempt ("Open browser again"), a logout or a reset is dropped.
+            let login = token != nil && (s.top.screen == .auth || s.top.screen == s.promptScreen) && s.top.token == token
             if let token {
-                let login = (s.top.screen == .auth || s.top.screen == .pickMusic) && s.top.token == token
                 guard login || (s.restoring && s.authAttempt == token) else { return }
             } else {
                 guard s.signedIn, !(s.activateGated && s.stack.first?.screen == .activate) else { return }  // CLA-140
@@ -1458,14 +1463,14 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             if s.top.screen == .premium { return }  // "Check again": still no Premium, no change
             // A restore at launch during setup: Hello and the color pick stay. The browser
             // login after them shows the Premium screen.
-            if !s.signedIn && (s.top.screen == .hello || s.top.screen == .color) { return }
+            if !login && !s.signedIn && (s.top.screen == .hello || s.top.screen == .color) { return }  // CLA-202: not the phone's login on Color
             signOut()  // the session ended, and the library belongs to that account
             s.stack = [Frame(screen: .premium)]
             s.premiumFound = false; s.premiumAt = 0
 
         case .authDone(let token, let ok):
             // The Apple Music prompt answers on Pick Your Music (card BM, change 258).
-            let prompt = s.top.screen == .pickMusic
+            let prompt = s.top.screen == s.promptScreen
             guard s.top.screen == .auth || prompt, s.top.token == token else { return }  // stale attempt
             // A login that worked counts even if the app went offline since: its token is saved.
             // Card AX: a failed login says so in place of the wait (171). One that worked shows
@@ -1486,7 +1491,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .betaBuild(let beta):
             // Card BV: once a launch, betas only, and not on an ended beta (313: its screen has Get New Beta).
-            if let beta, s.beta == nil, now < beta.endsAt {
+            if let beta, s.beta == nil, now < beta.endsAt, s.features.betaNotices {  // CLA-202: not on the phone
                 fx.append(.checkLatestBeta)
                 s.newBetaNow = s.newBeta  // a build found before shows at once, with no wait
             }
@@ -1543,11 +1548,11 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .accessDenied(let token):
             // Change 258: from the prompt on Pick Your Music, or from a restore.
-            let prompt = s.top.screen == .pickMusic && s.top.token == token
+            let prompt = s.top.screen == s.promptScreen && s.top.token == token
             guard prompt || (s.restoring && s.authAttempt == token) else { return }
             s.restoring = false
             s.authAttempt += 1  // a late result of this login is stale
-            if !s.signedIn && (s.top.screen == .hello || s.top.screen == .color) { return }  // setup goes on to the pick
+            if !prompt && !s.signedIn && (s.top.screen == .hello || s.top.screen == .color) { return }  // setup goes on to the pick
             signOut()
             s.stack = [Frame(screen: .accessOff)]
 

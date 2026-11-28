@@ -1037,7 +1037,7 @@ public struct AppState: Equatable, Sendable {
     public var showsPanelBar: Bool { nowPlayingBar && current != nil }
 
     /// CLA-140: this Mac is not activated. CLA-156: the gate is always on, in every build.
-    var activateGated: Bool { !activated }
+    var activateGated: Bool { !activated && features.activation }  // CLA-202: never on the phone
 
     /// The warning (change 233) may open now: on the main screens, signed in, after setup. It
     /// waits while a list loads, because a load ends only on its own frame.
@@ -1307,10 +1307,10 @@ public struct AppState: Equatable, Sendable {
         case .loginFailed: [.tryAgain, .cancel]
         case .spotifyApp: [.getSpotifyApp]
         // Card BM, change 259: Apple Music has "Use Spotify" in place of "Log out".
-        case .premium: [.checkPremium, .getPremium, service == .spotify ? .premiumLogOut : .useSpotify]
+        case .premium: [.checkPremium, .getPremium] + (service == .spotify ? [.premiumLogOut] : features.serviceChoice ? [.useSpotify] : [])
         case .pickMusic:  // card CR: On This Mac is the third row
             ((appleMusicFirst ? [.appleMusic, .spotify] : [.spotify, .appleMusic]) + [.local]).map { .pickService($0) }
-        case .accessOff: [.openPrivacy, .useSpotify]
+        case .accessOff: [.openPrivacy] + (features.serviceChoice ? [.useSpotify] : [])  // CLA-202
         case .noSongs: [.checkLibrary, .pickYourMusic]  // card CR
         case .search: searchResults.map(Row.init)  // CLA-183
         case .betaSoon, .betaNew: [.getNewBeta, .later]
