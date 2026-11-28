@@ -16,12 +16,13 @@ public struct QueuedEvent: Codable, Equatable, Sendable {
     ///
     /// CLA-203: `os` (the macOS version, as "15.8.1") goes in as `os_version`, and `spotifyApp`
     /// (the Spotify app's version) as `spotify_app`, each when known. `app_problem` keeps its
-    /// own `os_version`, the one that MetricKit names for the crash.
+    /// own `os_version`, the one that MetricKit names for the crash, and `music_pick` its own
+    /// `spotify_app` (whether the app was found).
     public init(_ event: BetaEvent, at time: Double, build: Int? = nil, os: String? = nil, spotifyApp: String? = nil,
                 id: String = UUID().uuidString) {
         (self.id, self.name, self.time, self.properties) = (id, event.name, time, event.properties)
         if let os, properties["os_version"] == nil { properties["os_version"] = .text(os) }
-        if let spotifyApp { properties["spotify_app"] = .text(spotifyApp) }
+        if let spotifyApp, properties["spotify_app"] == nil { properties["spotify_app"] = .text(spotifyApp) }
         if case .appProblem = event { return }
         if let build, properties["app_build"] == nil { properties["app_build"] = .number(build) }
     }

@@ -69,6 +69,9 @@ import Testing
         #expect(p["os_version"] == .text("macOS 15.1 (24B83)") && p["spotify_app"] == .text("1.2.53.437"))
         let none = QueuedEvent(.appProblem(AppProblem(kind: .crash, frames: []), service: .spotify), at: 3, os: "15.8.1")
         #expect(none.properties["os_version"] == .text("15.8.1"))
+        // music_pick keeps its own spotify_app: whether the app was found.
+        let pick = QueuedEvent(.musicPick(.spotify, top: .spotify, spotifyApp: false), at: 4, spotifyApp: "1.2.53.437")
+        #expect(pick.properties["spotify_app"] == .flag(false))
     }
 
     @Test func theBodyHasTheKeyThePersonAndEachEvent() throws {
