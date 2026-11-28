@@ -1,3 +1,4 @@
+import ClasifyAppleMusic
 import ClasifyCore
 import ClasifySkins
 import QuartzCore

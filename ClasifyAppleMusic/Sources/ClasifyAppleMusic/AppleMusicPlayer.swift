@@ -1,4 +1,3 @@
-import ClasifyAppleMusic
 import ClasifyCore
 import Foundation
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
@@ -11,9 +10,9 @@ import Foundation
 ///
 /// MusicKit has no callback for position or track end, so it polls the player every 0.5 s
 /// while it has a queue, and reports `.position`, `.trackChanged` and `.trackEnded`.
-final class AppleMusicPlayer: Player {
+public final class AppleMusicPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
-    var send: (Action) -> Void = { _ in } {
+    public var send: (Action) -> Void = { _ in } {
         didSet { if active, let percent = volume?.read() { send(.volumeReported(percent)) } }  // CLA-168
     }
 
@@ -57,9 +56,9 @@ final class AppleMusicPlayer: Player {
     private var quietUntil = Date.distantPast
     private var settling: Task<Void, Never>?
 
-    init(volume: (any OutputVolume)?) { self.volume = volume }
+    public init(volume: (any OutputVolume)?) { self.volume = volume }
 
-    func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
+    public func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
         loadID += 1
         stopped = false
@@ -120,14 +119,14 @@ final class AppleMusicPlayer: Player {
         }
     }
 
-    func pause() {
+    public func pause() {
         wantsPlay = false
         guard hasQueue, !loading else { return }  // a load in flight applies it
         player.pause()
         lastPlaying = false
     }
 
-    func resume() {
+    public func resume() {
         wantsPlay = true
         guard hasQueue, !stopped, !loading else { return }  // a load in flight applies it
         let id = loadID
@@ -141,7 +140,7 @@ final class AppleMusicPlayer: Player {
         }
     }
 
-    func stop() {
+    public func stop() {
         loadID += 1  // a load or resume in flight must not report or play after this
         stopped = true
         loading = false
@@ -154,31 +153,31 @@ final class AppleMusicPlayer: Player {
         lastPlaying = false
     }
 
-    func next(generation: Int) {
+    public func next(generation: Int) {
         self.generation = generation
         if loading { pendingSkips.append(true); pendingSeek = nil; return }  // the load runs it
         guard hasQueue else { return }
         Task { _ = try? await player.skipToNextEntry() }  // the next poll reports the new track
     }
 
-    func prev(generation: Int) {
+    public func prev(generation: Int) {
         self.generation = generation
         if loading { pendingSkips.append(false); pendingSeek = nil; return }  // the load runs it
         guard hasQueue else { return }
         Task { _ = try? await player.skipToPreviousEntry() }
     }
 
-    func setShuffle(_ on: Bool) {
+    public func setShuffle(_ on: Bool) {
         shuffle = on
         applyModes()
     }
 
-    func setRepeat(_ mode: RepeatMode) {
+    public func setRepeat(_ mode: RepeatMode) {
         repeatMode = mode
         applyModes()
     }
 
-    func seek(to seconds: Double, generation: Int) {
+    public func seek(to seconds: Double, generation: Int) {
         self.generation = generation
         if loading { pendingSeek = seconds; return }  // the load runs it
         guard hasQueue else { return }
@@ -189,7 +188,7 @@ final class AppleMusicPlayer: Player {
     /// `ApplicationMusicPlayer`), so the wheel sets the Mac's own output volume. The reports of
     /// our own writes wait until the wheel rests for `settle` seconds, then the real volume is
     /// reported once: a late echo of an older step must not move the bar back.
-    func setVolume(_ percent: Int) {
+    public func setVolume(_ percent: Int) {
         volume?.write(percent)
         quietUntil = Date.now.addingTimeInterval(Self.settle)
         settling?.cancel()
@@ -202,7 +201,7 @@ final class AppleMusicPlayer: Player {
 
     /// CLA-168: Apple Music is the active service (or not). Active, the bar follows the Mac's
     /// volume: now, and on each change by the volume keys, the menu bar or a new output device.
-    func setActive(_ on: Bool) {
+    public func setActive(_ on: Bool) {
         active = on
         settling?.cancel()
         if on {

@@ -1,6 +1,5 @@
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
 // only on the main actor.
-import ClasifyAppleMusic
 import ClasifyCore
 import Foundation
 @preconcurrency import MusicKit
@@ -8,10 +7,10 @@ import Foundation
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
 /// Read-only: nothing here changes the library.
 @MainActor
-enum AppleMusicReads {
+public enum AppleMusicReads {
     /// Library covers for songs with no usable MusicKit cover (the Mac: `AppleMusicArt`). The
     /// app sets it once at launch, before the store exists, so before any read.
-    static var covers: any LibraryCovers = NoLibraryCovers()
+    public static var covers: any LibraryCovers = NoLibraryCovers()
 
     /// A song from the user's library, or else from the catalog. nil for an unknown ID.
     static func song(_ id: String) async -> Song? {
