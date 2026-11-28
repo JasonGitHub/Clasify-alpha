@@ -14,7 +14,7 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "C2A600000000000000000012"
+               BlueprintIdentifier = "C2A60000000000000000000A"
                BuildableName = "PhoneSpike.app"
                BlueprintName = "PhoneSpike"
                ReferencedContainer = "container:PhoneSpike.xcodeproj">
@@ -36,11 +36,15 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "C2A600000000000000000012"
+            BlueprintIdentifier = "C2A60000000000000000000A"
             BuildableName = "PhoneSpike.app"
             BlueprintName = "PhoneSpike"
             ReferencedContainer = "container:PhoneSpike.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
+   <ArchiveAction
+      buildConfiguration = "DebugNoBG"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
 </Scheme>

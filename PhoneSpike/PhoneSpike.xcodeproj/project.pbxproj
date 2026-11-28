@@ -7,92 +7,47 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C2A60000000000000000000B /* AppleMusicID.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A600000000000000000007 /* AppleMusicID.swift */; };
-		C2A60000000000000000000C /* AppleMusicLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A600000000000000000008 /* AppleMusicLibrary.swift */; };
-		C2A60000000000000000000D /* AppleMusicPlayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A600000000000000000009 /* AppleMusicPlayer.swift */; };
-		C2A60000000000000000000E /* AppleMusicReads.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2A60000000000000000000A /* AppleMusicReads.swift */; };
-		C2A60000000000000000000F /* libClasifyCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = C2A600000000000000000011 /* libClasifyCore.a */; };
+		C2A600000000000000000001 /* ClasifyAppleMusic in Frameworks */ = {isa = PBXBuildFile; productRef = C2A600000000000000000002 /* ClasifyAppleMusic */; };
+		C2A600000000000000000003 /* ClasifyCore in Frameworks */ = {isa = PBXBuildFile; productRef = C2A600000000000000000004 /* ClasifyCore */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		C2A600000000000000000019 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = C2A600000000000000000001 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = C2A600000000000000000013;
-			remoteInfo = ClasifyCore;
-		};
-/* End PBXContainerItemProxy section */
-
 /* Begin PBXFileReference section */
-		C2A600000000000000000007 /* AppleMusicID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicID.swift; sourceTree = "<group>"; };
-		C2A600000000000000000008 /* AppleMusicLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicLibrary.swift; sourceTree = "<group>"; };
-		C2A600000000000000000009 /* AppleMusicPlayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicPlayer.swift; sourceTree = "<group>"; };
-		C2A60000000000000000000A /* AppleMusicReads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleMusicReads.swift; sourceTree = "<group>"; };
-		C2A600000000000000000010 /* PhoneSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoneSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		C2A600000000000000000011 /* libClasifyCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libClasifyCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		C2A600000000000000000005 /* PhoneSpike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PhoneSpike.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		C2A600000000000000000004 /* App */ = {
+		C2A600000000000000000006 /* App */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = App;
-			sourceTree = "<group>";
-		};
-		C2A600000000000000000005 /* ClasifyCore */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			name = ClasifyCore;
-			path = ../ClasifyCore/Sources/ClasifyCore;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		C2A600000000000000000015 /* Frameworks */ = {
+		C2A600000000000000000007 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				C2A60000000000000000000F /* libClasifyCore.a in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		C2A600000000000000000018 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
+				C2A600000000000000000001 /* ClasifyAppleMusic in Frameworks */,
+				C2A600000000000000000003 /* ClasifyCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		C2A600000000000000000002 = {
+		C2A600000000000000000008 = {
 			isa = PBXGroup;
 			children = (
-				C2A600000000000000000004 /* App */,
-				C2A600000000000000000006 /* AppleMusic */,
-				C2A600000000000000000005 /* ClasifyCore */,
-				C2A600000000000000000003 /* Products */,
+				C2A600000000000000000006 /* App */,
+				C2A600000000000000000009 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		C2A600000000000000000006 /* AppleMusic */ = {
+		C2A600000000000000000009 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				C2A600000000000000000007 /* AppleMusicID.swift */,
-				C2A600000000000000000008 /* AppleMusicLibrary.swift */,
-				C2A600000000000000000009 /* AppleMusicPlayer.swift */,
-				C2A60000000000000000000A /* AppleMusicReads.swift */,
-			);
-			name = AppleMusic;
-			path = ../Clasify/AppleMusic;
-			sourceTree = "<group>";
-		};
-		C2A600000000000000000003 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				C2A600000000000000000010 /* PhoneSpike.app */,
-				C2A600000000000000000011 /* libClasifyCore.a */,
+				C2A600000000000000000005 /* PhoneSpike.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -100,78 +55,65 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C2A600000000000000000012 /* PhoneSpike */ = {
+		C2A60000000000000000000A /* PhoneSpike */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C2A60000000000000000001C /* Build configuration list for PBXNativeTarget "PhoneSpike" */;
+			buildConfigurationList = C2A60000000000000000000B /* Build configuration list for PBXNativeTarget "PhoneSpike" */;
 			buildPhases = (
-				C2A600000000000000000014 /* Sources */,
-				C2A600000000000000000015 /* Frameworks */,
-				C2A600000000000000000016 /* Resources */,
+				C2A60000000000000000000C /* Sources */,
+				C2A600000000000000000007 /* Frameworks */,
+				C2A60000000000000000000D /* Resources */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				C2A60000000000000000001A /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
-				C2A600000000000000000004 /* App */,
+				C2A600000000000000000006 /* App */,
 			);
 			name = PhoneSpike;
+			packageProductDependencies = (
+				C2A600000000000000000002 /* ClasifyAppleMusic */,
+				C2A600000000000000000004 /* ClasifyCore */,
+			);
 			productName = PhoneSpike;
-			productReference = C2A600000000000000000010 /* PhoneSpike.app */;
+			productReference = C2A600000000000000000005 /* PhoneSpike.app */;
 			productType = "com.apple.product-type.application";
-		};
-		C2A600000000000000000013 /* ClasifyCore */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = C2A60000000000000000001D /* Build configuration list for PBXNativeTarget "ClasifyCore" */;
-			buildPhases = (
-				C2A600000000000000000017 /* Sources */,
-				C2A600000000000000000018 /* Frameworks */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				C2A600000000000000000005 /* ClasifyCore */,
-			);
-			name = ClasifyCore;
-			productName = ClasifyCore;
-			productReference = C2A600000000000000000011 /* libClasifyCore.a */;
-			productType = "com.apple.product-type.library.static";
 		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
-		C2A600000000000000000001 /* Project object */ = {
+		C2A60000000000000000000E /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
 			};
-			buildConfigurationList = C2A60000000000000000001B /* Build configuration list for PBXProject "PhoneSpike" */;
+			buildConfigurationList = C2A60000000000000000000F /* Build configuration list for PBXProject "PhoneSpike" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
 				Base,
 			);
-			mainGroup = C2A600000000000000000002;
+			mainGroup = C2A600000000000000000008;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C2A600000000000000000010 /* XCLocalSwiftPackageReference "ClasifyAppleMusic" */,
+				C2A600000000000000000011 /* XCLocalSwiftPackageReference "ClasifyCore" */,
+			);
 			preferredProjectObjectVersion = 77;
-			productRefGroup = C2A600000000000000000003 /* Products */;
+			productRefGroup = C2A600000000000000000009 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				C2A600000000000000000012 /* PhoneSpike */,
-				C2A600000000000000000013 /* ClasifyCore */,
+				C2A60000000000000000000A /* PhoneSpike */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		C2A600000000000000000016 /* Resources */ = {
+		C2A60000000000000000000D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -181,18 +123,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		C2A600000000000000000014 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				C2A60000000000000000000B /* AppleMusicID.swift in Sources */,
-				C2A60000000000000000000C /* AppleMusicLibrary.swift in Sources */,
-				C2A60000000000000000000D /* AppleMusicPlayer.swift in Sources */,
-				C2A60000000000000000000E /* AppleMusicReads.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		C2A600000000000000000017 /* Sources */ = {
+		C2A60000000000000000000C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -201,16 +132,8 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		C2A60000000000000000001A /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = C2A600000000000000000013 /* ClasifyCore */;
-			targetProxy = C2A600000000000000000019 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		C2A60000000000000000001E /* Debug */ = {
+		C2A600000000000000000012 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -227,7 +150,7 @@
 			};
 			name = Debug;
 		};
-		C2A60000000000000000001F /* DebugNoBG */ = {
+		C2A600000000000000000013 /* DebugNoBG */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
@@ -244,15 +167,17 @@
 			};
 			name = DebugNoBG;
 		};
-		C2A600000000000000000020 /* Debug */ = {
+		C2A600000000000000000014 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Info-Audio.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "myPod Spike";
+				INFOPLIST_KEY_CFBundleDisplayName = "myPod Test";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSAppleMusicUsageDescription = "myPod shows your playlists and plays your music.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -268,15 +193,17 @@
 			};
 			name = Debug;
 		};
-		C2A600000000000000000021 /* DebugNoBG */ = {
+		C2A600000000000000000015 /* DebugNoBG */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Info-NoBG.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "myPod Spike";
+				INFOPLIST_KEY_CFBundleDisplayName = "myPod Test";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSAppleMusicUsageDescription = "myPod shows your playlists and plays your music.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -289,56 +216,53 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.cappyai.mypod;
 				PRODUCT_NAME = PhoneSpike;
 				TARGETED_DEVICE_FAMILY = 1;
-			};
-			name = DebugNoBG;
-		};
-		C2A600000000000000000022 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				PRODUCT_NAME = ClasifyCore;
-				SKIP_INSTALL = YES;
-			};
-			name = Debug;
-		};
-		C2A600000000000000000023 /* DebugNoBG */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				PRODUCT_NAME = ClasifyCore;
-				SKIP_INSTALL = YES;
 			};
 			name = DebugNoBG;
 		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C2A60000000000000000001C /* Build configuration list for PBXNativeTarget "PhoneSpike" */ = {
+		C2A60000000000000000000B /* Build configuration list for PBXNativeTarget "PhoneSpike" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C2A600000000000000000020 /* Debug */,
-				C2A600000000000000000021 /* DebugNoBG */,
+				C2A600000000000000000014 /* Debug */,
+				C2A600000000000000000015 /* DebugNoBG */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
-		C2A60000000000000000001D /* Build configuration list for PBXNativeTarget "ClasifyCore" */ = {
+		C2A60000000000000000000F /* Build configuration list for PBXProject "PhoneSpike" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
-				C2A600000000000000000022 /* Debug */,
-				C2A600000000000000000023 /* DebugNoBG */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		C2A60000000000000000001B /* Build configuration list for PBXProject "PhoneSpike" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				C2A60000000000000000001E /* Debug */,
-				C2A60000000000000000001F /* DebugNoBG */,
+				C2A600000000000000000012 /* Debug */,
+				C2A600000000000000000013 /* DebugNoBG */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		C2A600000000000000000010 /* XCLocalSwiftPackageReference "ClasifyAppleMusic" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../ClasifyAppleMusic;
+		};
+		C2A600000000000000000011 /* XCLocalSwiftPackageReference "ClasifyCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../ClasifyCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C2A600000000000000000002 /* ClasifyAppleMusic */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifyAppleMusic;
+		};
+		C2A600000000000000000004 /* ClasifyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifyCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
-	rootObject = C2A600000000000000000001 /* Project object */;
+	rootObject = C2A60000000000000000000E /* Project object */;
 }

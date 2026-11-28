@@ -1,14 +1,15 @@
+import ClasifyAppleMusic
 import ClasifyCore
 import Foundation
 @preconcurrency import MusicKit
 import SwiftUI
 import UIKit
 
-/// CLA-202 spike: drives the copied `AppleMusicLibrary` and `AppleMusicPlayer` as the Store
+/// CLA-202 spike: drives the shared `AppleMusicLibrary` and `AppleMusicPlayer` as the Store
 /// would, and feeds the `Probe`. Names show on screen only; the report never holds them.
 @MainActor @Observable final class SpikeModel {
-    @ObservationIgnored let library = AppleMusicLibrary()
-    @ObservationIgnored let player = AppleMusicPlayer()
+    @ObservationIgnored let library = AppleMusicLibrary(covers: NoLibraryCovers())  // no iTunesLibrary on the phone
+    @ObservationIgnored let player = AppleMusicPlayer(volume: nil)  // the phone's volume stays with iOS
     @ObservationIgnored let probe = Probe()
 
     var auth = "not asked"

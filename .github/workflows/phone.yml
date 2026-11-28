@@ -4,7 +4,7 @@ name: Phone
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["PhoneSpike/**", "ClasifyCore/**", "Clasify/AppleMusic/**", ".github/workflows/phone.yml"]
+    paths: ["PhoneSpike/**", "ClasifyCore/**", "ClasifyAppleMusic/**", ".github/workflows/phone.yml"]
 permissions:
   contents: read
 concurrency:
@@ -27,4 +27,5 @@ jobs:
           done
       - name: List the warnings
         if: always()
-        run: grep -E '(^|: )warning: ' build.log | sort -u || echo "No warnings."
+        run: |
+          grep -E '(^|: )warning: ' build.log | sort -u || echo "No warnings."

@@ -40,7 +40,7 @@ struct SpikeView: View {
                     }
                 }
             }
-            .navigationTitle("myPod spike")
+            .navigationTitle("myPod Test")
         }
         .onChange(of: phase) { _, new in model.phaseChanged(new) }
     }
