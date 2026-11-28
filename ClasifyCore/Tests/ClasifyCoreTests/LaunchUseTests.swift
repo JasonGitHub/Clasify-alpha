@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import ClasifyCore
 
-/// CLA-203: `app_closed` says this launch's play use: Play and Pause presses, skips, the
-/// longest pause, losses of control while playing or paused, and outside music.
+/// CLA-203: `app_closed` says this launch's play use: starts and stops of the music by any way,
+/// myPod skips, the longest pause, losses of control while playing or paused, and outside music.
 @Suite struct LaunchUseTests {
     func events(_ s: inout AppState, _ action: Action, now: Double) -> [BetaEvent] {
         reduce(&s, action, Dependencies(now: { now }, random: { _ in 0 })).compactMap { (fx: Effect) -> BetaEvent? in
@@ -28,6 +28,18 @@ import Testing
         _ = events(&s, .play, now: 150)  // play: 10 s
         #expect(s.launchUse.plays == 2 && s.launchUse.pauses == 2 && s.launchUse.skips == 2)
         #expect(s.launchUse.longestPause == 30 && s.launchUse.pausedAt == nil)
+    }
+
+    /// CTO: a start or a stop on another device counts; a new song while music plays is no start;
+    /// a loss of control is a stop, not a pause.
+    @Test func startsAndStopsFromAnyWayCount() {
+        var s = playing()
+        _ = events(&s, .trackChanged("l1", playing: true, generation: s.playGen), now: 10)  // a new song: no start
+        _ = events(&s, .trackChanged("l1", playing: false, generation: s.playGen), now: 20)  // paused on the phone
+        _ = events(&s, .trackChanged("l1", playing: true, generation: s.playGen), now: 45)  // played on the phone
+        #expect(s.launchUse.plays == 1 && s.launchUse.pauses == 1 && s.launchUse.longestPause == 25)
+        _ = events(&s, .controlLost(.stoppedInSpotify), now: 50)
+        #expect(s.launchUse.pauses == 1 && s.launchUse.stopsPlaying == 1)
     }
 
     @Test func aLossCountsAsPlayingOrPausedOnce() {

@@ -1505,9 +1505,10 @@ indirect enum Heap<Value: Equatable & Sendable>: Equatable, Sendable {
 
 /// CLA-203: one launch's play use, for `app_closed`. Counts only; no names or IDs.
 public struct LaunchUse: Equatable, Sendable {
-    /// Play presses that started music, and that paused it; Next and Prev presses on a song.
+    /// Starts of the music and stops of it, by any way (a loss of control and the quit are not
+    /// pauses); myPod Next and Prev presses on a song.
     public var plays = 0, pauses = 0, skips = 0
-    /// The longest time from a pause (any cause) to the next play, in seconds, and the open one.
+    /// The longest time from a stop (any cause) to the next start, in seconds, and the open one.
     public var longestPause = 0.0, pausedAt: Double?
     /// Losses of control (`control_lost`) while music played, and while it was paused.
     public var stopsPlaying = 0, stopsPaused = 0

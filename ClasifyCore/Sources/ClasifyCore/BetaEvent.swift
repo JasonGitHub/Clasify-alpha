@@ -855,9 +855,14 @@ extension AppState {
 /// `dayEvents`'s stack frame stays small (reducer stack limit).
 @inline(never) func countLaunch(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, quit: Bool) {
     var use = s.launchUse
+    // CTO: a start or a stop by any way (myPod, a song pick, another device, the end of the list).
+    // A loss of control counts in `stops_*`, and the quit's own stop is not a pause.
+    if !b.playing && s.isPlaying { use.plays += 1 }
     switch action {
-    case .play where !b.playing && s.isPlaying: use.plays += 1
-    case .play where b.playing && !s.isPlaying: use.pauses += 1
+    case .controlLost, .willQuit: break
+    default: if b.playing && !s.isPlaying { use.pauses += 1 }
+    }
+    switch action {
     case .next, .prev: if s.current != nil { use.skips += 1 }
     case .controlLost where !b.lossOpen && s.controlLostAt != nil:
         if b.playing { use.stopsPlaying += 1 } else { use.stopsPaused += 1 }
