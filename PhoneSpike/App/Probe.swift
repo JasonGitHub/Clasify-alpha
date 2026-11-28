@@ -6,8 +6,9 @@ import Foundation
     private(set) var lines: [String] = []
     private let start = Date.now
 
-    /// The play press that waits for its first sound, and when it came.
-    private var playPressed: (n: Int, at: Date)?
+    /// The play press that waits for its first sound: when the list was tapped, and when the
+    /// player got the load (after the list read).
+    private var playPressed: (n: Int, tapped: Date, loaded: Date)?
     private var plays = 0
     /// The song that plays now (by ID, kept here only), how far it played, and its length.
     private var song: (id: String, played: Double, duration: Double)?
@@ -23,9 +24,9 @@ import Foundation
         lines.append(String(format: "+%.1f s  ", Date.now.timeIntervalSince(start)) + text)
     }
 
-    func play() {
+    func play(tapped: Date) {
         plays += 1
-        playPressed = (plays, Date.now)
+        playPressed = (plays, tapped, Date.now)
         userMove = .now
         song = nil
         log("play \(plays): pressed")
@@ -39,7 +40,8 @@ import Foundation
     /// A `.position` report: the player polls every 0.5 s and reports only while it plays.
     func position(_ t: Double) {
         if let press = playPressed, t > 0 {
-            log(String(format: "play %d: first sound after %.2f s (polled, +/- 0.5 s)", press.n, Date.now.timeIntervalSince(press.at)))
+            log(String(format: "play %d: first sound %.2f s after the tap, %.2f s after the load (polled, +/- 0.5 s)",
+                       press.n, Date.now.timeIntervalSince(press.tapped), Date.now.timeIntervalSince(press.loaded)))
             playPressed = nil
         }
         if let s = song { song = (s.id, max(s.played, t), s.duration) }
