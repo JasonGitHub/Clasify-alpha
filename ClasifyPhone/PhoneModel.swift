@@ -1,5 +1,6 @@
 import ClasifyAppleMusic
 import ClasifyCore
+import AVFAudio
 import ClasifyShell
 import Foundation
 import UIKit
@@ -51,6 +52,10 @@ final class PhoneModel {
     /// UIKit's device and feedback objects want a running app, not the `App` initializer.
     func startDevice() {
         guard haptics == nil else { return }
+        // The wheel click mixes with the music and never interrupts it (Apple: "audio from other
+        // apps mixes with your audio"). The default, soloAmbient, is nonmixable. A failure keeps
+        // the default; the click is not worth a crash.
+        try? AVAudioSession.sharedInstance().setCategory(.ambient)
         let haptics = PhoneHaptics(store: store)
         store.onWheelStep = { [weak haptics] in haptics?.step() }
         self.haptics = haptics
