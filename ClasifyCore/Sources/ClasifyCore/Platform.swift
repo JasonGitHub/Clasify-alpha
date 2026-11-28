@@ -21,11 +21,15 @@ public struct Features: Equatable, Sendable {
     public var activation: Bool
     /// The beta's end, its warning and the new-beta notice (Beta Soon, Ended, New; Get New Beta).
     public var betaNotices: Bool
+    /// Card CX: About's "Report a Problem" row, in the Status row's place. Its press opens a
+    /// new mail to feedback@getmypod.app. The Mac has Report a Problem in its app menu.
+    public var mailReport: Bool
 
     public init(_ platform: Platform) {
         let mac = platform == .mac
         services = mac ? MusicService.allCases : [.appleMusic]
         (menuBar, views3D, wheelVolume, search, activation, betaNotices) = (mac, mac, mac, mac, mac, mac)
+        mailReport = !mac
     }
 
     public var serviceChoice: Bool { services.count > 1 }

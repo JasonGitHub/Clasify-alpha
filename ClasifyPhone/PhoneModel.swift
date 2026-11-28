@@ -27,6 +27,13 @@ final class PhoneModel {
         // "Get Apple Music" opens Apple's page; "Open Settings" opens this app's page in Settings.
         store.onGetPremium = { Self.open("https://www.apple.com/apple-music/") }
         store.onOpenPrivacy = { Self.open(UIApplication.openSettingsURLString) }
+        // Card CX: About's Report a Problem. A new mail with no body; with no mail app, a message.
+        store.onOpenMail = { [weak store] in
+            guard let url = URL(string: "mailto:feedback@getmypod.app") else { return }
+            Task { @MainActor in
+                if !(await UIApplication.shared.open(url)) { store?.send(.mailFailed) }
+            }
+        }
         self.store = store
         store.send(.launch)  // restores the stored login
         // The reducer's timers run on .tick, which this loop sends when `AppState.tickDue(at:)` says so.

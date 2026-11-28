@@ -155,6 +155,7 @@ private struct TestPanel: View {
         case .activation: "Activation"
         case .noSongs: "On This Mac"
         case .search: "Search"
+        case .noMail: "Report a Problem"
         }
     }
 

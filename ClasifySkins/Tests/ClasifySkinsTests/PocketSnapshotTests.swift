@@ -1366,6 +1366,23 @@ import Testing
         _ = try render(s, "activation-long")
     }
 
+    /// Card CX: on the phone, step 1 is the Report a Problem row, selected. With no mail, the
+    /// No Mail Account message shows under the title "Report a Problem".
+    @Test func phoneAboutReportAProblem() throws {
+        var s = AppState(platform: .phone)
+        s.deviceColor = .silver
+        s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
+        s.stack[2].off = AppState.aboutStatusStep
+        let top = Self.listTop, x = Self.screenLeft + 150
+        let row = try render(s, "phone-about-report")
+        #expect(row.isBlue(x, top + 185) && row.isBlue(x, top + 204))
+        s.stack.append(Frame(screen: .noMail))
+        let message = try render(s, "phone-no-mail")
+        #expect(!message.isBlue(x, top + 20))
+        let ink = (Self.screenLeft + 20..<Self.screenLeft + 280).filter { x in (top + 20...top + 150).contains { message.isDark(x, $0) } }
+        #expect(ink.count > 20)
+    }
+
     /// Change 210: the capybara waves in the first second, then stands, then sleeps. Changes 209
     /// and 218: the glint crosses the signature. There is no tagline (Jason 22:05 JST 11-19).
     @Test func aboutCapybaraChangesPoseAndTheSignatureGlints() throws {
