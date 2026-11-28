@@ -65,11 +65,16 @@ import UIKit
 
     func play(_ list: ClasifyCore.Playlist) async {
         let tapped = Date.now, clock = ContinuousClock.now
+        let before = generation
         generation += 1  // from the tap on, reports of the song that played before are not this play's
         let mine = generation
         let tracks = await library.tracks(of: list.id)
         log("list read: \(tracks.map { "\($0.count) songs" } ?? "failed") in \(clock.duration(to: .now))")
-        guard mine == generation, let tracks, let first = tracks.first else { return }  // a newer tap or skip wins
+        guard mine == generation else { return }  // a newer tap or skip wins
+        guard let tracks, let first = tracks.first else {
+            generation = before  // nothing loads: the song that plays keeps reporting
+            return
+        }
         for track in tracks { songs[track.id] = track }
         probe.play(tapped: tapped)
         report = probe.lines

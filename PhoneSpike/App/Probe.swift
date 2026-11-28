@@ -12,8 +12,8 @@ import Foundation
     private var plays = 0
     /// The song that plays now (by ID, kept here only), how far it played, and its length.
     private var song: (id: String, played: Double, duration: Double)?
-    /// The newest Next, Prev or play press: a song change soon after it is not a short song.
-    private var userMove = Date.distantPast
+    /// A Next, Prev or play press whose song change has not come yet: that change is not a short song.
+    private var userMove = false
     private var backgroundAt: (at: Date, status: String, time: Double)?
     private var backgrounds = 0
 
@@ -27,13 +27,13 @@ import Foundation
     func play(tapped: Date) {
         plays += 1
         playPressed = (plays, tapped, Date.now)
-        userMove = .now
+        userMove = true
         song = nil
         log("play \(plays): pressed")
     }
 
     func skip(_ forward: Bool) {
-        userMove = .now
+        userMove = true
         log(forward ? "next pressed" : "prev pressed")
     }
 
@@ -49,7 +49,8 @@ import Foundation
 
     func trackChanged(_ id: String, playing: Bool, duration: Double) {
         if let s = song, s.id != id {
-            let moved = Date.now.timeIntervalSince(userMove) < 1.5
+            let moved = userMove
+            userMove = false  // this change is the one that the press asked for
             if s.played < 5 && !moved {
                 log(String(format: "short song: changed after %.1f s of %.0f s, no Next/Prev pressed", s.played, s.duration))
             }
