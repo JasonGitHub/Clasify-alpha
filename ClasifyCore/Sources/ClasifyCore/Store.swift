@@ -214,12 +214,14 @@ public final class Store {
 
     public init(
         player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live,
-        settings: (any SettingsStore)? = nil, betaFeed: (any BetaFeed)? = nil, activator: (any Activator)? = nil
+        settings: (any SettingsStore)? = nil, betaFeed: (any BetaFeed)? = nil, activator: (any Activator)? = nil,
+        platform: Platform = .mac
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
         self.betaFeed = betaFeed
         self.activator = activator
+        self.state.platform = platform  // CLA-202
         self.state.words = library.words
         library.onProgress = { [weak self] playlist, done, total, albums in
             self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
@@ -230,6 +232,8 @@ public final class Store {
             player.setShuffle(self.state.shuffle)
             player.setRepeat(self.state.repeatMode)
         }
+        // CLA-202: a saved service that this platform does not have reads as its first one.
+        if !self.state.features.services.contains(self.state.service) { self.state.service = self.state.features.services[0] }
     }
 
     /// Waits for in-flight library fetches to deliver their results. For tests.
@@ -248,7 +252,7 @@ public final class Store {
     /// CLA-128: at launch, the stored activation of this Mac. The answer comes
     /// with no request number, so it is dropped here when a newer request started meanwhile.
     public func checkActivationAtLaunch() {
-        guard let activator else { return }
+        guard let activator, state.features.activation else { return }  // CLA-202: no activation on the phone
         let request = state.activateRequest
         Task { [weak self] in
             let answer = await activator.status()

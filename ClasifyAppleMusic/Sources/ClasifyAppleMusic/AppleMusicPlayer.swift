@@ -10,10 +10,10 @@ import Foundation
 ///
 /// MusicKit has no callback for position or track end, so it polls the player every 0.5 s
 /// while it has a queue, and reports `.position`, `.trackChanged` and `.trackEnded`.
-final class AppleMusicPlayer: Player {
+public final class AppleMusicPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
-    var send: (Action) -> Void = { _ in } {
-        didSet { if active, let percent = macVolume.read() { send(.volumeReported(percent)) } }  // CLA-168
+    public var send: (Action) -> Void = { _ in } {
+        didSet { if active, let percent = volume?.read() { send(.volumeReported(percent)) } }  // CLA-168
     }
 
     private var player: ApplicationMusicPlayer { ApplicationMusicPlayer.shared }
@@ -48,14 +48,17 @@ final class AppleMusicPlayer: Player {
     /// entries can carry other IDs than the library songs that we queued (build 177: a catalog
     /// ID, not checked on a Mac), so a poll finds the song by any of its keys.
     private var queued = QueueMatch()
-    /// CLA-168: the Mac's output volume, and whether Apple Music is the active service.
-    private let macVolume = MacVolume()
+    /// CLA-168: the device's output volume (the Mac's, from the app; nil where there is none),
+    /// and whether Apple Music is the active service.
+    private let volume: (any OutputVolume)?
     private var active = false
     private static let settle = 0.5
     private var quietUntil = Date.distantPast
     private var settling: Task<Void, Never>?
 
-    func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
+    public init(volume: (any OutputVolume)?) { self.volume = volume }
+
+    public func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
         loadID += 1
         stopped = false
@@ -116,14 +119,14 @@ final class AppleMusicPlayer: Player {
         }
     }
 
-    func pause() {
+    public func pause() {
         wantsPlay = false
         guard hasQueue, !loading else { return }  // a load in flight applies it
         player.pause()
         lastPlaying = false
     }
 
-    func resume() {
+    public func resume() {
         wantsPlay = true
         guard hasQueue, !stopped, !loading else { return }  // a load in flight applies it
         let id = loadID
@@ -137,7 +140,7 @@ final class AppleMusicPlayer: Player {
         }
     }
 
-    func stop() {
+    public func stop() {
         loadID += 1  // a load or resume in flight must not report or play after this
         stopped = true
         loading = false
@@ -150,31 +153,31 @@ final class AppleMusicPlayer: Player {
         lastPlaying = false
     }
 
-    func next(generation: Int) {
+    public func next(generation: Int) {
         self.generation = generation
         if loading { pendingSkips.append(true); pendingSeek = nil; return }  // the load runs it
         guard hasQueue else { return }
         Task { _ = try? await player.skipToNextEntry() }  // the next poll reports the new track
     }
 
-    func prev(generation: Int) {
+    public func prev(generation: Int) {
         self.generation = generation
         if loading { pendingSkips.append(false); pendingSeek = nil; return }  // the load runs it
         guard hasQueue else { return }
         Task { _ = try? await player.skipToPreviousEntry() }
     }
 
-    func setShuffle(_ on: Bool) {
+    public func setShuffle(_ on: Bool) {
         shuffle = on
         applyModes()
     }
 
-    func setRepeat(_ mode: RepeatMode) {
+    public func setRepeat(_ mode: RepeatMode) {
         repeatMode = mode
         applyModes()
     }
 
-    func seek(to seconds: Double, generation: Int) {
+    public func seek(to seconds: Double, generation: Int) {
         self.generation = generation
         if loading { pendingSeek = seconds; return }  // the load runs it
         guard hasQueue else { return }
@@ -185,27 +188,27 @@ final class AppleMusicPlayer: Player {
     /// `ApplicationMusicPlayer`), so the wheel sets the Mac's own output volume. The reports of
     /// our own writes wait until the wheel rests for `settle` seconds, then the real volume is
     /// reported once: a late echo of an older step must not move the bar back.
-    func setVolume(_ percent: Int) {
-        macVolume.write(percent)
+    public func setVolume(_ percent: Int) {
+        volume?.write(percent)
         quietUntil = Date.now.addingTimeInterval(Self.settle)
         settling?.cancel()
         settling = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.settle))
-            guard !Task.isCancelled, let self, self.active, let percent = self.macVolume.read() else { return }
+            guard !Task.isCancelled, let self, self.active, let percent = self.volume?.read() else { return }
             self.send(.volumeReported(percent))
         }
     }
 
     /// CLA-168: Apple Music is the active service (or not). Active, the bar follows the Mac's
     /// volume: now, and on each change by the volume keys, the menu bar or a new output device.
-    func setActive(_ on: Bool) {
+    public func setActive(_ on: Bool) {
         active = on
         settling?.cancel()
         if on {
-            macVolume.onChange = { [weak self] percent in self?.heard(percent) }
-            macVolume.start()
+            volume?.onChange = { [weak self] percent in self?.heard(percent) }
+            volume?.start()
         } else {
-            macVolume.stop()
+            volume?.stop()
         }
     }
 

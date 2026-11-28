@@ -7,7 +7,11 @@ import Foundation
 /// MusicKit reads that the player and the library share, so the two always agree (CLA-103).
 /// Read-only: nothing here changes the library.
 @MainActor
-enum AppleMusicReads {
+public enum AppleMusicReads {
+    /// Library covers for songs with no usable MusicKit cover (the Mac: `AppleMusicArt`). The
+    /// app sets it once at launch, before the store exists, so before any read.
+    public static var covers: any LibraryCovers = NoLibraryCovers()
+
     /// A song from the user's library, or else from the catalog. nil for an unknown ID.
     static func song(_ id: String) async -> Song? {
         guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.songPrefix) else { return nil }
@@ -233,10 +237,10 @@ enum AppleMusicReads {
     private static func libraryCovers(_ songs: [Song]) async -> [MusicItemID: Cover] {
         guard !songs.isEmpty else { return [:] }
         let keys = songs.map { (id: $0.id.rawValue, key: LibraryKey.of(title: $0.title, artist: $0.artistName, album: $0.albumTitle)) }
-        let match = await AppleMusicArt.shared.match(keys)
+        let found = await Self.covers.covers(keys)
         var covers: [MusicItemID: Cover] = [:]
         for song in songs {
-            guard let pid = match.found[song.id.rawValue] else { continue }
+            guard let pid = found[song.id.rawValue] else { continue }
             covers[song.id] = Cover(
                 small: LibraryCover.coverID(persistentID: pid, side: 300), large: LibraryCover.coverID(persistentID: pid, side: 640))
         }

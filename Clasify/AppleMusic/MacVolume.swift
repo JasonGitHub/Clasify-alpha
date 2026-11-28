@@ -1,4 +1,5 @@
 import AudioToolbox
+import ClasifyAppleMusic
 import CoreAudio
 import Foundation
 
@@ -104,3 +105,6 @@ import Foundation
         onChange(percent)
     }
 }
+
+/// CLA-202: the shared Apple Music player sets the Mac's volume through `OutputVolume`.
+extension MacVolume: OutputVolume {}

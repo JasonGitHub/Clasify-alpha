@@ -1,3 +1,4 @@
+import ClasifyAppleMusic
 import ClasifyCore
 import ClasifySkins
 import QuartzCore
@@ -501,14 +502,17 @@ final class AppModel {
         let popularArtists = UserDefaults.standard.object(forKey: "artists.popular") as? Bool ?? true
         let library = LibrespotLibrary(client: client, popularArtists: popularArtists)
         let player = SpotifyConnectPlayer(client: client, library: library)
-        let appleMusic = AppleMusicPlayer()
+        // CLA-202: the shared Apple Music code gets the Mac's library covers and volume. Set
+        // before the store exists, so before any Apple Music read.
+        AppleMusicReads.covers = AppleMusicArt.shared
+        let appleMusic = AppleMusicPlayer(volume: MacVolume())
         let service = ClasifyCore.Settings(from: UserDefaults.standard).service
         // CLA-179: On This Mac plays inside myPod. One `LocalLibrary` reads the Music app library
         // for the lists and gives `LocalPlayer` the files. Neither reads the library before On This Mac is picked.
         let localLibrary = LocalLibrary()
         let local = LocalPlayer(source: localLibrary)
         let services = ServicePlayer(spotify: player, appleMusic: appleMusic, local: local, service: service)
-        let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(), local: localLibrary, service: service)
+        let libraries = ServiceLibrary(spotify: library, appleMusic: AppleMusicLibrary(covers: AppleMusicArt.shared), local: localLibrary, service: service)
         let activator = ServerActivator()
         let betaLink = BetaDownloadLink()  // CLA-171: the newest DMG, from the beta feed
         let store = Store(player: services, library: libraries, settings: UserDefaults.standard, betaFeed: BetaFeedLive(link: betaLink), activator: activator)
