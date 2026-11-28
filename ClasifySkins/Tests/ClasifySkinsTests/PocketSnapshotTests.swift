@@ -1369,8 +1369,8 @@ import Testing
     /// Card CX: on the phone, step 1 is the Report a Problem row, selected. With no mail, the
     /// No Mail Account message shows under the title "Report a Problem".
     @Test func phoneAboutReportAProblem() throws {
-        var s = sampleState()
-        s.platform = .phone
+        var s = AppState(platform: .phone)
+        s.deviceColor = .silver
         s.stack = [Frame(screen: .main), Frame(screen: .settings), Frame(screen: .about)]
         s.stack[2].off = AppState.aboutStatusStep
         let top = Self.listTop, x = Self.screenLeft + 150

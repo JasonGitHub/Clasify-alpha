@@ -579,10 +579,11 @@ func sampleState() -> AppState {
         #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Activated"))  // no info: no chevron
         s.activation = .active(ActiveInfo(email: "s***@example.com", since: 1_795_014_000, macs: 1, limit: 2))
         #expect(Labels.statusRow(in: s) == .init(label: "Status", value: "Activated", opens: true))
-        s.platform = .phone  // card CX: Report a Problem in its place
-        #expect(Labels.statusRow(in: s) == .init(label: "Report a Problem", opens: true))
-        #expect(Labels.title(.noMail, in: s) == "Report a Problem")
-        #expect(Labels.message(for: Frame(screen: .noMail), in: s)
+        var phone = AppState(platform: .phone)  // card CX: Report a Problem in its place
+        phone.activation = s.activation
+        #expect(Labels.statusRow(in: phone) == .init(label: "Report a Problem", opens: true))
+        #expect(Labels.title(.noMail, in: phone) == "Report a Problem")
+        #expect(Labels.message(for: Frame(screen: .noMail), in: phone)
             == Labels.Message(title: "No Mail Account", body: "Write to feedback@getmypod.app. Press MENU to go back."))
         #expect(Labels.title(.activation, in: s) == "Activation")
         let row = Labels.row(.activatedAs, on: .activation, in: s)
