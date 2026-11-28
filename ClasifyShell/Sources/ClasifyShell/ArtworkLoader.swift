@@ -5,10 +5,11 @@ import Foundation
 import ImageIO
 
 /// Loads album covers from Spotify's image CDN and Apple's image server (`CoverURL`), and Apple
-/// Music library covers from iTunesLibrary (`AppleMusicArt`), for the skins. It keeps them in memory only:
-/// an NSCache of about 50 images, and a URLSession with no URL cache, so nothing goes to disk.
+/// Music library covers from iTunesLibrary (`AppleMusicArt`, in the Mac app, through `libraryImage`),
+/// for the skins. It keeps them in memory only: an NSCache of about 50 images, and a URLSession
+/// with no URL cache, so nothing goes to disk.
 @MainActor @Observable
-final class ArtworkLoader {
+public final class ArtworkLoader {
     /// Bumped when a cover arrives. `image(for:)` reads it, so a skin that asked redraws.
     private var arrived = 0
     private let cache = NSCache<NSString, CGImage>()
@@ -42,17 +43,22 @@ final class ArtworkLoader {
         return URLSession(configuration: configuration)
     }()
 
-    init() {
+    /// Reads an Apple Music library cover (persistent ID, side in pixels) in memory. CLA-202:
+    /// the Mac app passes `AppleMusicArt`; nil (the phone) means library covers never load.
+    private let libraryImage: (@MainActor (UInt64, Int) async -> CGImage?)?
+
+    public init(libraryImage: (@MainActor (UInt64, Int) async -> CGImage?)? = nil) {
+        self.libraryImage = libraryImage
         cache.countLimit = 50
     }
 
     /// For the skins: `.environment(\.artwork, loader.artwork)`.
-    var artwork: Artwork {
+    public var artwork: Artwork {
         Artwork({ [self] in image(for: $0) }, pending: { [self] in isLoading($0) }, loadedAt: { [self] in arrivedAt[$0] })
     }
 
     /// The cover if it is in memory. Else it starts the load and returns nil.
-    func image(for coverID: String) -> CGImage? {
+    public func image(for coverID: String) -> CGImage? {
         _ = arrived
         if let image = cached(coverID) { return image }
         load(coverID)
@@ -60,14 +66,14 @@ final class ArtworkLoader {
     }
 
     /// The cover is on its way, so a skin can keep showing the cover it had.
-    func isLoading(_ coverID: String) -> Bool {
+    public func isLoading(_ coverID: String) -> Bool {
         _ = arrived  // a load that ends bumps it, also when it fails
         return loading.contains(coverID)
     }
 
     /// Keeps the playing track's cover, and loads the cover of the track after it, so it shows
     /// at once on Next. The app's ticker calls it every 250 ms.
-    func prefetchNext(in state: AppState) {
+    public func prefetchNext(in state: AppState) {
         var ids = Self.wantedCovers(in: state)
         ids.formUnion(heldMainCovers(in: state))
         if ids != wanted {
@@ -148,7 +154,7 @@ final class ArtworkLoader {
         // A Spotify cover ID, an https mzstatic.com Artwork URL, or an Apple Music library
         // cover (`LibraryCover`, read in memory by `AppleMusicArt`). Anything else never loads.
         guard !loading.contains(coverID) else { return }
-        let library = LibraryCover.parse(coverID)
+        let library = libraryImage == nil ? nil : LibraryCover.parse(coverID)
         let url = library == nil ? CoverURL.url(for: coverID) : nil
         guard library != nil || url != nil else { return }
         if let failed = failedAt[coverID], ContinuousClock.now - failed < .seconds(30) { return }
@@ -156,8 +162,8 @@ final class ArtworkLoader {
         Task {
             defer { loading.remove(coverID); arrived += 1 }
             var image: CGImage?
-            if let library {
-                image = await AppleMusicArt.shared.image(library.persistentID, side: library.side)?.cgImage
+            if let library, let libraryImage {
+                image = await libraryImage(library.persistentID, library.side)
             } else if let url, let data = await Self.fetch(url, with: session),
                       let source = CGImageSourceCreateWithData(data as CFData, nil) {
                 image = CGImageSourceCreateImageAtIndex(source, 0, nil)
