@@ -16,7 +16,11 @@ import Testing
         let sent = events(&s, .willQuit(openSeconds: 90))
         #expect(sent == [.appClosed(minutes: 1.5, screen: "main_menu", service: .spotify)])
         #expect(sent.first?.name == "app_closed")
-        #expect(sent.first?.properties == ["minutes": .decimal(1.5), "screen": .text("main_menu"), "service": .text("spotify")])
+        #expect(sent.first?.properties == [
+            "minutes": .decimal(1.5), "screen": .text("main_menu"), "service": .text("spotify"),
+            "plays": .number(0), "pauses": .number(0), "skips": .number(0), "longest_pause_s": .number(0),
+            "stops_playing": .number(0), "stops_paused": .number(0), "outside_music_s": .number(0),
+        ])
     }
 
     @Test func withNoOpenTimeTheMinutesAreLeftOut() {

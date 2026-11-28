@@ -582,6 +582,13 @@ public struct AppState: Equatable, Sendable {
     public var outsideAt: Double?
     /// CLA-203: myPod quits (`.willQuit`). A quit cannot be cancelled, so it stays true. Not saved.
     public var quitting = false
+    /// CLA-203: this launch's play use, for `app_closed`. On the heap, so `AppState` grows by one
+    /// pointer only (reducer stack limit). Not saved.
+    var launchBox = Heap(LaunchUse())
+    public var launchUse: LaunchUse {
+        get { launchBox.value }
+        set { launchBox.value = newValue }
+    }
     /// CLA-97: the last setup step event, so the same step does not go out twice in a row. Not saved.
     public var lastSetupStep: SetupStep?
     /// CLA-143: the running login carries the activate page; Activate opens on 320. Not saved.
@@ -1494,4 +1501,18 @@ indirect enum Heap<Value: Equatable & Sendable>: Equatable, Sendable {
         get { switch self { case .boxed(let v): v } }
         set { self = .boxed(newValue) }
     }
+}
+
+/// CLA-203: one launch's play use, for `app_closed`. Counts only; no names or IDs.
+public struct LaunchUse: Equatable, Sendable {
+    /// Play presses that started music, and that paused it; Next and Prev presses on a song.
+    public var plays = 0, pauses = 0, skips = 0
+    /// The longest time from a pause (any cause) to the next play, in seconds, and the open one.
+    public var longestPause = 0.0, pausedAt: Double?
+    /// Losses of control (`control_lost`) while music played, and while it was paused.
+    public var stopsPlaying = 0, stopsPaused = 0
+    /// Seconds of music that the Spotify app on this Mac played outside myPod (`.outsideMusic`).
+    public var outsideSeconds = 0.0
+
+    public init() {}
 }
