@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit  // CLA-202
+#endif
 import ClasifyCore
 import SwiftUI
 
@@ -30,12 +34,12 @@ struct PocketAbout: View {
     static func stop(_ off: Int) -> CGFloat { stops[min(max(off, 0), stops.count - 1)] }
     /// The capybara's poses, each 440 px square. A pose is missing only if the package was built
     /// without its art.
-    @MainActor static let poses: [AboutPose: NSImage] = Dictionary(uniqueKeysWithValues: AboutPose.allCases.compactMap { pose in
+    @MainActor static let poses: [AboutPose: PlatformImage] = Dictionary(uniqueKeysWithValues: AboutPose.allCases.compactMap { pose in
         art("about-hp-\(pose)").map { (pose, $0) }
     })
 
-    static func art(_ name: String) -> NSImage? {
-        Bundle.module.url(forResource: name, withExtension: "png").flatMap { NSImage(contentsOf: $0) }
+    static func art(_ name: String) -> PlatformImage? {
+        Bundle.module.url(forResource: name, withExtension: "png").flatMap { PlatformImage.png(at: $0) }
     }
 
     /// The steel of "myPod", and of the other lines (change 209).
@@ -98,7 +102,7 @@ struct PocketAbout: View {
                     if let image = Self.poses[pose] {
                         // The old pose stays whole under the new one for 0.32 s, then fades out in 0.3 s.
                         let on = pose == now.pose, under = !now.cut && pose == now.from && into < 0.62
-                        Image(nsImage: image).resizable().interpolation(.high)
+                        Image(platformImage: image).resizable().interpolation(.high)
                             .scaleEffect(on && pose == .sleep ? Self.breath(into) : CGSize(width: 1, height: 1),
                                          anchor: UnitPoint(x: 0.5, y: 0.85))
                             .rotationEffect(.degrees(on && pose == .wave ? Self.rock(into) : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
