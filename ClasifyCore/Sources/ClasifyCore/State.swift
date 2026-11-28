@@ -987,7 +987,8 @@ public struct AppState: Equatable, Sendable {
     /// on (389). Jason 00:32 JST 11-21: the turn hint first, then the menu bar hint.
     public var tourSteps: [Hint] {
         guard hintsTrial else { return [.tourPlay, .tourNext, .tourMenu] }
-        return [.tourPlay, .tourNext, .tourMenu, .tourTurn] + (menuBar ? [.tourMenuBar] : [])
+        let f = features  // CLA-202: no turn and no menu bar step on the phone
+        return [.tourPlay, .tourNext, .tourMenu] + (f.views3D ? [.tourTurn] : []) + (menuBar && f.menuBar ? [.tourMenuBar] : [])
     }
     /// The tour step is on its screen: Play on the main menu, Next and MENU on Now Playing
     /// with the time bar row. A scrub, shuffle or repeat bar needs that row, as for the BA hints.
@@ -1010,6 +1011,8 @@ public struct AppState: Equatable, Sendable {
     }
     public static let tourTipAfter = 2.4, tourRest = 3.0, tourHideMax = 3
     public var offline = false
+    /// CLA-202: the device (`Platform`). Not in `settings`; `.reset` keeps it.
+    public internal(set) var platform = Platform.mac
 
     public init() {}
 
@@ -1284,7 +1287,7 @@ public struct AppState: Equatable, Sendable {
                 + (words.libraryRows
                     ? [.coverFlow, .playlists, .artists, .albums, .songs, .shuffleSongs]  // card BN
                     : [.coverFlow, .playlists, .artists, .albums, .likedSongs, .shuffleSongs])  // CLA-195
-                + (searchOn ? [.search] : []) + [.settings]  // CLA-183, card CS
+                + (searchOn && features.search ? [.search] : []) + [.settings]  // CLA-183, card CS; CLA-202
         case .playlists:
             // Card BN: Favorite Songs first. Card CR: none On This Mac, whose read has no favorites.
             (words.libraryRows && service != .local ? [.playlist(Playlist.likedSongsID)] : [])
@@ -1295,8 +1298,9 @@ public struct AppState: Equatable, Sendable {
         // No Skin row: 1.0 has only the Pocket skin. Dark and Aqua come later (design doc).
         // CLA-174: no Now Playing Bar row; the saved setting still shows the bar.
         // Card CR: On This Mac has no account, so no Log out.
-        case .settings: [.service, .shuffle, .repeatMode, .albumArt, .deviceColor, .clicker, .menuBar, .about]
-            + (service == .local ? [] : [.logOut])
+        // CLA-202: the phone has one service and no menu bar icon.
+        case .settings: (features.serviceChoice ? [.service] : []) + [.shuffle, .repeatMode, .albumArt, .deviceColor, .clicker]
+            + (features.menuBar ? [.menuBar] : []) + [.about] + (service == .local ? [] : [.logOut])
         case .confirm: [.cancel, .confirmLogOut]
         case .color: DeviceColor.allCases.map { .color($0) }
         case .auth: [.openBrowser, .cancel]

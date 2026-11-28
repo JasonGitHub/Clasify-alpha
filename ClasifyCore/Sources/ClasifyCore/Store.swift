@@ -214,12 +214,14 @@ public final class Store {
 
     public init(
         player: any Player, library: any Library, state: AppState = AppState(), env: Dependencies = .live,
-        settings: (any SettingsStore)? = nil, betaFeed: (any BetaFeed)? = nil, activator: (any Activator)? = nil
+        settings: (any SettingsStore)? = nil, betaFeed: (any BetaFeed)? = nil, activator: (any Activator)? = nil,
+        platform: Platform = .mac
     ) {
         self.player = player; self.library = library; self.state = state; self.env = env
         settingsStore = settings
         self.betaFeed = betaFeed
         self.activator = activator
+        self.state.platform = platform  // CLA-202
         self.state.words = library.words
         library.onProgress = { [weak self] playlist, done, total, albums in
             self?.send(.readProgress(playlist, done: done, total: total, albums: albums))
