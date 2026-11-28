@@ -17,5 +17,9 @@ struct PhoneApp: App {
         .onChange(of: phase) { _, new in
             if new == .active { model.store.send(.activated) }
         }
+        // The haptic tick and the battery start when the first scene is active.
+        .onChange(of: phase, initial: true) { _, new in
+            if new == .active { model.startDevice() }
+        }
     }
 }

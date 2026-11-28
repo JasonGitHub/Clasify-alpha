@@ -14,6 +14,8 @@ final class PhoneModel {
     /// URLs only, memory only.
     let artwork = ArtworkLoader()
     @ObservationIgnored private var ticker: Task<Void, Never>?
+    @ObservationIgnored private var haptics: PhoneHaptics?
+    @ObservationIgnored private var battery: PhoneBattery?
 
     init() {
         // The phone volume stays with iOS: its buttons only (plan decision 4).
@@ -36,6 +38,16 @@ final class PhoneModel {
                 if state.tickDue(at: Dependencies.live.now()) { store?.send(.tick) }
             }
         }
+    }
+
+    /// Starts the haptic tick and the battery reading, once, when the first scene is active.
+    /// UIKit's device and feedback objects want a running app, not the `App` initializer.
+    func startDevice() {
+        guard haptics == nil else { return }
+        let haptics = PhoneHaptics(store: store)
+        store.onWheelStep = { [weak haptics] in haptics?.step() }
+        self.haptics = haptics
+        battery = PhoneBattery(store: store)
     }
 
     private static func open(_ page: String) {
