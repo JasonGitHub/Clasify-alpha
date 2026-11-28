@@ -13,8 +13,15 @@ public struct QueuedEvent: Codable, Equatable, Sendable {
     /// that made it. An event that has its own `app_build` (`app_problem`: the build that
     /// crashed, from MetricKit) keeps it; one that has none gets no stamp, because the running
     /// build may not be the one that crashed.
-    public init(_ event: BetaEvent, at time: Double, build: Int? = nil, id: String = UUID().uuidString) {
+    ///
+    /// CLA-203: `os` (the macOS version, as "15.8.1") goes in as `os_version`, and `spotifyApp`
+    /// (the Spotify app's version) as `spotify_app`, each when known. `app_problem` keeps its
+    /// own `os_version`, the one that MetricKit names for the crash.
+    public init(_ event: BetaEvent, at time: Double, build: Int? = nil, os: String? = nil, spotifyApp: String? = nil,
+                id: String = UUID().uuidString) {
         (self.id, self.name, self.time, self.properties) = (id, event.name, time, event.properties)
+        if let os, properties["os_version"] == nil { properties["os_version"] = .text(os) }
+        if let spotifyApp { properties["spotify_app"] = .text(spotifyApp) }
         if case .appProblem = event { return }
         if let build, properties["app_build"] == nil { properties["app_build"] = .number(build) }
     }
@@ -39,7 +46,9 @@ public struct BetaQueue: Equatable, Sendable {
         return String(decoding: data, as: UTF8.self)
     }
 
-    public mutating func add(_ event: BetaEvent, at time: Double, build: Int? = nil) { add(QueuedEvent(event, at: time, build: build)) }
+    public mutating func add(_ event: BetaEvent, at time: Double, build: Int? = nil, os: String? = nil, spotifyApp: String? = nil) {
+        add(QueuedEvent(event, at: time, build: build, os: os, spotifyApp: spotifyApp))
+    }
     public mutating func add(_ event: QueuedEvent) {
         events.append(event)
         if events.count > Self.limit { events.removeFirst(events.count - Self.limit) }

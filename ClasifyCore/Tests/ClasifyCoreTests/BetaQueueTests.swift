@@ -53,6 +53,24 @@ import Testing
         }
     }
 
+    /// CLA-203: each event carries the macOS and Spotify app versions, when known.
+    @Test func eachEventCarriesTheMacOSAndSpotifyVersions() {
+        var q = BetaQueue()
+        q.add(song, at: 1, build: 480, os: "15.8.1", spotifyApp: "1.2.53.437")
+        q.add(song, at: 2, os: "26.1.0")  // no Spotify app installed: no field
+        #expect(q.events[0].properties["os_version"] == .text("15.8.1"))
+        #expect(q.events[0].properties["spotify_app"] == .text("1.2.53.437"))
+        #expect(q.events[1].properties["os_version"] == .text("26.1.0") && q.events[1].properties["spotify_app"] == nil)
+        #expect(BetaQueue(saved: q.saved).events[0].properties["spotify_app"] == .text("1.2.53.437"))
+        // app_problem keeps the macOS version that MetricKit names for the crash.
+        var crash = AppProblem(kind: .crash, appBuild: "470", frames: [])
+        crash.osVersion = "macOS 15.1 (24B83)"
+        let p = QueuedEvent(.appProblem(crash, service: .spotify), at: 3, build: 480, os: "15.8.1", spotifyApp: "1.2.53.437").properties
+        #expect(p["os_version"] == .text("macOS 15.1 (24B83)") && p["spotify_app"] == .text("1.2.53.437"))
+        let none = QueuedEvent(.appProblem(AppProblem(kind: .crash, frames: []), service: .spotify), at: 3, os: "15.8.1")
+        #expect(none.properties["os_version"] == .text("15.8.1"))
+    }
+
     @Test func theBodyHasTheKeyThePersonAndEachEvent() throws {
         let e = QueuedEvent(song, at: 816_789_600, id: "u1")  // 2026-11-19 14:00 UTC (from 2001)
         let body = BetaQueue.body([e], key: "phc_test", person: "acct-1")
