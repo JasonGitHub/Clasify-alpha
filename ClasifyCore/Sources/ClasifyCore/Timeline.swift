@@ -109,7 +109,9 @@ public final class Timeline {
     /// The facts of one `Store.send`: the action, and the player facts that it changed.
     /// Not inlined, so `Store.send`'s stack frame stays small (reducer stack limit).
     @inline(never) func record(_ action: Action, from before: AppState, to after: AppState, at now: Double) {
-        if let text = Self.text(of: action) { record(text, at: now) }
+        // A `.controlBack` with no loss open is a normal load, not a return of control (Codex on #529).
+        let normalLoad = if case .controlBack = action { before.controlLostAt == nil } else { false }
+        if !normalLoad, let text = Self.text(of: action) { record(text, at: now) }
         if after.current != before.current, after.current != nil { record("song", at: now) }
         if stateSince == nil { stateSince = now }
         if after.isPlaying != before.isPlaying {

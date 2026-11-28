@@ -79,6 +79,16 @@ import Testing
         #expect(!text.contains("p1") && !text.contains("t1"))
     }
 
+    /// Codex on #529: `back` only when a loss was open; a normal load sends `.controlBack` too.
+    @MainActor @Test func backIsRecordedOnlyAfterALoss() {
+        let store = Store(player: FakePlayer(), library: FakeLibrary(), state: mainMenu(), env: Dependencies(now: { 50 }, random: { _ in 0 }))
+        store.send(.controlBack)
+        #expect(!store.timeline.text(at: 50).contains("back"))
+        store.send(.controlLost(.stoppedInSpotify))
+        store.send(.controlBack)
+        #expect(store.timeline.text(at: 50).hasSuffix("back@-0.0"))
+    }
+
     /// The Store records each action; `.note` changes no state and has no effect.
     @MainActor @Test func theStoreRecordsAndANoteChangesNothing() {
         let store = Store(player: FakePlayer(), library: FakeLibrary(), state: mainMenu(), env: Dependencies(now: { 50 }, random: { _ in 0 }))
