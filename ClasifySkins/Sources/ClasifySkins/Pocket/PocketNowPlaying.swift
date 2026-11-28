@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit  // CLA-202
+#endif
 import ClasifyCore
 import SwiftUI
 
@@ -268,7 +272,7 @@ struct NowLines: View {
 
     /// A line's width in bold Helvetica Neue, the font `Font.helvetica` draws it in.
     static func width(_ text: String, size: Double) -> Double {
-        let font = NSFont(name: "HelveticaNeue-Bold", size: size) ?? .boldSystemFont(ofSize: size)
+        let font = PlatformFont(name: "HelveticaNeue-Bold", size: size) ?? .boldSystemFont(ofSize: size)
         return Double(ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width))
     }
 

@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit  // CLA-202
+#endif
 import ClasifyCore
 import SwiftUI
 
@@ -18,7 +22,7 @@ enum Pocket {
     /// to 15.8 of its 16 unit view box, so its middle is 5.77 points down; the baseline is half
     /// an x-height of the 10.5 point bold font below that.
     static let barNoteBaseline: CGFloat = {
-        let xHeight = NSFont(name: "HelveticaNeue-Bold", size: 10.5)?.xHeight ?? 5.5
+        let xHeight = PlatformFont(name: "HelveticaNeue-Bold", size: 10.5)?.xHeight ?? 5.5
         return (1 + 15.79) / 2 / 16 * 11 + xHeight / 2
     }()
     /// The title bar's play and pause marks: glossy blue with a thin dark blue edge.

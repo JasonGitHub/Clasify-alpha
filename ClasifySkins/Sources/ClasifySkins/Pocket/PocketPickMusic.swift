@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit  // CLA-202
+#endif
 import ClasifyCore
 import SwiftUI
 
@@ -14,7 +18,7 @@ struct ServiceLogo: View {
 
     /// The bundled logos, each 684 px square. A logo is missing only if the package was built
     /// without its file; then the tile shows the service's name.
-    @MainActor static let logos: [MusicService: NSImage] = Dictionary(uniqueKeysWithValues: MusicService.allCases.compactMap { service in
+    @MainActor static let logos: [MusicService: PlatformImage] = Dictionary(uniqueKeysWithValues: MusicService.allCases.compactMap { service in
         let name = switch service {
         case .spotify: "logo-spotify"
         case .appleMusic: "logo-apple-music"
@@ -51,7 +55,7 @@ struct ServiceLogo: View {
         let shape = RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
         let logo = Group {
             if let image = Self.logos[item] {
-                Image(nsImage: image).resizable().interpolation(.high)
+                Image(platformImage: image).resizable().interpolation(.high)
             } else {
                 // A safety net only: the name in white on a dark tile.
                 ZStack {
