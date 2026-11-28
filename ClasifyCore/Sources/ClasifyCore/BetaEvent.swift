@@ -704,6 +704,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
         || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
         || saved?.visible != today?.visible || saved?.songsCut != today?.songsCut || saved?.menuBarClicks != today?.menuBarClicks
+        || saved?.outsideSongs != today?.outsideSongs || saved?.outsideSeconds != today?.outsideSeconds  // CLA-203 (Codex on #526)
     if changed || (b.playing && !s.isPlaying) || quit { s.savedToday = today }
     return fx
 }

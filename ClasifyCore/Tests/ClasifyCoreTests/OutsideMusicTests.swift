@@ -20,6 +20,16 @@ import Testing
         #expect(s.today?.outsideSongs == 2 && s.today?.outsideSeconds == 300)
     }
 
+    /// Codex on #526: the saved copy of the day follows each outside report, so a crash loses
+    /// at most the open interval.
+    @Test func theSavedDayFollowsTheOutsideMusic() {
+        var s = mainMenu()
+        _ = day.events(&s, .outsideMusic(playing: true, song: true), now: day.at(10))
+        _ = day.events(&s, .outsideMusic(playing: true, song: true), now: day.at(10, 3))
+        #expect(s.savedToday?.outsideSongs == 2 && s.savedToday?.outsideSeconds == 180)
+        #expect(s.settings.today == s.savedToday)
+    }
+
     /// A gap longer than `outsideGapLimit` (a sleep) counts only up to it.
     @Test func aLongGapCountsOnlyUpToTheLimit() {
         var s = mainMenu()

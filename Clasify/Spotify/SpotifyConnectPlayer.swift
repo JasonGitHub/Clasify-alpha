@@ -383,6 +383,8 @@ final class SpotifyConnectPlayer: Player {
     /// Call it when the session signs out. The device ID and its options belong to that
     /// account, so the next account looks them up again.
     func reset() {
+        endOutside()  // CLA-203 (Codex on #526): no device after this, so no state could end it
+        outsideTrack = ""
         warmID += 1
         session += 1
         warming?.cancel()
