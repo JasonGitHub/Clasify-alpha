@@ -21,6 +21,8 @@ import UIKit
     var report: [String] = []
 
     @ObservationIgnored private var generation = 0
+    /// Counts list reads and skips, apart from the player's generation: only the newest list read may start playback.
+    @ObservationIgnored private var request = 0
     @ObservationIgnored private var songs: [String: ClasifyCore.Track] = [:]
     @ObservationIgnored private var coverFor: String?
     /// No URL cache: covers stay in memory only, as on the Mac (`ArtworkLoader`).
@@ -65,24 +67,21 @@ import UIKit
 
     func play(_ list: ClasifyCore.Playlist) async {
         let tapped = Date.now, clock = ContinuousClock.now
-        let before = generation
-        generation += 1  // from the tap on, reports of the song that played before are not this play's
-        let mine = generation
+        request += 1  // a newer tap, Next or Prev makes this list read stale
+        let mine = request
         let tracks = await library.tracks(of: list.id)
         log("list read: \(tracks.map { "\($0.count) songs" } ?? "failed") in \(clock.duration(to: .now))")
-        guard mine == generation else { return }  // a newer tap or skip wins
-        guard let tracks, let first = tracks.first else {
-            generation = before  // nothing loads: the song that plays keeps reporting
-            return
-        }
+        guard mine == request else { return }  // a newer tap or skip wins
+        guard let tracks, let first = tracks.first else { return }  // nothing loads: the song that plays keeps reporting
+        generation += 1  // from here on, reports of the song that played before are not this play's
         for track in tracks { songs[track.id] = track }
         probe.play(tapped: tapped)
         report = probe.lines
         player.load(trackID: first.id, context: list.id, autoplay: true, generation: generation)
     }
 
-    func next() { generation += 1; probe.skip(true); report = probe.lines; player.next(generation: generation) }
-    func prev() { generation += 1; probe.skip(false); report = probe.lines; player.prev(generation: generation) }
+    func next() { request += 1; generation += 1; probe.skip(true); report = probe.lines; player.next(generation: generation) }
+    func prev() { request += 1; generation += 1; probe.skip(false); report = probe.lines; player.prev(generation: generation) }
 
     func playPause() {
         if playing { player.pause(); playing = false; log("pause pressed") } else { player.resume(); log("resume pressed") }

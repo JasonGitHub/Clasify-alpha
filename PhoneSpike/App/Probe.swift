@@ -48,10 +48,10 @@ import Foundation
     }
 
     func trackChanged(_ id: String, playing: Bool, duration: Double) {
-        if let s = song, s.id != id {
+        if song?.id != id {
             let moved = userMove
-            userMove = false  // this change is the one that the press asked for
-            if s.played < 5 && !moved {
+            userMove = false  // this change (also the first song after a play) is the one that the press asked for
+            if let s = song, s.played < 5 && !moved {
                 log(String(format: "short song: changed after %.1f s of %.0f s, no Next/Prev pressed", s.played, s.duration))
             }
         }
