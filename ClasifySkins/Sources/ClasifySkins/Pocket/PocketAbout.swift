@@ -102,13 +102,18 @@ struct PocketAbout: View {
                     if let image = Self.poses[pose] {
                         // The old pose stays whole under the new one for 0.32 s, then fades out in 0.3 s.
                         let on = pose == now.pose, under = !now.cut && pose == now.from && into < 0.62
+                        // Typed values, so the iOS compiler can type-check the view in time.
+                        let scale: CGSize = on && pose == .sleep ? Self.breath(into) : CGSize(width: 1, height: 1)
+                        let angle: Double = on && pose == .wave ? Self.rock(into) : 0
+                        let fadeIn: Double = now.cut ? 1 : Self.bezier(0.25, 0.1, 0.25, 1, into / 0.3)
+                        let fadeOut: Double = 1 - Self.bezier(0.25, 0.1, 0.25, 1, (into - 0.32) / 0.3)
+                        let fade: Double = on ? fadeIn : under ? fadeOut : 0
+                        let z: Double = on ? 2 : under ? 1 : 0
                         Image(platformImage: image).resizable().interpolation(.high)
-                            .scaleEffect(on && pose == .sleep ? Self.breath(into) : CGSize(width: 1, height: 1),
-                                         anchor: UnitPoint(x: 0.5, y: 0.85))
-                            .rotationEffect(.degrees(on && pose == .wave ? Self.rock(into) : 0), anchor: UnitPoint(x: 0.5, y: 0.92))
-                            .opacity(on ? (now.cut ? 1 : Self.bezier(0.25, 0.1, 0.25, 1, into / 0.3))
-                                     : under ? 1 - Self.bezier(0.25, 0.1, 0.25, 1, (into - 0.32) / 0.3) : 0)
-                            .zIndex(on ? 2 : under ? 1 : 0)
+                            .scaleEffect(scale, anchor: UnitPoint(x: 0.5, y: 0.85))
+                            .rotationEffect(.degrees(angle), anchor: UnitPoint(x: 0.5, y: 0.92))
+                            .opacity(fade)
+                            .zIndex(z)
                     }
                 }
             }
