@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Card CX (first pass): the place of the device on the phone screen. All of the phone's
 /// layout values are here, so a phone-only body later changes one file.
-enum PhoneLayout {
+@MainActor enum PhoneLayout {
     /// Free space on each side of the body, in points.
     static let side: CGFloat = 16
     /// The share of the free height above the body; the rest is below it.
