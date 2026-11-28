@@ -856,11 +856,12 @@ extension AppState {
 @inline(never) func countLaunch(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, quit: Bool) {
     var use = s.launchUse
     // CTO: a start or a stop by any way (myPod, a song pick, another device, the end of the list).
-    // A loss of control counts in `stops_*`, and the quit's own stop is not a pause.
+    // A loss of control counts in `stops_*`, also the `.playbackFailed` that the player sends
+    // just after it (Codex on #531), and the quit's own stop is not a pause.
     if !b.playing && s.isPlaying { use.plays += 1 }
     switch action {
     case .controlLost, .willQuit: break
-    default: if b.playing && !s.isPlaying { use.pauses += 1 }
+    default: if b.playing && !s.isPlaying && !b.lossOpen { use.pauses += 1 }
     }
     switch action {
     case .next, .prev: if s.current != nil { use.skips += 1 }

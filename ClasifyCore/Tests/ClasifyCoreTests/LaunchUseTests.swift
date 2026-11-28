@@ -42,6 +42,25 @@ import Testing
         #expect(s.launchUse.pauses == 1 && s.launchUse.stopsPlaying == 1)
     }
 
+    /// Codex on #531: the player sends `.playbackFailed` just after `.controlLost`; that stop is
+    /// part of the loss, not a pause.
+    @Test func theFailureAfterALossIsNoPause() {
+        var s = playing()
+        _ = events(&s, .controlLost(.stoppedInSpotify), now: 10)
+        _ = events(&s, .playbackFailed("Lost", generation: s.playGen), now: 10)
+        #expect(!s.isPlaying && s.launchUse.pauses == 0 && s.launchUse.stopsPlaying == 1)
+    }
+
+    /// Codex on #531: a reset (a log out) keeps the launch's counts.
+    @Test func aResetKeepsTheCounts() {
+        var s = playing()
+        _ = events(&s, .next, now: 5)
+        _ = events(&s, .play, now: 10)  // pause
+        let counted = s.launchUse
+        _ = events(&s, .reset, now: 20)
+        #expect(counted.skips == 1 && counted.pauses == 1 && s.launchUse == counted)
+    }
+
     @Test func aLossCountsAsPlayingOrPausedOnce() {
         var s = playing()
         _ = events(&s, .controlLost(.stoppedInSpotify), now: 10)

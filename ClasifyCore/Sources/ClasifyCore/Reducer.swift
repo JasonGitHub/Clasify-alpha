@@ -1632,7 +1632,9 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             let settings = s.settings  // saved settings stay
             let (battery, spotifyApp, beta) = (s.battery, s.spotifyApp, s.beta)  // the Mac and the build, which a reset does not change
             let words = s.words  // the active service's library, which a reset does not change
+            let use = s.launchUse  // CLA-203: this launch's counts go on (Codex on #531)
             s = AppState(platform: s.platform)  // CLA-202: the device stays
+            s.launchUse = use
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
             s.battery = battery; s.spotifyApp = spotifyApp; s.beta = beta; s.words = words
         default: break
