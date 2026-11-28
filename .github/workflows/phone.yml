@@ -1,11 +1,11 @@
 name: Phone
-# CLA-202: build the iPhone app (PhoneSpike/) for the iOS Simulator, unsigned, with both schemes,
-# and the skins package (ClasifySkins/), which the iPhone app will use.
+# CLA-202: build for the iOS Simulator, unsigned: the test app (PhoneSpike/, both schemes), the
+# iPhone app (ClasifyPhone/, scheme "myPod iPhone" in Clasify.xcodeproj) and the skins package (ClasifySkins/).
 # No secrets, no environment. macos-26 because uploads to TestFlight need Xcode 26.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["PhoneSpike/**", "ClasifyCore/**", "ClasifyAppleMusic/**", "ClasifySkins/**", ".github/workflows/phone.yml"]
+    paths: ["PhoneSpike/**", "ClasifyPhone/**", "Clasify.xcodeproj/**", "ClasifyCore/**", "ClasifyAppleMusic/**", "ClasifyShell/**", "ClasifySkins/**", ".github/workflows/phone.yml"]
 permissions:
   contents: read
 concurrency:
@@ -26,6 +26,12 @@ jobs:
               -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/DerivedData" \
               CODE_SIGNING_ALLOWED=NO 2>&1 | tee -a build.log
           done
+      - name: Build the iPhone app (scheme "myPod iPhone", with ClasifyShell) for the iOS Simulator, unsigned
+        run: |
+          set -o pipefail
+          xcodebuild build -project Clasify.xcodeproj -scheme "myPod iPhone" \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/PhoneData" \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tee -a build.log
       - name: Build the skins package for the iOS Simulator, unsigned
         working-directory: ClasifySkins
         run: |

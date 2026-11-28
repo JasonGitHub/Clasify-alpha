@@ -1,0 +1,44 @@
+import ClasifyAppleMusic
+import ClasifyCore
+import ClasifyShell
+import Foundation
+import UIKit
+
+/// Builds the iPhone app's one store: Apple Music through MusicKit, the same shared code as
+/// the Mac. No Spotify, no On This Mac, no activation, no beta notices (`Features` for `.phone`).
+/// No analytics: nothing sets `onBetaEvent`.
+@MainActor @Observable
+final class PhoneModel {
+    let store: Store
+    /// The album covers that the skin draws. No library covers on the phone: MusicKit Artwork
+    /// URLs only, memory only.
+    let artwork = ArtworkLoader()
+    @ObservationIgnored private var ticker: Task<Void, Never>?
+
+    init() {
+        // The phone volume stays with iOS: its buttons only (plan decision 4).
+        let player = AppleMusicPlayer(volume: nil)
+        let library = AppleMusicLibrary(covers: NoLibraryCovers())
+        let store = Store(player: player, library: library, settings: UserDefaults.standard, platform: .phone)
+        player.send = { [weak store] action in store?.send(action) }
+        player.setActive(true)  // the one service, so it is always the active one
+        // "Get Apple Music" opens Apple's page; "Open Settings" opens this app's page in Settings.
+        store.onGetPremium = { Self.open("https://www.apple.com/apple-music/") }
+        store.onOpenPrivacy = { Self.open(UIApplication.openSettingsURLString) }
+        self.store = store
+        store.send(.launch)  // restores the stored login
+        // The reducer's timers run on .tick, which this loop sends when `AppState.tickDue(at:)` says so.
+        ticker = Task { [weak store, artwork] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard let state = store?.state else { return }
+                artwork.prefetchNext(in: state)
+                if state.tickDue(at: Dependencies.live.now()) { store?.send(.tick) }
+            }
+        }
+    }
+
+    private static func open(_ page: String) {
+        if let url = URL(string: page) { UIApplication.shared.open(url) }
+    }
+}

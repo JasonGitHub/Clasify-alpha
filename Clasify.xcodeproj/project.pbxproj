@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		C1A500000000000000000020 /* ClasifyCore in Frameworks */ = {isa = PBXBuildFile; productRef = C1A50000000000000000001C /* ClasifyCore */; };
+		C1A500000000000000000021 /* ClasifySkins in Frameworks */ = {isa = PBXBuildFile; productRef = C1A50000000000000000001D /* ClasifySkins */; };
+		C1A500000000000000000022 /* ClasifyAppleMusic in Frameworks */ = {isa = PBXBuildFile; productRef = C1A50000000000000000001E /* ClasifyAppleMusic */; };
+		C1A500000000000000000023 /* ClasifyShell in Frameworks */ = {isa = PBXBuildFile; productRef = C1A50000000000000000001F /* ClasifyShell */; };
 		C1A500000000000000000001 /* ClasifyCore in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000002 /* ClasifyCore */; };
 		C1A500000000000000000013 /* ClasifySkins in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000014 /* ClasifySkins */; };
 		C1A500000000000000000016 /* ClasifyAppleMusic in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000017 /* ClasifyAppleMusic */; };
@@ -14,10 +18,29 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		C1A50000000000000000002D /* myPod.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = myPod.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C1A500000000000000000003 /* myPod.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = myPod.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C1A50000000000000000002C /* Exceptions for "ClasifyPhone" folder in "myPod iPhone" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C1A500000000000000000027 /* myPod iPhone */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		C1A50000000000000000002B /* ClasifyPhone */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C1A50000000000000000002C /* Exceptions for "ClasifyPhone" folder in "myPod iPhone" target */,
+			);
+			path = ClasifyPhone;
+			sourceTree = "<group>";
+		};
 		C1A500000000000000000004 /* Clasify */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Clasify;
@@ -26,6 +49,17 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		C1A500000000000000000024 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1A500000000000000000020 /* ClasifyCore in Frameworks */,
+				C1A500000000000000000021 /* ClasifySkins in Frameworks */,
+				C1A500000000000000000022 /* ClasifyAppleMusic in Frameworks */,
+				C1A500000000000000000023 /* ClasifyShell in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C1A500000000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -44,6 +78,7 @@
 			isa = PBXGroup;
 			children = (
 				C1A500000000000000000004 /* Clasify */,
+				C1A50000000000000000002B /* ClasifyPhone */,
 				C1A500000000000000000007 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -52,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				C1A500000000000000000003 /* myPod.app */,
+				C1A50000000000000000002D /* myPod.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -59,6 +95,32 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		C1A500000000000000000027 /* myPod iPhone */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C1A500000000000000000028 /* Build configuration list for PBXNativeTarget "myPod iPhone" */;
+			buildPhases = (
+				C1A500000000000000000025 /* Sources */,
+				C1A500000000000000000024 /* Frameworks */,
+				C1A500000000000000000026 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				C1A50000000000000000002B /* ClasifyPhone */,
+			);
+			name = "myPod iPhone";
+			packageProductDependencies = (
+				C1A50000000000000000001C /* ClasifyCore */,
+				C1A50000000000000000001D /* ClasifySkins */,
+				C1A50000000000000000001E /* ClasifyAppleMusic */,
+				C1A50000000000000000001F /* ClasifyShell */,
+			);
+			productName = "myPod iPhone";
+			productReference = C1A50000000000000000002D /* myPod.app */;
+			productType = "com.apple.product-type.application";
+		};
 		C1A500000000000000000008 /* Clasify */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = C1A500000000000000000009 /* Build configuration list for PBXNativeTarget "Clasify" */;
@@ -116,11 +178,19 @@
 			projectRoot = "";
 			targets = (
 				C1A500000000000000000008 /* Clasify */,
+				C1A500000000000000000027 /* myPod iPhone */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C1A500000000000000000026 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C1A50000000000000000000B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -131,6 +201,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C1A500000000000000000025 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		C1A50000000000000000000A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -141,6 +218,72 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		C1A500000000000000000029 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ClasifyPhone/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = myPod;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "myPod shows your playlists and plays your music.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cappyai.mypod;
+				PRODUCT_MODULE_NAME = ClasifyPhone;
+				PRODUCT_NAME = myPod;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		C1A50000000000000000002A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ClasifyPhone/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = myPod;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.music";
+				INFOPLIST_KEY_NSAppleMusicUsageDescription = "myPod shows your playlists and plays your music.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIStatusBarHidden = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cappyai.mypod;
+				PRODUCT_MODULE_NAME = ClasifyPhone;
+				PRODUCT_NAME = myPod;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 		C1A50000000000000000000F /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -255,6 +398,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C1A500000000000000000028 /* Build configuration list for PBXNativeTarget "myPod iPhone" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C1A500000000000000000029 /* Debug */,
+				C1A50000000000000000002A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		C1A500000000000000000009 /* Build configuration list for PBXNativeTarget "Clasify" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -295,6 +447,22 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		C1A50000000000000000001C /* ClasifyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifyCore;
+		};
+		C1A50000000000000000001D /* ClasifySkins */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifySkins;
+		};
+		C1A50000000000000000001E /* ClasifyAppleMusic */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifyAppleMusic;
+		};
+		C1A50000000000000000001F /* ClasifyShell */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifyShell;
+		};
 		C1A500000000000000000002 /* ClasifyCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ClasifyCore;
