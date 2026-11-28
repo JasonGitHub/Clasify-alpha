@@ -48,6 +48,7 @@ enum Labels {
         case .activation: "Activation"  // CLA-141, card BF.2
         case .noSongs: state.words.service  // card CR: "On This Mac"
         case .search: "Search"  // CLA-183, card CS
+        case .noMail: "Report a Problem"  // card CX
         }
     }
 
@@ -68,7 +69,8 @@ enum Labels {
 
     /// CLA-141, card BF.2 (change 360): About's Status row. It opens only with the server's info.
     static func statusRow(in state: AppState) -> RowText {
-        switch state.aboutStatus {
+        if state.features.mailReport { return RowText(label: "Report a Problem", opens: true) }  // card CX: the phone
+        return switch state.aboutStatus {
         case .notActivated: RowText(label: "Status", value: "Not activated", grayValue: true)
         case .activated: RowText(label: "Status", value: "Activated", opens: state.aboutStatus.opens)
         }
@@ -189,6 +191,8 @@ enum Labels {
             return Message(title: "No albums", body: "\(words.like) songs in \(words.service) to see their albums. Press MENU to go back.")
         case .now where state.current == nil:
             return Message(title: "")
+        case .noMail:  // card CX
+            return Message(title: "No Mail Account", body: "Write to feedback@getmypod.app. Press MENU to go back.")
         default:
             return nil
         }

@@ -219,6 +219,7 @@ extension Screen {
         case .activation: "activation"
         case .noSongs: "no_songs"
         case .search: "search"
+        case .noMail: "no_mail"  // card CX: only on the phone, which sends no analytics
         }
     }
 }

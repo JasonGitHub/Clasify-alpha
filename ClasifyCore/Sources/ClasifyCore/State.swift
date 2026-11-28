@@ -183,6 +183,9 @@ public enum Screen: Equatable, Sendable {
     case noSongs
     /// CLA-183, card CS: Search on the device. Its rows are `AppState.searchResults`.
     case search
+    /// Card CX: About's Report a Problem could not open a new mail: the phone has no mail app
+    /// or account. A message only; MENU goes back to About.
+    case noMail
 
     /// Screens that show a scrollable list the wheel moves through.
     public var isList: Bool {
@@ -190,7 +193,7 @@ public enum Screen: Equatable, Sendable {
         case .login, .auth, .loginFailed, .main, .playlists, .albums, .tracks, .settings, .confirm, .albumPanel, .color,
             .spotifyApp, .premium, .licenses, .pickMusic, .accessOff, .artists, .betaSoon, .betaEnded, .betaNew, .activate, .activation, .noSongs, .search:
             true
-        case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license: false
+        case .about, .now, .coverFlow, .hello, .yourMusic, .loggedIn, .license, .noMail: false
         }
     }
 
@@ -889,6 +892,8 @@ public struct AppState: Equatable, Sendable {
         if case .active(let info) = activation { return .activated(info) }
         return .activated(nil)
     }
+    /// The row at `aboutStatusStep` opens something: Activation, or on the phone a new mail (card CX).
+    public var aboutStatusOpens: Bool { features.mailReport || aboutStatus.opens }
     /// When the capybara's last wave started: 0.35 s after About opens, and on a press or a
     /// wake (change 210). The tagline's glint starts with it (change 209).
     public var aboutWaveAt: Double = 0
@@ -1327,7 +1332,7 @@ public struct AppState: Equatable, Sendable {
         case .betaEnded: [.getNewBeta, .quit]
         case .licenses: License.all.indices.map { .license($0) }
         case .activation: [.activatedAs]
-        case .about, .now, .hello, .yourMusic, .loggedIn, .license: []
+        case .about, .now, .hello, .yourMusic, .loggedIn, .license, .noMail: []
         }
     }
 

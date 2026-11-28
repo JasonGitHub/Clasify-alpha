@@ -192,6 +192,9 @@ public final class Store {
     @ObservationIgnored public var onGetPremium: (@MainActor () -> Void)?
     /// Opens the Mac's privacy settings for Apple Music (card BM, change 258). The app sets it.
     @ObservationIgnored public var onOpenPrivacy: (@MainActor () -> Void)?
+    /// Card CX: opens a new mail to feedback@getmypod.app. The phone app sets it; it sends
+    /// `.mailFailed` when no mail can open.
+    @ObservationIgnored public var onOpenMail: (@MainActor () -> Void)?
     /// Makes `service` the active one in the player and the library, before any later effect
     /// runs (CLA-103). The app sets it. Then the state gets the library's words.
     @ObservationIgnored public var onSetService: (@MainActor (MusicService) -> Void)?
@@ -386,6 +389,7 @@ public final class Store {
             case .getSpotifyApp: onGetSpotifyApp?()
             case .getPremium: onGetPremium?()
             case .openPrivacy: onOpenPrivacy?()
+            case .openMail: onOpenMail?()
             case .getNewBeta: onGetNewBeta?()
             case .quit: onQuit?()
             case .showWindow: onShowWindow?()

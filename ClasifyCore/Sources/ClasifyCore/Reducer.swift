@@ -59,6 +59,9 @@ public enum Action: Equatable, Sendable {
     /// The Mac's battery changed, as the app reads it from IOKit. nil when the Mac has no
     /// battery (an iMac or a Mac mini): the title bar shows no battery.
     case batteryChanged(Battery?)
+    /// Card CX: the phone could not open the new mail of About's Report a Problem. On About,
+    /// the No Mail Account message shows.
+    case mailFailed
     /// Signs out and forgets the stored login. Send it only when Spotify refuses the refresh
     /// token (it was revoked). Never send it when the hourly access token expires or the
     /// network is down: a restore handles those, and this would delete a working login.
@@ -201,6 +204,9 @@ public enum Effect: Equatable, Sendable {
     case setService(MusicService)
     /// Open the Mac's privacy settings for Apple Music (card BM, change 258).
     case openPrivacy
+    /// Card CX: open a new mail to feedback@getmypod.app, with no body. If it cannot, the app
+    /// sends `.mailFailed`.
+    case openMail
     /// Open the beta download page in the browser (card BI v2).
     case getNewBeta
     /// Quit the app, from the ended beta (card BI v2, change 234).
@@ -810,7 +816,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
         case .menu, .searchType, .searchDelete, .toggleShuffle, .cycleRepeat, .play, .next, .prev: applyButtons()
         case .tick, .position, .volumeReported, .trackEnded, .trackChanged, .trackRead, .adopted, .playbackFailed, .loadFailed: applyPlayback()
         case .artistsLoaded, .readFailed, .libraryCounted, .artistsRefreshed, .playlistsLoaded, .playlistsRefreshed, .activated, .libraryStale, .tracksRefreshed, .artTracksRead, .tracksLoaded: applyLibrary()
-        case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset: applySession()
+        case .launch, .readProgress, .spotifyAppFound, .restored, .notPremium, .authDone, .offline, .batteryChanged, .betaBuild, .activation, .loginCarriesActivate, .checkActivation, .latestBeta, .libraryWords, .accessDenied, .expire, .menuBarClick, .closeWindow, .deviceTurned, .controlLost, .used, .willQuit, .view3D, .window, .analyticsOn, .hintsTrial, .appProblems, .appStarted, .controlBack, .arrived, .reset, .mailFailed: applySession()
         }
     }
     @inline(never) func applyWheel() {
@@ -884,6 +890,8 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                 let pose = s.aboutPose(at: now)
                 if pose.pose == .sleep {
                     s.aboutWaveAt = now
+                } else if s.top.off == AppState.aboutStatusStep && s.features.mailReport {
+                    fx.append(.openMail)  // card CX: the phone's Report a Problem row; About stays
                 } else if s.top.off >= AppState.aboutLicensesStep || (s.top.off == AppState.aboutStatusStep && s.aboutStatus.opens) {
                     // Change 213: the Licenses list; card BF.2 (change 361): Activation. The pose
                     // waits as it is until About shows again. A press while it waves leaves it
@@ -1488,6 +1496,12 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .batteryChanged(let battery):
             s.battery = battery
+
+        case .mailFailed:  // card CX: only over About, where the press was
+            if s.top.screen == .about {
+                s.aboutIdleHold = s.aboutPose(at: now)  // the pose waits until About shows again, as for Licenses
+                s.stack.append(Frame(screen: .noMail))
+            }
 
         case .betaBuild(let beta):
             // Card BV: once a launch, betas only, and not on an ended beta (313: its screen has Get New Beta).
