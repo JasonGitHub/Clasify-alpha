@@ -479,7 +479,7 @@ final class AppModel {
     }
     /// The album covers that the skin draws.
     // CLA-202: the shared loader; Apple Music library covers come from the Mac's iTunesLibrary.
-    let artwork = ArtworkLoader { id, side in await AppleMusicArt.shared.image(id, side: side)?.cgImage }
+    let artwork = ArtworkLoader(libraryImage: AppleMusicArt.libraryImage)
     @ObservationIgnored private var ticker: Task<Void, Never>?
     /// TEST: trackpad ticks that follow the wheel.
     @ObservationIgnored private var haptics: Haptics?

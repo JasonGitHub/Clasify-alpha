@@ -70,3 +70,11 @@ actor AppleMusicArt {
 extension AppleMusicArt: LibraryCovers {
     func covers(_ songs: [(id: String, key: String)]) -> [String: UInt64] { match(songs).found }
 }
+
+extension AppleMusicArt {
+    /// CLA-202: a library cover for the shared `ArtworkLoader`, as a plain function, read on this
+    /// actor and handed back on the main actor, where the loader keeps it.
+    @MainActor static func libraryImage(_ persistentID: UInt64, side: Int) async -> CGImage? {
+        await shared.image(persistentID, side: side)?.cgImage
+    }
+}
