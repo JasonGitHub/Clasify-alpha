@@ -360,7 +360,8 @@ public final class Store {
         // How long the state before this action held: read before the action changes it.
         let stateSeconds = timeline.stateSeconds(at: now)
         timeline.record(action, from: before, to: state, at: now)
-        if case .controlBack = action { after?.back = true }
+        // Only a real return of control: the reducer ignores `.controlBack` with no loss open (Codex on #529).
+        if case .controlBack = action, before.controlLostAt != nil { after?.back = true }
         if case .willQuit = action { finishAfter(at: now, quit: true) } else { finishAfter(at: now, quit: false) }
         if let settingsStore, state.settings != before.settings { state.settings.save(to: settingsStore) }
         if case .wheel = action, wheelMoved(from: before, to: state) { onWheelStep?() }

@@ -122,6 +122,16 @@ import Testing
         #expect(store.timeline.text(at: 2_800) == "menu@-0.0")
     }
 
+    /// Codex on #529: a `.controlBack` with no loss open (a normal load) is not a recovery.
+    @Test func backIsOnlyARealReturnOfControl() {
+        let store = store(playingState())
+        store.track(.songCut(pos: 2, len: 200, service: .spotify), before: store.state, at: 1_000)
+        store.send(.controlBack)
+        clock.set(1_120)
+        store.send(.tick)
+        #expect(events.last?.name == "problem_after" && events.last?.properties["back"] == .flag(false))
+    }
+
     @Test func aQuitSendsProblemAfterAtOnce() {
         let store = store(playingState())
         store.send(.controlLost(.stoppedInSpotify))
