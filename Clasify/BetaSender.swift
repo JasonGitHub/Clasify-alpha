@@ -1,3 +1,4 @@
+import AppKit
 import ClasifyCore
 import Foundation
 
@@ -69,9 +70,23 @@ import Foundation
     func take(_ event: BetaEvent) {
         guard on else { return forget() }
         makeInstallID()
-        queue.add(event, at: Date().timeIntervalSinceReferenceDate, build: build)
+        queue.add(event, at: Date().timeIntervalSinceReferenceDate, build: build, os: Self.os, spotifyApp: Self.spotifyApp())
         save()
         if queue.events.count >= 20 && failures == 0 { nextTry = .distantPast }
+    }
+
+    /// CLA-203: the macOS version, as "15.8.1", on every event.
+    static let os: String = {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+    }()
+
+    /// CLA-203: the installed Spotify app's version, as `spotify_version` on every event; nil when it is not installed.
+    /// Read from its Info.plist each time (no cache), so an update in this launch shows.
+    static func spotifyApp() -> String? {
+        guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client"),
+              let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist")) else { return nil }
+        return info["CFBundleShortVersionString"] as? String
     }
 
     /// Starts the send loop. It looks once a second and sends when a try is due.
