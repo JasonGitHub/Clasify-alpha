@@ -3,7 +3,7 @@ on:
   push: { branches: [main] }
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["ClasifyCore/**", "ClasifySkins/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/workflows/app.yml"]
+    paths: ["ClasifyCore/**", "ClasifySkins/**", "ClasifyAppleMusic/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/workflows/app.yml"]
 # macOS minutes cost more, so a new push cancels the older run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -29,6 +29,9 @@ jobs:
       - name: Test ClasifyCore on macOS
         working-directory: ClasifyCore
         run: swift build -Xswiftc -warnings-as-errors && swift test -Xswiftc -warnings-as-errors
+      - name: Build ClasifyAppleMusic on macOS
+        working-directory: ClasifyAppleMusic
+        run: swift build -Xswiftc -warnings-as-errors
       - name: Test ClasifySkins on macOS, with snapshots of the Pocket screens
         working-directory: ClasifySkins
         run: |
