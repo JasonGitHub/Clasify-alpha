@@ -1514,6 +1514,9 @@ public struct LaunchUse: Equatable, Sendable {
     public var stopsPlaying = 0, stopsPaused = 0
     /// Seconds of music that the Spotify app on this Mac played outside myPod (`.outsideMusic`).
     public var outsideSeconds = 0.0
+    /// The last action was a `.playbackFailed` that stopped the music, counted as a pause. Apple
+    /// Music sends its `.controlLost` just after; that loss takes the pause back.
+    var lastFailStop = false
 
     public init() {}
 }

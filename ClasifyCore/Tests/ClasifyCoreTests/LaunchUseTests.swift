@@ -51,6 +51,26 @@ import Testing
         #expect(!s.isPlaying && s.launchUse.pauses == 0 && s.launchUse.stopsPlaying == 1)
     }
 
+    /// Codex on #531: Apple Music sends the failure before the loss; it is still one loss while
+    /// playing, and no pause.
+    @Test func appleMusicsFailureBeforeTheLossIsNoPause() {
+        var s = playing()
+        s.service = .appleMusic
+        _ = events(&s, .playbackFailed("Apple Music can’t play now", generation: s.playGen), now: 10)
+        _ = events(&s, .controlLost(.appleMusicError), now: 10)
+        #expect(s.launchUse.pauses == 0 && s.launchUse.stopsPlaying == 1 && s.launchUse.stopsPaused == 0)
+    }
+
+    /// Codex on #531: while a loss is open and the music still plays (a dropped session), a
+    /// myPod pause is a pause.
+    @Test func aPausePressDuringAnOpenLossCounts() {
+        var s = playing()
+        _ = events(&s, .controlLost(.sessionDrop), now: 10)
+        #expect(s.isPlaying)
+        _ = events(&s, .play, now: 12)
+        #expect(!s.isPlaying && s.launchUse.pauses == 1 && s.launchUse.stopsPlaying == 1)
+    }
+
     /// Codex on #531: a reset (a log out) keeps the launch's counts.
     @Test func aResetKeepsTheCounts() {
         var s = playing()

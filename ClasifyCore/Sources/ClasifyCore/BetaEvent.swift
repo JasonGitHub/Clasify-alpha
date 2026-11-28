@@ -856,19 +856,25 @@ extension AppState {
 @inline(never) func countLaunch(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, quit: Bool) {
     var use = s.launchUse
     // CTO: a start or a stop by any way (myPod, a song pick, another device, the end of the list).
-    // A loss of control counts in `stops_*`, also the `.playbackFailed` that the player sends
-    // just after it (Codex on #531), and the quit's own stop is not a pause.
+    // A loss of control counts in `stops_*`, and the quit's own stop is not a pause. The failure
+    // that comes with a loss is part of it (Codex on #531): Spotify sends it just after
+    // `.controlLost`, Apple Music just before.
     if !b.playing && s.isPlaying { use.plays += 1 }
+    let failStop: Bool
+    if case .playbackFailed = action { failStop = b.playing && !s.isPlaying } else { failStop = false }
     switch action {
     case .controlLost, .willQuit: break
-    default: if b.playing && !s.isPlaying && !b.lossOpen { use.pauses += 1 }
+    case .playbackFailed where failStop && b.lossOpen: break  // Spotify: the loss came first
+    default: if b.playing && !s.isPlaying { use.pauses += 1 }
     }
     switch action {
     case .next, .prev: if s.current != nil { use.skips += 1 }
     case .controlLost where !b.lossOpen && s.controlLostAt != nil:
-        if b.playing { use.stopsPlaying += 1 } else { use.stopsPaused += 1 }
+        if use.lastFailStop { use.pauses -= 1 }  // Apple Music: the failure just before was this loss
+        if b.playing || use.lastFailStop { use.stopsPlaying += 1 } else { use.stopsPaused += 1 }
     default: break
     }
+    use.lastFailStop = failStop && !b.lossOpen
     // A pause runs from the music's stop to its next start, or to the quit.
     if b.playing && !s.isPlaying { use.pausedAt = now }
     if let at = use.pausedAt, (!b.playing && s.isPlaying) || quit {
