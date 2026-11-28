@@ -1290,6 +1290,7 @@ func playing(_ i: Int = 0) -> AppState {
         var fresh = afterSetup()
         fresh.tok = s.tok; fresh.playGen = s.playGen; fresh.authAttempt = s.authAttempt; fresh.artTok = s.artTok
         (fresh.navSeq, fresh.wholeSeq) = (s.navSeq, s.wholeSeq)
+        fresh.launchUse = s.launchUse  // CLA-203: this launch's counts go on over a reset
         #expect(s == fresh && s.tok == 2 && s.navSeq > 0)  // the reset keeps the screen identity: no slide
         send(&s, .select, .authDone(token: 2, ok: true), .select, .wheel(1), .select, .playlistsLoaded(token: 1, playlists: [focusInfo]))  // late load from before reset
         #expect(s.top.loading && s.top.token == 3)

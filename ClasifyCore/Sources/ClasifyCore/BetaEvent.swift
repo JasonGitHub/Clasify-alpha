@@ -47,7 +47,8 @@ public enum BetaEvent: Equatable, Sendable {
     case hintStep(HintStep, how: HintHow?, service: MusicService)
     /// CLA-186: a normal quit (not a crash or a force quit): the minutes this launch was open
     /// (nil when the app could not read it), and the kind of screen that showed (`Screen.eventName`).
-    case appClosed(minutes: Double?, screen: String, service: MusicService)
+    /// CLA-203: `use`, this launch's play use (`LaunchUse`).
+    case appClosed(minutes: Double?, screen: String, service: MusicService, use: LaunchUse = LaunchUse())
     /// CLA-186: a first step after setup, once per install (`FirstStep`). `how` on `play_no_music`
     /// only. `seconds` from `all_set` in the setup's launch, else from this launch.
     case firstStep(FirstStep, how: NoMusic?, seconds: Int, service: MusicService)
@@ -161,8 +162,14 @@ public enum BetaEvent: Equatable, Sendable {
             var p: [String: BetaValue] = ["step": .text(step.rawValue), "seconds": .number(seconds), "service": .text(service.eventName)]
             if let how { p["how"] = .text(how.rawValue) }
             return p
-        case .appClosed(let minutes, let screen, let service):
-            var p: [String: BetaValue] = ["screen": .text(screen), "service": .text(service.eventName)]
+        case .appClosed(let minutes, let screen, let service, let use):
+            var p: [String: BetaValue] = [
+                "screen": .text(screen), "service": .text(service.eventName),
+                "plays": .number(use.plays), "pauses": .number(use.pauses), "skips": .number(use.skips),
+                "longest_pause_s": .number(Int(use.longestPause.rounded())),
+                "stops_playing": .number(use.stopsPlaying), "stops_paused": .number(use.stopsPaused),
+                "outside_music_s": .number(Int(use.outsideSeconds.rounded())),
+            ]
             if let minutes { p["minutes"] = .decimal(minutes) }
             return p
         case .appProblem(let problem, let service):
@@ -431,12 +438,15 @@ struct BeforeEvents {
     var gen: Int
     /// CLA-194: the action is the quit, which sends an `app_speed` that still waits.
     var quit = false
+    /// CLA-203: a loss of control was open before, so a new `.controlLost` was not counted.
+    var lossOpen: Bool
 
     init(_ s: AppState, _ action: Action) {
         (screen, setupDone, activateStep) = (s.top.screen, s.setupDone, s.activateStep)
         choices = s.settings.choices
         (tourOn, hintsDone) = (s.tourOn, s.hintsDone)
         playing = s.isPlaying
+        lossOpen = s.controlLostAt != nil
         gen = s.playGen
         (error, service) = (s.top.error, s.service)
         (readAt, artists) = (s.readAt, s.artistsLoaded)
@@ -706,6 +716,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         if let at = s.outsideAt, now > at {
             let add = min(now - at, outsideGapLimit)
             count(at: now) { d, _ in d.outsideSeconds += add }
+            s.launchUse.outsideSeconds += add
         }
         if outsideSong { count(at: now) { d, _ in d.outsideSongs += 1 } }
         s.outsideAt = playing ? now : nil
@@ -768,8 +779,12 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         send(today)
         s.today = DayUse(day: today.day, weekday: today.weekday)
     }
+    countLaunch(&s, action, b, now: now, quit: quit)
     // CLA-186: `app_closed`, in the same batch as that `day_active`. Only the kind of screen.
-    if quit { fx.append(.track(.appClosed(minutes: openSeconds.map { max(0, $0) / 60 }, screen: s.top.screen.eventName, service: s.service))) }
+    if quit {
+        fx.append(.track(.appClosed(minutes: openSeconds.map { max(0, $0) / 60 }, screen: s.top.screen.eventName,
+                                    service: s.service, use: s.launchUse)))
+    }
     // Jason 23:07 JST: the saved copy follows about once a minute, and at each other change,
     // a pause and a quit. A crash while music plays can lose up to 1 minute of the day.
     let saved = s.savedToday, today = s.today
@@ -834,4 +849,37 @@ extension AppState {
         let songs = loadedTracks.contains(albumsList) ? library.first { $0.id == albumsList }?.tracks.count : nil
         return (playlists, songs)
     }
+}
+
+/// CLA-203: counts this launch's play use for `app_closed` (`LaunchUse`). Not inlined, so
+/// `dayEvents`'s stack frame stays small (reducer stack limit).
+@inline(never) func countLaunch(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Double, quit: Bool) {
+    var use = s.launchUse
+    // CTO: a start or a stop by any way (myPod, a song pick, another device, the end of the list).
+    // A loss of control counts in `stops_*`, and the quit's own stop is not a pause. The failure
+    // that comes with a loss is part of it (Codex on #531): Spotify sends it just after
+    // `.controlLost`, Apple Music just before.
+    if !b.playing && s.isPlaying { use.plays += 1 }
+    let failStop: Bool
+    if case .playbackFailed = action { failStop = b.playing && !s.isPlaying } else { failStop = false }
+    switch action {
+    case .controlLost, .willQuit: break
+    case .playbackFailed where failStop && b.lossOpen: break  // Spotify: the loss came first
+    default: if b.playing && !s.isPlaying { use.pauses += 1 }
+    }
+    switch action {
+    case .next, .prev: if s.current != nil { use.skips += 1 }
+    case .controlLost where !b.lossOpen && s.controlLostAt != nil:
+        if use.lastFailStop { use.pauses -= 1 }  // Apple Music: the failure just before was this loss
+        if b.playing || use.lastFailStop { use.stopsPlaying += 1 } else { use.stopsPaused += 1 }
+    default: break
+    }
+    use.lastFailStop = failStop && !b.lossOpen
+    // A pause runs from the music's stop to its next start, or to the quit.
+    if b.playing && !s.isPlaying { use.pausedAt = now }
+    if let at = use.pausedAt, (!b.playing && s.isPlaying) || quit {
+        use.longestPause = max(use.longestPause, now - at)
+        use.pausedAt = nil
+    }
+    if use != s.launchUse { s.launchUse = use }
 }
