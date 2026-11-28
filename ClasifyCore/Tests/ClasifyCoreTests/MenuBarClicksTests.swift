@@ -50,7 +50,7 @@ import Testing
     @Test func theClicksSaveAndAnOldSavedDayReadsAsZero() {
         var d = DayUse(day: 20261119, weekday: 5)
         d.songsShuffle = 2; d.songsRepeat = 1; d.songsCut = 1; d.menuBarClicks = 7
-        #expect(d.saved.hasSuffix("|2,1,1,7") && DayUse(saved: d.saved) == d)
+        #expect(d.saved.hasSuffix("|2,1,1,7|0,0.0") && DayUse(saved: d.saved) == d)
         let old = "20261119|5|3|0,0,0,0||Spotify|1,2,3|0,0,0,0,0,0,0,0,0;0;|"
         #expect(DayUse(saved: old + "2,1,1")?.menuBarClicks == 0 && DayUse(saved: old + "2,1,1")?.songsCut == 1)
         #expect(DayUse(saved: old + "2,1")?.menuBarClicks == 0)

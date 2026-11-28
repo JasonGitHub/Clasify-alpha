@@ -31,6 +31,16 @@ public struct DayUse: Equatable, Sendable {
     private var cuts: UInt16 = 0
     /// `menuBarClicks`, in the same padding, so `DayUse` does not grow.
     private var clicks: UInt16 = 0
+    /// CLA-203: songs that the Spotify app on this Mac started while myPod was open but not in
+    /// control (`.outsideMusic`). Not in `songs`: those are played through myPod.
+    public var outsideSongs: Int {
+        get { Int(outside) }
+        set { outside = UInt16(clamping: newValue) }
+    }
+    /// `outsideSongs`, in the same padding.
+    private var outside: UInt16 = 0
+    /// CLA-203: seconds of that music. Not in `bands`.
+    public var outsideSeconds = 0.0
     /// CLA-162: seconds the device window was visible in each area of its screen (`WindowSpot.area`).
     public var areas = [Double](repeating: 0, count: 9)
     /// CLA-162: visible seconds on each screen (`WindowSpot.screenKey`), and the most screens seen.
@@ -45,6 +55,7 @@ public struct DayUse: Equatable, Sendable {
     /// CLA-201: a menu bar icon click is use too.
     public var hadUse: Bool {
         songs > 0 || songsCut > 0 || seconds > 0 || !features.isEmpty || views.contains { $0 > 0 } || menuBarClicks > 0
+            || outsideSongs > 0 || outsideSeconds > 0  // CLA-203
     }
 
     /// The day, the weekday and the band of `now` (`Dependencies.now` time) in `timeZone`.
@@ -77,14 +88,16 @@ public struct DayUse: Equatable, Sendable {
 
     /// "20261119|5|3|0.0,0.0,1200.5,0.0|coverFlow,settings|Spotify|12.5,0.0,3.0": the saved
     /// form, then CLA-162's window part "areas;screen count;screens", then "shuffle,repeat" song
-    /// counts, CLA-186's cut songs as a third count, and CLA-201's menu bar clicks as a fourth. A day saved before the 3D views, the
-    /// window or the song counts has no such part: its counts are 0.
+    /// counts, CLA-186's cut songs as a third count, and CLA-201's menu bar clicks as a fourth, then
+    /// CLA-203's "outside songs,outside seconds". A day saved before the 3D views, the window, the
+    /// song counts or the outside music has no such part: its counts are 0.
     var saved: String {
         let b: [String] = bands.map { String($0) }
         let f: [String] = features.map(\.rawValue).sorted()
         let v: [String] = views.map { String($0) }
         return [String(day), String(weekday), String(songs), b.joined(separator: ","), f.joined(separator: ","), service?.rawValue ?? "",
-                v.joined(separator: ","), windowSaved, "\(songsShuffle),\(songsRepeat),\(songsCut),\(menuBarClicks)"].joined(separator: "|")
+                v.joined(separator: ","), windowSaved, "\(songsShuffle),\(songsRepeat),\(songsCut),\(menuBarClicks)",
+                "\(outsideSongs),\(outsideSeconds)"].joined(separator: "|")
     }
 
     /// "0.0,…,60.0,…;2;1x1512x982x1=60.0": the areas, the screen count and the seconds per screen.
@@ -95,7 +108,7 @@ public struct DayUse: Equatable, Sendable {
 
     init?(saved: String) {
         let parts = saved.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-        guard (6...9).contains(parts.count), let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
+        guard (6...10).contains(parts.count), let day = Int(parts[0]), let weekday = Int(parts[1]), let songs = Int(parts[2]) else { return nil }
         let bands = parts[3].split(separator: ",").compactMap { Double($0) }
         guard bands.count == 4 else { return nil }
         self.init(day: day, weekday: weekday)
@@ -119,12 +132,17 @@ public struct DayUse: Equatable, Sendable {
                 screens[String(kv[0])] = seconds
             }
         }
-        if parts.count == 9 {
+        if parts.count >= 9 {
             let counts = parts[8].split(separator: ",").compactMap { Int($0) }
             guard (2...4).contains(counts.count) else { return nil }
             (songsShuffle, songsRepeat) = (counts[0], counts[1])
             if counts.count >= 3 { songsCut = counts[2] }
             if counts.count == 4 { menuBarClicks = counts[3] }
+        }
+        if parts.count == 10 {
+            let outside = parts[9].split(separator: ",")
+            guard outside.count == 2, let songs = Int(outside[0]), let seconds = Double(outside[1]) else { return nil }
+            (outsideSongs, outsideSeconds) = (songs, seconds)
         }
     }
 
@@ -190,3 +208,6 @@ let view3DLimit = 1800.0
 
 /// The longest gap between two position reports that counts as music: longer is a pause or a sleep.
 let dayGapLimit = 5.0
+/// CLA-203: the longest gap between two reports of outside music that counts. The Spotify app
+/// reports on each change, so a gap is at most about one song; longer is a sleep.
+let outsideGapLimit = 900.0
