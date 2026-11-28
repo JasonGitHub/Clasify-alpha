@@ -52,6 +52,14 @@ public final class Timeline {
     private(set) var entries: [Entry] = []
     /// The newest wheel step, while its entry is the newest one.
     private var wheelAt: Double?
+    /// CLA-203 (CTO): when `isPlaying` last changed, or the first fact of the launch. Kept past
+    /// `span`, so a problem says how long the player was in its state (`state_s`).
+    private(set) var stateSince: Double?
+
+    /// Whole seconds since the play state last changed, with no upper limit. Nil before any fact.
+    public func stateSeconds(at now: Double) -> Int? {
+        stateSince.map { Int(max(0, now - $0).rounded(.down)) }
+    }
 
     public init() {}
 
@@ -89,7 +97,11 @@ public final class Timeline {
     @inline(never) func record(_ action: Action, from before: AppState, to after: AppState, at now: Double) {
         if let text = Self.text(of: action) { record(text, at: now) }
         if after.current != before.current, after.current != nil { record("song", at: now) }
-        if after.isPlaying != before.isPlaying { record(after.isPlaying ? "playing" : "paused", at: now) }
+        if stateSince == nil { stateSince = now }
+        if after.isPlaying != before.isPlaying {
+            record(after.isPlaying ? "playing" : "paused", at: now)
+            stateSince = now
+        }
         let screen = after.top.screen.eventName
         if screen != before.top.screen.eventName { record("screen:" + screen, at: now) }
     }

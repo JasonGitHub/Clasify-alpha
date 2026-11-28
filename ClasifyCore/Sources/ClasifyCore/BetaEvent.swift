@@ -51,6 +51,8 @@ public enum BetaEvent: Equatable, Sendable {
     /// CLA-186: a first step after setup, once per install (`FirstStep`). `how` on `play_no_music`
     /// only. `seconds` from `all_set` in the setup's launch, else from this launch.
     case firstStep(FirstStep, how: NoMusic?, seconds: Int, service: MusicService)
+    /// CLA-203: a problem event with what came before it (`Store` adds it, `ProblemContext`).
+    indirect case problem(BetaEvent, ProblemContext)
 
     /// The event name in PostHog.
     public var name: String {
@@ -71,7 +73,24 @@ public enum BetaEvent: Equatable, Sendable {
         case .hintStep: "hint_step"
         case .appClosed: "app_closed"
         case .firstStep: "first_step"
+        case .problem(let event, _): event.name
         }
+    }
+
+    /// CLA-203: the events that get the timeline: a loss of control, a song or list that did
+    /// not play or load, a first Play with no music.
+    var isProblem: Bool {
+        switch self {
+        case .controlLost, .useError(.songNotPlayed, _, _, _, _), .useError(.listNotLoaded, _, _, _, _): true
+        case .firstStep(let step, _, _, _): step == .playNoMusic
+        default: false
+        }
+    }
+
+    /// CLA-203: the event without the context that the Store added.
+    var plain: BetaEvent {
+        if case .problem(let event, _) = self { return event }
+        return self
     }
 
     /// The event's own data. The sender adds the rest.
@@ -129,6 +148,8 @@ public enum BetaEvent: Equatable, Sendable {
             return p
         case .appProblem(let problem, let service):
             return problem.properties.merging(["service": .text(service.eventName)]) { old, _ in old }
+        case .problem(let event, let context):
+            return event.properties.merging(context.properties) { own, _ in own }
         case .dayActive(let d, let service, let color, let settings):
             var p: [String: BetaValue] = [
                 "color": .text(color.eventName), "album_art": .text(settings.albumArt.eventName),
@@ -156,6 +177,27 @@ public enum BetaEvent: Equatable, Sendable {
             }
             return p
         }
+    }
+}
+
+/// CLA-203: what a problem event says about the moment before it. No names, no IDs.
+public struct ProblemContext: Equatable, Sendable {
+    /// The 2 minutes before (`Timeline.text`).
+    public var timeline: String
+    /// The song's place and length, whole seconds, when a song was there.
+    public var pos: Int?, len: Int?
+    /// Music played just before, and the kind of screen (`Screen.eventName`).
+    public var playing: Bool, screen: String
+    /// Whole seconds that `playing` held before the problem, with no upper limit (CTO: a stop
+    /// 30 minutes after a pause). Nil when not known.
+    public var stateSeconds: Int? = nil
+
+    var properties: [String: BetaValue] {
+        var p: [String: BetaValue] = ["timeline": .text(timeline), "playing": .flag(playing), "screen": .text(screen)]
+        if let pos { p["pos_s"] = .number(pos) }
+        if let len { p["len_s"] = .number(len) }
+        if let stateSeconds { p["state_s"] = .number(stateSeconds) }
+        return p
     }
 }
 

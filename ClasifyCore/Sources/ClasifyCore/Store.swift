@@ -210,6 +210,9 @@ public final class Store {
     @ObservationIgnored public var onOpenActivatePage: (@MainActor (String) -> Void)?
     /// CLA-203: the last 2 minutes of facts, in memory only, for the problem events.
     @ObservationIgnored public let timeline = Timeline()
+    /// CLA-203: the events with a timeline in this launch. A cap for launch scale.
+    @ObservationIgnored private var timelinesSent = 0
+    static let timelineCap = 10
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
     /// Card BV: the launch check's source. With none, the check finds nothing.
@@ -239,6 +242,22 @@ public final class Store {
         }
         // CLA-202: a saved service that this platform does not have reads as its first one.
         if !self.state.features.services.contains(self.state.service) { self.state.service = self.state.features.services[0] }
+    }
+
+    /// CLA-203: sends an event; a problem gets the 2 minutes before it, within the cap. Over the
+    /// cap a problem goes out as before, with no timeline.
+    func track(_ event: BetaEvent, before: AppState, at now: Double, stateSeconds: Int? = nil) {
+        guard event.isProblem, timelinesSent < Self.timelineCap else { onBetaEvent?(event); return }
+        timelinesSent += 1
+        var pos: Int?, len: Int?
+        if let current = before.current {
+            pos = Int(before.t.rounded(.down))
+            if let length = before.track(current)?.duration, length > 0 { len = Int(length.rounded()) }
+        }
+        let context = ProblemContext(timeline: timeline.text(at: now), pos: pos, len: len,
+                                     playing: before.isPlaying, screen: before.top.screen.eventName,
+                                     stateSeconds: stateSeconds)
+        onBetaEvent?(.problem(event, context))
     }
 
     /// Waits for in-flight library fetches to deliver their results. For tests.
@@ -304,7 +323,10 @@ public final class Store {
     public func send(_ action: Action) {
         let before = state
         let effects = reduce(&state, action, env)
-        timeline.record(action, from: before, to: state, at: env.now())
+        let now = env.now()
+        // How long the state before this action held: read before the action changes it.
+        let stateSeconds = timeline.stateSeconds(at: now)
+        timeline.record(action, from: before, to: state, at: now)
         if let settingsStore, state.settings != before.settings { state.settings.save(to: settingsStore) }
         if case .wheel = action, wheelMoved(from: before, to: state) { onWheelStep?() }
         for effect in effects {
@@ -397,7 +419,7 @@ public final class Store {
             case .quit: onQuit?()
             case .showWindow: onShowWindow?()
             case .hideWindow: onHideWindow?()
-            case .track(let event): onBetaEvent?(event)
+            case .track(let event): track(event, before: before, at: now, stateSeconds: stateSeconds)
             case .openActivatePage(let request):
                 guard let activator else { break }
                 let flow = state.activateFlow
