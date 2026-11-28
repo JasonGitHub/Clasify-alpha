@@ -1,5 +1,7 @@
 #if os(macOS)
 import AppKit
+#else
+import AVFoundation
 #endif
 import Foundation
 
@@ -48,9 +50,24 @@ public final class Clicker: Sendable {
         }
     }
     #else
-    /// CLA-202: silent on iOS for now. The iOS click comes in a later change.
-    private final class Output: Sendable {
-        func play(asked: ContinuousClock.Instant) {}
+    /// CLA-202: the same click on iOS, from the same WAV in memory. AVAudioPlayer is not
+    /// Sendable. This is safe for the same reason: `Clicker` touches `Output` only in blocks on
+    /// its one serial queue. The audio session belongs to the app, not to the skins.
+    private final class Output: @unchecked Sendable {
+        private var wav: Data?
+        /// The clicks that still play. A player stops when it is let go, so it is kept until it ends.
+        private var players: [AVAudioPlayer] = []
+
+        func play(asked: ContinuousClock.Instant) {
+            guard Clicker.fresh(asked: asked, now: .now) else { return }
+            let wav = self.wav ?? Clicker.wav()
+            self.wav = wav
+            players.removeAll { !$0.isPlaying }
+            // A new player for each click, so a fast turn of the wheel can play clicks that overlap.
+            guard let player = try? AVAudioPlayer(data: wav) else { return }
+            player.play()
+            players.append(player)
+        }
     }
     #endif
 
