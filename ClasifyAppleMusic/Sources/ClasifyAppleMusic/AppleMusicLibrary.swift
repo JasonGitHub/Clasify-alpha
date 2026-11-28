@@ -1,4 +1,3 @@
-import ClasifyAppleMusic
 import ClasifyCore
 import Foundation
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
@@ -9,10 +8,10 @@ import Foundation
 /// MusicKit API that changes the library. Reads stay in memory for the session; nothing goes
 /// to disk. MusicKit has no sign-in of its own: "log in" asks macOS for MusicKit access.
 @MainActor
-final class AppleMusicLibrary: Library {
+public final class AppleMusicLibrary: Library {
     /// Apple Music's own words, such as "Favorite Songs" for the list of favorited songs.
-    let words = LibraryWords.appleMusic
-    var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
+    public let words = LibraryWords.appleMusic
+    public var onProgress: (@MainActor (_ playlist: String, _ done: Int, _ total: Int, _ albums: Int) -> Void)?
 
     /// The reads of this session, done or running. A failed read leaves.
     private var listRead: Task<[ClasifyCore.Playlist]?, Never>?
@@ -20,9 +19,9 @@ final class AppleMusicLibrary: Library {
     /// Library covers, which a new read reads again (the Mac: `AppleMusicArt`).
     private let covers: any LibraryCovers
 
-    init(covers: any LibraryCovers) { self.covers = covers }
+    public init(covers: any LibraryCovers) { self.covers = covers }
 
-    func playlists() async -> [ClasifyCore.Playlist]? {
+    public func playlists() async -> [ClasifyCore.Playlist]? {
         let read = listRead ?? Task { await Self.readPlaylists() }
         listRead = read
         let list = await read.value
@@ -30,7 +29,7 @@ final class AppleMusicLibrary: Library {
         return list
     }
 
-    func tracks(of playlist: String) async -> [ClasifyCore.Track]? {
+    public func tracks(of playlist: String) async -> [ClasifyCore.Track]? {
         let tracks = await read(playlist)
         if let tracks { onProgress?(playlist, tracks.count, tracks.count, Set(tracks.compactMap(\.album)).count) }
         return tracks
@@ -55,13 +54,13 @@ final class AppleMusicLibrary: Library {
         return order.map { all[$0] }
     }
 
-    func rereadPlaylists() async -> [ClasifyCore.Playlist]? {
+    public func rereadPlaylists() async -> [ClasifyCore.Playlist]? {
         listRead = nil
         await covers.forget()
         return await playlists()
     }
 
-    func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
+    public func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
         trackReads[playlist] = nil
         await covers.forget()
         if playlist == ClasifyCore.Playlist.libraryID {  // the albums, Songs and artists come from this read
@@ -74,15 +73,15 @@ final class AppleMusicLibrary: Library {
     }
 
     /// Card BN: a new read each time, as the reducer asks once a session.
-    func artists() async -> [ClasifyCore.Playlist]? { await AppleMusicReads.artists() }
+    public func artists() async -> [ClasifyCore.Playlist]? { await AppleMusicReads.artists() }
 
-    func track(_ id: String) async -> ClasifyCore.Track? {
+    public func track(_ id: String) async -> ClasifyCore.Track? {
         guard let song = await AppleMusicReads.song(id) else { return nil }
         return await AppleMusicReads.tracks([song]).first
     }
 
     /// CLA-194: the sizes of the list and library reads go to `app_speed`.
-    func prefetch() async -> LibraryCount {
+    public func prefetch() async -> LibraryCount {
         async let list = playlists()
         async let library = tracks(of: ClasifyCore.Playlist.libraryID)  // Albums and setup read it
         let (lists, songs) = await (list, library)
@@ -92,15 +91,15 @@ final class AppleMusicLibrary: Library {
 
     /// The macOS prompt (card BM, change 258). macOS asks only once: after that, the answer
     /// comes back at once.
-    func logIn(page: String?) async -> LoginResult {  // no browser: `page` is for Spotify
+    public func logIn(page: String?) async -> LoginResult {  // no browser: `page` is for Spotify
         await Self.result(MusicAuthorization.request())
     }
 
     /// The macOS access prompt can't be closed from here.
-    func cancelLogIn() async {}
+    public func cancelLogIn() async {}
 
     /// A switch to Apple Music that macOS never asked about shows the prompt now (change 256).
-    func restoreSession() async -> LoginResult {
+    public func restoreSession() async -> LoginResult {
         let status = MusicAuthorization.currentStatus
         return await Self.result(status == .notDetermined ? MusicAuthorization.request() : status)
     }
@@ -115,7 +114,7 @@ final class AppleMusicLibrary: Library {
     }
 
     /// Only the user can take MusicKit access away, in System Settings. This forgets the reads.
-    func logOut() {
+    public func logOut() {
         listRead = nil
         trackReads = [:]
         AppleMusicReads.forgetLibrary()
