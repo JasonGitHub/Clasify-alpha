@@ -291,14 +291,20 @@ struct StripLetters: View, Animatable {
         let first = Int(place.rounded(.down)) - 9
         ZStack(alignment: .topLeading) {
             ForEach(first...(first + 19), id: \.self) { k in
-                let d = abs(Double(k) - place)
-                let on = max(0, 1 - d)  // 1 at the middle, 0 a letter away
-                Text(String(letters[((k % n) + n) % n]))
-                    .font(.helvetica(CGFloat(13 + 4 * on), bold: true))
-                    .foregroundStyle(on > 0.5 ? Color.white : Pocket.ink)
-                    .opacity(d < 0.5 ? 1 : max(0.25, 1 - d * 0.11))
+                // Typed values, so the iOS compiler can type-check the view in time.
+                let d: Double = abs(Double(k) - place)
+                let on: Double = max(0, 1 - d)  // 1 at the middle, 0 a letter away
+                let size = CGFloat(13 + 4 * on)
+                let color: Color = on > 0.5 ? Color.white : Pocket.ink
+                let fade: Double = d < 0.5 ? 1 : max(0.25, 1 - d * 0.11)
+                let x: CGFloat = 150 - Self.cell / 2 + CGFloat(Double(k) - place) * Self.cell
+                let letter = String(letters[((k % n) + n) % n])
+                Text(letter)
+                    .font(.helvetica(size, bold: true))
+                    .foregroundStyle(color)
+                    .opacity(fade)
                     .frame(width: Self.cell, height: 34)
-                    .offset(x: 150 - Self.cell / 2 + CGFloat(Double(k) - place) * Self.cell)
+                    .offset(x: x)
             }
         }
     }
