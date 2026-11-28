@@ -616,8 +616,7 @@ final class AppModel {
         store.send(.launch)  // restores the stored login
         // CLA-97: a normal quit saves the exact day count and ends open 3D views. CLA-182: it
         // runs in `AppDelegate.applicationShouldTerminate` (`AppDelegate.quit`), before the quit.
-        // The reducer's toast, overlay, scroll bar, cover and Cover Flow letter timers run on .tick. Each .tick redraws the skin,
-        // so send it only when a timer has run out.
+        // The reducer's timers run on .tick, which this loop sends when `AppState.tickDue(at:)` says so.
         // The same loop starts the player's pre-warm when a sign-in or a restore succeeds,
         // and resets the player when the session signs out.
         ticker = Task { [weak store, weak player, artwork] in
@@ -639,31 +638,7 @@ final class AppModel {
                     spotifyCheck = now
                     store?.send(.spotifyAppFound(Self.spotifyAppInstalled))
                 }
-                let toastDone = state.toastUntil > 0 && now > state.toastUntil
-                let overlayDone = state.overlayUntil > 0 && now > state.overlayUntil
-                let scrollDone = state.scrollUntil > 0 && now > state.scrollUntil
-                let artDone = state.artUntil > 0 && now > state.artUntil
-                let letterDone = state.letterUntil > 0 && now > state.letterUntil
-                // "You’re in" (card AX, change 175) goes on after its beat.
-                let beatDone = state.beatUntil > 0 && now >= state.beatUntil
-                // The first read waits until every playlist name has shown (card AY, change 191).
-                let namesDone = state.namesHold > 0 && now >= state.namesHold
-                // A first-time hint's tip shows, or the hint ends (card BA, BA.1).
-                let hintDue = state.hintDue > 0 && now >= state.hintDue
-                // A beta's warning on day 27, or its end on day 30 (card BI v2).
-                let betaDue = state.betaDue > 0 && now >= state.betaDue
-                // Card BW, CLA-146: the Activate screen's timer checks, their 3-minute end, and the 1.5 s beat.
-                let activateDue = state.activateDue(at: now)
-                // CLA-170: a song's read with no answer in 3 s; Now Playing shows the service name.
-                let readDue = state.readOverdue(at: now)
-                // CLA-183: library data arrived while Search is open; its index is made again.
-                let searchDue = state.searchIndexDue(at: now)
-                // CLA-186: a play press brought no music in 20 s, for `first_step`.
-                let firstStepDue = state.firstStepDue(at: now)
-                if toastDone || overlayDone || scrollDone || artDone || letterDone || beatDone || namesDone || hintDue || betaDue || activateDue
-                    || readDue || searchDue || firstStepDue {
-                    store?.send(.tick)
-                }
+                if state.tickDue(at: now) { store?.send(.tick) }  // CLA-202: the timer rules are in the core
                 // When the browser login works (change 170) or the Spotify app is found (174),
                 // Clasify comes to the front.
                 // Not for "You’re all set": the library read may take long, and the person may work elsewhere.
