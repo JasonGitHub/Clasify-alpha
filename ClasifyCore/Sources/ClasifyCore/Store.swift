@@ -272,6 +272,7 @@ public final class Store {
         if after == nil, timelinesSent < Self.timelineCap {  // its `problem_after` needs a place under the cap
             timelinesSent += 1
             after = (event.problemName, now, false)
+            timeline.holdFrom = now
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(Timeline.span))
                 guard let self else { return }
@@ -284,7 +285,9 @@ public final class Store {
     private func finishAfter(at now: Double, quit: Bool) {
         guard let after, quit || now - after.at >= Timeline.span else { return }
         self.after = nil
-        onBetaEvent?(.problemAfter(problem: after.problem, timeline: timeline.text(since: after.at, at: now), quit: quit,
+        let text = timeline.text(since: after.at, at: now)  // before the hold ends
+        timeline.holdFrom = nil
+        onBetaEvent?(.problemAfter(problem: after.problem, timeline: text, quit: quit,
                                    back: after.back, playing: state.isPlaying, service: state.service))
     }
 

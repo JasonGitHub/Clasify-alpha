@@ -106,6 +106,22 @@ import Testing
         #expect(events.filter { $0.name == "problem_after" }.count == 1)
     }
 
+    /// Codex on #529: a late follow-up (the Mac slept) still has the 2 minutes after the problem,
+    /// and the entries after those 2 minutes are not in it.
+    @Test func aLateProblemAfterKeepsItsTwoMinutes() {
+        let store = store(playingState())
+        store.send(.controlLost(.stoppedInSpotify))
+        clock.set(1_006.5)
+        store.send(.controlBack)
+        clock.set(1_000 + 1_800)  // 30 minutes later
+        store.send(.menu)
+        guard case .problemAfter(_, let timeline, _, let back, _, _)? = events.last else {
+            Issue.record("no problem_after"); return
+        }
+        #expect(timeline == "lost:stopped_in_spotify@+0.0 back@+6.5" && back)
+        #expect(store.timeline.text(at: 2_800) == "menu@-0.0")
+    }
+
     @Test func aQuitSendsProblemAfterAtOnce() {
         let store = store(playingState())
         store.send(.controlLost(.stoppedInSpotify))
