@@ -210,9 +210,14 @@ public final class Store {
     @ObservationIgnored public var onOpenActivatePage: (@MainActor (String) -> Void)?
     /// CLA-203: the last 2 minutes of facts, in memory only, for the problem events.
     @ObservationIgnored public let timeline = Timeline()
-    /// CLA-203: the events with a timeline in this launch. A cap for launch scale.
+    /// CLA-203: the events with a timeline in this launch (`problem_after` too), and the
+    /// `song_cut` events. Caps for launch scale.
     @ObservationIgnored private var timelinesSent = 0
-    static let timelineCap = 10
+    @ObservationIgnored private var cutsSent = 0
+    static let timelineCap = 10, cutCap = 3
+    /// CLA-203: the problem that waits for its `problem_after`: its name, when it came, whether
+    /// control came back since. One at a time.
+    @ObservationIgnored private var after: (problem: String, at: Double, back: Bool)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
     /// Card BV: the launch check's source. With none, the check finds nothing.
@@ -244,10 +249,16 @@ public final class Store {
         if !self.state.features.services.contains(self.state.service) { self.state.service = self.state.features.services[0] }
     }
 
-    /// CLA-203: sends an event; a problem gets the 2 minutes before it, within the cap. Over the
-    /// cap a problem goes out as before, with no timeline.
+    /// CLA-203: sends an event; a problem gets the 2 minutes before it, within the caps, and
+    /// starts its `problem_after`. Over the cap a problem goes out as before, with no timeline;
+    /// a `song_cut` over its cap does not go out.
     func track(_ event: BetaEvent, before: AppState, at now: Double, stateSeconds: Int? = nil) {
-        guard event.isProblem, timelinesSent < Self.timelineCap else { onBetaEvent?(event); return }
+        guard event.isProblem else { onBetaEvent?(event); return }
+        if case .songCut = event {
+            guard cutsSent < Self.cutCap else { return }
+            cutsSent += 1
+        }
+        guard timelinesSent < Self.timelineCap else { onBetaEvent?(event); return }
         timelinesSent += 1
         var pos: Int?, len: Int?
         if let current = before.current {
@@ -258,6 +269,23 @@ public final class Store {
                                      playing: before.isPlaying, screen: before.top.screen.eventName,
                                      stateSeconds: stateSeconds)
         onBetaEvent?(.problem(event, context))
+        if after == nil, timelinesSent < Self.timelineCap {  // its `problem_after` needs a place under the cap
+            timelinesSent += 1
+            after = (event.problemName, now, false)
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(Timeline.span))
+                guard let self else { return }
+                self.finishAfter(at: self.env.now(), quit: false)
+            }
+        }
+    }
+
+    /// CLA-203: `problem_after` for the waiting problem, 2 minutes after it or at the quit.
+    private func finishAfter(at now: Double, quit: Bool) {
+        guard let after, quit || now - after.at >= Timeline.span else { return }
+        self.after = nil
+        onBetaEvent?(.problemAfter(problem: after.problem, timeline: timeline.text(since: after.at, at: now), quit: quit,
+                                   back: after.back, playing: state.isPlaying, service: state.service))
     }
 
     /// Waits for in-flight library fetches to deliver their results. For tests.
@@ -327,6 +355,8 @@ public final class Store {
         // How long the state before this action held: read before the action changes it.
         let stateSeconds = timeline.stateSeconds(at: now)
         timeline.record(action, from: before, to: state, at: now)
+        if case .controlBack = action { after?.back = true }
+        if case .willQuit = action { finishAfter(at: now, quit: true) } else { finishAfter(at: now, quit: false) }
         if let settingsStore, state.settings != before.settings { state.settings.save(to: settingsStore) }
         if case .wheel = action, wheelMoved(from: before, to: state) { onWheelStep?() }
         for effect in effects {

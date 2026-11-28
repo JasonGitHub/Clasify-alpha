@@ -92,6 +92,16 @@ public final class Timeline {
         }.joined(separator: " ")
     }
 
+    /// CLA-203: the text of the entries from `since` on, for `problem_after`, oldest first, in
+    /// seconds after `since`: `back@+6.2 playing@+6.3`.
+    func text(since: Double, at now: Double) -> String {
+        prune(now)
+        return entries.filter { $0.at >= since }.map { e in
+            let later = String(format: "%.1f", max(0, e.at - since))
+            return (e.count > 1 || e.text == "wheel" ? "\(e.text):\(e.count)" : e.text) + "@+" + later
+        }.joined(separator: " ")
+    }
+
     /// The facts of one `Store.send`: the action, and the player facts that it changed.
     /// Not inlined, so `Store.send`'s stack frame stays small (reducer stack limit).
     @inline(never) func record(_ action: Action, from before: AppState, to after: AppState, at now: Double) {

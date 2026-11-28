@@ -85,7 +85,7 @@ extension DayActiveTests {
         _ = events(&s, .position(0.5, generation: s.playGen), now: at(23, 59.95))  // 23:59:57
         // The music stopped, so the end itself rolls the day before out, with its cut.
         let sent = events(&s, .trackEnded(generation: s.playGen), now: at(0, 0.02, day: 20))  // 00:00:01
-        guard case .dayActive(let day, _, _, _)? = sent.first else { Issue.record("no day_active"); return }
+        guard case .dayActive(let day, _, _, _)? = sent.first(where: { $0.name == "day_active" }) else { Issue.record("no day_active"); return }
         #expect(day.day == 20261119 && day.songsCut == 1 && s.today == nil)
     }
 
