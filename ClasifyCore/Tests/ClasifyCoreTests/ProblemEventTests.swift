@@ -3,7 +3,8 @@ import Synchronization
 import Testing
 @testable import ClasifyCore
 
-/// CLA-203: problem events carry the 2 minutes before them and how long the play state held.
+/// CLA-203: problem events carry the 2 minutes before them, and `problem_after` the 2 minutes
+/// after. A cut song is its own event.
 @MainActor @Suite struct ProblemEventTests {
     final class Clock: Sendable {
         let now = Mutex(1_000.0)
@@ -85,8 +86,85 @@ import Testing
         #expect(events.contains { $0.name == "app_closed" } && !events.contains { if case .problem = $0 { true } else { false } })
     }
 
-    /// At most 10 events with a timeline in a launch. Over it, the problem still goes out,
-    /// with no timeline.
+    @Test func problemAfterComesTwoMinutesLaterWithBackAndPlaying() {
+        let store = store(playingState())
+        store.send(.controlLost(.stoppedInSpotify))
+        clock.set(1_006.5)
+        store.send(.controlBack)
+        clock.set(1_119)
+        store.send(.tick)
+        #expect(!events.contains { $0.name == "problem_after" })
+        clock.set(1_120)
+        store.send(.tick)
+        guard case .problemAfter(let problem, let timeline, let quit, let back, _, _)? = events.last else {
+            Issue.record("no problem_after"); return
+        }
+        #expect(problem == "control_lost:stopped_in_spotify" && !quit && back)
+        #expect(timeline.hasPrefix("lost:stopped_in_spotify@+0.0") && timeline.contains("back@+6.5"))
+        #expect(events.last?.properties["playing"] != nil)
+        store.send(.tick)
+        #expect(events.filter { $0.name == "problem_after" }.count == 1)
+    }
+
+    /// Codex on #529: a late follow-up (the Mac slept) still has the 2 minutes after the problem,
+    /// and the entries after those 2 minutes are not in it.
+    @Test func aLateProblemAfterKeepsItsTwoMinutes() {
+        let store = store(playingState())
+        store.send(.controlLost(.stoppedInSpotify))
+        clock.set(1_006.5)
+        store.send(.controlBack)
+        clock.set(1_000 + 1_800)  // 30 minutes later
+        store.send(.menu)
+        guard case .problemAfter(_, let timeline, _, let back, _, _)? = events.last else {
+            Issue.record("no problem_after"); return
+        }
+        #expect(timeline == "lost:stopped_in_spotify@+0.0 back@+6.5" && back)
+        #expect(store.timeline.text(at: 2_800) == "menu@-0.0")
+    }
+
+    /// Codex on #529: a `.controlBack` with no loss open (a normal load) is not a recovery.
+    @Test func backIsOnlyARealReturnOfControl() {
+        let store = store(playingState())
+        store.track(.songCut(pos: 2, len: 200, service: .spotify), before: store.state, at: 1_000)
+        store.send(.controlBack)
+        clock.set(1_120)
+        store.send(.tick)
+        #expect(events.last?.name == "problem_after" && events.last?.properties["back"] == .flag(false))
+    }
+
+    /// Codex on #529: `problem_after` names the problem's service, also after a switch.
+    @Test func problemAfterKeepsTheProblemsService() {
+        let store = store(playingState())
+        var problemState = store.state
+        problemState.service = .appleMusic  // the service when the problem came; the store is on Spotify now
+        store.track(.useError(.songNotPlayed, offline: false, service: .appleMusic), before: problemState, at: 1_000)
+        store.send(.willQuit(openSeconds: 60))
+        let after = events.first { $0.name == "problem_after" }
+        #expect(store.state.service == .spotify && after?.properties["service"] == .text(MusicService.appleMusic.eventName))
+    }
+
+    @Test func aQuitSendsProblemAfterAtOnce() {
+        let store = store(playingState())
+        store.send(.controlLost(.stoppedInSpotify))
+        clock.set(1_030)
+        store.send(.willQuit(openSeconds: 60))
+        guard let after = events.first(where: { $0.name == "problem_after" }) else { Issue.record("no problem_after"); return }
+        #expect(after.properties["quit"] == .flag(true) && after.properties["back"] == .flag(false))
+        #expect(after.properties["timeline"] == .text("lost:stopped_in_spotify@+0.0 quit@+30.0"))
+    }
+
+    /// Codex on #529: a problem made while myPod quits gets its `problem_after` at once.
+    @Test func aProblemAtTheQuitGetsProblemAfterAtOnce() {
+        var s = playingState()
+        s.quitting = true  // as after `.willQuit`, where a first Play's silent deadline can end
+        let store = store(s)
+        store.track(.firstStep(.playNoMusic, how: .failed, seconds: 3, service: .spotify), before: store.state, at: 1_000)
+        guard let after = events.first(where: { $0.name == "problem_after" }) else { Issue.record("no problem_after"); return }
+        #expect(after.properties["quit"] == .flag(true) && after.properties["problem"] == .text("first_step:play_no_music"))
+    }
+
+    /// At most 10 events with a timeline in a launch, `problem_after` included. Over it, the
+    /// problem still goes out, with no timeline.
     @Test func atMostTenTimelinesALaunch() {
         let store = store()
         for i in 0..<12 {
@@ -94,7 +172,7 @@ import Testing
             store.send(.controlLost(.stoppedInSpotify))
             store.send(.controlBack)
         }
-        let withTimeline = events.filter { if case .problem = $0 { true } else { false } }
+        let withTimeline = events.filter { if case .problem = $0 { true } else { $0.name == "problem_after" } }
         #expect(withTimeline.count == Store.timelineCap)
         #expect(events.filter { $0.name == "control_lost" }.count == 12)
     }
@@ -106,5 +184,28 @@ import Testing
         #expect(!BetaEvent.useError(.loginFailed, offline: false, service: .spotify).isProblem)
         #expect(BetaEvent.firstStep(.playNoMusic, how: .failed, seconds: 3, service: .spotify).isProblem)
         #expect(!BetaEvent.controlBack(seconds: 3, service: .spotify).isProblem)
+        #expect(BetaEvent.songCut(pos: 2, len: nil, service: .spotify).isProblem)
     }
+}
+
+/// CLA-203: `song_cut`, the song that `songs_cut` counts, as its own event.
+extension DayActiveTests {
+    @Test func aCutSongIsItsOwnEventWithItsPlaceAndLength() {
+        var s = started()
+        let sent = events(&s, .trackChanged("l1", playing: true, generation: s.playGen), now: at(10) + 2)
+        guard let cut = sent.first(where: { $0.name == "song_cut" }) else { Issue.record("no song_cut"); return }
+        #expect(cut.properties["pos_s"] == .number(2) && cut.properties["service"] == .text(s.service.eventName))
+        let long = started(upTo: 4.5)
+        var l = long
+        #expect(!events(&l, .trackChanged("l1", playing: true, generation: l.playGen), now: at(10) + 5).contains { $0.name == "song_cut" })
+    }
+}
+
+/// At most 3 `song_cut` a launch.
+@MainActor @Test func atMostThreeCutSongsALaunch() {
+    let store = Store(player: FakePlayer(), library: FakeLibrary(), state: mainMenu(), env: Dependencies(now: { 1 }, random: { _ in 0 }))
+    let sent = ProblemEventTests.Sent()
+    store.onBetaEvent = { event in sent.events.append(event) }
+    for _ in 0..<5 { store.track(.songCut(pos: 1, len: 200, service: .spotify), before: store.state, at: 1) }
+    #expect(sent.events.filter { $0.name == "song_cut" }.count == Store.cutCap)
 }

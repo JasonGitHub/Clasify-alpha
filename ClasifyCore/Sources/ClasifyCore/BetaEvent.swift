@@ -51,8 +51,14 @@ public enum BetaEvent: Equatable, Sendable {
     /// CLA-186: a first step after setup, once per install (`FirstStep`). `how` on `play_no_music`
     /// only. `seconds` from `all_set` in the setup's launch, else from this launch.
     case firstStep(FirstStep, how: NoMusic?, seconds: Int, service: MusicService)
+    /// CLA-203: a song that ended by itself under `cutLimit` seconds (the one `songs_cut` counts),
+    /// with how far it got and its length, whole seconds (`len` nil when not known).
+    case songCut(pos: Int, len: Int?, service: MusicService)
     /// CLA-203: a problem event with what came before it (`Store` adds it, `ProblemContext`).
     indirect case problem(BetaEvent, ProblemContext)
+    /// CLA-203: 2 minutes after a problem, or at the quit before that: what came after it.
+    /// `problem`: its event name and kind, as "control_lost:stopped_in_spotify".
+    case problemAfter(problem: String, timeline: String, quit: Bool, back: Bool, playing: Bool, service: MusicService)
 
     /// The event name in PostHog.
     public var name: String {
@@ -73,15 +79,17 @@ public enum BetaEvent: Equatable, Sendable {
         case .hintStep: "hint_step"
         case .appClosed: "app_closed"
         case .firstStep: "first_step"
+        case .songCut: "song_cut"
         case .problem(let event, _): event.name
+        case .problemAfter: "problem_after"
         }
     }
 
     /// CLA-203: the events that get the timeline: a loss of control, a song or list that did
-    /// not play or load, a first Play with no music.
+    /// not play or load, a first Play with no music, a cut song.
     var isProblem: Bool {
         switch self {
-        case .controlLost, .useError(.songNotPlayed, _, _, _, _), .useError(.listNotLoaded, _, _, _, _): true
+        case .controlLost, .useError(.songNotPlayed, _, _, _, _), .useError(.listNotLoaded, _, _, _, _), .songCut: true
         case .firstStep(let step, _, _, _): step == .playNoMusic
         default: false
         }
@@ -91,6 +99,17 @@ public enum BetaEvent: Equatable, Sendable {
     var plain: BetaEvent {
         if case .problem(let event, _) = self { return event }
         return self
+    }
+
+    /// CLA-203: the name and kind of a problem, for `problem_after`.
+    var problemName: String {
+        switch self {
+        case .controlLost(let reason, _): "control_lost:" + reason.rawValue
+        case .useError(let kind, _, _, _, _): "use_error:" + kind.rawValue
+        case .firstStep(let step, _, _, _): "first_step:" + step.rawValue
+        case .problem(let event, _): event.problemName
+        default: name
+        }
     }
 
     /// The event's own data. The sender adds the rest.
@@ -148,8 +167,15 @@ public enum BetaEvent: Equatable, Sendable {
             return p
         case .appProblem(let problem, let service):
             return problem.properties.merging(["service": .text(service.eventName)]) { old, _ in old }
+        case .songCut(let pos, let len, let service):
+            var p: [String: BetaValue] = ["pos_s": .number(pos), "service": .text(service.eventName)]
+            if let len { p["len_s"] = .number(len) }
+            return p
         case .problem(let event, let context):
-            return event.properties.merging(context.properties) { own, _ in own }
+            return event.properties.merging(context.properties) { own, _ in own }  // a cut song keeps its own place
+        case .problemAfter(let problem, let timeline, let quit, let back, let playing, let service):
+            return ["problem": .text(problem), "timeline": .text(timeline), "quit": .flag(quit), "back": .flag(back),
+                    "playing": .flag(playing), "service": .text(service.eventName)]
         case .dayActive(let d, let service, let color, let settings):
             var p: [String: BetaValue] = [
                 "color": .text(color.eventName), "album_art": .text(settings.albumArt.eventName),
@@ -627,7 +653,12 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
         let length = s.track(TrackRef(playlist: s.current?.playlist ?? "", track: track))?.duration ?? 0  // 0: not known
         // The cut goes to the day of the song's last report: an end just after midnight, with
         // the music stopped, would roll that day out first (Codex on #474).
-        if length == 0 || length >= cutLimit { count(at: at) { d, _ in d.songsCut += 1 } }
+        if length == 0 || length >= cutLimit {
+            count(at: at) { d, _ in d.songsCut += 1 }
+            // CLA-203: the cut song as its own event too (the Store adds the timeline and the cap).
+            let pos = Int((t + max(0, now - at)).rounded(.down))
+            fx.append(.track(.songCut(pos: pos, len: length > 0 ? Int(length.rounded()) : nil, service: s.service)))
+        }
     }
     if ended || s.playGen != b.gen || s.service != b.service || (b.playing && !s.isPlaying) { s.dayPosition = nil }
     if b.played, s.isPlaying, let current = s.current {

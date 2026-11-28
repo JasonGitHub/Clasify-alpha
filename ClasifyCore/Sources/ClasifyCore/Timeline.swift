@@ -77,8 +77,12 @@ public final class Timeline {
         prune(now)
     }
 
+    /// CLA-203: while a problem waits for its `problem_after`, entries from its time on stay past
+    /// `span`, so a late follow-up (a Mac sleep) still reports them (Codex on #529).
+    var holdFrom: Double?
+
     private func prune(_ now: Double) {
-        entries.removeAll { now - $0.at > Self.span }
+        entries.removeAll { e in now - e.at > Self.span && !(holdFrom.map { e.at >= $0 } ?? false) }
         if entries.count > Self.limit { entries.removeFirst(entries.count - Self.limit) }
     }
 
@@ -86,16 +90,28 @@ public final class Timeline {
     /// `play@-75.9 song@-75.1 wheel:3@-66.0 dev_gone@-0.0`. Empty with no entries.
     public func text(at now: Double) -> String {
         prune(now)
-        return entries.map { e in
+        return entries.filter { now - $0.at <= Self.span }.map { e in
             let ago = String(format: "%.1f", max(0, now - e.at))
             return (e.count > 1 || e.text == "wheel" ? "\(e.text):\(e.count)" : e.text) + "@-" + ago
+        }.joined(separator: " ")
+    }
+
+    /// CLA-203: the text of the entries in the `span` from `since` on, for `problem_after`,
+    /// oldest first, in seconds after `since`: `back@+6.2 playing@+6.3`.
+    func text(since: Double, at now: Double) -> String {
+        prune(now)
+        return entries.filter { $0.at >= since && $0.at - since <= Self.span }.map { e in
+            let later = String(format: "%.1f", max(0, e.at - since))
+            return (e.count > 1 || e.text == "wheel" ? "\(e.text):\(e.count)" : e.text) + "@+" + later
         }.joined(separator: " ")
     }
 
     /// The facts of one `Store.send`: the action, and the player facts that it changed.
     /// Not inlined, so `Store.send`'s stack frame stays small (reducer stack limit).
     @inline(never) func record(_ action: Action, from before: AppState, to after: AppState, at now: Double) {
-        if let text = Self.text(of: action) { record(text, at: now) }
+        // A `.controlBack` with no loss open is a normal load, not a return of control (Codex on #529).
+        let normalLoad = if case .controlBack = action { before.controlLostAt == nil } else { false }
+        if !normalLoad, let text = Self.text(of: action) { record(text, at: now) }
         if after.current != before.current, after.current != nil { record("song", at: now) }
         if stateSince == nil { stateSince = now }
         if after.isPlaying != before.isPlaying {
