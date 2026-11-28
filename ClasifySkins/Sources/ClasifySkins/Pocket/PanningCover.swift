@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import QuartzCore
 import SwiftUI
@@ -95,3 +96,20 @@ final class PanView: NSView {
         CATransaction.commit()
     }
 }
+#else
+import SwiftUI
+
+/// CLA-202: on iOS for now, a still cover at the center. The iOS pan comes in a later change.
+struct PanningCover: View {
+    let image: CGImage
+    let side: Double
+    let pan: MainArt.Pan?
+    let elapsed: Double
+
+    var body: some View {
+        Image(decorative: image, scale: 1).resizable().interpolation(.high)
+            .frame(width: side, height: side)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+#endif

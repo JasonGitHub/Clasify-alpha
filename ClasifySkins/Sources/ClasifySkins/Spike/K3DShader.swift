@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import Foundation
 
 /// SPIKE (CLA-101): the K.3D.8 shaders in Metal Shading Language, compiled at run time with
@@ -954,3 +955,4 @@ enum K3DShader {
     }
     """
 }
+#endif

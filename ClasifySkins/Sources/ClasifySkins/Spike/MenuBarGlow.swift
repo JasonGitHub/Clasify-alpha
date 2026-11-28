@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import AppKit
 
 /// CLA-163, card CE.1 (390 I and 388), only with `hints.trial` on: the menu bar hint. The icon
@@ -120,3 +121,4 @@ import AppKit
         CATransaction.commit()
     }
 }
+#endif

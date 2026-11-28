@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import CoreGraphics
 import CoreText
 import Foundation
@@ -399,3 +400,4 @@ final class Canvas {
         return [UInt8](UnsafeBufferPointer(start: data.assumingMemoryBound(to: UInt8.self), count: count))
     }
 }
+#endif

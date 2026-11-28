@@ -1,4 +1,7 @@
+#if os(macOS)
 import AppKit
+#endif
+import Foundation
 
 /// The click that the wheel and the buttons make when the Clicker setting is on.
 /// It is the N24 click, made in memory from a table of numbers. Nothing is written to disk.
@@ -27,6 +30,7 @@ public final class Clicker: Sendable {
         now - asked <= maxAge
     }
 
+    #if os(macOS)
     /// The NSSound. NSSound is not Sendable. This is safe because `Clicker` touches `Output` only
     /// in blocks on its one serial queue, so no two threads use the sound at the same time.
     private final class Output: @unchecked Sendable {
@@ -43,6 +47,12 @@ public final class Clicker: Sendable {
             (sound?.copy() as? NSSound)?.play()
         }
     }
+    #else
+    /// CLA-202: silent on iOS for now. The iOS click comes in a later change.
+    private final class Output: Sendable {
+        func play(asked: ContinuousClock.Instant) {}
+    }
+    #endif
 
     static let sampleRate = 44_100
 

@@ -140,7 +140,7 @@ struct ClickWheel: View {
     /// The face with its input: scroll, drag, clicks and the pointer.
     private var handled: some View {
         face
-            .background { if catchesScroll { ScrollCatcher { input(.wheel($0)) } } }
+            .catchesScroll(catchesScroll) { input(.wheel($0)) }
             .contentShape(Circle())
             .gesture(DragGesture(minimumDistance: 0).onChanged { changed($0) }.onEnded { ended($0) })
             .onContinuousHover { phase in

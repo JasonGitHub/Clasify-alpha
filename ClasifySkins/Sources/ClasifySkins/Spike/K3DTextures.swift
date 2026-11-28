@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import CoreGraphics
 import CoreText
 import Foundation
@@ -148,3 +149,4 @@ enum K3DTextures {
         return done ? out : nil
     }
 }
+#endif

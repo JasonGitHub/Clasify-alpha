@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import Foundation
 
 /// CLA-105 (card BT, change 308): the parts that only Take apart shows, ported from the
@@ -251,3 +252,4 @@ extension K3DMesh {
         // K.3D.11 (CLA-129, Jason 22:22 JST 11-17 "yes remove"): no tape on the shield.
     }
 }
+#endif

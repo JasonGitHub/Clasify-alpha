@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import SwiftUI
 
 /// CLA-163, card CE.1 (from BZ D), behind `hints.trial` (on when not set): a hint of the tour, under
@@ -201,3 +202,4 @@ public struct TurnHint: View {
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import SwiftUI
 
 /// Card CG (CLA-166, changes 381-385): Help › Report a Problem. A small window in the device's
@@ -269,3 +270,4 @@ struct Check: Shape {
         return p
     }
 }
+#endif

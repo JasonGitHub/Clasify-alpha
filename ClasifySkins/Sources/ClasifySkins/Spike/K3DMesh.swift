@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import CoreGraphics
 import Foundation
 
@@ -827,3 +828,4 @@ public struct K3DFlip {
     /// gen.py `eo`: 1 − (1 − p)³.
     static func easeOut(_ p: Double) -> Double { 1 - pow(1 - p, 3) }
 }
+#endif
