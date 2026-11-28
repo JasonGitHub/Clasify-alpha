@@ -217,7 +217,7 @@ public final class Store {
     static let timelineCap = 10, cutCap = 3
     /// CLA-203: the problem that waits for its `problem_after`: its name, when it came, whether
     /// control came back since. One at a time.
-    @ObservationIgnored private var after: (problem: String, at: Double, back: Bool)?
+    @ObservationIgnored private var after: (problem: String, at: Double, back: Bool, service: MusicService)?
     /// Where the settings are saved. When set, `init` loads them into the state.
     @ObservationIgnored private let settingsStore: (any SettingsStore)?
     /// Card BV: the launch check's source. With none, the check finds nothing.
@@ -271,7 +271,7 @@ public final class Store {
         onBetaEvent?(.problem(event, context))
         if after == nil, timelinesSent < Self.timelineCap {  // its `problem_after` needs a place under the cap
             timelinesSent += 1
-            after = (event.problemName, now, false)
+            after = (event.problemName, now, false, before.service)  // the problem's service (Codex on #529)
             timeline.holdFrom = now
             // A problem made while myPod quits gets its `problem_after` at once (Codex on #529).
             if state.quitting { finishAfter(at: now, quit: true); return }
@@ -290,7 +290,7 @@ public final class Store {
         let text = timeline.text(since: after.at, at: now)  // before the hold ends
         timeline.holdFrom = nil
         onBetaEvent?(.problemAfter(problem: after.problem, timeline: text, quit: quit,
-                                   back: after.back, playing: state.isPlaying, service: state.service))
+                                   back: after.back, playing: state.isPlaying, service: after.service))
     }
 
     /// Waits for in-flight library fetches to deliver their results. For tests.

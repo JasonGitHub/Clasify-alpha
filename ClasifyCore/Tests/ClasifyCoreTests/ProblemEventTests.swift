@@ -132,6 +132,17 @@ import Testing
         #expect(events.last?.name == "problem_after" && events.last?.properties["back"] == .flag(false))
     }
 
+    /// Codex on #529: `problem_after` names the problem's service, also after a switch.
+    @Test func problemAfterKeepsTheProblemsService() {
+        let store = store(playingState())
+        var problemState = store.state
+        problemState.service = .appleMusic  // the service when the problem came; the store is on Spotify now
+        store.track(.useError(.songNotPlayed, offline: false, service: .appleMusic), before: problemState, at: 1_000)
+        store.send(.willQuit(openSeconds: 60))
+        let after = events.first { $0.name == "problem_after" }
+        #expect(store.state.service == .spotify && after?.properties["service"] == .text(MusicService.appleMusic.eventName))
+    }
+
     @Test func aQuitSendsProblemAfterAtOnce() {
         let store = store(playingState())
         store.send(.controlLost(.stoppedInSpotify))
