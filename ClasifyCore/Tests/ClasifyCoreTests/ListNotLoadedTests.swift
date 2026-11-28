@@ -83,6 +83,6 @@ import Testing
         store.send(.wheel(1))
         store.send(.select)
         while store.state.top.loading { await Task.yield() }
-        #expect(sent.contains(.useError(.listNotLoaded, offline: false, service: .spotify, list: "playlists", status: 42)))
+        #expect(sent.map(\.plain).contains(.useError(.listNotLoaded, offline: false, service: .spotify, list: "playlists", status: 42)))
     }
 }
