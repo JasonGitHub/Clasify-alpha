@@ -64,6 +64,8 @@ final class SpotifyConnectPlayer: Player {
     /// CLA-203 (fix 5): the Spotify app on this Mac plays while myPod is not in control, and its
     /// last such track. For `day_active` only (`.outsideMusic`).
     private var outsidePlaying = false, outsideTrack = ""
+    /// CLA-203: the active device as last noted for the problem timeline.
+    private var activeNoted: EngineNote?
     /// CLA-97: a command timed out or the session dropped, and no state of our device has come
     /// from the new login yet. `relogged`: the new login is done, so its next state confirms it.
     private var lostSession = false, relogged = false
@@ -142,6 +144,15 @@ final class SpotifyConnectPlayer: Player {
             guard app?.bundleIdentifier == Self.bundleID else { return }
             // The queue is .main, so this runs on the main actor.
             MainActor.assumeIsolated { self?.spotifyQuit() }
+        }
+        // CLA-203: the Spotify app started, for the problem timeline.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier == Self.bundleID else { return }
+            // The queue is .main, so this runs on the main actor.
+            MainActor.assumeIsolated { self?.send(.note(.appRunning)) }
         }
         // For the log only: a session can drop while the Mac sleeps.
         NSWorkspace.shared.notificationCenter.addObserver(
@@ -300,6 +311,7 @@ final class SpotifyConnectPlayer: Player {
                 if id == loadID, ours, let latest { handle(latest, receivedAt: latestAt) }
             } catch {
                 Self.logFailure("transfer", error)
+                noteError(error)
                 guard id == loadID else { return }
                 loading = false
                 send(.playbackFailed("That can’t move here. Pick a song to play it", generation: generation))
@@ -377,6 +389,7 @@ final class SpotifyConnectPlayer: Player {
                 return found
             } catch {
                 Self.logFailure("prewarm", error)
+                noteError(error)
                 return nil
             }
         }
@@ -439,6 +452,7 @@ final class SpotifyConnectPlayer: Player {
     /// Spotify quit. Its device must be found again after the next launch. While it played
     /// our track, show paused and keep the place, so Play continues there.
     private func spotifyQuit() {
+        send(.note(.appQuit))  // CLA-203
         device = nil
         deviceOptions = [:]
         // After following Spotify into a station or album, there is no place to go on from.
@@ -516,6 +530,7 @@ final class SpotifyConnectPlayer: Player {
         }
         let onStale: StaleHandler = { [weak self] in
             log.notice("Connect call timed out; logging in again")
+            self?.send(.note(.commandTimeout))  // CLA-203
             if let self, !evenAfterStop, id == self.loadID, self.ours { self.sessionLost(.timeout) }  // CLA-97: not an old load's command
             if afterTimeout { Task { await again(true) } } else { Task { _ = await self?.relogin(true) } }
         }
@@ -544,6 +559,7 @@ final class SpotifyConnectPlayer: Player {
 
     /// The session was logged in again. Register it, so the cluster watch delivers states again.
     func sessionRestored() {
+        send(.note(.newLogin))  // CLA-203
         if lostSession { relogged = true }  // CLA-97: the next state of our device confirms it
         Task { _ = try? await client.devices() }
         // The new registration makes the cluster watch send the current state. If our device
@@ -591,7 +607,10 @@ final class SpotifyConnectPlayer: Player {
         return try await retryOnce(after: { await self.reconnect(stale) }, when: { error in
             let status = (error as? BridgeError)?.status
             stale = status == LSB_ERR_STALE_SESSION
-            if stale { log.notice("Connect call timed out; logging in again") }
+            if stale {
+                log.notice("Connect call timed out; logging in again")
+                self.send(.note(.commandTimeout))  // CLA-203
+            }
             return stale || status == LSB_ERR_NOT_LOGGED_IN
         }, call)
     }
@@ -628,6 +647,7 @@ final class SpotifyConnectPlayer: Player {
                     break
                 } catch where attempt == 0 && known != nil {
                     Self.logFailure("play, first try", error)
+                    noteError(error)
                     known = nil
                 }
             }
@@ -656,6 +676,7 @@ final class SpotifyConnectPlayer: Player {
             fail(error.message, id)
         } catch {
             Self.logFailure("play", error)
+            noteError(error)
             fail("That didn’t play. Try again", id)
         }
     }
@@ -717,6 +738,7 @@ final class SpotifyConnectPlayer: Player {
                 deviceOptions[option] = on
             } catch {
                 Self.logFailure("option \(option)", error)
+                noteError(error)
                 failed.insert(option)
             }
         }
@@ -726,6 +748,11 @@ final class SpotifyConnectPlayer: Player {
     private nonisolated static func logTime(_ step: String, since start: ContinuousClock.Instant) {
         let ms = Int((ContinuousClock.now - start) / .milliseconds(1))
         log.notice("\(step, privacy: .public): \(ms, privacy: .public) ms")
+    }
+
+    /// CLA-203: a bridge error number for the problem timeline. Only the number.
+    private func noteError(_ error: any Error) {
+        if let status = (error as? BridgeError)?.status { send(.note(.error(Int(status)))) }
     }
 
     private nonisolated static func logFailure(_ step: String, _ error: any Error) {
@@ -845,9 +872,16 @@ final class SpotifyConnectPlayer: Player {
         // A lower count is a new login: it only sets the new baseline.
         if state.dealerReconnects > dealerReconnects {
             log.notice("dealer reconnected: \(state.dealerReconnects, privacy: .public) in this login")
+            send(.note(.dealerReconnect))  // CLA-203
         }
         dealerReconnects = state.dealerReconnects
         guard let device else { return }
+        // CLA-203: which device is active, on each change, as here, gone or other. No IDs.
+        let active: EngineNote = state.activeDeviceID == device ? .deviceHere : state.activeDeviceID.isEmpty ? .deviceGone : .deviceOther
+        if active != activeNoted {
+            activeNoted = active
+            send(.note(active))
+        }
         if state.activeDeviceID == device {
             deviceOptions = [
                 LSB_OPTION_SHUFFLE: state.shuffle, LSB_OPTION_REPEAT_CONTEXT: state.repeatContext,

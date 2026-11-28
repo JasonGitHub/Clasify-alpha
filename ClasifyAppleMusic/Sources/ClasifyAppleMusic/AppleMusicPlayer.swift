@@ -90,7 +90,7 @@ public final class AppleMusicPlayer: Player {
                 guard id == loadID else { return }
                 if wantsPlay { try await player.play() }
             } catch {
-                return fail("That song can’t play here", id: id, load: true)
+                return fail("That song can’t play here", id: id, load: true, code: (error as NSError).code)
             }
             guard id == loadID else {
                 // stop() ran during play(), for example on a service switch: play must not go on.
@@ -133,7 +133,7 @@ public final class AppleMusicPlayer: Player {
         Task {
             guard id == loadID, wantsPlay else { return }  // a pause or stop came first
             do { try await player.play() } catch {
-                fail("Apple Music can’t play now", id: id, load: false)
+                fail("Apple Music can’t play now", id: id, load: false, code: (error as NSError).code)
             }
             if id != loadID && stopped { player.stop() }  // stop() ran during play()
             else if !wantsPlay { player.pause() }  // a pause came during play()
@@ -228,8 +228,11 @@ public final class AppleMusicPlayer: Player {
     }
 
     /// Reports with the newest generation: a Next or Prev during the load moved it on.
-    private func fail(_ message: String, id: Int, load: Bool) {
+    /// CLA-203: `code` is MusicKit's error code, for the problem timeline. Only the number;
+    /// nil when the song was not found (no error).
+    private func fail(_ message: String, id: Int, load: Bool, code: Int? = nil) {
         guard id == loadID else { return }
+        if let code { send(.note(.musicKitError(code))) }
         if load {  // the old queue, if any, plays on and reports again
             loading = false
             if hasQueue && !wantsPlay { player.pause() }  // the user paused during the load
