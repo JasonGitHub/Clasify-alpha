@@ -1,3 +1,4 @@
+import ClasifyAppleMusic
 import ClasifyCore
 import Foundation
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
@@ -16,6 +17,10 @@ final class AppleMusicLibrary: Library {
     /// The reads of this session, done or running. A failed read leaves.
     private var listRead: Task<[ClasifyCore.Playlist]?, Never>?
     private var trackReads: [String: Task<[ClasifyCore.Track]?, Never>] = [:]
+    /// Library covers, which a new read reads again (the Mac: `AppleMusicArt`).
+    private let covers: any LibraryCovers
+
+    init(covers: any LibraryCovers) { self.covers = covers }
 
     func playlists() async -> [ClasifyCore.Playlist]? {
         let read = listRead ?? Task { await Self.readPlaylists() }
@@ -52,13 +57,13 @@ final class AppleMusicLibrary: Library {
 
     func rereadPlaylists() async -> [ClasifyCore.Playlist]? {
         listRead = nil
-        await AppleMusicArt.shared.forget()
+        await covers.forget()
         return await playlists()
     }
 
     func reread(_ playlist: String) async -> [ClasifyCore.Track]? {
         trackReads[playlist] = nil
-        await AppleMusicArt.shared.forget()
+        await covers.forget()
         if playlist == ClasifyCore.Playlist.libraryID {  // the albums, Songs and artists come from this read
             AppleMusicReads.forgetLibrary()
             for id in trackReads.keys where ClasifyCore.Album.isID(id) || (ClasifyCore.Playlist.isHidden(id) && id != ClasifyCore.Playlist.likedSongsID) {
@@ -114,7 +119,7 @@ final class AppleMusicLibrary: Library {
         listRead = nil
         trackReads = [:]
         AppleMusicReads.forgetLibrary()
-        Task { await AppleMusicArt.shared.forget() }
+        Task { await covers.forget() }
     }
 
     // MARK: - Reads

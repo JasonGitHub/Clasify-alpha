@@ -1,5 +1,6 @@
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
 // only on the main actor.
+import ClasifyAppleMusic
 import ClasifyCore
 import Foundation
 @preconcurrency import MusicKit
@@ -8,6 +9,10 @@ import Foundation
 /// Read-only: nothing here changes the library.
 @MainActor
 enum AppleMusicReads {
+    /// Library covers for songs with no usable MusicKit cover (the Mac: `AppleMusicArt`). The
+    /// app sets it once at launch, before the store exists, so before any read.
+    static var covers: any LibraryCovers = NoLibraryCovers()
+
     /// A song from the user's library, or else from the catalog. nil for an unknown ID.
     static func song(_ id: String) async -> Song? {
         guard let itemID = AppleMusicID.itemID(id, prefix: AppleMusicID.songPrefix) else { return nil }
@@ -233,10 +238,10 @@ enum AppleMusicReads {
     private static func libraryCovers(_ songs: [Song]) async -> [MusicItemID: Cover] {
         guard !songs.isEmpty else { return [:] }
         let keys = songs.map { (id: $0.id.rawValue, key: LibraryKey.of(title: $0.title, artist: $0.artistName, album: $0.albumTitle)) }
-        let match = await AppleMusicArt.shared.match(keys)
+        let found = await Self.covers.covers(keys)
         var covers: [MusicItemID: Cover] = [:]
         for song in songs {
-            guard let pid = match.found[song.id.rawValue] else { continue }
+            guard let pid = found[song.id.rawValue] else { continue }
             covers[song.id] = Cover(
                 small: LibraryCover.coverID(persistentID: pid, side: 300), large: LibraryCover.coverID(persistentID: pid, side: 640))
         }

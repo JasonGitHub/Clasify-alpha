@@ -1,3 +1,4 @@
+import ClasifyAppleMusic
 import ClasifyCore
 import Foundation
 // MusicKit's request and item types are not Sendable in the macOS 15 SDK. This file uses them
@@ -13,7 +14,7 @@ import Foundation
 final class AppleMusicPlayer: Player {
     /// Runs reported actions. Set it once the `Store` exists.
     var send: (Action) -> Void = { _ in } {
-        didSet { if active, let percent = macVolume.read() { send(.volumeReported(percent)) } }  // CLA-168
+        didSet { if active, let percent = volume?.read() { send(.volumeReported(percent)) } }  // CLA-168
     }
 
     private var player: ApplicationMusicPlayer { ApplicationMusicPlayer.shared }
@@ -48,12 +49,15 @@ final class AppleMusicPlayer: Player {
     /// entries can carry other IDs than the library songs that we queued (build 177: a catalog
     /// ID, not checked on a Mac), so a poll finds the song by any of its keys.
     private var queued = QueueMatch()
-    /// CLA-168: the Mac's output volume, and whether Apple Music is the active service.
-    private let macVolume = MacVolume()
+    /// CLA-168: the device's output volume (the Mac's, from the app; nil where there is none),
+    /// and whether Apple Music is the active service.
+    private let volume: (any OutputVolume)?
     private var active = false
     private static let settle = 0.5
     private var quietUntil = Date.distantPast
     private var settling: Task<Void, Never>?
+
+    init(volume: (any OutputVolume)?) { self.volume = volume }
 
     func load(trackID: String, context: String?, autoplay: Bool, generation: Int) {
         self.generation = generation
@@ -186,12 +190,12 @@ final class AppleMusicPlayer: Player {
     /// our own writes wait until the wheel rests for `settle` seconds, then the real volume is
     /// reported once: a late echo of an older step must not move the bar back.
     func setVolume(_ percent: Int) {
-        macVolume.write(percent)
+        volume?.write(percent)
         quietUntil = Date.now.addingTimeInterval(Self.settle)
         settling?.cancel()
         settling = Task { [weak self] in
             try? await Task.sleep(for: .seconds(Self.settle))
-            guard !Task.isCancelled, let self, self.active, let percent = self.macVolume.read() else { return }
+            guard !Task.isCancelled, let self, self.active, let percent = self.volume?.read() else { return }
             self.send(.volumeReported(percent))
         }
     }
@@ -202,10 +206,10 @@ final class AppleMusicPlayer: Player {
         active = on
         settling?.cancel()
         if on {
-            macVolume.onChange = { [weak self] percent in self?.heard(percent) }
-            macVolume.start()
+            volume?.onChange = { [weak self] percent in self?.heard(percent) }
+            volume?.start()
         } else {
-            macVolume.stop()
+            volume?.stop()
         }
     }
 
