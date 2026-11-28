@@ -65,6 +65,7 @@ final class SessionKeeper {
         // A Connect command that nobody waits on timed out: only a new login helps.
         LibrespotClient.staleSession = { [weak self] in
             log.notice("Connect call timed out; logging in again")
+            self?.store?.send(.note(.commandTimeout))  // CLA-203
             self?.forced()
         }
         monitor.pathUpdateHandler = { [weak self] path in
@@ -81,9 +82,17 @@ final class SessionKeeper {
         ) { [weak self] _ in
             // The queue is .main, so this runs on the main actor.
             MainActor.assumeIsolated {
+                self?.store?.send(.note(.wake))  // CLA-203
                 self?.notBefore = .now  // a wake is a good time to try at once
                 self?.check()
             }
+        }
+        // CLA-203: the Mac goes to sleep, for the problem timeline.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            // The queue is .main, so this runs on the main actor.
+            MainActor.assumeIsolated { self?.store?.send(.note(.sleep)) }
         }
     }
 
@@ -92,6 +101,7 @@ final class SessionKeeper {
         let now = Dependencies.live.now()
         paths.update(path, at: now)
         guard paths.due != nil else { return }
+        store?.send(.note(.pathChange))  // CLA-203: when macOS reports it, before the settle
         log.notice("network path changed (\(path == nil ? "none" : "usable", privacy: .public)); login in \(PathWatch.settle, privacy: .public) s")
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(PathWatch.settle))
