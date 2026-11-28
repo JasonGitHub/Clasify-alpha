@@ -1,5 +1,6 @@
 import ClasifyAppleMusic
 import ClasifyCore
+import ClasifyShell
 import ClasifySkins
 import QuartzCore
 import SwiftUI
@@ -477,7 +478,8 @@ final class AppModel {
         set { testWindowShown = newValue && testWindowOn }
     }
     /// The album covers that the skin draws.
-    let artwork = ArtworkLoader()
+    // CLA-202: the shared loader; Apple Music library covers come from the Mac's iTunesLibrary.
+    let artwork = ArtworkLoader { id, side in await AppleMusicArt.shared.image(id, side: side)?.cgImage }
     @ObservationIgnored private var ticker: Task<Void, Never>?
     /// TEST: trackpad ticks that follow the wheel.
     @ObservationIgnored private var haptics: Haptics?
