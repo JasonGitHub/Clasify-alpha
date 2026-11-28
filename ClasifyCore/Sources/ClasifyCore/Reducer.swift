@@ -1585,10 +1585,14 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
 
         case .controlLost(let reason):
             guard s.controlLostAt == nil else { return }  // one loss until control comes back
+            // CLA-203: our own quit stops or pauses Spotify, and the player then sees no device.
+            // That is no loss. A loss that came before the quit was sent already.
+            guard !s.quitting else { return }
             s.controlLostAt = now
             fx.append(.track(.controlLost(reason, service: s.service)))
 
         case .willQuit:
+            s.quitting = true  // CLA-203
             // CLA-189 (Jason 16:04 JST 11-25): a quit stops our Spotify music, as a real iPod
             // turns off. Spotify only (Jason 16:08 JST): Apple Music and On This Mac get nothing.
             if s.service == .spotify { fx.append(.quitPlayer) }
