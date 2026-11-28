@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import AppKit
 import SwiftUI
 
@@ -82,3 +83,4 @@ struct KeyCatcher: NSViewRepresentable {
         }
     }
 }
+#endif

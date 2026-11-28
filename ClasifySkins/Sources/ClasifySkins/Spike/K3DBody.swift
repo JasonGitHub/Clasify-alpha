@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import Foundation
 
 /// CLA-196: the body that the one 3D engine draws. The classic is the K.3D.13 device of the
@@ -89,3 +90,4 @@ extension K3DBody {
         return body
     }
 }
+#endif

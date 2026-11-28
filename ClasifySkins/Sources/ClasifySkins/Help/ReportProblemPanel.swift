@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import AppKit
 import SwiftUI
 
@@ -67,3 +68,4 @@ final class FittingHost: NSHostingView<AnyView> {
         window.setContentSize(size)
     }
 }
+#endif

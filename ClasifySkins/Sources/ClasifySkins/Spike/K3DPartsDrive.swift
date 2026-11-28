@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import Foundation
 
 /// CLA-129 (K.3D.11): the drive's other side, from `about/k3d11/tools/k3d_src3.js` (the `D11`
@@ -109,3 +110,4 @@ extension K3DMesh {
         for x in [-34.0, 31] { D(x, x + 3, -239, -231, 1, 12) }
     }
 }
+#endif

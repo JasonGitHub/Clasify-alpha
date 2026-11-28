@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import CoreGraphics
 import SwiftUI
 
@@ -250,3 +251,4 @@ struct K3DShadow: View {
         return Array(lower.dropLast() + upper.dropLast())
     }
 }
+#endif

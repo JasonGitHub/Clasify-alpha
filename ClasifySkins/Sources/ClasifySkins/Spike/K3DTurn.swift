@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import Foundation
 
 /// CLA-130 (card BT row 4, changes 351-354): Cmd + a two-finger swipe turns the 3D device on
@@ -188,3 +189,4 @@ public struct K3DTurnGesture: Equatable {
         return .end
     }
 }
+#endif

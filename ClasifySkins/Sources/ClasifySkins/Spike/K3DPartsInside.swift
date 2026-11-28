@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import Foundation
 
 /// CLA-105: the parts deepest inside, from `k3d_src3.js` lines 179 to 223: 9 the logic board,
@@ -287,3 +288,4 @@ extension K3DMesh {
         }
     }
 }
+#endif

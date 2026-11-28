@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import AppKit
 import SwiftUI
 
@@ -73,3 +74,4 @@ struct ScrollCatcher: NSViewRepresentable {
         }
     }
 }
+#endif

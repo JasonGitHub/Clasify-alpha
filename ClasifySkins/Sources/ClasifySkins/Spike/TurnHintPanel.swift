@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import AppKit
 import SwiftUI
 
@@ -20,3 +21,4 @@ import SwiftUI
         return (panel, host)
     }
 }
+#endif

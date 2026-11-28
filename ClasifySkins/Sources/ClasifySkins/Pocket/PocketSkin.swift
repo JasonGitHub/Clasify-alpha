@@ -58,7 +58,7 @@ public struct PocketSkin: View {
                 .animation(colorFade, value: color)
         }
         // Keys come through a window-level monitor, not SwiftUI focus (CLA-79).
-        .background { if interactive && !preview { KeyCatcher { key($0, repeated: $1) } } }
+        .catchesKeys(interactive && !preview) { key($0, repeated: $1) }
         .accessibilityElement(children: .contain)
         .accessibilityLabel(
             "myPod pocket player. Arrow keys scroll, Return selects, Escape goes back, Space plays or pauses, S and R change shuffle and repeat.")

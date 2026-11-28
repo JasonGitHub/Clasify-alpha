@@ -1,3 +1,4 @@
+#if os(macOS)  // CLA-202: Mac only
 import CoreGraphics
 import Foundation
 import SwiftUI
@@ -109,3 +110,4 @@ public struct K3DShowroom: Equatable {
         return path
     }
 }
+#endif
