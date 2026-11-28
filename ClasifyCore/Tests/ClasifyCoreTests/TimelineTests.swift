@@ -21,7 +21,14 @@ import Testing
         t.record("wheel", at: 13)  // more than 1 s: a new entry
         t.record("select", at: 13.2)
         t.record("wheel", at: 13.5)  // after another entry: a new one
-        #expect(t.text(at: 14) == "wheel:3@-4.0 wheel:1@-1.0 select@-0.8 wheel:1@-0.5")
+        #expect(t.text(at: 14) == "wheel:3@-2.6 wheel:1@-1.0 select@-0.8 wheel:1@-0.5")
+    }
+
+    /// Codex on #527: a burst longer than 2 minutes keeps its entry, at the time of its last step.
+    @Test func aLongWheelBurstStays() {
+        let t = Timeline()
+        for i in 0...242 { t.record("wheel", at: Double(i) * 0.5) }
+        #expect(t.text(at: 121.5) == "wheel:243@-0.5")
     }
 
     @Test func entriesOlderThanTwoMinutesGoAndAtMost60Stay() {

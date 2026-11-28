@@ -55,10 +55,12 @@ public final class Timeline {
 
     public init() {}
 
-    /// Adds one fact at `now`. Wheel steps within `wheelMerge` of the last one add to its count.
+    /// Adds one fact at `now`. Wheel steps within `wheelMerge` of the last one add to its count,
+    /// and the entry takes the time of its last step, so a long burst is not pruned at once.
     func record(_ text: String, at now: Double) {
         if text == "wheel", let last = wheelAt, now - last <= Self.wheelMerge, entries.last?.text == "wheel" {
             entries[entries.count - 1].count += 1
+            entries[entries.count - 1].at = now
             wheelAt = now
             return
         }
