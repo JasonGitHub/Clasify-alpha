@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// CLA-202 spike: the Mac's Apple Music player and library on an iPhone. Never merged.
+/// CLA-202: the iPhone test app "myPod Test". It runs the Mac's Apple Music player and library on an iPhone.
 @main
 struct PhoneSpikeApp: App {
     @State private var model = SpikeModel()

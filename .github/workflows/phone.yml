@@ -1,10 +1,11 @@
 name: Phone
-# CLA-202: build the iPhone app (PhoneSpike/) for the iOS Simulator, unsigned, with both schemes.
+# CLA-202: build the iPhone app (PhoneSpike/) for the iOS Simulator, unsigned, with both schemes,
+# and the skins package (ClasifySkins/), which the iPhone app will use.
 # No secrets, no environment. macos-26 because uploads to TestFlight need Xcode 26.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["PhoneSpike/**", "ClasifyCore/**", "ClasifyAppleMusic/**", ".github/workflows/phone.yml"]
+    paths: ["PhoneSpike/**", "ClasifyCore/**", "ClasifyAppleMusic/**", "ClasifySkins/**", ".github/workflows/phone.yml"]
 permissions:
   contents: read
 concurrency:
@@ -25,6 +26,12 @@ jobs:
               -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/DerivedData" \
               CODE_SIGNING_ALLOWED=NO 2>&1 | tee -a build.log
           done
+      - name: Build the skins package for the iOS Simulator, unsigned
+        working-directory: ClasifySkins
+        run: |
+          set -o pipefail
+          xcodebuild build -scheme ClasifySkins -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/SkinsData" CODE_SIGNING_ALLOWED=NO 2>&1 | tee -a ../build.log
       - name: List the warnings
         if: always()
         run: |
