@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		C1A500000000000000000001 /* ClasifyCore in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000002 /* ClasifyCore */; };
 		C1A500000000000000000013 /* ClasifySkins in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000014 /* ClasifySkins */; };
+		C1A500000000000000000016 /* ClasifyAppleMusic in Frameworks */ = {isa = PBXBuildFile; productRef = C1A500000000000000000017 /* ClasifyAppleMusic */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			files = (
 				C1A500000000000000000001 /* ClasifyCore in Frameworks */,
 				C1A500000000000000000013 /* ClasifySkins in Frameworks */,
+				C1A500000000000000000016 /* ClasifyAppleMusic in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +76,7 @@
 			packageProductDependencies = (
 				C1A500000000000000000002 /* ClasifyCore */,
 				C1A500000000000000000014 /* ClasifySkins */,
+				C1A500000000000000000017 /* ClasifyAppleMusic */,
 			);
 			productName = Clasify;
 			productReference = C1A500000000000000000003 /* myPod.app */;
@@ -101,6 +104,7 @@
 			packageReferences = (
 				C1A50000000000000000000E /* XCLocalSwiftPackageReference "ClasifyCore" */,
 				C1A500000000000000000015 /* XCLocalSwiftPackageReference "ClasifySkins" */,
+				C1A500000000000000000018 /* XCLocalSwiftPackageReference "ClasifyAppleMusic" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C1A500000000000000000007 /* Products */;
@@ -276,6 +280,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ClasifySkins;
 		};
+		C1A500000000000000000018 /* XCLocalSwiftPackageReference "ClasifyAppleMusic" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ClasifyAppleMusic;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -286,6 +294,10 @@
 		C1A500000000000000000014 /* ClasifySkins */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ClasifySkins;
+		};
+		C1A500000000000000000017 /* ClasifyAppleMusic */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ClasifyAppleMusic;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

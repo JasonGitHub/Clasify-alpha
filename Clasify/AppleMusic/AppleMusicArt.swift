@@ -1,4 +1,5 @@
 import AppKit
+import ClasifyAppleMusic
 import ClasifyCore
 import CoreGraphics
 import iTunesLibrary
@@ -63,4 +64,9 @@ actor AppleMusicArt {
             if byKey[key] == nil { byKey[key] = pid }
         }
     }
+}
+
+/// CLA-202: the shared Apple Music code gets the Mac's library covers through `LibraryCovers`.
+extension AppleMusicArt: LibraryCovers {
+    func covers(_ songs: [(id: String, key: String)]) -> [String: UInt64] { match(songs).found }
 }
