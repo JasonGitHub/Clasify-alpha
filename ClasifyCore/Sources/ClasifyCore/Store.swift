@@ -273,6 +273,8 @@ public final class Store {
             timelinesSent += 1
             after = (event.problemName, now, false)
             timeline.holdFrom = now
+            // A problem made while myPod quits gets its `problem_after` at once (Codex on #529).
+            if state.quitting { finishAfter(at: now, quit: true); return }
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(Timeline.span))
                 guard let self else { return }

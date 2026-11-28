@@ -132,6 +132,16 @@ import Testing
         #expect(after.properties["timeline"] == .text("lost:stopped_in_spotify@+0.0 quit@+30.0"))
     }
 
+    /// Codex on #529: a problem made while myPod quits gets its `problem_after` at once.
+    @Test func aProblemAtTheQuitGetsProblemAfterAtOnce() {
+        var s = playingState()
+        s.quitting = true  // as after `.willQuit`, where a first Play's silent deadline can end
+        let store = store(s)
+        store.track(.firstStep(.playNoMusic, how: .failed, seconds: 3, service: .spotify), before: store.state, at: 1_000)
+        guard let after = events.first(where: { $0.name == "problem_after" }) else { Issue.record("no problem_after"); return }
+        #expect(after.properties["quit"] == .flag(true) && after.properties["problem"] == .text("first_step:play_no_music"))
+    }
+
     /// At most 10 events with a timeline in a launch, `problem_after` included. Over it, the
     /// problem still goes out, with no timeline.
     @Test func atMostTenTimelinesALaunch() {
