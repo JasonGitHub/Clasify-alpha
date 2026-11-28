@@ -1,0 +1,31 @@
+name: Phone
+# CLA-202: build the iPhone app (PhoneSpike/) for the iOS Simulator, unsigned, with both schemes.
+# No secrets, no environment. macos-26 because uploads to TestFlight need Xcode 26.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ["PhoneSpike/**", "ClasifyCore/**", "ClasifyAppleMusic/**", ".github/workflows/phone.yml"]
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  simulator:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+      - run: xcodebuild -version
+      - name: Build both schemes for the iOS Simulator, unsigned
+        run: |
+          set -o pipefail
+          for scheme in "PhoneSpike" "PhoneSpike NoBG"; do
+            xcodebuild build -project PhoneSpike/PhoneSpike.xcodeproj -scheme "$scheme" \
+              -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+              CODE_SIGNING_ALLOWED=NO 2>&1 | tee -a build.log
+          done
+      - name: List the warnings
+        if: always()
+        run: |
+          grep -E '(^|: )warning: ' build.log | sort -u || echo "No warnings."
