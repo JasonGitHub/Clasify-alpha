@@ -577,6 +577,9 @@ public struct AppState: Equatable, Sendable {
     public var dayPlayAt: Double?, dayTrack: String?, dayPosition: Double?
     /// CLA-97: when the player lost control, until it comes back. Not saved.
     public var controlLostAt: Double?
+    /// CLA-203: since when the Spotify app on this Mac plays while myPod is not in control, as
+    /// counted so far. nil when it does not. Not saved.
+    public var outsideAt: Double?
     /// CLA-203: myPod quits (`.willQuit`). A quit cannot be cancelled, so it stays true. Not saved.
     public var quitting = false
     /// CLA-97: the last setup step event, so the same step does not go out twice in a row. Not saved.

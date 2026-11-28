@@ -135,6 +135,7 @@ public enum BetaEvent: Equatable, Sendable {
                 "clicker": .flag(settings.clicker), "menu_bar": .flag(settings.menuBar),
                 "songs_shuffle": .number(d.songsShuffle), "songs_repeat": .number(d.songsRepeat), "songs_cut": .number(d.songsCut),
                 "menu_bar_clicks": .number(d.menuBarClicks),
+                "outside_songs": .number(d.outsideSongs), "outside_minutes": .decimal(d.outsideSeconds / 60),  // CLA-203
                 "day": .number(d.day), "weekday": .number(d.weekday), "songs": .number(d.songs), "minutes": .decimal(d.seconds / 60),
                 "minutes_night": .decimal(d.bands[0] / 60), "minutes_morning": .decimal(d.bands[1] / 60),
                 "minutes_work": .decimal(d.bands[2] / 60), "minutes_evening": .decimal(d.bands[3] / 60), "service": .text(service.eventName),
@@ -622,6 +623,20 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     } else if !s.isPlaying && s.dayPlayAt != nil {
         s.dayPlayAt = nil
     }
+    // CLA-203: music that the Spotify app on this Mac plays while myPod is not in control.
+    // The time since the last report goes to the day of this one, at most `outsideGapLimit`.
+    // A quit ends it.
+    var outsideNow: Bool?, outsideSong = false
+    if case .outsideMusic(let playing, let song) = action { (outsideNow, outsideSong) = (playing, song) }
+    if quit { outsideNow = false }
+    if let playing = outsideNow {
+        if let at = s.outsideAt, now > at {
+            let add = min(now - at, outsideGapLimit)
+            count(at: now) { d, _ in d.outsideSeconds += add }
+        }
+        if outsideSong { count(at: now) { d, _ in d.outsideSongs += 1 } }
+        s.outsideAt = playing ? now : nil
+    }
     // Jason 23:58 JST: the time of each 3D view, from its open to its close, at most
     // `view3DLimit` (a window left open). A quit closes them all.
     if case .view3D(let view, open: false) = action {
@@ -689,6 +704,7 @@ func dayEvents(_ s: inout AppState, _ action: Action, _ b: BeforeEvents, now: Do
     let changed = saved?.day != today?.day || saved?.songs != today?.songs || saved?.features != today?.features
         || saved?.service != today?.service || minute(saved) != minute(today) || saved?.views != today?.views
         || saved?.visible != today?.visible || saved?.songsCut != today?.songsCut || saved?.menuBarClicks != today?.menuBarClicks
+        || saved?.outsideSongs != today?.outsideSongs || saved?.outsideSeconds != today?.outsideSeconds  // CLA-203 (Codex on #526)
     if changed || (b.playing && !s.isPlaying) || quit { s.savedToday = today }
     return fx
 }

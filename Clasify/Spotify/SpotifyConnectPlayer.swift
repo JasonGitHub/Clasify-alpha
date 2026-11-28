@@ -55,8 +55,15 @@ final class SpotifyConnectPlayer: Player {
     /// True after our play command succeeded, until stop or a move away.
     /// States before that can be from an older session or another device, so they are ignored.
     private var ours = false {
-        didSet { if ours && !oldValue { controlBack() } }  // CLA-97: the reducer ignores it with no loss open
+        didSet {
+            if ours && !oldValue { endOutside(); controlBack() }  // CLA-97: the reducer ignores it with no loss open
+            // CLA-203: the song that played through myPod is not an outside song if it plays on.
+            if !ours && oldValue { outsideTrack = lastTrack.isEmpty ? startedTrack : lastTrack }
+        }
     }
+    /// CLA-203 (fix 5): the Spotify app on this Mac plays while myPod is not in control, and its
+    /// last such track. For `day_active` only (`.outsideMusic`).
+    private var outsidePlaying = false, outsideTrack = ""
     /// CLA-97: a command timed out or the session dropped, and no state of our device has come
     /// from the new login yet. `relogged`: the new login is done, so its next state confirms it.
     private var lostSession = false, relogged = false
@@ -190,6 +197,7 @@ final class SpotifyConnectPlayer: Player {
         let id = loadID
         ours = false
         loading = true
+        endOutside()  // CLA-203: myPod takes over now
         wantsRunning = autoplay
         pendingSkips = []
         pendingSeek = nil
@@ -255,6 +263,7 @@ final class SpotifyConnectPlayer: Player {
         loadID += 1
         let id = loadID
         loading = true
+        endOutside()  // CLA-203: myPod takes over now
         wantsRunning = true
         pendingSkips = []
         pendingSeek = nil
@@ -376,6 +385,8 @@ final class SpotifyConnectPlayer: Player {
     /// Call it when the session signs out. The device ID and its options belong to that
     /// account, so the next account looks them up again.
     func reset() {
+        endOutside()  // CLA-203 (Codex on #526): no device after this, so no state could end it
+        outsideTrack = ""
         warmID += 1
         session += 1
         warming?.cancel()
@@ -433,6 +444,31 @@ final class SpotifyConnectPlayer: Player {
         // After following Spotify into a station or album, there is no place to go on from.
         let message = followedOther ? "Spotify closed. Pick a song to play" : "Spotify closed. Press play to go on"
         if ours { lose(message, resumable: true, reason: .spotifyQuit) }
+        endOutside()
+    }
+
+    /// CLA-203 (fix 5): music while myPod is not in control. Only this Mac's Spotify app counts:
+    /// the state's active device is `device`, which `appDevice` picked as this Mac's Spotify app
+    /// (a computer with this Mac's name, new since a launch here; two such Macs give no device).
+    /// Music on a phone or another computer has another active device ID, so it counts as not
+    /// playing. Before a first load or warm-up finds `device`, nothing counts. Sent on each change.
+    private func noteOutside(_ state: SpotifyPlayerState, device: String) {
+        // During a load of ours nothing counts: the outside music ended at its start (`start`,
+        // `takeBack`; Codex on #526). After a failed load, the next change opens it again.
+        guard !ours, !loading else { return }
+        let playing = state.activeDeviceID == device && state.hasTrack && state.isRunning
+        let song = playing && state.trackURI != outsideTrack
+        if playing { outsideTrack = state.trackURI }
+        guard playing != outsidePlaying || song else { return }
+        outsidePlaying = playing
+        send(.outsideMusic(playing: playing, song: song))
+    }
+
+    /// The outside music ends: myPod took control, or Spotify quit.
+    private func endOutside() {
+        guard outsidePlaying else { return }
+        outsidePlaying = false
+        send(.outsideMusic(playing: false, song: false))
     }
 
     /// Our playback ended outside Clasify. A resumable end keeps the place for Play.
@@ -821,6 +857,7 @@ final class SpotifyConnectPlayer: Player {
         } else if !state.activeDeviceID.isEmpty {
             rejoinUntil = nil  // it plays elsewhere: a later move to this Mac is not ours to take
         }
+        noteOutside(state, device: device)
         guard ours else { return }
         if let loaded, ContinuousClock.now - loaded.at < .seconds(3),
            state.activeDeviceID != device || !isLoaded(state, track: loaded.track) {
