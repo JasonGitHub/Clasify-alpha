@@ -302,6 +302,13 @@ let showsWindow: [Screen] = [.betaSoon, .betaEnded, .betaNew, .activate]
 
 @discardableResult
 public func reduce(_ s: inout AppState, _ action: Action, _ env: Dependencies) -> [Effect] {
+    // CLA-202: the phone has no menu bar icon and no 3D device. The app never sends these there;
+    // if one comes, it changes nothing.
+    switch action {
+    case .menuBarClick where !s.features.menuBar: return []
+    case .view3D where !s.features.views3D, .deviceTurned where !s.features.views3D: return []
+    default: break
+    }
     let top = s.top.screen, handOver = s.activateHandOver
     // CLA-97: the first launch, for the setup times. A Mac set up before it has none.
     if action == .launch && !s.setupDone && s.firstLaunchAt == nil { s.firstLaunchAt = env.now() }
@@ -826,6 +833,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
                     let i = order.firstIndex(of: s.repeatMode) ?? 0
                     setRepeat(order[clamp(i + d.signum(), 0, order.count - 1)])
                 case .volume:
+                    guard s.features.wheelVolume else { break }  // CLA-202: the phone's wheel does nothing here
                     s.volume = clamp(s.volume + d * 5, 0, 100)
                     s.overlayUntil = now + 1.5
                     fx.append(.setVolume(s.volume))
@@ -1593,7 +1601,7 @@ private func reduceAction(_ s: inout AppState, _ action: Action, _ env: Dependen
             let settings = s.settings  // saved settings stay
             let (battery, spotifyApp, beta) = (s.battery, s.spotifyApp, s.beta)  // the Mac and the build, which a reset does not change
             let words = s.words  // the active service's library, which a reset does not change
-            s = AppState()
+            s = AppState(platform: s.platform)  // CLA-202: the device stays
             s.tok = tok; s.playGen = gen; s.authAttempt = auth; s.artTok = art; (s.navSeq, s.wholeSeq) = nav; s.settings = settings
             s.battery = battery; s.spotifyApp = spotifyApp; s.beta = beta; s.words = words
         default: break
