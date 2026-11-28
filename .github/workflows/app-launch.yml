@@ -9,7 +9,7 @@ name: App launch
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    paths: ["ClasifyCore/**", "ClasifySkins/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/actions/build-app/**", ".github/workflows/app-launch.yml"]
+    paths: ["ClasifyCore/**", "ClasifySkins/**", "ClasifyAppleMusic/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/actions/build-app/**", ".github/workflows/app-launch.yml"]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

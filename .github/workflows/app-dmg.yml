@@ -14,7 +14,7 @@ on:
   push:
     branches: [main]
     # Only a merge that can change the app makes a new test DMG. Workflow and doc changes do not.
-    paths: ["ClasifyCore/**", "ClasifySkins/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/actions/build-app/**"]
+    paths: ["ClasifyCore/**", "ClasifySkins/**", "ClasifyAppleMusic/**", "Clasify/**", "Clasify.xcodeproj/**", "LibrespotBridge/**", "scripts/**", ".github/actions/build-app/**"]
 concurrency:
   # A push does not cancel a signed run started by hand.
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
