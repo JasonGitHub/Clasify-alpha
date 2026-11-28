@@ -305,6 +305,19 @@ import Testing
         #expect(view.cover.animation(forKey: "pan") == nil)
     }
 
+    /// CLA-202: iOS layers have y down, so the same pan moves the cover to a higher y there.
+    @Test func theCoverPanFollowsTheHostsYDirection() throws {
+        let image = try #require(Self.solidImage(red: 1, green: 0, blue: 0))
+        let m = MainArt.motion(at: MainArt.slot, index: 1, count: 3)
+        let pan = CoverPan()
+        #expect(pan.update(image: image, side: MainArt.coverSide, pan: m, elapsed: 0))
+        pan.layout(in: CGSize(width: 116, height: 180), yUp: false)
+        let move = try #require(pan.cover.animation(forKey: "pan") as? CABasicAnimation)
+        #expect((move.fromValue as? NSValue)?.pointValue == NSPoint(x: 58 + m.from.x, y: 90 + m.from.y))
+        #expect((move.toValue as? NSValue)?.pointValue == NSPoint(x: 58 + m.to.x, y: 90 + m.to.y))
+        #expect(!pan.update(image: image, side: MainArt.coverSide, pan: m, elapsed: 0))  // no change, no new layout
+    }
+
     @Test func aMissingMainArtCoverShowsTheOneBeforeIt() {
         #expect(MainArt.filled([nil, "A", nil, "B"]) == ["B", "A", "A", "B"])
         #expect(MainArt.filled([String?]([nil, nil])) == [nil, nil])  // all nil stays nil
