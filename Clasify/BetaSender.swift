@@ -81,7 +81,7 @@ import Foundation
         return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
     }()
 
-    /// CLA-203: the installed Spotify app's version, on every event; nil when it is not installed.
+    /// CLA-203: the installed Spotify app's version, as `spotify_version` on every event; nil when it is not installed.
     /// Read from its Info.plist each time (no cache), so an update in this launch shows.
     static func spotifyApp() -> String? {
         guard let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.spotify.client"),
